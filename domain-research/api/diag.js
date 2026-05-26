@@ -14,16 +14,22 @@ export default async function handler(req, res) {
 
   const source = typeof req.query.source === 'string' ? req.query.source : '';
   if (!source) {
-    res.status(400).json({ error: 'Provide ?source=<tool_name>&domain=<domain>' });
+    res.status(400).json({ error: 'Provide ?source=<tool_name> plus its args, e.g. &domain= / &nameserver= / &term= / &ip=' });
     return;
   }
-  const domain = normalizeDomain(req.query.domain || 'example.com');
+
+  // Pass through every query param (except `source`) as the tool's args, so any
+  // source can be exercised: domain, nameserver, term, ip, etc.
+  const { source: _omit, ...rest } = req.query;
+  const args = {};
+  for (const [k, v] of Object.entries(rest)) args[k] = Array.isArray(v) ? v[0] : v;
+  if (args.domain) args.domain = normalizeDomain(args.domain);
 
   const started = Date.now();
-  const result = await runTool(source, { domain }, process.env);
+  const result = await runTool(source, args, process.env);
   res.status(200).json({
     source,
-    domain,
+    args,
     proxy_configured: Boolean(process.env.FIXIE_URL || process.env.DOMAINIQ_PROXY_URL),
     ms: Date.now() - started,
     ...result,
