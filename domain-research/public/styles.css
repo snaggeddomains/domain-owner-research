@@ -68,7 +68,9 @@ h1, h2, h3 { font-family: var(--display); font-weight: 400; line-height: 1.08; m
 .wrap { max-width: 860px; margin: 0 auto; padding: 28px 20px 96px; }
 
 /* Wordmark + brand mark */
-.wordmark { display: inline-flex; align-items: center; gap: 10px; font-family: var(--body); font-weight: 800; font-size: 22px; letter-spacing: -.01em; }
+.wordmark { display: inline-flex; align-items: center; gap: 10px; font-family: var(--body); font-weight: 800; font-size: 22px; letter-spacing: -.01em; text-decoration: none; color: var(--navy); }
+a.wordmark { cursor: pointer; }
+a.wordmark:hover { text-decoration: none; opacity: .9; }
 .wordmark .wm-a { color: var(--navy); }
 .wordmark .wm-b { color: var(--coral); }
 .brand-mark { width: 34px; height: 34px; flex: none; border-radius: 50%; }
@@ -129,14 +131,13 @@ button {
   border: 2px solid var(--navy);
   background: var(--coral);
   color: var(--navy);
-  box-shadow: 0 4px 0 var(--coral-deep);
   cursor: pointer;
   white-space: nowrap;
-  transition: transform .12s ease, box-shadow .18s ease, background .18s ease;
+  transition: background .18s ease;
 }
-button:hover { background: #ec8d77; box-shadow: 0 6px 0 var(--coral-deep); transform: translateY(-2px); }
-button:active { transform: translateY(2px); box-shadow: 0 2px 0 var(--coral-deep); }
-button:disabled { opacity: .55; cursor: progress; transform: none; box-shadow: 0 4px 0 var(--coral-deep); }
+button:hover { background: #ec8d77; }
+button:active { background: var(--coral-deep); color: var(--cream-2); }
+button:disabled { opacity: .55; cursor: progress; }
 
 /* Inputs */
 .search { display: flex; gap: 10px; margin-bottom: 28px; }

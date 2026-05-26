@@ -28,6 +28,7 @@ const els = {
   deepenBtn: $('deepen'),
   projectsSearch: $('projects-search'),
   projectsList: $('projects-list'),
+  homeLink: $('home-link'),
 };
 
 const POLL_MS = 2500;
@@ -488,6 +489,7 @@ els.deepenBtn?.addEventListener('click', deepen);
 els.deepenTopBtn?.addEventListener('click', deepen);
 els.exportPdf?.addEventListener('click', () => window.print());
 els.navResearch?.addEventListener('click', showEntry);
+els.homeLink?.addEventListener('click', (e) => { e.preventDefault(); showEntry(); });
 els.navProjects?.addEventListener('click', () => showView('projects'));
 
 let searchTimer = null;
