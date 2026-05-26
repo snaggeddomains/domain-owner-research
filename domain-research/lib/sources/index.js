@@ -11,12 +11,13 @@ import marketplace from './marketplace.js';
 import reversewhois from './reversewhois.js';
 import reversens from './reversens.js';
 import reverseip from './reverseip.js';
+import websearch from './websearch.js';
 
 // To add a new data source: create a module exporting { name, description,
 // parameters, requiresKey?, run(args, { env }) } and register it here.
 const ALL = [
   rdap, dns, wayback, livesite, marketplace, masterlist, rocketreach,
-  whoisxml, domainiq, bigdomaindata, reversewhois, reversens, reverseip,
+  whoisxml, domainiq, bigdomaindata, reversewhois, reversens, reverseip, websearch,
 ];
 
 // Paid sources spend external API credits. They are withheld from the free
@@ -24,8 +25,31 @@ const ALL = [
 // pass (tier 'all').
 const PAID = new Set([
   'whoisxml_lookup', 'domainiq_lookup', 'bigdomaindata_lookup',
-  'reverse_whois', 'reverse_ns', 'reverse_ip',
+  'reverse_whois', 'reverse_ns', 'reverse_ip', 'web_search',
 ]);
+
+// Recap grouping — each source's category, used to break the "Sources checked"
+// panel into labeled sections.
+const CATEGORY = {
+  rdap_whois: 'Current registration',
+  dns_lookup: 'Infrastructure (DNS)',
+  whoisxml_lookup: 'Ownership history',
+  domainiq_lookup: 'Ownership history',
+  bigdomaindata_lookup: 'Ownership history',
+  reverse_whois: 'Portfolio & shared infra',
+  reverse_ns: 'Portfolio & shared infra',
+  reverse_ip: 'Portfolio & shared infra',
+  wayback_history: 'Archive (Wayback)',
+  livesite_inspect: 'Live site',
+  marketplace_check: 'Marketplace',
+  masterlist_lookup: 'Internal list',
+  rocketreach_search: 'People & contacts',
+  web_search: 'Web & social',
+};
+
+export function getCategoryMap() {
+  return CATEGORY;
+}
 
 function isEnabled(source, env) {
   if (!source.requiresKey) return true;

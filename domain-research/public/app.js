@@ -128,9 +128,10 @@ function renderMarkdown(md) {
   return html;
 }
 
-function renderTrace(trace, toolsAvailable) {
+function renderTrace(trace, toolsAvailable, categories) {
   const called = trace || [];
   const available = toolsAvailable || [];
+  const cats = categories || {};
   if (!called.length && !available.length) {
     els.evidence.hidden = true;
     return;
@@ -141,26 +142,41 @@ function renderTrace(trace, toolsAvailable) {
   for (const t of called) (byTool[t.tool] = byTool[t.tool] || []).push(t);
   const names = [...new Set([...available, ...Object.keys(byTool)])];
 
-  els.trace.innerHTML = names
-    .map((name) => {
-      const calls = byTool[name] || [];
-      if (!calls.length) {
-        return `<li><span class="dot skip"></span>${escapeHtml(name)} <span class="muted">— not run</span></li>`;
-      }
-      return calls
-        .map((t) => {
-          const dot = t.ok ? 'ok' : 'bad';
-          const arg = t.args && t.args.domain ? ` ${escapeHtml(t.args.domain)}` : '';
-          if (!t.ok) {
-            return `<li><span class="dot ${dot}"></span>${escapeHtml(name)}${arg} <span class="err">— ${escapeHtml(t.error || 'failed')}</span></li>`;
-          }
-          const detail = t.data
-            ? `<details class="src-detail"><summary>what came back</summary><pre>${escapeHtml(t.data)}</pre></details>`
-            : '';
-          return `<li><span class="dot ${dot}"></span>${escapeHtml(name)}${arg}${detail}</li>`;
-        })
-        .join('');
-    })
+  const renderTool = (name) => {
+    const calls = byTool[name] || [];
+    if (!calls.length) {
+      return `<li><span class="dot skip"></span>${escapeHtml(name)} <span class="muted">— not run</span></li>`;
+    }
+    return calls
+      .map((t) => {
+        const dot = t.ok ? 'ok' : 'bad';
+        const arg = t.args && t.args.domain ? ` ${escapeHtml(t.args.domain)}` : '';
+        if (!t.ok) {
+          return `<li><span class="dot ${dot}"></span>${escapeHtml(name)}${arg} <span class="err">— ${escapeHtml(t.error || 'failed')}</span></li>`;
+        }
+        const detail = t.data
+          ? `<details class="src-detail"><summary>what came back</summary><pre>${escapeHtml(t.data)}</pre></details>`
+          : '';
+        return `<li><span class="dot ${dot}"></span>${escapeHtml(name)}${arg}${detail}</li>`;
+      })
+      .join('');
+  };
+
+  // Group sources by category so the recap reads as labeled sections.
+  const groups = new Map();
+  for (const name of names) {
+    const c = cats[name] || 'Other';
+    if (!groups.has(c)) groups.set(c, []);
+    groups.get(c).push(name);
+  }
+
+  els.trace.innerHTML = [...groups.entries()]
+    .map(
+      ([category, toolNames]) =>
+        `<li class="trace-group"><div class="trace-group-title">${escapeHtml(category)}</div><ul class="trace-tools">${toolNames
+          .map(renderTool)
+          .join('')}</ul></li>`,
+    )
     .join('');
 }
 
@@ -209,7 +225,7 @@ function renderReport(report) {
   els.reportActions.hidden = false;
   els.report.hidden = false;
   els.report.innerHTML = renderMarkdown(stripConfidenceLine(md));
-  renderTrace(report && report.trace, report && report.toolsAvailable);
+  renderTrace(report && report.trace, report && report.toolsAvailable, report && report.categories);
 
   // Offer the paid pass only after a free (shallow) one. Surface it at the very
   // top when the free report has no clear owner; otherwise keep it below.

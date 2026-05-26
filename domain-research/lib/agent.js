@@ -1,4 +1,4 @@
-import { getToolSpecs } from './sources/index.js';
+import { getToolSpecs, getCategoryMap } from './sources/index.js';
 import * as openai from './llm/openai.js';
 import * as anthropic from './llm/anthropic.js';
 
@@ -11,6 +11,7 @@ How to work:
 - Cross-reference findings: registrant identity/org, registrar, nameserver/hosting/email provider, creation/expiry/transfer dates, historical registrant changes, and how long content has existed (Wayback).
 - Reconstruct the FULL ownership timeline from historical WHOIS (DomainIQ returns dated "eras"). Surface every historical registrant NAME, organization and email — especially a real person's name from a pre-privacy era — even when the current record is privacy-shielded.
 - Piece clues together across eras. If infrastructure is continuous across a privacy transition (e.g. the same nameservers, registrar, hosting or email pattern persist from a named era through today), infer that the historically-named registrant most likely still controls the domain — name them and explain the chain of evidence, with calibrated confidence.
+- Search the open web (web_search) for the candidate owner, company, a distinctive email, or the domain itself — scoping to LinkedIn, Crunchbase, X/Twitter, news and other public databases (e.g. site:linkedin.com, site:crunchbase.com) to corroborate identity and find current affiliation/contact.
 - Be explicit about privacy redaction (e.g. "Domains By Proxy", "Privacy Protect", "REDACTED FOR PRIVACY"). NEVER invent a registrant when the record is private or a tool returned nothing.
 
 Write the final answer in Markdown. Start with a single line, exactly in this form:
@@ -20,7 +21,8 @@ Write the final answer in Markdown. Start with a single line, exactly in this fo
 3. **Infrastructure** — nameservers, hosting, MX, notable TXT records, and what providers they indicate.
 4. **History** — registration age, ownership/registrar changes over time, Wayback timeline highlights.
 5. **Leads & related domains** — reverse-WHOIS / related domains, if any source provided them.
-6. **Confidence & gaps** — High / Medium / Low, and what additional data would raise it.
+6. **Web & social footprint** — what open-web / LinkedIn / Crunchbase / social / news searches surfaced about the likely owner, with links.
+7. **Confidence & gaps** — High / Medium / Low, and what additional data would raise it.
 
 Cite the source of each key fact inline, e.g. "(RDAP)", "(DNS)", "(Wayback)", "(DomainIQ)". If a tool failed or returned nothing useful, say so rather than guessing.`;
 
@@ -52,6 +54,7 @@ export async function research({ domain, question, history = [], env, tier = 'al
     maxToolResultChars: MAX_TOOL_RESULT_CHARS,
   });
 
-  // toolsAvailable lets the UI show which sources ran vs. were available-but-unused.
-  return { ...result, toolsAvailable: toolSpecs.map((t) => t.name), tier };
+  // toolsAvailable lets the UI show which sources ran vs. were available-but-unused;
+  // categories let the recap group them into labeled sections.
+  return { ...result, toolsAvailable: toolSpecs.map((t) => t.name), categories: getCategoryMap(), tier };
 }

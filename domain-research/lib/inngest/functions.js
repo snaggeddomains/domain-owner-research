@@ -26,6 +26,7 @@ export const runResearch = inngest.createFunction(
           markdown: result.report,
           trace: result.trace,
           toolsAvailable: result.toolsAvailable,
+          categories: result.categories,
           phase,
         }),
       );
