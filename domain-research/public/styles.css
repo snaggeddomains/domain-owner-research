@@ -201,6 +201,23 @@ button:disabled { opacity: .55; cursor: progress; }
 .report code { background: var(--cream); padding: 1px 6px; border-radius: 6px; border: 1px solid var(--line); font-size: .9em; }
 .report ul { padding-left: 22px; }
 
+/* Clue-first summary card (verdict + contacts + path + timeline) */
+.summary-card { margin: 0 0 22px; padding: 20px 22px; background: var(--paper); border: 2px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow-sm); }
+.summary-card .verdict { font-family: var(--system); font-size: 1.05rem; color: var(--navy); margin: 0 0 12px; }
+.summary-card .owner { font-family: var(--body); margin: 0 0 6px; }
+.summary-card .owner-name { font-weight: 800; font-size: 1.2rem; color: var(--navy); }
+.summary-card .owner-type { color: var(--navy-3); font-size: .9rem; text-transform: capitalize; margin-left: 8px; }
+.summary-card a { color: var(--teal-deep); }
+.sum-block { margin-top: 16px; }
+.sum-block h3 { font-family: var(--body); font-weight: 800; font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--navy-3); margin: 0 0 8px; }
+.contacts, .timeline { list-style: none; margin: 0; padding: 0; display: grid; gap: 7px; }
+.contacts li { font-family: var(--system); font-size: .95rem; color: var(--navy); }
+.contacts .ctype { display: inline-block; min-width: 54px; font-size: .72rem; font-weight: 700; text-transform: uppercase; color: var(--navy-3); letter-spacing: .04em; }
+.cpath { margin: 0; padding-left: 20px; display: grid; gap: 5px; font-family: var(--system); font-size: .95rem; color: var(--navy); }
+.timeline li { display: flex; gap: 12px; font-family: var(--system); font-size: .95rem; }
+.timeline .tl-date { flex: none; width: 120px; font-weight: 700; color: var(--coral-deep); font-variant-numeric: tabular-nums; }
+.timeline .tl-event { color: var(--navy); }
+
 /* Identity-confidence — large color-coded label (no pill) */
 .confidence { display: block; font-family: var(--body); font-weight: 800; font-size: 1.4rem; line-height: 1.2; margin: 0 0 22px; }
 .confidence.high { color: #1f7a4d; }

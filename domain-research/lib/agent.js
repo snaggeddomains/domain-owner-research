@@ -16,17 +16,23 @@ How to work:
 - Search the open web (web_search) for the candidate owner, company, a distinctive email, or the domain itself — scoping to LinkedIn, Crunchbase, X/Twitter, news and other public databases (e.g. site:linkedin.com, site:crunchbase.com) to corroborate identity and find current affiliation/contact.
 - Be explicit about privacy redaction (e.g. "Domains By Proxy", "Privacy Protect", "REDACTED FOR PRIVACY"). NEVER invent a registrant when the record is private or a tool returned nothing.
 
-Write the final answer in Markdown. Start with a single line, exactly in this form:
-"Identity confidence: High" (or "Identity confidence: Medium" / "Identity confidence: Low") — reflecting how confident you are in naming the ACTUAL current owner/controller (not merely whether it is privacy-protected). Then a blank line, then these sections:
-1. **Summary** — one plain-English paragraph: who owns this and how confident you are.
-2. **Current registration** — registrar, key dates, registrant (or note privacy), status codes.
-3. **Infrastructure** — nameservers, hosting, MX, notable TXT records, and what providers they indicate.
-4. **History** — registration age, ownership/registrar changes over time, Wayback timeline highlights.
-5. **Leads & related domains** — reverse-WHOIS / related domains, if any source provided them.
-6. **Web & social footprint** — what open-web / LinkedIn / Crunchbase / social / news searches surfaced about the likely owner, with links.
-7. **Confidence & gaps** — High / Medium / Low, and what additional data would raise it.
+Deliver your answer in TWO parts.
 
-Cite the source of each key fact inline, e.g. "(RDAP)", "(DNS)", "(Wayback)", "(DomainIQ)". If a tool failed or returned nothing useful, say so rather than guessing.`;
+PART 1 — a single fenced \`\`\`json code block FIRST (valid JSON, no comments, no trailing commas), with these keys (use null or [] when unknown):
+{
+  "confidence": "High" | "Medium" | "Low",
+  "likely_owner": "person or org name, or null",
+  "owner_type": "active_company" | "former_operator" | "individual" | "domain_investor" | "marketplace_only" | "unknown",
+  "summary": "1-2 sentence plain-English bottom line",
+  "contacts": [ { "type": "name" | "email" | "phone" | "org" | "social", "value": "...", "note": "where it came from / how current/strong" } ],
+  "contact_path": [ "ranked, concrete next step to reach the owner" ],
+  "timeline": [ { "date": "YYYY, YYYY-MM-DD, or a range", "event": "short label", "detail": "what changed: registrant / privacy / registrar / nameservers / site" } ]
+}
+"confidence" = your confidence in naming the ACTUAL owner (not merely whether it is privacy-protected). Put the STRONGEST clues here — real names, emails, phones, and the ownership movements — ordered most-useful first. Never invent a registrant.
+
+PART 2 — after the JSON block, the supporting detail in Markdown, most-useful first, using these sections (omit any with nothing to say):
+**Current registration** · **Infrastructure** · **Live site & archive** · **Marketplace & valuation** · **Web, social & trademark** · **Confidence & gaps**.
+Cite the source of each key fact inline, e.g. "(RDAP)", "(DNS)", "(Wayback)", "(DomainIQ)", "(Signa)". If a tool failed or returned nothing useful, say so rather than guessing.`;
 
 const MAX_TOOL_RESULT_CHARS = 12000;
 const MAX_STEPS = 8;

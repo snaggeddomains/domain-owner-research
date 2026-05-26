@@ -223,13 +223,63 @@ function setReportTitle(domain) {
   }
 }
 
+// The synthesis emits a fenced ```json block (verdict/contacts/timeline) first.
+function parseReportData(md) {
+  const m = String(md || '').match(/```json\s*([\s\S]*?)```/i);
+  if (!m) return null;
+  try { return JSON.parse(m[1].trim()); } catch { return null; }
+}
+function stripJsonBlock(md) {
+  return String(md || '').replace(/```json\s*[\s\S]*?```/i, '').replace(/^\s+/, '');
+}
+
+// Clue-first summary card: bottom line + likely owner + contacts + recommended
+// contact path + ownership timeline.
+function renderSummary(d) {
+  const e = escapeHtml;
+  const linkify = (c) => {
+    const v = String(c.value == null ? '' : c.value);
+    if (c.type === 'email') return `<a href="mailto:${e(v)}">${e(v)}</a>`;
+    if (c.type === 'social' || /^https?:\/\//.test(v)) return `<a href="${e(v)}" target="_blank" rel="noopener">${e(v)}</a>`;
+    return e(v);
+  };
+  let html = '';
+  if (d.summary) html += `<p class="verdict">${e(d.summary)}</p>`;
+  if (d.likely_owner || d.owner_type) {
+    const t = d.owner_type ? ` <span class="owner-type">${e(String(d.owner_type).replace(/_/g, ' '))}</span>` : '';
+    html += `<div class="owner">${d.likely_owner ? `<span class="owner-name">${e(d.likely_owner)}</span>` : '<span class="muted">Owner not established</span>'}${t}</div>`;
+  }
+  const contacts = Array.isArray(d.contacts) ? d.contacts : [];
+  if (contacts.length) {
+    html += `<div class="sum-block"><h3>Key contacts</h3><ul class="contacts">${contacts
+      .map((c) => `<li><span class="ctype">${e(c.type || '')}</span> ${linkify(c)}${c.note ? ` <span class="muted">— ${e(c.note)}</span>` : ''}</li>`)
+      .join('')}</ul></div>`;
+  }
+  const path = Array.isArray(d.contact_path) ? d.contact_path : [];
+  if (path.length) {
+    html += `<div class="sum-block"><h3>Recommended contact path</h3><ol class="cpath">${path.map((p) => `<li>${e(p)}</li>`).join('')}</ol></div>`;
+  }
+  const tl = Array.isArray(d.timeline) ? d.timeline : [];
+  if (tl.length) {
+    html += `<div class="sum-block"><h3>Ownership timeline</h3><ul class="timeline">${tl
+      .map((t) => `<li><span class="tl-date">${e(t.date || '')}</span><span class="tl-event">${e(t.event || '')}${t.detail ? ` — ${e(t.detail)}` : ''}</span></li>`)
+      .join('')}</ul></div>`;
+  }
+  return html ? `<div class="summary-card">${html}</div>` : '';
+}
+
 function renderReport(report) {
   const md = report && report.markdown ? report.markdown : '';
-  const band = extractConfidence(md);
+  const data = parseReportData(md);
+  const band = data && data.confidence ? String(data.confidence).toLowerCase() : extractConfidence(md);
   renderConfidence(band);
   els.reportActions.hidden = false;
+
+  // Structured summary up top (when present), then the supporting narrative.
+  const summaryHtml = data ? renderSummary(data) : '';
+  const narrative = data ? stripJsonBlock(md) : stripConfidenceLine(md);
   els.report.hidden = false;
-  els.report.innerHTML = renderMarkdown(stripConfidenceLine(md));
+  els.report.innerHTML = summaryHtml + renderMarkdown(narrative);
   renderTrace(report && report.trace, report && report.toolsAvailable, report && report.categories);
 
   // Offer the paid pass only after a free (shallow) one. Surface it at the very
