@@ -2,10 +2,11 @@ import { fetch as undiciFetch, ProxyAgent } from 'undici';
 import { fetchJson } from '../util.js';
 
 // Verified default endpoint (domain_history) — works with just DOMAINIQ_API_KEY.
-// Override with DOMAINIQ_URL_TEMPLATE (using {domain} and {key}) for a different
-// service/params. The domain is URL-encoded before substitution.
+// raw=1 returns the FULL history; without it DomainIQ only returns records that
+// changed. Override with DOMAINIQ_URL_TEMPLATE (using {domain} and {key}) for a
+// different service/params. The domain is URL-encoded before substitution.
 const DEFAULT_TEMPLATE =
-  'https://www.domainiq.com/api?key={key}&service=domain_history&domain={domain}&output_mode=json';
+  'https://www.domainiq.com/api?key={key}&service=domain_history&domain={domain}&output_mode=json&raw=1';
 
 // DomainIQ allowlists by IP, and Vercel has no static egress IP. Routing this
 // one source through a static-IP proxy (Fixie) gives a stable IP to whitelist.
