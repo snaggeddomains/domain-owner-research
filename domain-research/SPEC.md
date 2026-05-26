@@ -161,7 +161,8 @@ Output band: `High` / `Medium` / `Low` + one-paragraph note.
 ## 7. Data model (normalized entities)
 
 Store **raw responses** (per source, per run) *and* normalized entities so the UI
-can drill from a conclusion down to the bytes that justified it.
+can drill from a conclusion down to the bytes that justified it. All Supabase
+tables use the **`domain_research_`** prefix (entity names below shown without it).
 
 ```
 Run            { id, domain, depth, status, created_at, finished_at, error? }
@@ -273,6 +274,16 @@ Report         { run_id, ...rendered schema in §8 }
    **research.snagged.com** (internal). Rate limiter is a backstop.
 5. **Compliance.** Loose — internal use. No special WHOIS/PII handling; just never
    persist API secrets in the data.
+6. **Deployment.** Vercel deploys from **this repo's `main` branch → production**,
+   **no preview** builds (Ignored Build Step cancels non-production builds). Work
+   is committed straight to `main`; to keep prod safe, the Phase-1 pipeline is
+   built **additively** (new routes/files, gated on config presence) so the
+   existing app keeps working until the new path is fully wired. Hosted at
+   **research.snagged.com**.
+7. **Supabase table naming.** All tables use the **`domain_research_`** prefix
+   (e.g. `domain_research_runs`, `domain_research_raw_responses`,
+   `domain_research_evidence`). Lowercase is the Postgres-friendly form of the
+   requested `Domain_Research_XXXX`.
 
 Still open: confirm an **Efty listing-page URL pattern** if one exists (else it
 stays a live-site fingerprint); when to bring **DomainScout** back in.
