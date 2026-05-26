@@ -11,6 +11,11 @@
 
 * { box-sizing: border-box; }
 
+/* Make the `hidden` attribute reliable: an author display rule (e.g. .login's
+   display:grid) otherwise wins over [hidden]'s display:none, so toggling
+   .hidden in JS wouldn't actually hide the element. */
+[hidden] { display: none !important; }
+
 body {
   margin: 0;
   background: var(--bg);
