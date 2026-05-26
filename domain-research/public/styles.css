@@ -12,8 +12,8 @@
   --ok: #2fa36b;
   --bad: #d8543a;
 
-  --font-display: 'Bricolage Grotesque', system-ui, -apple-system, "Segoe UI", sans-serif;
-  --font-body: 'Hanken Grotesk', system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-display: 'Gasoek One', system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-body: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
 }
 
 * { box-sizing: border-box; }
@@ -30,7 +30,7 @@ body {
   line-height: 1.6;
 }
 
-h1, h2, h3 { font-family: var(--font-display); font-weight: 800; line-height: 1.12; }
+h1, h2, h3 { font-family: var(--font-display); font-weight: 400; line-height: 1.12; }
 .accent { color: var(--coral); }
 .muted { color: var(--muted); }
 .sub { color: var(--muted); margin: 0 0 28px; }
@@ -38,7 +38,7 @@ h1, h2, h3 { font-family: var(--font-display); font-weight: 800; line-height: 1.
 .wrap { max-width: 860px; margin: 0 auto; padding: 28px 20px 96px; }
 
 /* Wordmark */
-.wordmark { font-family: var(--font-display); font-weight: 800; font-size: 22px; letter-spacing: -0.01em; }
+.wordmark { font-family: var(--font-display); font-weight: 400; font-size: 22px; letter-spacing: -0.01em; }
 .wordmark .wm-a { color: var(--navy); }
 .wordmark .wm-b { color: var(--coral); }
 
@@ -128,9 +128,11 @@ button:disabled { opacity: 0.55; cursor: progress; }
   border-radius: 16px;
   margin-bottom: 20px;
 }
-.report h1 { font-size: 26px; }
-.report h2 { font-size: 20px; margin-top: 26px; }
-.report h3 { font-size: 17px; }
+/* Report content stays on the readable system font, not the Gasoek display. */
+.report h1, .report h2, .report h3 { font-family: var(--font-body); font-weight: 700; }
+.report h1 { font-size: 24px; }
+.report h2 { font-size: 19px; margin-top: 26px; }
+.report h3 { font-size: 16px; }
 .report a { color: var(--coral); }
 .report code {
   background: var(--panel-2);
