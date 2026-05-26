@@ -5,10 +5,12 @@ import whoisxml from './whoisxml.js';
 import domainiq from './domainiq.js';
 import bigdomaindata from './bigdomaindata.js';
 import masterlist from './masterlist.js';
+import livesite from './livesite.js';
+import rocketreach from './rocketreach.js';
 
 // To add a new data source: create a module exporting { name, description,
 // parameters, requiresKey?, run(args, { env }) } and register it here.
-const ALL = [rdap, dns, wayback, whoisxml, domainiq, bigdomaindata, masterlist];
+const ALL = [rdap, dns, wayback, livesite, whoisxml, domainiq, bigdomaindata, masterlist, rocketreach];
 
 function isEnabled(source, env) {
   if (!source.requiresKey) return true;

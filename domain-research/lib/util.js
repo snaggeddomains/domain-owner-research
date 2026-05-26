@@ -43,3 +43,86 @@ export async function fetchJson(url, opts = {}, timeoutMs = 12000) {
     clearTimeout(timer);
   }
 }
+
+// fetch HTML/text (does NOT throw on non-2xx — a parked page may be a 200, a
+// 403, etc. and we still want to read it). Returns the final URL after redirects.
+export async function fetchText(url, opts = {}, timeoutMs = 9000) {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+  try {
+    const res = await fetch(url, {
+      ...opts,
+      redirect: 'follow',
+      signal: ctrl.signal,
+      headers: {
+        accept: 'text/html,application/xhtml+xml,*/*',
+        'user-agent': 'Mozilla/5.0 (compatible; domain-research/0.1; +https://research.snagged.com)',
+        ...(opts.headers || {}),
+      },
+    });
+    const body = await res.text();
+    return { status: res.status, ok: res.ok, finalUrl: res.url, body };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+// Extract ownership clues from a page's HTML — used for both the live site and
+// archived Wayback snapshots. Pure string parsing (no DOM dependency).
+export function extractClues(html) {
+  const h = String(html || '');
+  const text = h
+    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  const uniq = (arr, n) => [...new Set(arr)].slice(0, n);
+
+  const title = (h.match(/<title[^>]*>([^<]{0,200})<\/title>/i) || [])[1]?.trim() || null;
+  const description =
+    (h.match(/<meta[^>]+name=["']description["'][^>]*content=["']([^"']{0,300})["']/i) || [])[1]?.trim() || null;
+
+  const emails = uniq(
+    (text.match(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g) || []).filter(
+      (e) => !/\.(png|jpg|jpeg|gif|svg|webp|css|js)$/i.test(e),
+    ),
+    20,
+  );
+
+  const social_links = uniq(
+    h.match(
+      /https?:\/\/(?:www\.)?(?:linkedin\.com|twitter\.com|x\.com|facebook\.com|instagram\.com|youtube\.com)\/[^\s"'<>)]+/gi,
+    ) || [],
+    20,
+  );
+
+  const ga = uniq(h.match(/\b(?:UA-\d{4,}-\d+|G-[A-Z0-9]{6,})\b/g) || [], 10);
+  const gtm = uniq(h.match(/\bGTM-[A-Z0-9]{4,}\b/g) || [], 10);
+  const meta_pixel = uniq(
+    (h.match(/fbq\(\s*['"]init['"]\s*,\s*['"](\d{6,})['"]/g) || [])
+      .map((m) => (m.match(/(\d{6,})/) || [])[1])
+      .filter(Boolean),
+    10,
+  );
+
+  const copyright = (text.match(/(?:©|&copy;|copyright)\s*[^.<\n]{0,80}/i) || [])[0]?.trim() || null;
+
+  const lower = h.toLowerCase();
+  const PARKERS = ['above.com', 'afternic', 'sedo', 'bodis', 'parkingcrew', 'dan.com', 'uniregistry', 'hugedomains', 'domainmarket', 'efty'];
+  const platforms = PARKERS.filter((p) => lower.includes(p));
+  const FOR_SALE = ['buy this domain', 'domain is for sale', 'this domain is for sale', 'make offer', 'make an offer', 'inquire about this domain', 'domain for sale'];
+  const for_sale_signals = FOR_SALE.filter((p) => lower.includes(p));
+
+  return {
+    title,
+    description,
+    emails,
+    social_links,
+    analytics_ids: { ga, gtm, meta_pixel },
+    copyright,
+    parking: { likely_parked: platforms.length > 0 || for_sale_signals.length > 0, platforms, for_sale_signals },
+    text_excerpt: text.slice(0, 600),
+  };
+}
