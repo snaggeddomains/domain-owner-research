@@ -11,12 +11,16 @@ const els = {
   go: $('go'),
   status: $('status'),
   report: $('report'),
+  reportDomain: $('report-domain'),
   evidence: $('evidence'),
   trace: $('trace'),
+  hero: $('hero'),
   navResearch: $('nav-research'),
   navProjects: $('nav-projects'),
   viewResearch: $('view-research'),
   viewProjects: $('view-projects'),
+  deepenTop: $('deepen-top'),
+  deepenTopBtn: $('deepen-top-btn'),
   deepenBar: $('deepen-bar'),
   deepenBtn: $('deepen'),
   projectsSearch: $('projects-search'),
@@ -25,7 +29,36 @@ const els = {
 
 const POLL_MS = 2500;
 let pollTimer = null;
+let clockTimer = null;
 let currentRunId = null;
+
+function clearTimers() {
+  if (pollTimer) clearInterval(pollTimer);
+  if (clockTimer) clearInterval(clockTimer);
+  pollTimer = null;
+  clockTimer = null;
+}
+
+function fmtElapsed(ms) {
+  const s = Math.floor(ms / 1000);
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+}
+
+// Deeplink helpers — each report lives at #/r/<runId>.
+function runIdFromHash() {
+  const m = location.hash.match(/^#\/r\/([\w-]+)/);
+  return m ? m[1] : null;
+}
+function setHashForRun(id) {
+  if (id && location.hash !== `#/r/${id}`) history.replaceState(null, '', `#/r/${id}`);
+}
+function clearHash() {
+  if (location.hash) history.replaceState(null, '', location.pathname + location.search);
+}
+function routeAfterAuth() {
+  const id = runIdFromHash();
+  if (id && !els.app.hidden) openProject(id);
+}
 
 const escapeHtml = (s) =>
   String(s == null ? '' : s)
@@ -79,8 +112,6 @@ function renderMarkdown(md) {
   return html;
 }
 
-// Show every source: the ones that ran (status + what came back) and the ones
-// that were available but the assistant chose not to call.
 function renderTrace(trace, toolsAvailable) {
   const called = trace || [];
   const available = toolsAvailable || [];
@@ -117,12 +148,27 @@ function renderTrace(trace, toolsAvailable) {
     .join('');
 }
 
+// Interim heuristic (until the structured report rebuild): a free report that
+// shows a Low confidence band, or only privacy-shielded data with no contact.
+function looksLowConfidence(markdown) {
+  const md = String(markdown || '').toLowerCase();
+  const lowBand = /confidence[^\n]{0,40}\blow\b/.test(md) || /\blow\b[^\n]{0,25}confidence/.test(md);
+  const hasEmail = /[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/.test(md);
+  const privacyShielded = /(redacted for privacy|domains by proxy|privacy protect|whoisguard|withheld for privacy|privacy service)/.test(md);
+  return lowBand || (privacyShielded && !hasEmail);
+}
+
 function renderReport(report) {
   els.report.hidden = false;
   els.report.innerHTML = renderMarkdown(report && report.markdown ? report.markdown : '');
   renderTrace(report && report.trace, report && report.toolsAvailable);
-  // A deep (paid) pass is only offered after a shallow (free) pre-flight.
-  els.deepenBar.hidden = !(report && report.phase === 'shallow');
+
+  // Offer the paid pass only after a free (shallow) one. Surface it at the very
+  // top when the free report has no clear owner/contact; otherwise keep it below.
+  const shallow = report && report.phase === 'shallow';
+  const low = shallow && looksLowConfidence(report && report.markdown);
+  els.deepenTop.hidden = !low;
+  els.deepenBar.hidden = !(shallow && !low);
 }
 
 // ── Auth ────────────────────────────────────────────────────────────────────
@@ -156,6 +202,7 @@ els.loginForm?.addEventListener('submit', async (e) => {
     }
     els.password.value = '';
     await checkAuth();
+    routeAfterAuth();
   } catch (err) {
     els.loginError.textContent = String(err.message || err);
     els.loginError.hidden = false;
@@ -163,11 +210,11 @@ els.loginForm?.addEventListener('submit', async (e) => {
 });
 
 // ── Research (async: enqueue → poll) ────────────────────────────────────────
-async function enqueue({ domain, question }) {
+async function enqueue({ domain }) {
   const res = await fetch('/api/research', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ domain, question }),
+    body: JSON.stringify({ domain }),
   });
   const data = await res.json();
   if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`);
@@ -183,39 +230,62 @@ async function pollRun(runId) {
 
 function startPolling(runId, label) {
   currentRunId = runId;
+  setHashForRun(runId);
   els.go.disabled = true;
-  if (pollTimer) clearInterval(pollTimer);
+  clearTimers();
+
+  // Live elapsed clock, ticking once a second; the poll updates the stage label.
+  const startedAt = Date.now();
+  let stage = '';
+  const tick = () => setStatus(`${label}…${stage ? ` (${stage})` : ''} · ${fmtElapsed(Date.now() - startedAt)}`);
+  tick();
+  clockTimer = setInterval(tick, 1000);
+
   pollTimer = setInterval(async () => {
     try {
       const r = await pollRun(runId);
       if (r.status === 'done') {
-        clearInterval(pollTimer);
+        clearTimers();
         setStatus('');
+        if (r.domain) {
+          els.reportDomain.hidden = false;
+          els.reportDomain.textContent = r.domain;
+        }
         renderReport(r.report);
         els.go.disabled = false;
       } else if (r.status === 'error') {
-        clearInterval(pollTimer);
+        clearTimers();
         setStatus(r.error || 'The run failed.', true);
         els.go.disabled = false;
       } else {
-        setStatus(`${label}… (${r.stage || r.status})`);
+        stage = r.stage || r.status; // rendered by the clock tick
       }
     } catch (err) {
-      clearInterval(pollTimer);
+      clearTimers();
       setStatus(err.message || String(err), true);
       els.go.disabled = false;
     }
   }, POLL_MS);
 }
 
-async function run({ domain, question }) {
+// Switch the research view into "showing a result": hide the entry hero and
+// reveal the standalone report area headed by the domain name.
+function enterResultMode(domain) {
   showView('research');
+  els.hero.hidden = true;
+  els.reportDomain.hidden = !domain;
+  els.reportDomain.textContent = domain || '';
   els.report.hidden = true;
   els.evidence.hidden = true;
+  els.deepenTop.hidden = true;
   els.deepenBar.hidden = true;
+}
+
+async function run({ domain }) {
+  enterResultMode(domain);
   setStatus(`Researching ${domain}… this can take a few minutes.`);
   try {
-    const runId = await enqueue({ domain, question });
+    const runId = await enqueue({ domain });
     startPolling(runId, `Researching ${domain}`);
   } catch (err) {
     setStatus(err.message || String(err), true);
@@ -225,6 +295,7 @@ async function run({ domain, question }) {
 
 async function deepen() {
   if (!currentRunId) return;
+  els.deepenTop.hidden = true;
   els.deepenBar.hidden = true;
   els.report.hidden = true;
   els.evidence.hidden = true;
@@ -243,7 +314,7 @@ async function deepen() {
   }
 }
 
-// ── Projects ────────────────────────────────────────────────────────────────
+// ── Projects (Past Research) ────────────────────────────────────────────────
 async function loadProjects(q = '') {
   els.projectsList.innerHTML = '<li class="muted">Loading…</li>';
   try {
@@ -274,7 +345,9 @@ async function loadProjects(q = '') {
         const items = g.runs
           .map((r) => {
             const when = r.created_at ? new Date(r.created_at).toLocaleString() : '';
-            return `<li class="project-run" data-id="${escapeHtml(r.id)}">${escapeHtml(when)}</li>`;
+            const active = r.status === 'running';
+            const meta = active ? `researching… (${r.stage || 'running'})` : when;
+            return `<li class="project-run${active ? ' active' : ''}" data-id="${escapeHtml(r.id)}">${escapeHtml(meta)}</li>`;
           })
           .join('');
         const count = g.runs.length > 1 ? `<span class="project-count">${g.runs.length} runs</span>` : '';
@@ -290,14 +363,16 @@ async function loadProjects(q = '') {
 }
 
 async function openProject(id) {
-  showView('research');
-  els.report.hidden = true;
-  els.evidence.hidden = true;
-  els.deepenBar.hidden = true;
+  enterResultMode('');
   setStatus('Loading…');
   try {
     const r = await pollRun(id);
     currentRunId = id;
+    setHashForRun(id);
+    if (r.domain) {
+      els.reportDomain.hidden = false;
+      els.reportDomain.textContent = r.domain;
+    }
     if (r.status === 'done') {
       setStatus('');
       renderReport(r.report);
@@ -320,6 +395,23 @@ function showView(name) {
   if (isProjects) loadProjects(els.projectsSearch.value.trim());
 }
 
+// Reset the research view to the entry hero (the "New" nav button).
+function showEntry() {
+  clearTimers();
+  clearHash();
+  showView('research');
+  els.hero.hidden = false;
+  els.reportDomain.hidden = true;
+  els.status.hidden = true;
+  els.report.hidden = true;
+  els.deepenTop.hidden = true;
+  els.deepenBar.hidden = true;
+  els.evidence.hidden = true;
+  currentRunId = null;
+  els.domain.value = '';
+  els.domain.focus();
+}
+
 // ── Wiring ──────────────────────────────────────────────────────────────────
 els.form?.addEventListener('submit', (e) => {
   e.preventDefault();
@@ -329,7 +421,8 @@ els.form?.addEventListener('submit', (e) => {
 });
 
 els.deepenBtn?.addEventListener('click', deepen);
-els.navResearch?.addEventListener('click', () => showView('research'));
+els.deepenTopBtn?.addEventListener('click', deepen);
+els.navResearch?.addEventListener('click', showEntry);
 els.navProjects?.addEventListener('click', () => showView('projects'));
 
 let searchTimer = null;
@@ -343,4 +436,15 @@ els.projectsList?.addEventListener('click', (e) => {
   if (li && li.dataset.id) openProject(li.dataset.id);
 });
 
-checkAuth();
+// Deeplinks: open a report when the URL carries one, both on load and on
+// in-app navigation (back button / pasted link).
+window.addEventListener('hashchange', () => {
+  const id = runIdFromHash();
+  if (id) openProject(id);
+  else showEntry();
+});
+
+(async () => {
+  await checkAuth();
+  routeAfterAuth();
+})();

@@ -26,7 +26,8 @@ export default async function handler(req, res) {
   // ── List past runs (Projects view) ─────────────────────────────────────────
   if (req.method === 'GET' && req.query.list !== undefined) {
     const q = typeof req.query.q === 'string' ? req.query.q.slice(0, 200) : '';
-    const runs = await listRuns({ q, limit: 100, status: 'done' });
+    // Show completed runs plus any actively-researching ones (skip transient queued).
+    const runs = await listRuns({ q, limit: 100, statuses: ['done', 'running'] });
     res.status(200).json({ runs });
     return;
   }

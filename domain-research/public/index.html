@@ -36,7 +36,7 @@
       <div class="wrap">
         <!-- Research view -->
         <section id="view-research">
-          <div class="hero">
+          <div class="hero" id="hero">
             <img class="hero-art" src="/researchv4.jpg" alt="" />
             <h1 class="hero-title">Domain <span class="accent">research</span></h1>
             <p class="hero-sub">Enter a domain — a free pre-flight runs first (no paid credits); you can go deeper afterwards.</p>
@@ -46,7 +46,14 @@
             </form>
           </div>
 
+          <h2 id="report-domain" class="report-domain" hidden></h2>
           <section id="status" class="status" hidden></section>
+
+          <div id="deepen-top" class="deepen-bar deepen-top" hidden>
+            <span class="deepen-note">No clear owner from the free sources — the paid sources may surface one.</span>
+            <button id="deepen-top-btn" type="button">Go deeper (uses paid sources)</button>
+          </div>
+
           <section id="report" class="report" hidden></section>
 
           <div id="deepen-bar" class="deepen-bar" hidden>

@@ -194,6 +194,15 @@ button:disabled { opacity: 0.55; cursor: progress; }
   border-radius: 14px;
 }
 .deepen-note { color: var(--muted); font-size: 14px; }
+.deepen-top { border-color: var(--coral); }
+
+.report-domain {
+  font-family: var(--font-body);
+  font-weight: 700;
+  font-size: 28px;
+  margin: 4px 0 18px;
+  word-break: break-word;
+}
 
 /* Evidence / trace */
 .evidence { margin-bottom: 24px; }
@@ -251,6 +260,7 @@ button:disabled { opacity: 0.55; cursor: progress; }
   color: var(--muted);
 }
 .project-runs .project-run:hover { border-color: var(--coral); color: var(--navy); }
+.project-runs .project-run.active { color: var(--coral); border-color: var(--coral); }
 
 /* Login gate */
 .login {
