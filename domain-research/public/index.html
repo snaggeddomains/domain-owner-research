@@ -25,24 +25,44 @@
           <img class="logo" src="/snagged_logo.png" alt="Snagged" />
           <h1>Domain Research</h1>
         </div>
-        <p class="sub">Enter a domain. The assistant fans out to WHOIS/RDAP, DNS, Wayback and any configured premium APIs, then reasons over the results.</p>
+        <nav class="nav">
+          <button id="nav-research" class="nav-btn active" type="button">New research</button>
+          <button id="nav-projects" class="nav-btn" type="button">Projects</button>
+        </nav>
       </header>
 
-      <form id="search" class="search" autocomplete="off">
-        <input id="domain" name="domain" type="text" placeholder="example.com" required />
-        <input id="question" name="question" type="text" placeholder="Optional: a specific question (e.g. 'has this changed hands recently?')" />
-        <button id="go" type="submit">Research</button>
-      </form>
+      <!-- Research view -->
+      <section id="view-research">
+        <p class="sub">Enter a domain. A free pre-flight runs first (no paid credits); you can choose to go deeper afterwards.</p>
 
-      <section id="status" class="status" hidden></section>
+        <form id="search" class="search" autocomplete="off">
+          <input id="domain" name="domain" type="text" placeholder="example.com" required />
+          <input id="question" name="question" type="text" placeholder="Optional: a specific question (e.g. 'has this changed hands recently?')" />
+          <button id="go" type="submit">Research</button>
+        </form>
 
-      <section id="report" class="report" hidden></section>
+        <section id="status" class="status" hidden></section>
 
-      <section id="evidence" class="evidence" hidden>
-        <details>
-          <summary>Evidence — lookups the assistant ran</summary>
-          <ul id="trace"></ul>
-        </details>
+        <section id="report" class="report" hidden></section>
+
+        <div id="deepen-bar" class="deepen-bar" hidden>
+          <span class="deepen-note">Free pre-flight only — no paid sources used yet.</span>
+          <button id="deepen" type="button">Go deeper (uses paid sources)</button>
+        </div>
+
+        <section id="evidence" class="evidence" hidden>
+          <details>
+            <summary>Sources checked</summary>
+            <ul id="trace"></ul>
+          </details>
+        </section>
+      </section>
+
+      <!-- Projects view -->
+      <section id="view-projects" hidden>
+        <p class="sub">Past research runs. Open one to view its saved report — no re-run, no credits.</p>
+        <input id="projects-search" class="projects-search" type="text" placeholder="Search by domain…" autocomplete="off" />
+        <ul id="projects-list" class="projects-list"></ul>
       </section>
     </main>
 
