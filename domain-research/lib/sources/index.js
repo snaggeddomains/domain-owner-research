@@ -4,10 +4,11 @@ import wayback from './wayback.js';
 import whoisxml from './whoisxml.js';
 import domainiq from './domainiq.js';
 import bigdomaindata from './bigdomaindata.js';
+import masterlist from './masterlist.js';
 
 // To add a new data source: create a module exporting { name, description,
 // parameters, requiresKey?, run(args, { env }) } and register it here.
-const ALL = [rdap, dns, wayback, whoisxml, domainiq, bigdomaindata];
+const ALL = [rdap, dns, wayback, whoisxml, domainiq, bigdomaindata, masterlist];
 
 function isEnabled(source, env) {
   if (!source.requiresKey) return true;
