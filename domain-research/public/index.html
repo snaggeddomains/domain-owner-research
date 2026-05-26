@@ -10,6 +10,7 @@
   <body>
     <div id="login" class="login" hidden>
       <form id="login-form" class="login-card" autocomplete="off">
+        <img class="logo" src="/snagged_logo.png" alt="Snagged" />
         <h1>Domain Research</h1>
         <p class="sub">Enter the access password to continue.</p>
         <input id="password" type="password" placeholder="Password" required />
@@ -20,7 +21,10 @@
 
     <main class="wrap" id="app" hidden>
       <header class="head">
-        <h1>Domain Research</h1>
+        <div class="brand">
+          <img class="logo" src="/snagged_logo.png" alt="Snagged" />
+          <h1>Domain Research</h1>
+        </div>
         <p class="sub">Enter a domain. The assistant fans out to WHOIS/RDAP, DNS, Wayback and any configured premium APIs, then reasons over the results.</p>
       </header>
 
