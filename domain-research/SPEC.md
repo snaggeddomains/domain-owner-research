@@ -254,20 +254,28 @@ Report         { run_id, ...rendered schema in §8 }
 
 ---
 
-## 13. Open decisions (need your input)
+## 13. Decisions (resolved)
 
-1. **Marketplace + DomainScout access.** Afternic/GoDaddy/Sedo/Atom are HTML
-   pages, not JSON APIs — do we scrape (ToS/anti-bot risk), use official APIs
-   where they exist, or treat these as best-effort signals? DomainScout needs a
-   login — store session creds server-side, or skip it for v1?
-2. **Persistence backend.** KV-only (simple, weak for the entity graph) vs add
-   Postgres (proper drill-down, more infra). 
-3. **Sync vs async UX.** Do quick (spine-only) runs stay synchronous while deep
-   runs go async, or is everything async with progress streaming?
-4. **Cost controls.** Per-run budget caps across paid APIs + LLM; caching TTL;
-   who can trigger deep runs (auth?).
-5. **Compliance.** WHOIS/PII handling and marketplace-ToS posture — worth a brief
-   explicit stance since the output profiles ownership.
+1. **Marketplace + DomainScout access.** Best-effort fetch + **content parse** for
+   a real for-sale signal (price / "Buy Now" / "Make Offer"), not just HTTP 200.
+   v1 set: **Afternic, GoDaddy, Atom, Sedo**, plus **Efty as a live-site lander
+   fingerprint** (Stage 4). **DomainScout deferred** (needs login) to a later phase.
+2. **Persistence.** **Supabase (Postgres)** is the system of record for runs +
+   normalized entities + raw responses (enables drill-down and cross-domain
+   footprint queries). Vercel **KV** stays for the rate limiter and optional
+   response caching.
+3. **Execution model.** Everything async; runs may take 5–20+ min. Vercel
+   functions can't hold a job that long, so a **job framework (Inngest)** runs the
+   pipeline as durable steps; the API enqueues and returns a `run_id`; the UI
+   polls/streams. Inngest functions deploy inside the Vercel app (`/api/inngest`).
+4. **Cost controls + auth.** Per-run cap (max paid-API calls + max LLM tokens) to
+   bound spend. **Simple shared-password gate**; tool hosted at
+   **research.snagged.com** (internal). Rate limiter is a backstop.
+5. **Compliance.** Loose — internal use. No special WHOIS/PII handling; just never
+   persist API secrets in the data.
+
+Still open: confirm an **Efty listing-page URL pattern** if one exists (else it
+stays a live-site fingerprint); when to bring **DomainScout** back in.
 
 ---
 
