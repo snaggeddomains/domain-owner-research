@@ -29,6 +29,8 @@ const els = {
   projectsSearch: $('projects-search'),
   projectsList: $('projects-list'),
   homeLink: $('home-link'),
+  recent: $('recent'),
+  recentList: $('recent-list'),
 };
 
 const POLL_MS = 2500;
@@ -73,8 +75,10 @@ function clearHash() {
   if (location.hash) history.replaceState(null, '', location.pathname + location.search);
 }
 function routeAfterAuth() {
+  if (els.app.hidden) return;
   const id = runIdFromHash();
-  if (id && !els.app.hidden) openProject(id);
+  if (id) openProject(id);
+  else loadRecent();
 }
 
 const escapeHtml = (s) =>
@@ -458,7 +462,29 @@ function showView(name) {
   if (isProjects) loadProjects(els.projectsSearch.value.trim());
 }
 
-// Reset the research view to the entry hero (the "New" nav button).
+// Last few runs, shown under the search bar on the homepage.
+async function loadRecent() {
+  if (!els.recent) return;
+  try {
+    const res = await fetch('/api/research?list=1');
+    const data = await res.json();
+    if (!res.ok) throw new Error('failed');
+    const runs = (data.runs || []).slice(0, 5);
+    if (!runs.length) { els.recent.hidden = true; return; }
+    els.recentList.innerHTML = runs
+      .map((r) => {
+        const when = r.created_at ? new Date(r.created_at).toLocaleString() : '';
+        const active = r.status === 'running';
+        return `<li class="recent-run" data-id="${escapeHtml(r.id)}"><span class="recent-domain">${escapeHtml(r.domain || '(unknown)')}</span><span class="recent-when">${active ? 'researching…' : escapeHtml(when)}</span></li>`;
+      })
+      .join('');
+    els.recent.hidden = false;
+  } catch {
+    els.recent.hidden = true;
+  }
+}
+
+// Reset the research view to the entry hero (the "New" nav button / logo).
 function showEntry() {
   clearTimers();
   clearHash();
@@ -474,6 +500,7 @@ function showEntry() {
   els.evidence.hidden = true;
   currentRunId = null;
   els.domain.value = '';
+  loadRecent();
   els.domain.focus();
 }
 
@@ -499,6 +526,11 @@ els.projectsSearch?.addEventListener('input', () => {
 });
 
 els.projectsList?.addEventListener('click', (e) => {
+  const li = e.target.closest('[data-id]');
+  if (li && li.dataset.id) openProject(li.dataset.id);
+});
+
+els.recentList?.addEventListener('click', (e) => {
   const li = e.target.closest('[data-id]');
   if (li && li.dataset.id) openProject(li.dataset.id);
 });

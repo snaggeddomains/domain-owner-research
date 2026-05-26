@@ -169,6 +169,15 @@ button:disabled { opacity: .55; cursor: progress; }
 .hero-search input { flex: 1 1 auto; }
 .hero-search button { flex: 0 0 auto; }
 
+/* Recent runs (under the search on the homepage) */
+.recent { max-width: 560px; margin: 4px auto 0; text-align: left; }
+.recent-title { font-family: var(--body); font-weight: 800; font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--navy-3); margin-bottom: 10px; }
+.recent-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.recent-run { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding: 11px 14px; background: var(--cream-2); border: 1.5px solid var(--line); border-radius: var(--radius-sm); cursor: pointer; }
+.recent-run:hover { border-color: var(--coral); }
+.recent-domain { font-weight: 700; color: var(--navy); }
+.recent-when { font-size: 13px; color: var(--navy-3); }
+
 /* Status */
 .status { padding: 14px 16px; background: var(--cream-2); border: 2px solid var(--line); border-radius: var(--radius-sm); color: var(--navy-2); margin-bottom: 20px; box-shadow: var(--shadow-sm); }
 .status.error { color: var(--coral-deep); border-color: var(--coral); }
