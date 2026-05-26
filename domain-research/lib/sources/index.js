@@ -12,11 +12,12 @@ import reversewhois from './reversewhois.js';
 import reversens from './reversens.js';
 import reverseip from './reverseip.js';
 import websearch from './websearch.js';
+import cluster from './cluster.js';
 
 // To add a new data source: create a module exporting { name, description,
 // parameters, requiresKey?, run(args, { env }) } and register it here.
 const ALL = [
-  rdap, dns, wayback, livesite, marketplace, masterlist, rocketreach,
+  rdap, dns, wayback, livesite, marketplace, cluster, masterlist, rocketreach,
   whoisxml, domainiq, bigdomaindata, reversewhois, reversens, reverseip, websearch,
 ];
 
@@ -41,6 +42,7 @@ const CATEGORY = {
   reverse_ip: 'Portfolio & shared infra',
   wayback_history: 'Archive (Wayback)',
   livesite_inspect: 'Live site',
+  registration_cluster: 'Registration cluster',
   marketplace_check: 'Marketplace',
   masterlist_lookup: 'Internal list',
   rocketreach_search: 'People & contacts',
