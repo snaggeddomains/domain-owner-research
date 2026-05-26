@@ -45,7 +45,13 @@ export async function runAgent({ system, history, userPrompt, toolSpecs, env, ma
           /* leave args empty; tool will error cleanly */
         }
         const result = await runTool(call.function.name, args, env);
-        trace.push({ tool: call.function.name, args, ok: result.ok, error: result.error || null });
+        trace.push({
+          tool: call.function.name,
+          args,
+          ok: result.ok,
+          error: result.error || null,
+          data: result.ok ? JSON.stringify(result.data).slice(0, 4000) : null,
+        });
         const payload = result.ok ? result.data : { error: result.error };
         return {
           role: 'tool',

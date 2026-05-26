@@ -18,6 +18,20 @@ export async function getRun(id) {
   return data || null;
 }
 
+// Lightweight list for the Projects view (no heavy report payload). Optional
+// case-insensitive domain filter.
+export async function listRuns({ q = '', limit = 50 } = {}) {
+  let query = getDb()
+    .from(RUNS)
+    .select('id,domain,status,stage,created_at,finished_at')
+    .order('created_at', { ascending: false })
+    .limit(limit);
+  if (q) query = query.ilike('domain', `%${q}%`);
+  const { data, error } = await query;
+  if (error) throw new Error(`listRuns: ${error.message}`);
+  return data || [];
+}
+
 export async function setRunStatus(id, status, stage = null) {
   const patch = { status };
   if (stage !== null) patch.stage = stage;

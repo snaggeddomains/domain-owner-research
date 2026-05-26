@@ -27,19 +27,19 @@ const MAX_STEPS = 8;
 // "claude" and "anthropic" are aliases for the same adapter.
 const PROVIDERS = { claude: anthropic, anthropic, openai };
 
-export async function research({ domain, question, history = [], env }) {
+export async function research({ domain, question, history = [], env, tier = 'all' }) {
   const providerName = (env.LLM_PROVIDER || 'claude').toLowerCase();
   const provider = PROVIDERS[providerName];
   if (!provider) {
     throw new Error(`Unknown LLM_PROVIDER "${providerName}" — use "claude" or "openai"`);
   }
 
-  const toolSpecs = getToolSpecs(env);
+  const toolSpecs = getToolSpecs(env, { tier });
   const userPrompt = question
     ? `Research the domain: ${domain}\n\nSpecific question: ${question}`
     : `Research the domain: ${domain}`;
 
-  return provider.runAgent({
+  const result = await provider.runAgent({
     system: SYSTEM_PROMPT,
     history,
     userPrompt,
@@ -48,4 +48,7 @@ export async function research({ domain, question, history = [], env }) {
     maxSteps: MAX_STEPS,
     maxToolResultChars: MAX_TOOL_RESULT_CHARS,
   });
+
+  // toolsAvailable lets the UI show which sources ran vs. were available-but-unused.
+  return { ...result, toolsAvailable: toolSpecs.map((t) => t.name), tier };
 }

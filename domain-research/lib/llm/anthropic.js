@@ -44,7 +44,13 @@ export async function runAgent({ system, history, userPrompt, toolSpecs, env, ma
     const toolResults = await Promise.all(
       toolUses.map(async (block) => {
         const result = await runTool(block.name, block.input || {}, env);
-        trace.push({ tool: block.name, args: block.input, ok: result.ok, error: result.error || null });
+        trace.push({
+          tool: block.name,
+          args: block.input,
+          ok: result.ok,
+          error: result.error || null,
+          data: result.ok ? JSON.stringify(result.data).slice(0, 4000) : null,
+        });
         const payload = result.ok ? result.data : { error: result.error };
         return {
           type: 'tool_result',

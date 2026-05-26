@@ -7,21 +7,28 @@ import bigdomaindata from './bigdomaindata.js';
 import masterlist from './masterlist.js';
 import livesite from './livesite.js';
 import rocketreach from './rocketreach.js';
+import marketplace from './marketplace.js';
 
 // To add a new data source: create a module exporting { name, description,
 // parameters, requiresKey?, run(args, { env }) } and register it here.
-const ALL = [rdap, dns, wayback, livesite, whoisxml, domainiq, bigdomaindata, masterlist, rocketreach];
+const ALL = [rdap, dns, wayback, livesite, marketplace, masterlist, rocketreach, whoisxml, domainiq, bigdomaindata];
+
+// Paid sources spend external API credits. They are withheld from the free
+// pre-flight pass (tier 'free') and only exposed on a deliberate "go deeper"
+// pass (tier 'all').
+const PAID = new Set(['whoisxml_lookup', 'domainiq_lookup', 'bigdomaindata_lookup']);
 
 function isEnabled(source, env) {
   if (!source.requiresKey) return true;
   return source.requiresKey.every((k) => Boolean(env[k]));
 }
 
-// Only expose tools whose keys are configured, so the model never tries to
-// call a source it can't actually use. Returns a provider-neutral spec; each
-// LLM adapter converts it to that provider's tool format.
-export function getToolSpecs(env) {
-  return ALL.filter((s) => isEnabled(s, env)).map((s) => ({
+// Only expose tools whose keys are configured (and that fit the requested cost
+// tier), so the model never calls a source it can't use or shouldn't yet.
+// Returns a provider-neutral spec; each LLM adapter converts it to that
+// provider's tool format.
+export function getToolSpecs(env, { tier = 'all' } = {}) {
+  return ALL.filter((s) => isEnabled(s, env) && (tier === 'all' || !PAID.has(s.name))).map((s) => ({
     name: s.name,
     description: s.description,
     parameters: s.parameters,
