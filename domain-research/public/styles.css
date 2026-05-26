@@ -191,16 +191,21 @@ button:disabled { opacity: .55; cursor: progress; transform: none; box-shadow: 0
 .report code { background: var(--cream); padding: 1px 6px; border-radius: 6px; border: 1px solid var(--line); font-size: .9em; }
 .report ul { padding-left: 22px; }
 
-/* Identity-confidence badge */
-.confidence { display: inline-block; padding: 7px 16px; border-radius: 999px; font-family: var(--body); font-weight: 700; font-size: 14px; margin: 0 0 18px; border: 2px solid var(--line); }
-.confidence.high { background: rgba(47,163,107,.12); color: #1f7a4d; border-color: #2fa36b; }
-.confidence.medium { background: rgba(217,154,60,.16); color: #8a5a12; border-color: var(--gold); }
-.confidence.low { background: rgba(228,128,105,.14); color: var(--coral-deep); border-color: var(--coral); }
+/* Identity-confidence — large color-coded label (no pill) */
+.confidence { display: block; font-family: var(--body); font-weight: 800; font-size: 1.4rem; line-height: 1.2; margin: 0 0 22px; }
+.confidence.high { color: #1f7a4d; }
+.confidence.medium { color: #8a5a12; }
+.confidence.low { color: var(--coral-deep); }
 
-/* Report actions (Export PDF) — ghost sticker */
-.report-actions { margin: 0 0 18px; }
-.report-actions button { background: transparent; color: var(--navy); box-shadow: 0 4px 0 rgba(37,66,84,.18); padding: 10px 16px; font-size: 14px; }
-.report-actions button:hover { background: rgba(37,66,84,.05); box-shadow: 0 6px 0 rgba(37,66,84,.18); color: var(--navy); }
+/* Report header row: title left, Export PDF tucked top-right (secondary) */
+.report-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 8px; }
+.report-header .report-domain { flex: 1; min-width: 0; margin: 4px 0 0; }
+.report-actions { flex: none; margin: 6px 0 0; }
+.report-actions button {
+  background: var(--cream); color: var(--navy-2); border: 1.5px solid var(--line);
+  box-shadow: none; padding: 8px 14px; font-size: 13px; border-radius: 999px;
+}
+.report-actions button:hover { background: rgba(37,66,84,.05); color: var(--navy); border-color: var(--coral); transform: none; box-shadow: none; }
 
 /* Go deeper */
 .deepen-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding: 14px 18px; margin-bottom: 20px; background: var(--cream-2); border: 2px solid var(--line); border-radius: var(--radius-sm); box-shadow: var(--shadow-sm); }
