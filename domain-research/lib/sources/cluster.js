@@ -53,35 +53,57 @@ export default {
       ? String(env.CLUSTER_TLDS).split(',').map((s) => s.trim()).filter(Boolean)
       : DEFAULT_TLDS;
     const max = Number(env.CLUSTER_MAX || MAX_DEFAULT);
+    const windowDays = Number(env.CLUSTER_WINDOW_DAYS || 7);
     const candidates = tlds.filter((t) => t !== targetTld).slice(0, max).map((t) => `${sld}.${t}`);
 
+    // One RDAP attempt. Distinguish "not registered" (404) from a transient
+    // failure (timeout / rate-limit) so we only retry the latter.
+    const rdapOnce = async (cand) => {
+      try {
+        const rdap = await fetchJson(`https://rdap.org/domain/${encodeURIComponent(cand)}`, {}, 9000);
+        return { domain: cand, registered: true, ...parseRdap(rdap) };
+      } catch (e) {
+        const msg = String(e?.message || e);
+        if (/HTTP 404/.test(msg)) return { domain: cand, registered: false, note: 'not registered' };
+        return { domain: cand, registered: false, failed: true, note: msg.slice(0, 120) };
+      }
+    };
+
     const all = [d, ...candidates];
-    const looked = await Promise.all(
-      all.map(async (cand) => {
-        try {
-          const rdap = await fetchJson(`https://rdap.org/domain/${encodeURIComponent(cand)}`, {}, 8000);
-          return { domain: cand, registered: true, ...parseRdap(rdap) };
-        } catch (e) {
-          return { domain: cand, registered: false, note: String(e?.message || e).slice(0, 120) };
-        }
-      }),
-    );
+    const looked = await Promise.all(all.map(rdapOnce));
+    // Retry just the transient failures — a smaller burst tends to succeed
+    // (rdap.org rate-limits/times-out under a wide parallel fan-out).
+    const retryIdx = looked.map((r, i) => (r.failed ? i : -1)).filter((i) => i >= 0);
+    if (retryIdx.length) {
+      const retried = await Promise.all(retryIdx.map((i) => rdapOnce(all[i])));
+      retryIdx.forEach((i, k) => { looked[i] = retried[k]; });
+    }
 
     const target = looked[0];
     const targetMs = target.created ? new Date(target.created).getTime() : null;
-    const siblings = looked.slice(1).filter((s) => s.registered);
-    siblings.forEach((s) => {
+    const targetNs = new Set(target.nameservers || []);
+
+    const registered = looked.slice(1).filter((s) => s.registered);
+    registered.forEach((s) => {
       if (targetMs && s.created) s.days_from_target = Math.round(Math.abs(new Date(s.created).getTime() - targetMs) / 86400000);
+      s.shares_nameserver = (s.nameservers || []).some((n) => targetNs.has(n));
+      // Same owner is likely when registered within the window OR sharing infra.
+      s.in_cluster = (s.days_from_target != null && s.days_from_target <= windowDays) || s.shares_nameserver;
     });
-    siblings.sort((a, b) => (a.days_from_target ?? Infinity) - (b.days_from_target ?? Infinity));
+    const bySpan = (a, b) => (a.days_from_target ?? Infinity) - (b.days_from_target ?? Infinity);
+    const cluster = registered.filter((s) => s.in_cluster).sort(bySpan);
+    const other_siblings = registered.filter((s) => !s.in_cluster).sort(bySpan);
 
     return {
       domain: d,
       target_created: target.created || null,
       target_nameservers: target.nameservers || [],
+      window_days: windowDays,
       siblings_checked: candidates.length,
-      siblings_found: siblings.length,
-      siblings,
+      registered_siblings: registered.length,
+      lookup_failed: looked.slice(1).filter((s) => s.failed).length,
+      cluster, // within the window OR sharing nameservers → likely the same owner
+      other_siblings, // registered but far apart with no shared infra → likely different owners
     };
   },
 };

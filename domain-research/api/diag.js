@@ -2,6 +2,9 @@ import { isAuthed } from '../lib/auth.js';
 import { runTool } from '../lib/sources/index.js';
 import { normalizeDomain } from '../lib/util.js';
 
+// Some sources (e.g. registration_cluster) do multi-step lookups; give them room.
+export const config = { maxDuration: 60 };
+
 // Debug helper: run ONE source in isolation (auth-gated) to verify wiring —
 // e.g. DomainIQ-via-Fixie — without spending a full LLM run.
 //   /api/diag?source=domainiq_lookup&domain=example.com
