@@ -253,15 +253,35 @@ async function loadProjects(q = '') {
     if (!res.ok) throw new Error(data.error || `Failed (${res.status})`);
     const runs = data.runs || [];
     if (!runs.length) {
-      els.projectsList.innerHTML = '<li class="muted">No runs yet.</li>';
+      els.projectsList.innerHTML = '<li class="muted">No completed runs yet.</li>';
       return;
     }
-    els.projectsList.innerHTML = runs
-      .map((r) => {
-        const when = r.created_at ? new Date(r.created_at).toLocaleString() : '';
-        return `<li class="project" data-id="${escapeHtml(r.id)}">
-            <span class="project-domain">${escapeHtml(r.domain || '(unknown)')}</span>
-            <span class="project-meta">${escapeHtml(r.status || '')} · ${escapeHtml(when)}</span>
+
+    // Group runs by domain, preserving recency (API returns newest-first).
+    const groups = [];
+    const byDomain = new Map();
+    for (const r of runs) {
+      const key = r.domain || '(unknown)';
+      if (!byDomain.has(key)) {
+        const g = { domain: key, runs: [] };
+        byDomain.set(key, g);
+        groups.push(g);
+      }
+      byDomain.get(key).runs.push(r);
+    }
+
+    els.projectsList.innerHTML = groups
+      .map((g) => {
+        const items = g.runs
+          .map((r) => {
+            const when = r.created_at ? new Date(r.created_at).toLocaleString() : '';
+            return `<li class="project-run" data-id="${escapeHtml(r.id)}">${escapeHtml(when)}</li>`;
+          })
+          .join('');
+        const count = g.runs.length > 1 ? `<span class="project-count">${g.runs.length} runs</span>` : '';
+        return `<li class="project-group">
+            <div class="project-group-title">${escapeHtml(g.domain)}${count}</div>
+            <ul class="project-runs">${items}</ul>
           </li>`;
       })
       .join('');
@@ -320,7 +340,7 @@ els.projectsSearch?.addEventListener('input', () => {
 });
 
 els.projectsList?.addEventListener('click', (e) => {
-  const li = e.target.closest('.project');
+  const li = e.target.closest('[data-id]');
   if (li && li.dataset.id) openProject(li.dataset.id);
 });
 
