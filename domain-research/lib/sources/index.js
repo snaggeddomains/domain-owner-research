@@ -8,15 +8,24 @@ import masterlist from './masterlist.js';
 import livesite from './livesite.js';
 import rocketreach from './rocketreach.js';
 import marketplace from './marketplace.js';
+import reversewhois from './reversewhois.js';
+import reversens from './reversens.js';
+import reverseip from './reverseip.js';
 
 // To add a new data source: create a module exporting { name, description,
 // parameters, requiresKey?, run(args, { env }) } and register it here.
-const ALL = [rdap, dns, wayback, livesite, marketplace, masterlist, rocketreach, whoisxml, domainiq, bigdomaindata];
+const ALL = [
+  rdap, dns, wayback, livesite, marketplace, masterlist, rocketreach,
+  whoisxml, domainiq, bigdomaindata, reversewhois, reversens, reverseip,
+];
 
 // Paid sources spend external API credits. They are withheld from the free
 // pre-flight pass (tier 'free') and only exposed on a deliberate "go deeper"
 // pass (tier 'all').
-const PAID = new Set(['whoisxml_lookup', 'domainiq_lookup', 'bigdomaindata_lookup']);
+const PAID = new Set([
+  'whoisxml_lookup', 'domainiq_lookup', 'bigdomaindata_lookup',
+  'reverse_whois', 'reverse_ns', 'reverse_ip',
+]);
 
 function isEnabled(source, env) {
   if (!source.requiresKey) return true;
