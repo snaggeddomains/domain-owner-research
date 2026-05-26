@@ -2,18 +2,24 @@ import crypto from 'node:crypto';
 
 const COOKIE = 'dr_auth';
 
+// Trimmed so a stray space/newline pasted into the env var (a common dashboard
+// footgun) can't silently break login.
+function appPassword() {
+  return (process.env.APP_PASSWORD || '').trim();
+}
+
 // Cookie value is a hash derived from APP_PASSWORD — not guessable without the
 // password, and not the password itself.
 function token() {
-  return crypto.createHash('sha256').update('dr:' + (process.env.APP_PASSWORD || '')).digest('hex');
+  return crypto.createHash('sha256').update('dr:' + appPassword()).digest('hex');
 }
 
 export function gateEnabled() {
-  return Boolean(process.env.APP_PASSWORD);
+  return Boolean(appPassword());
 }
 
 export function checkPassword(pw) {
-  return gateEnabled() && typeof pw === 'string' && pw === process.env.APP_PASSWORD;
+  return gateEnabled() && typeof pw === 'string' && pw.trim() === appPassword();
 }
 
 export function authCookie() {
