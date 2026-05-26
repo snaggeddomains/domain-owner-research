@@ -200,8 +200,47 @@ button:disabled { opacity: 0.55; cursor: progress; }
   font-family: var(--font-body);
   font-weight: 700;
   font-size: 28px;
-  margin: 4px 0 18px;
+  margin: 4px 0 12px;
   word-break: break-word;
+}
+
+/* Identity-confidence badge (color-coded) */
+.confidence {
+  display: inline-block;
+  padding: 6px 16px;
+  border-radius: 999px;
+  font-weight: 700;
+  font-size: 14px;
+  margin: 0 0 18px;
+  border: 1px solid var(--border);
+}
+.confidence.high { background: #e7f5ec; color: #1f7a4d; border-color: #2fa36b; }
+.confidence.medium { background: #fdf2dd; color: #966311; border-color: var(--gold); }
+.confidence.low { background: #fdeae4; color: #b3402a; border-color: var(--coral); }
+
+/* Report actions (Export PDF) */
+.report-actions { margin: 0 0 18px; }
+.report-actions button {
+  padding: 8px 14px;
+  font-size: 14px;
+  background: transparent;
+  color: var(--navy);
+  border: 1px solid var(--border);
+}
+.report-actions button:hover { background: var(--panel); color: var(--navy); border-color: var(--coral); }
+
+@media print {
+  .sidebar,
+  .hero,
+  #report-actions,
+  #status,
+  #deepen-top,
+  #deepen-bar,
+  #evidence { display: none !important; }
+  body { background: #fff; color: #000; }
+  #app { display: block; }
+  .content .wrap { max-width: none; padding: 0; }
+  .report { border: 0; background: #fff; padding: 0; }
 }
 
 /* Evidence / trace */

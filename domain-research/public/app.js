@@ -12,6 +12,9 @@ const els = {
   status: $('status'),
   report: $('report'),
   reportDomain: $('report-domain'),
+  reportConfidence: $('report-confidence'),
+  reportActions: $('report-actions'),
+  exportPdf: $('export-pdf'),
   evidence: $('evidence'),
   trace: $('trace'),
   hero: $('hero'),
@@ -44,13 +47,26 @@ function fmtElapsed(ms) {
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 }
 
-// Deeplink helpers — each report lives at #/r/<runId>.
+// Deeplink helpers — reports live at a readable slug ending in the run id:
+//   #/r/<sld>-<tld>-<DD>-<MM>-<YYYY>-<runId>
+function buildSlug(run) {
+  const d = String(run.domain || '').toLowerCase().replace(/[^a-z0-9.-]/g, '');
+  const parts = d.split('.').filter(Boolean);
+  const tld = parts.length > 1 ? parts.pop() : '';
+  const sld = (parts.join('-') || d).replace(/[^a-z0-9-]/g, '');
+  const t = run.created_at ? new Date(run.created_at) : new Date();
+  const pad = (n) => String(n).padStart(2, '0');
+  const date = `${pad(t.getUTCDate())}-${pad(t.getUTCMonth() + 1)}-${t.getUTCFullYear()}`;
+  return `${[sld, tld, date].filter(Boolean).join('-')}-${run.id}`;
+}
 function runIdFromHash() {
-  const m = location.hash.match(/^#\/r\/([\w-]+)/);
+  const m = location.hash.match(/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i);
   return m ? m[1] : null;
 }
-function setHashForRun(id) {
-  if (id && location.hash !== `#/r/${id}`) history.replaceState(null, '', `#/r/${id}`);
+function applyHash(run) {
+  if (!run || !run.id) return;
+  const target = `#/r/${buildSlug(run)}`;
+  if (location.hash !== target) history.replaceState(null, '', target);
 }
 function clearHash() {
   if (location.hash) history.replaceState(null, '', location.pathname + location.search);
@@ -158,15 +174,47 @@ function looksLowConfidence(markdown) {
   return lowBand || (privacyShielded && !hasEmail);
 }
 
+function extractConfidence(md) {
+  const m = String(md || '').match(/identity confidence:\s*(high|medium|low)/i);
+  return m ? m[1].toLowerCase() : null;
+}
+function stripConfidenceLine(md) {
+  return String(md || '')
+    .replace(/^[^\n]*identity confidence:\s*(?:high|medium|low)[^\n]*\n?/im, '')
+    .replace(/^\s+/, '');
+}
+function renderConfidence(band) {
+  if (!band) {
+    els.reportConfidence.hidden = true;
+    return;
+  }
+  els.reportConfidence.hidden = false;
+  els.reportConfidence.className = `confidence ${band}`;
+  els.reportConfidence.textContent = `Identity confidence: ${band.charAt(0).toUpperCase()}${band.slice(1)}`;
+}
+function setReportTitle(domain) {
+  if (domain) {
+    els.reportDomain.hidden = false;
+    els.reportDomain.textContent = `Domain Ownership Report — ${domain}`;
+  } else {
+    els.reportDomain.hidden = true;
+    els.reportDomain.textContent = '';
+  }
+}
+
 function renderReport(report) {
+  const md = report && report.markdown ? report.markdown : '';
+  const band = extractConfidence(md);
+  renderConfidence(band);
+  els.reportActions.hidden = false;
   els.report.hidden = false;
-  els.report.innerHTML = renderMarkdown(report && report.markdown ? report.markdown : '');
+  els.report.innerHTML = renderMarkdown(stripConfidenceLine(md));
   renderTrace(report && report.trace, report && report.toolsAvailable);
 
   // Offer the paid pass only after a free (shallow) one. Surface it at the very
-  // top when the free report has no clear owner/contact; otherwise keep it below.
+  // top when the free report has no clear owner; otherwise keep it below.
   const shallow = report && report.phase === 'shallow';
-  const low = shallow && looksLowConfidence(report && report.markdown);
+  const low = shallow && (band === 'low' || (!band && looksLowConfidence(md)));
   els.deepenTop.hidden = !low;
   els.deepenBar.hidden = !(shallow && !low);
 }
@@ -230,7 +278,6 @@ async function pollRun(runId) {
 
 function startPolling(runId, label) {
   currentRunId = runId;
-  setHashForRun(runId);
   els.go.disabled = true;
   clearTimers();
 
@@ -244,13 +291,11 @@ function startPolling(runId, label) {
   pollTimer = setInterval(async () => {
     try {
       const r = await pollRun(runId);
+      applyHash({ id: runId, domain: r.domain, created_at: r.created_at });
       if (r.status === 'done') {
         clearTimers();
         setStatus('');
-        if (r.domain) {
-          els.reportDomain.hidden = false;
-          els.reportDomain.textContent = r.domain;
-        }
+        if (r.domain) setReportTitle(r.domain);
         renderReport(r.report);
         els.go.disabled = false;
       } else if (r.status === 'error') {
@@ -273,8 +318,9 @@ function startPolling(runId, label) {
 function enterResultMode(domain) {
   showView('research');
   els.hero.hidden = true;
-  els.reportDomain.hidden = !domain;
-  els.reportDomain.textContent = domain || '';
+  setReportTitle(domain);
+  els.reportConfidence.hidden = true;
+  els.reportActions.hidden = true;
   els.report.hidden = true;
   els.evidence.hidden = true;
   els.deepenTop.hidden = true;
@@ -286,6 +332,7 @@ async function run({ domain }) {
   setStatus(`Researching ${domain}… this can take a few minutes.`);
   try {
     const runId = await enqueue({ domain });
+    applyHash({ id: runId, domain, created_at: new Date().toISOString() });
     startPolling(runId, `Researching ${domain}`);
   } catch (err) {
     setStatus(err.message || String(err), true);
@@ -297,6 +344,8 @@ async function deepen() {
   if (!currentRunId) return;
   els.deepenTop.hidden = true;
   els.deepenBar.hidden = true;
+  els.reportConfidence.hidden = true;
+  els.reportActions.hidden = true;
   els.report.hidden = true;
   els.evidence.hidden = true;
   setStatus('Going deeper (paid sources)… this can take a few minutes.');
@@ -368,11 +417,8 @@ async function openProject(id) {
   try {
     const r = await pollRun(id);
     currentRunId = id;
-    setHashForRun(id);
-    if (r.domain) {
-      els.reportDomain.hidden = false;
-      els.reportDomain.textContent = r.domain;
-    }
+    applyHash({ id, domain: r.domain, created_at: r.created_at });
+    setReportTitle(r.domain);
     if (r.status === 'done') {
       setStatus('');
       renderReport(r.report);
@@ -401,7 +447,9 @@ function showEntry() {
   clearHash();
   showView('research');
   els.hero.hidden = false;
-  els.reportDomain.hidden = true;
+  setReportTitle(null);
+  els.reportConfidence.hidden = true;
+  els.reportActions.hidden = true;
   els.status.hidden = true;
   els.report.hidden = true;
   els.deepenTop.hidden = true;
@@ -422,6 +470,7 @@ els.form?.addEventListener('submit', (e) => {
 
 els.deepenBtn?.addEventListener('click', deepen);
 els.deepenTopBtn?.addEventListener('click', deepen);
+els.exportPdf?.addEventListener('click', () => window.print());
 els.navResearch?.addEventListener('click', showEntry);
 els.navProjects?.addEventListener('click', () => showView('projects'));
 

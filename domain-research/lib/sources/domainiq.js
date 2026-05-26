@@ -55,6 +55,62 @@ async function fetchViaProxy(url, agent, timeoutMs = 12000) {
   }
 }
 
+// raw=1 returns one WHOIS snapshot per crawl date — often dozens of near-identical
+// entries. Collapse consecutive identical ownership states into dated "eras" so
+// the FULL lineage (including old pre-privacy owners) survives the model's input
+// budget instead of being truncated to only the most recent records.
+function summarizeHistory(data) {
+  const raw = data && data.raw;
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return data;
+
+  const field = (t, re) => ((t.match(re) || [])[1] || '').trim();
+  const fingerprint = (t) =>
+    [
+      field(t, /Registrant Organization:\s*([^\n\r]+)/i),
+      field(t, /Registrant Name:\s*([^\n\r]+)/i),
+      field(t, /Registrant Email:\s*([^\n\r]+)/i),
+      field(t, /Registrant Phone:\s*([^\n\r]+)/i),
+      field(t, /Registrar:\s*([^\n\r]+)/i),
+    ].join(' | ');
+
+  const entries = Object.entries(raw)
+    .map(([k, v]) => ({ date: (String(k).match(/(\d{4}-\d{2}-\d{2})/) || [])[1] || String(k), text: String(v) }))
+    .sort((a, b) => a.date.localeCompare(b.date));
+
+  const eras = [];
+  for (const e of entries) {
+    const fp = fingerprint(e.text);
+    const prev = eras[eras.length - 1];
+    if (prev && prev._fp === fp) {
+      prev.last_seen = e.date;
+      prev.snapshots += 1;
+    } else {
+      eras.push({
+        _fp: fp,
+        first_seen: e.date,
+        last_seen: e.date,
+        snapshots: 1,
+        registrant_org: field(e.text, /Registrant Organization:\s*([^\n\r]+)/i),
+        registrant_name: field(e.text, /Registrant Name:\s*([^\n\r]+)/i),
+        registrant_email: field(e.text, /Registrant Email:\s*([^\n\r]+)/i),
+        registrant_phone: field(e.text, /Registrant Phone:\s*([^\n\r]+)/i),
+        registrar: field(e.text, /Registrar:\s*([^\n\r]+)/i),
+        nameservers: [
+          ...new Set(
+            (e.text.match(/Name Server:\s*([^\n\r]+)/gi) || []).map((s) =>
+              s.replace(/Name Server:\s*/i, '').trim().toLowerCase().replace(/\.$/, ''),
+            ),
+          ),
+        ],
+        record: e.text.slice(0, 900),
+      });
+    }
+  }
+  eras.forEach((x) => delete x._fp);
+
+  return { source: 'domainiq', total_snapshots: entries.length, distinct_eras: eras.length, eras };
+}
+
 export default {
   name: 'domainiq_lookup',
   description:

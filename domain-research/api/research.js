@@ -51,6 +51,7 @@ export default async function handler(req, res) {
       stage: run.stage,
       report: run.report,
       error: run.error,
+      created_at: run.created_at,
     });
     return;
   }
