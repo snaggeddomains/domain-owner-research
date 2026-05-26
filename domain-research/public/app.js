@@ -8,7 +8,6 @@ const els = {
   app: $('app'),
   form: $('search'),
   domain: $('domain'),
-  question: $('question'),
   go: $('go'),
   status: $('status'),
   report: $('report'),
@@ -326,7 +325,7 @@ els.form?.addEventListener('submit', (e) => {
   e.preventDefault();
   const domain = els.domain.value.trim();
   if (!domain) return;
-  run({ domain, question: els.question.value.trim() });
+  run({ domain });
 });
 
 els.deepenBtn?.addEventListener('click', deepen);

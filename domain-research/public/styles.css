@@ -132,6 +132,20 @@ button:disabled { opacity: 0.55; cursor: progress; }
 .login-card input:focus,
 .projects-search:focus { outline: none; border-color: var(--coral); }
 
+/* Research hero (centered entry) */
+.hero { text-align: center; padding: 20px 0 4px; }
+.hero-art { width: 150px; height: auto; margin: 0 auto 14px; display: block; }
+.hero-title { font-size: 54px; margin: 0 0 10px; }
+.hero-sub { color: var(--muted); margin: 0 auto 26px; max-width: 540px; }
+.hero-search { display: flex; gap: 10px; max-width: 540px; margin: 0 auto 28px; }
+.hero-search input { flex: 1 1 auto; }
+.hero-search button { flex: 0 0 auto; }
+
+@media (max-width: 560px) {
+  .hero-title { font-size: 38px; }
+  .hero-search { flex-direction: column; }
+}
+
 /* Status */
 .status {
   padding: 14px 16px;
