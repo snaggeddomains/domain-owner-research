@@ -95,7 +95,7 @@ h1, h2, h3 { font-family: var(--display); font-weight: 400; line-height: 1.08; m
 .nav-btn {
   width: 100%;
   text-align: left;
-  padding: 10px 14px;
+  padding: 11px 16px;
   font-family: var(--body);
   font-weight: 700;
   font-size: 14px;
@@ -103,11 +103,14 @@ h1, h2, h3 { font-family: var(--display); font-weight: 400; line-height: 1.08; m
   color: var(--navy);
   border: 2px solid var(--line);
   border-radius: var(--radius-sm);
+  box-shadow: none; /* nav buttons are flat, not sticker-style */
   cursor: pointer;
-  transition: background .18s ease;
+  transition: background .18s ease, border-color .18s ease;
 }
-.nav-btn:hover { background: rgba(37,66,84,.04); }
+.nav-btn:hover { background: rgba(37,66,84,.06); transform: none; box-shadow: none; }
+.nav-btn:active { transform: none; box-shadow: none; }
 .nav-btn.active { background: var(--navy); color: var(--cream-2); border-color: var(--navy); }
+.nav-btn.active:hover { background: #2d4f64; }
 
 .page-title { font-size: 40px; margin: 10px 0 6px; }
 
