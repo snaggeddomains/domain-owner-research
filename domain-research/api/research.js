@@ -1,20 +1,54 @@
-import { research } from '../lib/agent.js';
+import { inngest, RUN_REQUESTED } from '../lib/inngest/client.js';
 import { isValidDomain, normalizeDomain } from '../lib/util.js';
 import { checkRateLimit, clientIp } from '../lib/ratelimit.js';
+import { isAuthed } from '../lib/auth.js';
+import { isDbConfigured } from '../lib/db/supabase.js';
+import { createRun, getRun, failRun } from '../lib/db/runs.js';
 
-// Allow longer runs: the agent loop makes several API calls in sequence.
-// (Honored on Vercel plans that permit it; safe to keep otherwise.)
 export const config = { maxDuration: 60 };
 
-// Which API key the configured provider needs.
 function requiredKeyVar() {
   const provider = (process.env.LLM_PROVIDER || 'claude').toLowerCase();
   return provider === 'openai' ? 'OPENAI_API_KEY' : 'ANTHROPIC_API_KEY';
 }
 
 export default async function handler(req, res) {
+  if (!isAuthed(req)) {
+    res.status(401).json({ error: 'Not authenticated' });
+    return;
+  }
+
+  if (!isDbConfigured()) {
+    res.status(500).json({ error: 'Server is missing SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY' });
+    return;
+  }
+
+  // ── Poll a run ────────────────────────────────────────────────────────────
+  if (req.method === 'GET') {
+    const id = req.query.id;
+    if (!id) {
+      res.status(400).json({ error: 'Missing run id' });
+      return;
+    }
+    const run = await getRun(id);
+    if (!run) {
+      res.status(404).json({ error: 'Run not found' });
+      return;
+    }
+    res.status(200).json({
+      id: run.id,
+      domain: run.domain,
+      status: run.status,
+      stage: run.stage,
+      report: run.report,
+      error: run.error,
+    });
+    return;
+  }
+
+  // ── Enqueue a run ─────────────────────────────────────────────────────────
   if (req.method !== 'POST') {
-    res.status(405).json({ error: 'Method not allowed — use POST' });
+    res.status(405).json({ error: 'Method not allowed' });
     return;
   }
 
@@ -24,7 +58,6 @@ export default async function handler(req, res) {
     return;
   }
 
-  // Per-IP rate limit (Vercel KV). Protects your LLM + data-API spend.
   const rl = await checkRateLimit(clientIp(req));
   if (!rl.allowed) {
     res.setHeader('Retry-After', String(rl.retryAfter));
@@ -32,20 +65,22 @@ export default async function handler(req, res) {
     return;
   }
 
-  try {
-    const body = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : req.body || {};
-    const domain = normalizeDomain(body.domain);
-    if (!isValidDomain(domain)) {
-      res.status(400).json({ error: 'Please provide a valid domain, e.g. example.com' });
-      return;
-    }
-
-    const question = typeof body.question === 'string' ? body.question.slice(0, 1000) : '';
-    const history = Array.isArray(body.history) ? body.history.slice(-8) : [];
-
-    const result = await research({ domain, question, history, env: process.env });
-    res.status(200).json({ domain, report: result.report, trace: result.trace });
-  } catch (e) {
-    res.status(500).json({ error: String(e?.message || e) });
+  const body = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : req.body || {};
+  const domain = normalizeDomain(body.domain);
+  if (!isValidDomain(domain)) {
+    res.status(400).json({ error: 'Please provide a valid domain, e.g. example.com' });
+    return;
   }
+  const question = typeof body.question === 'string' ? body.question.slice(0, 1000) : '';
+
+  const runId = await createRun({ domain, question });
+  try {
+    await inngest.send({ name: RUN_REQUESTED, data: { runId, domain, question } });
+  } catch (e) {
+    await failRun(runId, `Failed to enqueue job: ${e?.message || e}`);
+    res.status(502).json({ error: 'Could not enqueue the research job (check Inngest config).' });
+    return;
+  }
+
+  res.status(202).json({ run_id: runId, domain });
 }

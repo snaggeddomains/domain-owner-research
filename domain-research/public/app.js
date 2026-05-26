@@ -1,6 +1,11 @@
 const $ = (id) => document.getElementById(id);
 
 const els = {
+  login: $('login'),
+  loginForm: $('login-form'),
+  password: $('password'),
+  loginError: $('login-error'),
+  app: $('app'),
   form: $('search'),
   domain: $('domain'),
   question: $('question'),
@@ -9,13 +14,9 @@ const els = {
   report: $('report'),
   evidence: $('evidence'),
   trace: $('trace'),
-  followup: $('followup'),
-  followupInput: $('followup-input'),
 };
 
-// Conversation history sent back to the server for follow-up questions.
-let history = [];
-let currentDomain = '';
+const POLL_MS = 2500;
 
 function setStatus(text, isError = false) {
   if (!text) {
@@ -27,8 +28,7 @@ function setStatus(text, isError = false) {
   els.status.classList.toggle('error', isError);
 }
 
-// Escape first, then apply a tiny, safe subset of Markdown. The report comes
-// from our own model, but we still never inject raw HTML from it.
+// Escape first, then apply a tiny, safe subset of Markdown.
 function renderMarkdown(md) {
   const esc = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   const lines = esc(md || '').split('\n');
@@ -79,49 +79,114 @@ function renderTrace(trace) {
     .join('');
 }
 
-async function callResearch({ domain, question }) {
+// ── Auth ────────────────────────────────────────────────────────────────────
+async function checkAuth() {
+  try {
+    const res = await fetch('/api/me');
+    const data = await res.json();
+    const locked = data.gateEnabled && !data.authed;
+    els.login.hidden = !locked;
+    els.app.hidden = locked;
+  } catch {
+    // If /api/me fails, show the app and let actions surface errors.
+    els.login.hidden = true;
+    els.app.hidden = false;
+  }
+}
+
+els.loginForm?.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  els.loginError.hidden = true;
+  try {
+    const res = await fetch('/api/login', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ password: els.password.value }),
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      els.loginError.textContent = data.error || 'Incorrect password';
+      els.loginError.hidden = false;
+      return;
+    }
+    els.password.value = '';
+    await checkAuth();
+  } catch (err) {
+    els.loginError.textContent = String(err.message || err);
+    els.loginError.hidden = false;
+  }
+});
+
+// ── Research (async: enqueue → poll) ────────────────────────────────────────
+async function enqueue({ domain, question }) {
   const res = await fetch('/api/research', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ domain, question, history }),
+    body: JSON.stringify({ domain, question }),
   });
   const data = await res.json();
   if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`);
+  return data.run_id;
+}
+
+async function pollRun(runId) {
+  const res = await fetch(`/api/research?id=${encodeURIComponent(runId)}`);
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || `Poll failed (${res.status})`);
   return data;
 }
 
-async function run({ domain, question, isFollowup }) {
+function renderReport(report) {
+  const markdown = report && report.markdown ? report.markdown : '';
+  els.report.hidden = false;
+  els.report.innerHTML = renderMarkdown(markdown);
+  renderTrace(report && report.trace);
+}
+
+let pollTimer = null;
+
+async function run({ domain, question }) {
   els.go.disabled = true;
-  setStatus(isFollowup ? 'Thinking…' : `Researching ${domain}…`);
+  els.report.hidden = true;
+  els.evidence.hidden = true;
+  setStatus(`Researching ${domain}… this can take a few minutes.`);
+  if (pollTimer) clearInterval(pollTimer);
+
   try {
-    const data = await callResearch({ domain, question });
-    currentDomain = data.domain;
-    els.report.hidden = false;
-    els.report.innerHTML = renderMarkdown(data.report);
-    renderTrace(data.trace);
-    history.push({ role: 'user', content: question || `Research the domain: ${data.domain}` });
-    history.push({ role: 'assistant', content: data.report });
-    els.followup.hidden = false;
-    setStatus('');
-  } catch (e) {
-    setStatus(e.message || String(e), true);
-  } finally {
+    const runId = await enqueue({ domain, question });
+
+    pollTimer = setInterval(async () => {
+      try {
+        const r = await pollRun(runId);
+        if (r.status === 'done') {
+          clearInterval(pollTimer);
+          setStatus('');
+          renderReport(r.report);
+          els.go.disabled = false;
+        } else if (r.status === 'error') {
+          clearInterval(pollTimer);
+          setStatus(r.error || 'The run failed.', true);
+          els.go.disabled = false;
+        } else {
+          setStatus(`Researching ${domain}… (${r.stage || r.status})`);
+        }
+      } catch (err) {
+        clearInterval(pollTimer);
+        setStatus(err.message || String(err), true);
+        els.go.disabled = false;
+      }
+    }, POLL_MS);
+  } catch (err) {
+    setStatus(err.message || String(err), true);
     els.go.disabled = false;
   }
 }
 
-els.form.addEventListener('submit', (e) => {
+els.form?.addEventListener('submit', (e) => {
   e.preventDefault();
   const domain = els.domain.value.trim();
   if (!domain) return;
-  history = []; // fresh investigation
-  run({ domain, question: els.question.value.trim(), isFollowup: false });
+  run({ domain, question: els.question.value.trim() });
 });
 
-els.followup.addEventListener('submit', (e) => {
-  e.preventDefault();
-  const q = els.followupInput.value.trim();
-  if (!q) return;
-  els.followupInput.value = '';
-  run({ domain: currentDomain, question: q, isFollowup: true });
-});
+checkAuth();

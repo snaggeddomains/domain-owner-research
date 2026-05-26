@@ -25,7 +25,7 @@ body {
 
 .search { display: grid; gap: 10px; margin-bottom: 24px; }
 .search input,
-.followup input {
+.login-card input {
   width: 100%;
   padding: 12px 14px;
   background: var(--panel);
@@ -35,7 +35,7 @@ body {
   font-size: 16px;
 }
 .search input:focus,
-.followup input:focus { outline: none; border-color: var(--accent); }
+.login-card input:focus { outline: none; border-color: var(--accent); }
 
 button {
   padding: 12px 18px;
@@ -94,7 +94,27 @@ button:disabled { opacity: 0.6; cursor: progress; }
 #trace .dot.bad { background: var(--bad); }
 #trace .err { color: var(--bad); }
 
-.followup { display: grid; grid-template-columns: 1fr auto; gap: 10px; }
+/* Login gate */
+.login {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: var(--bg);
+}
+.login-card {
+  width: 100%;
+  max-width: 360px;
+  display: grid;
+  gap: 12px;
+  padding: 28px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+.login-card h1 { margin: 0; font-size: 22px; }
+.login-error { color: var(--bad); margin: 0; font-size: 14px; }
 
 @media (min-width: 560px) {
   .search { grid-template-columns: 1fr; }
