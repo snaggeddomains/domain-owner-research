@@ -42,34 +42,57 @@ h1, h2, h3 { font-family: var(--font-display); font-weight: 400; line-height: 1.
 .wordmark .wm-a { color: var(--navy); }
 .wordmark .wm-b { color: var(--coral); }
 
-/* Top bar */
-.topbar {
+/* App shell: left sidebar + content */
+#app { display: flex; align-items: stretch; min-height: 100vh; }
+.sidebar {
+  flex: 0 0 240px;
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  max-width: 1100px;
-  margin: 16px auto 0;
-  padding: 14px 22px;
+  flex-direction: column;
+  gap: 28px;
+  padding: 26px 18px;
   background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: 18px;
+  border-right: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  align-self: flex-start;
+  height: 100vh;
 }
+.content { flex: 1 1 auto; min-width: 0; }
 
-/* Nav */
-.nav { display: flex; gap: 8px; }
+/* Nav (vertical, in the sidebar) */
+.nav { display: flex; flex-direction: column; gap: 8px; }
 .nav-btn {
-  padding: 9px 16px;
+  width: 100%;
+  text-align: left;
+  padding: 10px 14px;
   background: transparent;
   color: var(--navy);
   border: 1px solid var(--border);
-  border-radius: 999px;
+  border-radius: 12px;
   font-family: var(--font-body);
   font-size: 14px;
   font-weight: 600;
   cursor: pointer;
 }
+.nav-btn:hover { background: var(--bg); color: var(--navy); }
 .nav-btn.active { background: var(--navy); color: var(--bg); border-color: var(--navy); }
+
+@media (max-width: 760px) {
+  #app { flex-direction: column; }
+  .sidebar {
+    flex: none;
+    height: auto;
+    position: static;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .sidebar .nav { flex-direction: row; }
+  .nav-btn { width: auto; }
+}
 
 .page-title { font-size: 40px; margin: 10px 0 6px; }
 
@@ -233,6 +256,5 @@ button:disabled { opacity: 0.55; cursor: progress; }
 .login-error { color: var(--bad); margin: 0; font-size: 14px; }
 
 @media (max-width: 560px) {
-  .topbar { flex-direction: column; align-items: stretch; gap: 10px; }
   .page-title { font-size: 32px; }
 }

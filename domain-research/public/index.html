@@ -24,14 +24,15 @@
     </div>
 
     <main id="app" hidden>
-      <header class="topbar">
+      <aside class="sidebar">
         <div class="wordmark"><span class="wm-a">Snagged</span> <span class="wm-b">Research</span></div>
         <nav class="nav">
           <button id="nav-research" class="nav-btn active" type="button">New research</button>
           <button id="nav-projects" class="nav-btn" type="button">Projects</button>
         </nav>
-      </header>
+      </aside>
 
+      <div class="content">
       <div class="wrap">
         <!-- Research view -->
         <section id="view-research">
@@ -67,6 +68,7 @@
           <input id="projects-search" class="projects-search" type="text" placeholder="Search by domain…" autocomplete="off" />
           <ul id="projects-list" class="projects-list"></ul>
         </section>
+      </div>
       </div>
     </main>
 
