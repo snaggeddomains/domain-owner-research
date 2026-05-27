@@ -114,6 +114,18 @@ a.wordmark:hover { text-decoration: none; opacity: .9; }
 .tm-badge.active { background: rgba(47,163,107,.12); color: #1f7a4d; border-color: #2fa36b; }
 .tm-badge.pending { background: rgba(217,154,60,.16); color: #8a5a12; border-color: var(--gold); }
 .tm-badge.abandoned { background: rgba(94,124,141,.12); color: var(--navy-3); border-color: var(--navy-3); }
+.tm-chip { font-size: .68rem; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; padding: 2px 8px; border-radius: 999px; background: rgba(228,128,105,.14); color: var(--coral-deep); border: 1px solid var(--coral); }
+.tm-verdict { padding: 14px 16px; margin: 16px 0; border-radius: var(--radius-sm); border: 2px solid var(--line); }
+.tm-verdict.green { background: rgba(47,163,107,.10); border-color: #2fa36b; }
+.tm-verdict.yellow { background: rgba(217,154,60,.14); border-color: var(--gold); }
+.tm-verdict.red { background: rgba(228,128,105,.14); border-color: var(--coral); }
+.tm-verdict-head { font-family: var(--body); font-weight: 800; color: var(--navy); margin-bottom: 4px; }
+.tm-bucket { font-family: var(--display); font-size: 1.05rem; margin-right: 6px; }
+.tm-verdict.green .tm-bucket { color: #1f7a4d; }
+.tm-verdict.yellow .tm-bucket { color: #8a5a12; }
+.tm-verdict.red .tm-bucket { color: var(--coral-deep); }
+.tm-verdict ul { margin: 4px 0 0; padding-left: 20px; color: var(--navy); font-size: .95rem; }
+.tm-caveat { margin-top: 8px; font-size: .8rem; color: var(--navy-3); font-style: italic; }
 .ap-value { font-family: var(--display); font-size: 1.7rem; color: var(--coral); margin: 8px 0; line-height: 1.1; }
 .ap-field { color: var(--navy); font-size: .95rem; margin: 2px 0; }
 .ap-field span { color: var(--navy-3); font-weight: 700; margin-right: 6px; }

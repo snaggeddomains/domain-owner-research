@@ -604,41 +604,92 @@ function toSld(input) {
 }
 
 // ── Trademark tool ──
-const tmPick = (key, cached) => { els.tmQuery.value = key; showTrademarks(key, cached); };
+const tmPick = (key, cached) => {
+  els.tmQuery.value = key;
+  const items = Array.isArray(cached) ? cached : (cached && cached.items) || [];
+  showTrademarks(key, items, !!(cached && cached.isAi));
+};
+// Signa status is an object: { primary: "active"|"dead"|…, stage: "registered"|…, challenges: [] }
+function tmStatusInfo(s) {
+  const primary = String((s && s.primary) || (typeof s === 'string' ? s : '')).toLowerCase();
+  const stage = String((s && s.stage) || '').toLowerCase();
+  const active = /active|live|registered/.test(primary);
+  let bucket = '';
+  if (/dead|abandon|cancel|expired|withdrawn/.test(primary) || /dead|abandon|cancel|expired/.test(stage)) bucket = 'abandoned';
+  else if (stage === 'registered' && active) bucket = 'active';
+  else if (active || /pend|applic|publish|allow|filed|exam/.test(stage)) bucket = 'pending';
+  const label = [primary, stage].filter(Boolean).join(' · ') || 'unknown';
+  return { active, stage, bucket, label, challenges: (s && s.challenges) || [] };
+}
+const tmClasses = (o) => (Array.isArray(o.classifications) ? o.classifications.map((c) => c.nice_class).filter((n) => n != null) : []);
+const tmGoods = (o) => (Array.isArray(o.classifications) ? o.classifications.map((c) => c.goods_services_text || '').join(' ') : '');
+const TECH_RE = /software|security|computer|internet|\bdata\b|platform|\bsaas\b|\bai\b|artificial intelligence|technolog|\bapp\b|\bapi\b|downloadable|mobile application|cloud|cybersecurity/i;
+const isTechMark = (o) => tmClasses(o).some((n) => n === 9 || n === 42) || TECH_RE.test(tmGoods(o));
+// Green / Yellow / Red screening read (per spec).
+function tmScore(q, items) {
+  const Q = String(q || '').toUpperCase();
+  const reasons = [];
+  let activeExact = 0, activeExactTech = 0, activeTech = 0;
+  for (const o of items) {
+    if (!tmStatusInfo(o.status).active) continue;
+    const exact = String(o.mark_text || '').toUpperCase() === Q;
+    const tech = isTechMark(o);
+    if (exact) {
+      activeExact++;
+      if (tech) {
+        activeExactTech++;
+        const cls = tmClasses(o);
+        reasons.push(`Active exact "${o.mark_text}"${cls.length ? ` in Class ${cls.join('/')}` : ''}${o.owner_name ? ` — ${o.owner_name}` : ''} (software/tech lane).`);
+      }
+    } else if (tech) {
+      activeTech++;
+    }
+  }
+  let bucket = 'green';
+  if (activeExactTech > 0 || activeExact >= 2) bucket = 'red';
+  else if (activeExact > 0 || activeTech > 0) bucket = 'yellow';
+  if (bucket === 'red' && activeExactTech === 0 && activeExact >= 2) reasons.push(`${activeExact} active exact marks on this term.`);
+  if (bucket === 'yellow' && activeExact > 0) reasons.push('Active exact mark(s) present, but not clearly in the core software/AI lane.');
+  if (bucket === 'yellow' && activeExact === 0 && activeTech > 0) reasons.push('Active tech-lane marks with related relevance.');
+  if (bucket === 'green') reasons.push('No active exact or tech-lane blocker in the first-pass screen.');
+  return { bucket, reasons };
+}
 function renderTrademarks(items) {
   return items
     .map((o) => {
-      const mark = escapeHtml(pickr(o, ['mark', 'markText', 'wordmark', 'text', 'name', 'title', 'keyword', 'markLiteral', 'literalElement', 'mark_name']) || '(mark)');
-      const owner = escapeHtml(pickr(o, ['owner', 'applicant', 'ownerName', 'owner_name', 'holder', 'applicantName']));
-      const statusStr = pickr(o, ['status', 'statusType', 'markStatus', 'statusLabel', 'status_label']);
-      const bucket = statusBucket(statusStr);
-      const classes = escapeHtml(pickr(o, ['classes', 'niceClasses', 'internationalClasses', 'intlClasses', 'class', 'classifications', 'classCodes']));
-      const filed = escapeHtml(pickr(o, ['filingDate', 'filing_date', 'applicationDate', 'dateFiled', 'filed']));
-      const reg = escapeHtml(pickr(o, ['registrationDate', 'registration_date', 'dateRegistered']));
-      const serial = escapeHtml(pickr(o, ['serialNumber', 'serial', 'serial_number']));
-      const badge = bucket
-        ? `<span class="tm-badge ${bucket}">${escapeHtml(bucket)}</span>`
-        : statusStr
-          ? `<span class="tm-badge">${escapeHtml(statusStr)}</span>`
-          : '';
-      const meta = [owner && `Owner: ${owner}`, classes && `Class ${classes}`, filed && `Filed: ${filed}`, reg && `Reg: ${reg}`, serial && `SN ${serial}`]
-        .filter(Boolean)
-        .join(' · ');
+      const mark = escapeHtml(o.mark_text || pickr(o, ['mark', 'markText', 'text', 'name']) || '(mark)');
+      const owner = escapeHtml(o.owner_name || pickr(o, ['owner', 'applicant', 'ownerName']));
+      const si = tmStatusInfo(o.status);
+      const classes = tmClasses(o);
+      const classStr = classes.length ? `Class ${classes.join(', ')}` : '';
+      const filed = escapeHtml(o.filing_date || '');
+      const reg = escapeHtml(o.registration_date || '');
+      const rn = escapeHtml(o.registration_number || '');
+      const badge = `<span class="tm-badge ${si.bucket}">${escapeHtml(si.label)}</span>`;
+      const ch = (si.challenges || []).length ? `<span class="tm-chip">${escapeHtml(si.challenges.join(', ').replace(/_/g, ' '))}</span>` : '';
+      const meta = [owner && `Owner: ${owner}`, classStr, filed && `Filed: ${filed}`, reg && `Reg: ${reg}`, rn && `RN ${rn}`].filter(Boolean).join(' · ');
       const raw = escapeHtml(JSON.stringify(o, null, 2).slice(0, 1800));
-      return `<li class="tool-item"><div class="tm-head"><span class="tool-title">${mark}</span>${badge}</div>${meta ? `<div class="tool-meta">${meta}</div>` : ''}<details class="src-detail"><summary>raw</summary><pre>${raw}</pre></details></li>`;
+      return `<li class="tool-item"><div class="tm-head"><span class="tool-title">${mark}</span>${badge}${ch}</div>${meta ? `<div class="tool-meta">${meta}</div>` : ''}<details class="src-detail"><summary>raw</summary><pre>${raw}</pre></details></li>`;
     })
     .join('');
 }
-function showTrademarks(q, items) {
-  setToolStatus(
-    els.tmStatus,
-    items && items.length
-      ? `${items.length} mark(s) for "${q}" — screening only, not legal clearance.`
-      : `No trademarks found for "${q}".`,
-  );
-  els.tmResults.innerHTML = items && items.length ? renderTrademarks(items) : '';
+function showTrademarks(q, items, isAi) {
+  if (!items || !items.length) {
+    setToolStatus(els.tmStatus, `No trademarks found for "${q}".`);
+    els.tmResults.innerHTML = '';
+    return;
+  }
+  setToolStatus(els.tmStatus, '');
+  const score = tmScore(q, items);
+  const aiNote = isAi ? ' <span class="muted">(.ai → Classes 9 &amp; 42 weighted)</span>' : '';
+  const banner =
+    `<div class="tm-verdict ${score.bucket}"><div class="tm-verdict-head"><span class="tm-bucket">${score.bucket.toUpperCase()}</span> screening read for "${escapeHtml(q)}"${aiNote}</div>` +
+    `<ul>${score.reasons.map((r) => `<li>${escapeHtml(r)}</li>`).join('')}</ul>` +
+    `<div class="tm-caveat">First-pass screening only — not legal clearance.</div></div>`;
+  els.tmResults.innerHTML = banner + renderTrademarks(items);
 }
 async function runTrademark(input) {
+  const isAi = /\.ai$/i.test(String(input || '').trim());
   const q = toSld(input);
   els.tmResults.innerHTML = '';
   setToolStatus(els.tmStatus, `Searching trademarks for "${q}"…`);
@@ -647,8 +698,8 @@ async function runTrademark(input) {
     const data = await res.json();
     if (!data.ok) throw new Error(data.error || `Failed (${res.status})`);
     const items = (data.data && data.data.trademarks) || [];
-    showTrademarks(q, items);
-    saveRecent('tm', q, items);
+    showTrademarks(q, items, isAi);
+    saveRecent('tm', q, { items, isAi });
     renderToolRecent(els.tmRecent, 'tm', tmPick);
   } catch (e) {
     setToolStatus(els.tmStatus, e.message || String(e), true);
