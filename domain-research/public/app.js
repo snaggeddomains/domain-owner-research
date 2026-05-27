@@ -1054,7 +1054,6 @@ function showEntry() {
   currentRunId = null;
   els.domain.value = '';
   loadRecent();
-  els.domain.focus();
 }
 
 // ── Wiring ──────────────────────────────────────────────────────────────────
