@@ -740,7 +740,7 @@ function startPolling(runId, label) {
 // channels show as green ✓ links; misses flash a red ✗ then fade out, leaving
 // only the live listings. A row of quick-open links covers the sources we can't
 // reliably check server-side (GoDaddy 403s bots; DomainScout needs a login).
-const MARKET_NAMES = { afternic: 'Afternic', sedo: 'Sedo', dan: 'Dan', atom: 'Atom', godaddy: 'GoDaddy' };
+const MARKET_NAMES = { afternic: 'Afternic', sedo: 'Sedo', atom: 'Atom', godaddy: 'GoDaddy', dynadot: 'Dynadot' };
 
 function quickLinks(domain) {
   const d = encodeURIComponent(domain);

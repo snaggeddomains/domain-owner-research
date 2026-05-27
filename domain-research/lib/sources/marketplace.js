@@ -3,18 +3,81 @@ import { normalizeDomain, isValidDomain, fetchText, extractClues } from '../util
 // Free (no API credits) — best-effort fetch + parse of marketplace listing pages
 // for a real for-sale signal (broker, price, "Make Offer"). Pages are HTML and
 // some channels block bots, so each is fail-soft and a miss is NOT conclusive.
+// GoDaddy and Dynadot hard-403 plain fetches (their search pages are bot-walled
+// SPAs), so those are flagged `render` and routed through Scrape.do when a key
+// is configured. Dan was removed — dan.com listings now redirect into GoDaddy.
 function channelsFor(domain) {
   const label = domain.split('.')[0];
+  const d = encodeURIComponent(domain);
   return [
     { channel: 'afternic', url: `https://www.afternic.com/domain/${domain}` },
     { channel: 'sedo', url: `https://sedo.com/search/details/?domain=${domain}` },
-    { channel: 'dan', url: `https://dan.com/buy-domain/${domain}` },
     { channel: 'atom', url: `https://www.atom.com/name/${label}` },
-    { channel: 'godaddy', url: `https://www.godaddy.com/domain-auctions/${domain}` },
+    { channel: 'godaddy', url: `https://www.godaddy.com/domainsearch/find?domainToCheck=${d}`, render: true },
+    { channel: 'dynadot', url: `https://www.dynadot.com/domain/search?domain=${d}`, render: true },
   ];
 }
 
 const PRICE_RE = /(?:US)?\$\s?\d[\d,]{2,}(?:\.\d{2})?/g;
+
+// A page can hard-block (403/429) or serve a tiny anti-bot challenge instead of
+// real content — treat both as "blocked" so we know to escalate to a renderer.
+function isBotWalled(status, body) {
+  if (status === 403 || status === 429 || status === 0) return true;
+  const t = String(body || '');
+  return (
+    t.length < 800 &&
+    /just a moment|enable javascript|attention required|verify you are human|captcha|access denied|are you a robot/i.test(t)
+  );
+}
+
+// Plain fetch first; if a `render` channel is bot-walled and Scrape.do is set,
+// re-fetch through its residential anti-bot proxy with JS rendering (super=true
+// is required to clear Cloudflare-class challenges).
+async function fetchChannel({ url, render }, env) {
+  let resp;
+  try {
+    resp = await fetchText(url, {}, 8000);
+  } catch (e) {
+    resp = { status: 0, body: '', error: String(e?.message || e) };
+  }
+  if (render && env?.SCRAPE_DO_API_KEY && isBotWalled(resp.status, resp.body)) {
+    try {
+      const api =
+        `https://api.scrape.do/?token=${encodeURIComponent(env.SCRAPE_DO_API_KEY)}` +
+        `&render=true&super=true&url=${encodeURIComponent(url)}`;
+      const r2 = await fetchText(api, {}, 30000);
+      if (r2.body && r2.body.length > String(resp.body || '').length) {
+        return { status: r2.status || 200, body: r2.body, rendered: true };
+      }
+    } catch {
+      /* fall back to the plain (blocked) result */
+    }
+  }
+  return { status: resp.status, body: resp.body, rendered: false };
+}
+
+function maxPriceUsd(body) {
+  const nums = (String(body || '').match(PRICE_RE) || [])
+    .map((s) => Number(s.replace(/[^\d.]/g, '')))
+    .filter((n) => Number.isFinite(n) && n > 0);
+  return nums.length ? Math.max(...nums) : 0;
+}
+
+// Aftermarket "listed for sale" signals on registrar search pages (GoDaddy /
+// Dynadot), beyond the generic parked-page phrases. A reg-fee price (~$10) next
+// to "add to cart" means the name is AVAILABLE to register — NOT for sale — so
+// the buy-now/premium signal only counts when paired with a real price (≥ $100).
+function aftermarketSignals(body) {
+  const low = String(body || '').toLowerCase();
+  const out = [];
+  if (/\bmake (?:an )?offer\b/.test(low)) out.push('make offer');
+  if (/\b(?:this )?domain is for sale\b|\bfor sale by owner\b|\bdomain for sale\b/.test(low)) out.push('for sale');
+  const price = maxPriceUsd(body);
+  if (price >= 100 && /\bbuy it now\b/.test(low)) out.push('buy it now');
+  if (price >= 100 && /\bpremium\b/.test(low)) out.push('premium');
+  return out;
+}
 
 // Hosts that are standard marketplaces/registrars/parking — NOT a seller's own
 // branded portfolio. A redirect to anything outside this set that still shows a
@@ -29,22 +92,24 @@ const hostOf = (u) => {
 export default {
   name: 'marketplace_check',
   description:
-    'Free, best-effort. Checks domain marketplaces (Afternic, Sedo, Dan, Atom, GoDaddy auctions) for an active ' +
-    'for-sale listing — price, "Make Offer"/"Buy Now", and broker/platform. A listing often exposes the seller or ' +
-    'broker. Each channel is fail-soft; some block automated fetches, so a miss is not proof the domain is unlisted.',
+    'Free, best-effort. Checks domain marketplaces (Afternic, Sedo, Atom, GoDaddy, Dynadot) for an active ' +
+    'for-sale listing — price, "Make Offer"/"Buy It Now", and broker/platform. A listing often exposes the seller or ' +
+    'broker. Each channel is fail-soft; some block automated fetches (GoDaddy/Dynadot are rendered via Scrape.do when ' +
+    'configured), so a miss is not proof the domain is unlisted.',
   parameters: { type: 'object', properties: { domain: { type: 'string' } }, required: ['domain'] },
-  async run({ domain }) {
+  async run({ domain }, ctx = {}) {
+    const env = ctx.env || process.env || {};
     const d = normalizeDomain(domain);
     if (!isValidDomain(d)) throw new Error(`Invalid domain: ${domain}`);
 
     const channels = await Promise.all(
-      channelsFor(d).map(async ({ channel, url }) => {
+      channelsFor(d).map(async ({ channel, url, render }) => {
         try {
-          const resp = await fetchText(url, {}, 8000);
+          const resp = await fetchChannel({ url, render }, env);
           const ok = resp.status === 200;
           const clues = extractClues(resp.body || '');
-          const signals = clues.parking.for_sale_signals;
-          const prices = [...new Set((resp.body.match(PRICE_RE) || []).slice(0, 5))];
+          const signals = [...new Set([...clues.parking.for_sale_signals, ...aftermarketSignals(resp.body || '')])];
+          const prices = [...new Set((String(resp.body || '').match(PRICE_RE) || []).slice(0, 5))];
           // A channel only counts as LISTED when the page actually resolves (200)
           // AND shows a real for-sale signal. A 404/403/410 page — or bare prices
           // that are just marketplace page-furniture — is NOT a listing.
@@ -53,6 +118,7 @@ export default {
             channel,
             url,
             http_status: resp.status,
+            rendered: resp.rendered,
             listed,
             for_sale_signals: signals,
             prices: listed ? prices : [],
