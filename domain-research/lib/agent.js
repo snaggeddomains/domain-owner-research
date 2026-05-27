@@ -28,12 +28,12 @@ PART 1 — a single fenced \`\`\`json code block FIRST (valid JSON, no comments,
   "likely_owner": "person or org name, or null",
   "owner_type": "active_company" | "former_operator" | "individual" | "domain_investor" | "marketplace_only" | "unknown",
   "summary": "1-2 sentence plain-English bottom line",
-  "contacts": [ { "type": "name" | "email" | "phone" | "org" | "social", "value": "...", "note": "where it came from / how current/strong", "key": true | false } ],
+  "contacts": [ { "type": "name" | "email" | "phone" | "org" | "social", "value": "...", "note": "where it came from / how current/strong" } ],
   "contact_path": [ "ranked, concrete next step to reach the owner" ],
   "timeline": [ { "date": "YYYY, YYYY-MM-DD, or a range", "event": "short label", "detail": "what changed: registrant / privacy / registrar / nameservers / site" } ]
 }
 "confidence" = your confidence in naming the ACTUAL owner (not merely whether it is privacy-protected). Put the STRONGEST clues here — real names, emails, phones, and the ownership movements — ordered most-useful first. Never invent a registrant.
-"key" (on each contact) = true when the value is genuinely useful for identifying or reaching the owner — a real person/organization name, a working personal or company email, a direct phone, a broker/marketplace contact, or a real social/LinkedIn profile (the UI highlights these). Set key=false for privacy/proxy/redacted or generic registrar values (e.g. "REDACTED FOR PRIVACY", "Domains By Proxy", abuse@/hostmaster@ addresses) — still list them, but they are not highlighted.
+"contacts" should hold owner-IDENTIFYING clues — real names, personal/role-free emails, direct phones, the owner's own social/professional profile — and SHOULD include a pre-privacy HISTORICAL owner's name and contact info (e.g. a 1990s–2000s registrant and their email/phone), since those are valuable leads even if that person is not the current holder; the UI highlights these automatically. Do NOT put marketplace/for-sale listing URLs (Afternic, Dan, Sedo, Atom, GoDaddy) in "contacts", and never type them as "social" — report any genuine listing in the Markdown Marketplace section and as a step in "contact_path" instead. Only state a domain is "listed for sale" when marketplace_check returned http_status 200 with a real for-sale signal; a 404/403/410 page or bare page-furniture prices do NOT mean it is listed.
 
 PART 2 — after the JSON block, the supporting detail in Markdown, most-useful first, using these sections (omit any with nothing to say):
 **Current registration** · **Infrastructure** · **Live site & archive** · **Marketplace & valuation** · **Web, social & trademark** · **Confidence & gaps**.

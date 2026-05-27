@@ -31,24 +31,29 @@ export default {
       channelsFor(d).map(async ({ channel, url }) => {
         try {
           const resp = await fetchText(url, {}, 8000);
+          const ok = resp.status === 200;
           const clues = extractClues(resp.body || '');
+          const signals = clues.parking.for_sale_signals;
           const prices = [...new Set((resp.body.match(PRICE_RE) || []).slice(0, 5))];
-          const listed = clues.parking.for_sale_signals.length > 0 || prices.length > 0;
+          // A channel only counts as LISTED when the page actually resolves (200)
+          // AND shows a real for-sale signal. A 404/403/410 page — or bare prices
+          // that are just marketplace page-furniture — is NOT a listing.
+          const listed = ok && signals.length > 0;
           return {
             channel,
             url,
             http_status: resp.status,
             listed,
-            for_sale_signals: clues.parking.for_sale_signals,
-            prices,
+            for_sale_signals: signals,
+            prices: listed ? prices : [],
             emails: clues.emails.slice(0, 5),
           };
         } catch (e) {
-          return { channel, url, error: String(e?.message || e) };
+          return { channel, url, listed: false, error: String(e?.message || e) };
         }
       }),
     );
 
-    return { domain: d, channels };
+    return { domain: d, any_listed: channels.some((c) => c.listed), channels };
   },
 };

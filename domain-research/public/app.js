@@ -355,12 +355,24 @@ function stripJsonBlock(md) {
 // the owner — a real name, working email/phone, broker or profile — but NOT
 // privacy/proxy/redacted or generic registrar values.
 const CLUE_NOISE_RE = /redact|privacy|priv(?:ate)?|proxy|whois\s?guard|data\s?protected|withheld|not\s?disclosed|undisclosed|gdpr|domains?\s?by\s?proxy|contact\s?privacy|perfect\s?privacy|identity\s?protect|statutory\s?masking|anonymi|abuse@|hostmaster@|postmaster@/i;
+// Marketplace / for-sale listing URLs are sale channels, not owner-identifying
+// contact info — never highlight them (and they're often false positives).
+const SALE_LINK_RE = /afternic|dan\.com|\bsedo\b|atom\.com|godaddy|\befty\b|dynadot|flippa|hugedomains|buydomains|undeveloped|sav\.com|\/buy-domain\/|for[-\s]?sale|make[-\s]?offer|buy[-\s]?now/i;
+// Note phrases that mark the VALUE as a privacy/proxy artifact (so a clean-
+// looking value like a proxy's phone number is still excluded). Deliberately
+// narrow so it does NOT trip on legitimate context like "pre-privacy registrant"
+// or "not the current owner" — a historical owner is still a useful clue.
+const NOTE_NOISE_RE = /\bproxy\b|whois\s?guard|\brelay\b|privacy (?:service|provider|protect|inc\.?|shield)|data\s?protected|\bmasking\b|redact/i;
+// Highlight genuinely useful owner-identifying clues (a real name, working
+// email/phone, the owner's own profile) — including a HISTORICAL/pre-privacy
+// owner. Never highlight privacy/proxy/role values or marketplace links.
 function isUsefulClue(c) {
   const v = String((c && c.value) || '');
+  const type = String((c && c.type) || '').toLowerCase();
   if (!v) return false;
-  if (CLUE_NOISE_RE.test(v) || CLUE_NOISE_RE.test(String(c.note || ''))) return false;
-  if (typeof c.key === 'boolean') return c.key; // trust the model's call when given
-  return true;
+  if (CLUE_NOISE_RE.test(v) || NOTE_NOISE_RE.test(String(c.note || ''))) return false;
+  if (SALE_LINK_RE.test(v)) return false;
+  return ['name', 'email', 'phone', 'org', 'social'].includes(type);
 }
 function renderSummary(d) {
   const e = escapeHtml;
