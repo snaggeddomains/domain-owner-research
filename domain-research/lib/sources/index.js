@@ -14,6 +14,7 @@ import whoxyReverse from './whoxyreverse.js';
 import readurl from './readurl.js';
 import bravesearch from './bravesearch.js';
 import analytics from './analytics.js';
+import identify from './identify.js';
 import marketplace from './marketplace.js';
 import reversewhois from './reversewhois.js';
 import reversens from './reversens.js';
@@ -28,7 +29,7 @@ import appraise from './appraise.js';
 const ALL = [
   rdap, whois, dns, wayback, livesite, marketplace, cluster, masterlist, rocketreach, readurl, analytics,
   whoisxml, domainiq, bigdomaindata, reversewhois, reversens, reverseip, websearch, bravesearch, trademark, appraise,
-  rocketreachLookup, whoxyHistory, whoxyReverse,
+  rocketreachLookup, whoxyHistory, whoxyReverse, identify,
 ];
 
 // Paid sources spend external API credits. They are withheld from the free
@@ -37,7 +38,7 @@ const ALL = [
 const PAID = new Set([
   'whoisxml_lookup', 'domainiq_lookup', 'bigdomaindata_lookup',
   'reverse_whois', 'reverse_ns', 'reverse_ip', 'web_search', 'brave_search', 'trademark_search', 'appraise_lookup',
-  'rocketreach_lookup', 'whoxy_history', 'whoxy_reverse',
+  'rocketreach_lookup', 'whoxy_history', 'whoxy_reverse', 'identify_operator',
 ]);
 
 // Recap grouping — each source's category, used to break the "Sources checked"
@@ -65,6 +66,7 @@ const CATEGORY = {
   web_search: 'Web & social',
   brave_search: 'Web & social',
   read_url: 'Web & social',
+  identify_operator: 'Web & social',
   trademark_search: 'Trademark / legal',
   appraise_lookup: 'Valuation',
 };
