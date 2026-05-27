@@ -885,21 +885,44 @@ function renderTrademarks(items) {
     })
     .join('');
 }
+// "Active" = a live mark (registered or pending); "inactive" = abandoned /
+// cancelled / dead / expired.
+const isActiveMark = (o) => tmStatusInfo(o.status).bucket !== 'abandoned';
+let tmActiveOnly = false;
+let tmLast = null; // { q, items, isAi } — kept so the filter can re-render
+
 function showTrademarks(q, items, isAi) {
   setToolUrl('trademark', q);
-  if (!items || !items.length) {
+  tmLast = { q, items: items || [], isAi };
+  renderTmResults();
+}
+function renderTmResults() {
+  if (!tmLast) return;
+  const { q, items, isAi } = tmLast;
+  if (!items.length) {
     setToolStatus(els.tmStatus, `No trademarks found for "${q}".`);
     els.tmResults.innerHTML = '';
     return;
   }
   setToolStatus(els.tmStatus, '');
-  const score = tmScore(q, items);
+  const score = tmScore(q, items); // verdict is over ALL marks, not the filtered view
   const aiNote = isAi ? ' <span class="muted">(.ai → Classes 9 &amp; 42 weighted)</span>' : '';
   const banner =
     `<div class="tm-verdict ${score.bucket}"><div class="tm-verdict-head"><span class="tm-bucket">${score.bucket.toUpperCase()}</span> screening read for "${escapeHtml(q)}"${aiNote}</div>` +
     `<ul>${score.reasons.map((r) => `<li>${escapeHtml(r)}</li>`).join('')}</ul>` +
     `<div class="tm-caveat">First-pass screening only — not legal clearance.</div></div>`;
-  els.tmResults.innerHTML = banner + renderTrademarks(items);
+
+  const activeCount = items.filter(isActiveMark).length;
+  const inactiveCount = items.length - activeCount;
+  const filterBar =
+    `<div class="tm-filter-bar"><button type="button" id="tm-active-toggle" class="tm-toggle${tmActiveOnly ? ' on' : ''}" aria-pressed="${tmActiveOnly}">${tmActiveOnly ? '✓ Active only' : 'Active only'}</button>` +
+    `<span class="tm-filter-count">${activeCount} active · ${inactiveCount} inactive</span></div>`;
+
+  const shown = tmActiveOnly ? items.filter(isActiveMark) : items;
+  const list = shown.length ? renderTrademarks(shown) : '<li class="muted">No active marks — toggle off to see inactive ones.</li>';
+  els.tmResults.innerHTML = banner + filterBar + list;
+  const btn = document.getElementById('tm-active-toggle');
+  if (btn) btn.addEventListener('click', () => { tmActiveOnly = !tmActiveOnly; renderTmResults(); });
 }
 async function runTrademark(input) {
   const isAi = /\.ai$/i.test(String(input || '').trim());
