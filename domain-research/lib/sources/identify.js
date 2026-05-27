@@ -44,15 +44,19 @@ export default {
   async run({ brand, domain }, { env }) {
     const b = String(brand || '').trim();
     if (!b) throw new Error('Provide a brand/portfolio name');
+    const dom = domain ? normalizeDomain(domain) : '';
+    // Query the QUOTED full domain — far more precise than a bare brand like
+    // "DomainMan" (which matches generic "domain map" noise).
+    const term = dom ? `"${dom}"` : `"${b}"`;
     const queries = [
-      `"${b}" owner`,
-      `"${b}" founder`,
-      `${b} site:quora.com`,
-      `${b} site:linkedin.com`,
-      `${b} site:namepros.com`,
-      `${b} domain investor interview`,
+      term,
+      `${term} owner`,
+      `${term} founder`,
+      `${term} domain investor`,
+      `${term} site:quora.com`,
+      `${term} site:linkedin.com`,
+      `${term} site:namepros.com`,
     ];
-    if (domain) queries.push(`"${domain}" owner`);
 
     const batches = await Promise.all(queries.map((q) => brave(q, env)));
     const seen = new Set();
@@ -66,30 +70,32 @@ export default {
       }
     }
 
-    // WHOIS the portfolio domain itself — often the most direct unmask.
+    // WHOIS the portfolio domain itself — often the most direct unmask (though
+    // GoDaddy's port-43 WHOIS is retired/rate-limited and many are privacy-shielded).
     let portfolio_whois = null;
-    if (domain) {
+    if (dom) {
       try {
-        portfolio_whois = await whois.run({ domain: normalizeDomain(domain) }, { env });
+        portfolio_whois = await whois.run({ domain: dom }, { env });
       } catch (e) {
         portfolio_whois = { error: String(e?.message || e) };
       }
     }
 
-    // Read the most promising identity pages (Quora/LinkedIn/NamePros/about/non-marketplace).
-    const targets = results
-      .filter((r) => /quora\.com|linkedin\.com|namepros\.com|\babout\b|interview/i.test(`${r.url} ${r.title}`) || !MAJOR.test(r.url))
-      .slice(0, 4);
+    // Read the most promising pages, but Quora/LinkedIn are usually JS-walled to
+    // a plain fetch — so try several and keep the ones that actually returned
+    // content (forum posts, blogs, about pages are typically readable).
+    const ranked = results.filter((r) => !MAJOR.test(r.url)).slice(0, 8);
     const pages = [];
-    for (const t of targets) {
+    for (const t of ranked) {
+      if (pages.filter((p) => !p.blocked).length >= 4) break;
       try {
         const p = await readurl.run({ url: t.url });
-        pages.push({ url: p.url, title: p.title, text: String(p.text || '').slice(0, 2500) });
+        pages.push({ url: p.url, title: p.title, blocked: !!p.blocked, text: String(p.text || '').slice(0, 2500) });
       } catch {
         /* skip unreadable */
       }
     }
 
-    return { brand: b, portfolio_whois, search_results: results.slice(0, 25), pages };
+    return { brand: b, domain: dom || undefined, portfolio_whois, search_results: results.slice(0, 25), pages };
   },
 };

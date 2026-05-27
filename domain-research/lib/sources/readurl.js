@@ -37,11 +37,16 @@ export default {
     if (!/^https?:\/\//i.test(String(url || ''))) throw new Error('Provide a full http(s) URL');
     const resp = await fetchText(url, {}, 10000);
     const titleM = (resp.body || '').match(/<title[^>]*>([\s\S]*?)<\/title>/i);
+    const text = htmlToText(resp.body).slice(0, 6000);
+    // Many JS-heavy sites (Quora, LinkedIn) serve a bot-wall / JS challenge to a
+    // plain fetch — flag it so the caller doesn't mistake the stub for content.
+    const blocked = text.length < 600 && /just a moment|enable javascript|attention required|verify you are human|captcha|cf-browser-verification|access denied|are you a robot|please enable cookies/i.test(text);
     return {
       url,
       status: resp.status,
+      blocked,
       title: titleM ? titleM[1].replace(/\s+/g, ' ').trim().slice(0, 200) : '',
-      text: htmlToText(resp.body).slice(0, 6000),
+      text: blocked ? '(page is JS/bot-walled — could not read server-side; rely on the search snippet instead)' : text,
     };
   },
 };
