@@ -453,11 +453,23 @@ async function sendChat(message) {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ run_id: currentRunId, domain: currentReportDomain, message }),
     });
-    const data = await res.json();
+    const raw = await res.text();
+    let reply = '';
+    let errMsg = '';
+    try {
+      const d = JSON.parse(raw);
+      if (res.ok) reply = d.reply || '';
+      else errMsg = d.error || `Request failed (${res.status}).`;
+    } catch {
+      // Non-JSON body — usually a Vercel timeout/error page.
+      errMsg = res.status === 504 || res.status === 502
+        ? 'That follow-up took too long or hit an error — try a narrower, more specific question.'
+        : `Request failed (${res.status}).`;
+    }
     const pending = thread.querySelector('.chat-msg.pending');
     if (pending) {
       pending.classList.remove('pending');
-      pending.innerHTML = renderMarkdown(res.ok ? data.reply || '(no response)' : data.error || `Failed (${res.status})`);
+      pending.innerHTML = renderMarkdown(reply || `⚠️ ${errMsg || 'No response.'}`);
     }
   } catch (e) {
     const pending = thread.querySelector('.chat-msg.pending');

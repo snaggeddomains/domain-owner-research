@@ -82,7 +82,7 @@ export async function chatTurn({ domain, reportMarkdown, history = [], message, 
     userPrompt: String(message || ''),
     toolSpecs,
     env,
-    maxSteps: 4,
+    maxSteps: 3,
     maxToolResultChars: MAX_TOOL_RESULT_CHARS,
     seedTrace: [],
   });

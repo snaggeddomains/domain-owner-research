@@ -37,27 +37,23 @@ export default async function handler(req, res) {
     return;
   }
 
-  const run = await getRun(runId);
+  const run = await getRun(runId).catch(() => null);
   if (!run) {
     res.status(404).json({ error: 'Run not found' });
     return;
   }
   const domain = run.domain || '';
   const reportMarkdown = (run.report && (run.report.markdown || '')) || '';
-  const history = await getChat(runId);
 
-  let reply;
   try {
+    const history = await getChat(runId);
     const result = await chatTurn({ domain, reportMarkdown, history, message, env: process.env });
-    reply = (result && result.report) || '(no response)';
+    const reply = (result && result.report) || '(no response)';
+    // Persist both messages (transcript = feedback/eval signal).
+    await appendChat(runId, domain, 'user', message);
+    await appendChat(runId, domain, 'assistant', reply);
+    res.status(200).json({ reply });
   } catch (e) {
-    res.status(502).json({ error: `Chat turn failed: ${e?.message || e}` });
-    return;
+    res.status(502).json({ error: `Chat turn failed: ${String(e?.message || e).slice(0, 300)}` });
   }
-
-  // Persist both messages (transcript = feedback/eval signal).
-  await appendChat(runId, domain, 'user', message);
-  await appendChat(runId, domain, 'assistant', reply);
-
-  res.status(200).json({ reply });
 }
