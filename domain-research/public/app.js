@@ -762,6 +762,14 @@ async function openProject(id) {
     } else if (r.status === 'error') {
       setStatus(r.error || 'This run failed.', true);
     } else {
+      // Still running. If a free (shallow) report was already saved (e.g. a deep
+      // pass is now in progress), keep it on screen instead of a blank page.
+      if (r.report) {
+        renderReport(r.report);
+        els.deepenTop.hidden = true;
+        els.deepenBar.hidden = true; // a pass is already running
+        if (els.reportFeedback) els.reportFeedback.hidden = true; // it'll be replaced by the deep report
+      }
       startPolling(id, `Researching ${r.domain || ''}`);
     }
   } catch (err) {
