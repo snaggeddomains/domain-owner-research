@@ -8,11 +8,11 @@ const ENDPOINT = 'https://api.signa.so/v1/trademarks';
 export default {
   name: 'trademark_search',
   description:
-    'Signa.so trademark search (premium). Given a brand keyword — typically the domain SLD (percent.ai -> "percent") ' +
-    '- or a candidate owner name, returns matching trademarks (USPTO by default): the mark, applicant/owner, status ' +
-    '(live / pending / abandoned / dead), filing and registration dates, and classes. The applicant on a matching ' +
-    'mark (even pending or abandoned) is a strong ownership/entity lead; a filing date near the domain creation ' +
-    'corroborates it.',
+    'Signa.so trademark SCREENING (premium, USPTO). Query is the brand/SLD (percent.ai -> "percent"). Returns ' +
+    'matching marks: text, applicant/owner, status (live / pending / abandoned / dead), Nice classes, serial/reg ' +
+    'numbers, goods/services. Screening-level risk read, NOT legal clearance. Flag active EXACT marks; for .ai ' +
+    'domains weight Classes 9 & 42 (software/AI/tech) heavily; note live-company / common-law collisions. Bucket ' +
+    'the overall read Green / Yellow / Red.',
   parameters: {
     type: 'object',
     properties: {

@@ -34,7 +34,8 @@
     <main id="app" hidden>
       <aside class="sidebar">
         <a href="/" id="home-link" class="wordmark"><img class="brand-mark" src="/logomark-round.svg" alt="" /><span class="wm-text"><span class="wm-a">Snagged</span> <span class="wm-b">Research</span></span></a>
-        <nav class="nav">
+        <button id="nav-toggle" class="nav-toggle" type="button" aria-label="Menu" aria-expanded="false">&#9776;</button>
+        <nav class="nav" id="nav">
           <div class="nav-group">Research</div>
           <button id="nav-research" class="nav-btn active" type="button">New</button>
           <button id="nav-projects" class="nav-btn" type="button">Past Research</button>
@@ -110,6 +111,7 @@
           </form>
           <section id="tm-status" class="status" hidden></section>
           <ul id="tm-results" class="tool-results"></ul>
+          <div id="tm-recent" class="tool-recent" hidden></div>
         </section>
 
         <!-- Appraisal tool -->
@@ -122,6 +124,7 @@
           </form>
           <section id="ap-status" class="status" hidden></section>
           <div id="ap-result" class="appraisal-result" hidden></div>
+          <div id="ap-recent" class="tool-recent" hidden></div>
         </section>
       </div>
       </div>

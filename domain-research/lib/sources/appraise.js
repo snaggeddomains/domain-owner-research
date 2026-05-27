@@ -1,7 +1,6 @@
 import { fetchJson, normalizeDomain, isValidDomain } from '../util.js';
 
 const BASE = 'https://appraise.net/api/v1';
-const delay = (ms) => new Promise((r) => setTimeout(r, ms));
 
 function headers(env) {
   return {
@@ -11,58 +10,51 @@ function headers(env) {
   };
 }
 
-// Premium (paid) — Appraise.net AI valuation. Tries an existing/cached appraisal
-// first (cheaper), then creates one; handles a sync result or an async job.
-// Valuation is supporting context (marketability / holder type), not ownership.
+const hasResult = (o) =>
+  o && (o.appraisal || o.result || o.value != null || o.estimated_value != null || o.value_range || o.range || o.low_value != null);
+
+// Premium (paid) — Appraise.net AI valuation. Tries an existing/cached appraisal,
+// else creates one; async jobs return a job_id that the caller polls (pass
+// job_id back to fetch status). Valuation is supporting context, not ownership.
 export default {
   name: 'appraise_lookup',
   description:
-    'Appraise.net domain valuation (premium). Returns an AI-powered appraisal (estimated value and rationale) ' +
-    'for the domain. Use as supporting context on marketability and likely holder type (e.g. investor vs operator) ' +
-    '— it does NOT establish ownership.',
-  parameters: { type: 'object', properties: { domain: { type: 'string' } }, required: ['domain'] },
+    'Appraise.net domain valuation (premium). Returns an AI appraisal: value range, confidence, type, certificate ' +
+    'URL, and strengths/weaknesses. Supporting context on marketability and likely holder type — not ownership.',
+  parameters: {
+    type: 'object',
+    properties: {
+      domain: { type: 'string' },
+      job_id: { type: 'string', description: 'Poll an in-progress appraisal job instead of starting a new one' },
+    },
+  },
   requiresKey: ['APPRAISE_NET_KEY', 'APPRAISE_NET_SECRET'],
-  async run({ domain }, { env }) {
-    const d = normalizeDomain(domain);
-    if (!isValidDomain(d)) throw new Error(`Invalid domain: ${domain}`);
+  async run({ domain, job_id }, { env }) {
     const h = headers(env);
 
-    // 1) Existing appraisal (cached / cheap).
+    // Poll an in-progress job's status (raw — caller detects completion).
+    if (job_id) {
+      const st = await fetchJson(`${BASE}/appraisal/status/${encodeURIComponent(job_id)}`, { headers: h });
+      return { job_id, ...st };
+    }
+
+    const d = normalizeDomain(domain);
+    if (!isValidDomain(d)) throw new Error(`Invalid domain: ${domain}`);
+
+    // Existing / cached appraisal first (cheaper).
     try {
       const existing = await fetchJson(`${BASE}/appraisal/${encodeURIComponent(d)}`, { headers: h });
-      if (existing) return { domain: d, cached: true, appraisal: existing };
+      if (existing) return { domain: d, cached: true, appraisal: existing.appraisal || existing.result || existing };
     } catch (e) {
-      // 404 = none yet; fall through to create. Other errors also fall through.
+      /* 404 = none yet; fall through to create */
     }
 
-    // 2) Create a new appraisal (may be sync or an async job).
-    const created = await fetchJson(`${BASE}/appraisal`, {
-      method: 'POST',
-      headers: h,
-      body: JSON.stringify({ domain: d }),
-    });
-
-    const looksDone = created && (created.estimated_value != null || created.value != null || created.appraisal || created.result);
-    if (looksDone) return { domain: d, cached: false, appraisal: created.appraisal || created.result || created };
-
+    // Create a new appraisal — sync result or an async job to poll.
+    const created = await fetchJson(`${BASE}/appraisal`, { method: 'POST', headers: h, body: JSON.stringify({ domain: d }) });
+    if (hasResult(created)) return { domain: d, cached: false, appraisal: created.appraisal || created.result || created };
     const jobId = created && (created.job_id || created.jobId || created.id);
-    if (jobId) {
-      for (let i = 0; i < 8; i++) {
-        await delay(2000);
-        try {
-          const st = await fetchJson(`${BASE}/appraisal/status/${encodeURIComponent(jobId)}`, { headers: h });
-          const status = String((st && (st.status || st.state)) || '').toLowerCase();
-          if (st && (st.result || st.appraisal) || /complete|done|success|finished/.test(status)) {
-            return { domain: d, cached: false, job_id: jobId, appraisal: (st && (st.result || st.appraisal)) || st };
-          }
-          if (/fail|error|cancel/.test(status)) return { domain: d, job_id: jobId, error: `appraisal job ${status}` };
-        } catch (e) {
-          /* keep polling */
-        }
-      }
-      return { domain: d, status: 'pending', job_id: jobId, note: 'Appraisal still processing — try again shortly.' };
-    }
-
+    if (jobId) return { domain: d, status: 'pending', job_id: jobId };
     return { domain: d, appraisal: created };
   },
 };
+

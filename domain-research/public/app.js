@@ -33,15 +33,50 @@ const els = {
   recentList: $('recent-list'),
   navTrademark: $('nav-trademark'),
   navAppraisal: $('nav-appraisal'),
+  navToggle: $('nav-toggle'),
+  nav: $('nav'),
   tmForm: $('tm-form'),
   tmQuery: $('tm-query'),
   tmStatus: $('tm-status'),
   tmResults: $('tm-results'),
+  tmRecent: $('tm-recent'),
   apForm: $('ap-form'),
   apDomain: $('ap-domain'),
   apStatus: $('ap-status'),
   apResult: $('ap-result'),
+  apRecent: $('ap-recent'),
 };
+
+// Cache recent tool lookups in the browser so they're one click away (and
+// re-opening a cached result costs no credits).
+function loadRecents(kind) {
+  try { return JSON.parse(localStorage.getItem(`recent_${kind}`) || '[]'); } catch { return []; }
+}
+function saveRecent(kind, key, data) {
+  const list = loadRecents(kind).filter((r) => r.key !== key);
+  list.unshift({ key, data, ts: Date.now() });
+  try { localStorage.setItem(`recent_${kind}`, JSON.stringify(list.slice(0, 5))); } catch {}
+}
+function renderToolRecent(el, kind, onPick) {
+  const list = loadRecents(kind);
+  if (!list.length) { el.hidden = true; return; }
+  el.hidden = false;
+  el.innerHTML =
+    '<div class="recent-title">Recent</div><ul class="recent-list">' +
+    list
+      .map(
+        (r) =>
+          `<li class="recent-run" data-key="${escapeHtml(r.key)}"><span class="recent-domain">${escapeHtml(r.key)}</span><span class="recent-when">${escapeHtml(new Date(r.ts).toLocaleString())}</span></li>`,
+      )
+      .join('') +
+    '</ul>';
+  el.querySelectorAll('.recent-run').forEach((li) => {
+    li.addEventListener('click', () => {
+      const hit = loadRecents(kind).find((r) => r.key === li.dataset.key);
+      if (hit) onPick(hit.key, hit.data);
+    });
+  });
+}
 
 const POLL_MS = 2500;
 let pollTimer = null;
@@ -541,7 +576,70 @@ const pick = (o, keys) => {
   return '';
 };
 
-async function runTrademark(q) {
+// Resolve a value (object/array/scalar) to a display string.
+function resolve(v) {
+  if (v == null) return '';
+  if (typeof v === 'string' || typeof v === 'number') return String(v);
+  if (Array.isArray(v)) return v.map(resolve).filter(Boolean).join(', ');
+  if (typeof v === 'object') {
+    for (const k of ['label', 'status', 'name', 'text', 'value', 'code', 'type', 'description', 'title']) {
+      if (v[k] != null && typeof v[k] !== 'object') return String(v[k]);
+    }
+  }
+  return '';
+}
+const pickr = (o, keys) => { for (const k of keys) { const r = resolve(o && o[k]); if (r) return r; } return ''; };
+function statusBucket(s) {
+  const t = String(s || '').toLowerCase();
+  if (/abandon|dead|cancel|expired|withdrawn/.test(t)) return 'abandoned';
+  if (/regist|\blive\b|active/.test(t)) return 'active';
+  if (/pend|filed|review|allow|examin|published/.test(t)) return 'pending';
+  return '';
+}
+// Domain → SLD for trademark queries (percent.ai → percent).
+function toSld(input) {
+  const s = String(input || '').trim().toLowerCase();
+  if (/^[a-z0-9-]+(\.[a-z0-9.-]+)+$/.test(s)) return s.replace(/^www\./, '').split('.')[0];
+  return s;
+}
+
+// ── Trademark tool ──
+const tmPick = (key, cached) => { els.tmQuery.value = key; showTrademarks(key, cached); };
+function renderTrademarks(items) {
+  return items
+    .map((o) => {
+      const mark = escapeHtml(pickr(o, ['mark', 'markText', 'wordmark', 'text', 'name', 'title', 'keyword', 'markLiteral', 'literalElement', 'mark_name']) || '(mark)');
+      const owner = escapeHtml(pickr(o, ['owner', 'applicant', 'ownerName', 'owner_name', 'holder', 'applicantName']));
+      const statusStr = pickr(o, ['status', 'statusType', 'markStatus', 'statusLabel', 'status_label']);
+      const bucket = statusBucket(statusStr);
+      const classes = escapeHtml(pickr(o, ['classes', 'niceClasses', 'internationalClasses', 'intlClasses', 'class', 'classifications', 'classCodes']));
+      const filed = escapeHtml(pickr(o, ['filingDate', 'filing_date', 'applicationDate', 'dateFiled', 'filed']));
+      const reg = escapeHtml(pickr(o, ['registrationDate', 'registration_date', 'dateRegistered']));
+      const serial = escapeHtml(pickr(o, ['serialNumber', 'serial', 'serial_number']));
+      const badge = bucket
+        ? `<span class="tm-badge ${bucket}">${escapeHtml(bucket)}</span>`
+        : statusStr
+          ? `<span class="tm-badge">${escapeHtml(statusStr)}</span>`
+          : '';
+      const meta = [owner && `Owner: ${owner}`, classes && `Class ${classes}`, filed && `Filed: ${filed}`, reg && `Reg: ${reg}`, serial && `SN ${serial}`]
+        .filter(Boolean)
+        .join(' · ');
+      const raw = escapeHtml(JSON.stringify(o, null, 2).slice(0, 1800));
+      return `<li class="tool-item"><div class="tm-head"><span class="tool-title">${mark}</span>${badge}</div>${meta ? `<div class="tool-meta">${meta}</div>` : ''}<details class="src-detail"><summary>raw</summary><pre>${raw}</pre></details></li>`;
+    })
+    .join('');
+}
+function showTrademarks(q, items) {
+  setToolStatus(
+    els.tmStatus,
+    items && items.length
+      ? `${items.length} mark(s) for "${q}" — screening only, not legal clearance.`
+      : `No trademarks found for "${q}".`,
+  );
+  els.tmResults.innerHTML = items && items.length ? renderTrademarks(items) : '';
+}
+async function runTrademark(input) {
+  const q = toSld(input);
   els.tmResults.innerHTML = '';
   setToolStatus(els.tmStatus, `Searching trademarks for "${q}"…`);
   try {
@@ -549,46 +647,101 @@ async function runTrademark(q) {
     const data = await res.json();
     if (!data.ok) throw new Error(data.error || `Failed (${res.status})`);
     const items = (data.data && data.data.trademarks) || [];
-    setToolStatus(els.tmStatus, items.length ? '' : 'No trademarks found.');
-    els.tmResults.innerHTML = items
-      .map((o) => {
-        const mark = escapeHtml(pick(o, ['mark', 'markText', 'wordmark', 'text', 'name', 'title']) || '(mark)');
-        const owner = escapeHtml(pick(o, ['owner', 'applicant', 'ownerName', 'owner_name', 'holder', 'applicantName']));
-        const status = escapeHtml(pick(o, ['status', 'statusType', 'markStatus']));
-        const filed = escapeHtml(pick(o, ['filingDate', 'filing_date', 'applicationDate', 'dateFiled', 'filed']));
-        const reg = escapeHtml(pick(o, ['registrationDate', 'registration_date', 'dateRegistered']));
-        const office = escapeHtml(String(pick(o, ['office']) || '').toUpperCase());
-        const meta = [owner && `Owner: ${owner}`, status && `Status: ${status}`, filed && `Filed: ${filed}`, reg && `Reg: ${reg}`, office]
-          .filter(Boolean)
-          .join(' · ');
-        const raw = escapeHtml(JSON.stringify(o, null, 2).slice(0, 1800));
-        return `<li class="tool-item"><div class="tool-title">${mark}</div>${meta ? `<div class="tool-meta">${meta}</div>` : ''}<details class="src-detail"><summary>raw</summary><pre>${raw}</pre></details></li>`;
-      })
-      .join('');
+    showTrademarks(q, items);
+    saveRecent('tm', q, items);
+    renderToolRecent(els.tmRecent, 'tm', tmPick);
   } catch (e) {
     setToolStatus(els.tmStatus, e.message || String(e), true);
   }
 }
 
-async function runAppraisal(domain) {
+// ── Appraisal tool ──
+const apPick = (key, cached) => { els.apDomain.value = key; setToolStatus(els.apStatus, ''); renderAppraisal(key, cached); };
+function fmtMoney(v) {
+  if (v == null || v === '') return '';
+  const n = Number(String(v).replace(/[^0-9.]/g, ''));
+  return isFinite(n) && n > 0 ? `$${n.toLocaleString()}` : String(v);
+}
+function appraisalRange(a) {
+  const r = a.value_range || a.range || a.valueRange;
+  if (r && typeof r === 'object') {
+    const lo = r.low ?? r.min ?? r.from;
+    const hi = r.high ?? r.max ?? r.to;
+    if (lo != null || hi != null) return [fmtMoney(lo), fmtMoney(hi)].filter(Boolean).join(' – ');
+  }
+  if (typeof r === 'string') return r;
+  const lo = a.low_value ?? a.low ?? a.min_value;
+  const hi = a.high_value ?? a.high ?? a.max_value;
+  if (lo != null || hi != null) return [fmtMoney(lo), fmtMoney(hi)].filter(Boolean).join(' – ');
+  const v = pickr(a, ['estimated_value', 'value', 'valuation', 'price', 'fair_market_value', 'estimate']);
+  return v ? fmtMoney(v) : '';
+}
+function renderAppraisal(domain, a) {
+  const range = appraisalRange(a);
+  const conf = pickr(a, ['confidence', 'confidence_level', 'confidenceLabel']);
+  const type = pickr(a, ['type', 'domain_type', 'appraisal_type', 'category']);
+  const cert = pickr(a, ['certificate_url', 'certificate', 'certificateUrl', 'url', 'cert_url']);
+  const title = pickr(a, ['title']);
+  const rows = [
+    range && `<div class="ap-value">${escapeHtml(range)}</div>`,
+    conf && `<div class="ap-field"><span>Confidence</span> ${escapeHtml(conf)}</div>`,
+    type && `<div class="ap-field"><span>Type</span> ${escapeHtml(type)}</div>`,
+    title && `<div class="ap-field"><span>Title</span> ${escapeHtml(title)}</div>`,
+    cert && `<div class="ap-field"><span>Certificate</span> <a href="${escapeHtml(cert)}" target="_blank" rel="noopener">view</a></div>`,
+  ]
+    .filter(Boolean)
+    .join('');
+  const block = (arr, label) =>
+    Array.isArray(arr) && arr.length
+      ? `<div class="ap-block"><h3>${label}</h3><ul>${arr.map((x) => `<li>${escapeHtml(resolve(x) || x)}</li>`).join('')}</ul></div>`
+      : '';
+  const raw = escapeHtml(JSON.stringify(a, null, 2).slice(0, 4000));
+  els.apResult.hidden = false;
+  els.apResult.innerHTML =
+    `<div class="tool-title">${escapeHtml(domain)}</div>` +
+    (rows || '<div class="muted">No value fields recognized — see the raw appraisal below.</div>') +
+    block(a.strengths || a.pros, 'Strengths') +
+    block(a.weaknesses || a.cons || a.knocks, 'Main knocks') +
+    `<details class="src-detail"><summary>full appraisal</summary><pre>${raw}</pre></details>`;
+}
+function finishAppraisal(domain, a) {
+  setToolStatus(els.apStatus, '');
+  renderAppraisal(domain, a);
+  saveRecent('ap', domain, a);
+  renderToolRecent(els.apRecent, 'ap', apPick);
+}
+async function pollAppraisal(domain, jobId) {
+  const started = Date.now();
+  for (let i = 0; i < 40; i++) {
+    setToolStatus(els.apStatus, `Appraising ${domain}… (${Math.round((Date.now() - started) / 1000)}s)`);
+    await new Promise((r) => setTimeout(r, 3000));
+    try {
+      const res = await fetch(`/api/lookup?source=appraise_lookup&job_id=${encodeURIComponent(jobId)}`);
+      const data = await res.json();
+      const st = (data && data.data) || {};
+      const statusStr = String(st.status || st.state || '');
+      if (appraisalRange(st) || st.appraisal || st.result || /complete|done|success|finished/i.test(statusStr)) {
+        finishAppraisal(domain, st.appraisal || st.result || st);
+        return;
+      }
+      if (/fail|error|cancel/i.test(statusStr)) { setToolStatus(els.apStatus, `Appraisal ${statusStr}.`, true); return; }
+    } catch (e) { /* keep polling */ }
+  }
+  setToolStatus(els.apStatus, 'Still processing — try again shortly.', true);
+}
+async function runAppraisal(domainInput) {
+  const domain = String(domainInput || '').trim();
   els.apResult.hidden = true;
   els.apResult.innerHTML = '';
-  setToolStatus(els.apStatus, `Appraising ${domain}… (a new appraisal can take a few seconds)`);
+  setToolStatus(els.apStatus, `Appraising ${domain}…`);
   try {
     const res = await fetch(`/api/lookup?source=appraise_lookup&domain=${encodeURIComponent(domain)}`);
     const data = await res.json();
     if (!data.ok) throw new Error(data.error || `Failed (${res.status})`);
     const d = data.data || {};
-    const a = d.appraisal || d;
-    const value = pick(a, ['estimated_value', 'value', 'appraisal_value', 'price', 'estimate', 'valuation', 'fair_market_value']);
-    setToolStatus(els.apStatus, '');
-    els.apResult.hidden = false;
-    const head = value
-      ? `<div class="ap-value">${escapeHtml(String(value))}</div>`
-      : '<div class="muted">No headline value field found — see the full appraisal below.</div>';
-    const note = d.status === 'pending' ? `<div class="muted">${escapeHtml(d.note || 'Still processing.')}</div>` : '';
-    const raw = escapeHtml(JSON.stringify(a, null, 2).slice(0, 4000));
-    els.apResult.innerHTML = `<div class="tool-title">${escapeHtml(domain)}</div>${head}${note}<details class="src-detail"><summary>full appraisal</summary><pre>${raw}</pre></details>`;
+    if (d.appraisal) finishAppraisal(domain, d.appraisal);
+    else if (d.job_id) await pollAppraisal(domain, d.job_id);
+    else finishAppraisal(domain, d);
   } catch (e) {
     setToolStatus(els.apStatus, e.message || String(e), true);
   }
@@ -647,10 +800,18 @@ els.form?.addEventListener('submit', (e) => {
 els.deepenBtn?.addEventListener('click', deepen);
 els.deepenTopBtn?.addEventListener('click', deepen);
 els.exportPdf?.addEventListener('click', () => window.print());
+// Mobile hamburger
+function closeNav() { els.nav?.classList.remove('open'); els.navToggle?.setAttribute('aria-expanded', 'false'); }
+els.navToggle?.addEventListener('click', () => {
+  const open = els.nav.classList.toggle('open');
+  els.navToggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+});
+els.nav?.addEventListener('click', (e) => { if (e.target.closest('.nav-btn')) closeNav(); });
+
 els.navResearch?.addEventListener('click', showEntry);
-els.homeLink?.addEventListener('click', (e) => { e.preventDefault(); showEntry(); });
-els.navTrademark?.addEventListener('click', () => showView('trademark'));
-els.navAppraisal?.addEventListener('click', () => showView('appraisal'));
+els.homeLink?.addEventListener('click', (e) => { e.preventDefault(); closeNav(); showEntry(); });
+els.navTrademark?.addEventListener('click', () => { showView('trademark'); renderToolRecent(els.tmRecent, 'tm', tmPick); });
+els.navAppraisal?.addEventListener('click', () => { showView('appraisal'); renderToolRecent(els.apRecent, 'ap', apPick); });
 els.tmForm?.addEventListener('submit', (e) => { e.preventDefault(); const q = els.tmQuery.value.trim(); if (q) runTrademark(q); });
 els.apForm?.addEventListener('submit', (e) => { e.preventDefault(); const v = els.apDomain.value.trim(); if (v) runAppraisal(v); });
 els.navProjects?.addEventListener('click', () => showView('projects'));
