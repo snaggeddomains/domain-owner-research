@@ -81,16 +81,27 @@ export default {
       }
     }
 
-    // Read the most promising pages, but Quora/LinkedIn are usually JS-walled to
-    // a plain fetch — so try several and keep the ones that actually returned
-    // content (forum posts, blogs, about pages are typically readable).
-    const ranked = results.filter((r) => !MAJOR.test(r.url)).slice(0, 8);
+    // Read THIRD-PARTY identity pages only. Skip the portfolio's own domain
+    // (its listing pages are marketplace templates that never name the seller)
+    // and the major marketplaces; prioritise forums/Q&A/profiles/interviews that
+    // might actually name the operator (NamePros reads fine; Quora/LinkedIn are
+    // often JS-walled, flagged blocked:true — then rely on the snippet).
+    const dHost = dom ? dom.replace(/^www\./, '') : '';
+    const IDENTITY = /namepros\.com|quora\.com|linkedin\.com|crunchbase\.com|twitter\.com|x\.com|\babout\b|interview|founder|owner|profile/i;
+    const candidates = results.filter((r) => {
+      const host = (() => { try { return new URL(r.url).hostname.replace(/^www\./, ''); } catch { return ''; } })();
+      return host && host !== dHost && !MAJOR.test(r.url);
+    });
+    const ranked = [
+      ...candidates.filter((r) => IDENTITY.test(`${r.url} ${r.title}`)),
+      ...candidates.filter((r) => !IDENTITY.test(`${r.url} ${r.title}`)),
+    ].slice(0, 10);
     const pages = [];
     for (const t of ranked) {
       if (pages.filter((p) => !p.blocked).length >= 4) break;
       try {
-        const p = await readurl.run({ url: t.url });
-        pages.push({ url: p.url, title: p.title, blocked: !!p.blocked, text: String(p.text || '').slice(0, 2500) });
+        const p = await readurl.run({ url: t.url }, { env });
+        pages.push({ url: p.url, title: p.title, blocked: !!p.blocked, rendered: !!p.rendered, text: String(p.text || '').slice(0, 2500) });
       } catch {
         /* skip unreadable */
       }

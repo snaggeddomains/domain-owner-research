@@ -474,12 +474,26 @@ function renderSummary(d) {
     };
     const list = (arr) => `<ul class="contacts">${arr.map(contactLi).join('')}</ul>`;
     const isPrimary = (c) => String((c && c.tier) || '').toLowerCase() === 'primary';
+    // Consolidated contact card for the primary target: name as a heading, org
+    // beneath, then the email/phone/profile rows — one easy-to-consume block.
+    const card = (arr) => {
+      const order = { name: 0, org: 1, email: 2, phone: 3, social: 4 };
+      const sorted = arr.slice().sort((a, b) => (order[a.type] ?? 9) - (order[b.type] ?? 9));
+      const nameC = sorted.find((c) => c.type === 'name');
+      const orgC = sorted.find((c) => c.type === 'org');
+      const rest = sorted.filter((c) => c !== nameC && c !== orgC);
+      let h = '<div class="contact-card">';
+      if (nameC) h += `<div class="cc-name">${isUsefulClue(nameC) ? `<span class="clue">${e(nameC.value)}</span>` : e(nameC.value)}</div>`;
+      if (orgC) h += `<div class="cc-org">${linkify(orgC)}${orgC.note ? ` <span class="muted">— ${e(orgC.note)}</span>` : ''}</div>`;
+      if (rest.length) h += list(rest);
+      return h + '</div>';
+    };
     // Group into the primary target vs. other (secondary/tertiary/untagged)
     // leads when the report tags tiers; otherwise show one flat list.
     if (contacts.some(isPrimary)) {
       const primary = contacts.filter(isPrimary);
       const other = contacts.filter((c) => !isPrimary(c));
-      html += `<div class="sum-block"><h3>Primary target — how to reach the likely owner</h3>${list(primary)}</div>`;
+      html += `<div class="sum-block"><h3>Primary target — how to reach the likely owner</h3>${card(primary)}</div>`;
       if (other.length) html += `<div class="sum-block"><h3>Other &amp; historical leads</h3>${list(other)}</div>`;
     } else {
       html += `<div class="sum-block"><h3>Key contacts</h3>${list(contacts)}</div>`;

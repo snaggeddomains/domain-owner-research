@@ -305,6 +305,11 @@ button:disabled { opacity: .55; cursor: progress; }
 .contacts, .timeline { list-style: none; margin: 0; padding: 0; display: grid; gap: 7px; }
 .contacts li { font-family: var(--system); font-size: .95rem; color: var(--navy); }
 .contacts .ctype { display: inline-block; min-width: 54px; font-size: .72rem; font-weight: 700; text-transform: uppercase; color: var(--navy-3); letter-spacing: .04em; }
+/* Consolidated primary-target contact card */
+.contact-card { padding: 14px 16px; background: var(--cream); border: 1.5px solid var(--line); border-radius: var(--radius-sm); }
+.contact-card .cc-name { font-family: var(--body); font-weight: 800; font-size: 1.15rem; color: var(--navy); }
+.contact-card .cc-org { font-size: .95rem; color: var(--navy-2); margin: 2px 0 10px; }
+.contact-card .contacts { gap: 6px; }
 .cpath { margin: 0; padding-left: 20px; display: grid; gap: 5px; font-family: var(--system); font-size: .95rem; color: var(--navy); }
 .timeline li { display: flex; gap: 12px; font-family: var(--system); font-size: .95rem; min-width: 0; }
 .timeline .tl-date { flex: none; width: 120px; font-weight: 700; color: var(--coral-deep); font-variant-numeric: tabular-nums; }

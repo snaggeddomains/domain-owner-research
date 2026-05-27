@@ -27,26 +27,54 @@ export default {
     'Fetch one web page and return its readable text (title + main content) so you can READ it rather than rely on ' +
     "a search snippet — e.g. open a Quora / LinkedIn / NameBio / seller-portfolio page to extract the owner's real " +
     'name, email, or a sale detail. Provide the full http(s) URL. Pairs with web_search/brave_search: search, then ' +
-    'read the most promising result.',
+    'read the most promising result. Auto-retries JS/bot-walled pages (Quora, LinkedIn) with rendering when available.',
   parameters: {
     type: 'object',
     properties: { url: { type: 'string', description: 'Full http(s) URL to fetch' } },
     required: ['url'],
   },
-  async run({ url }) {
+  async run({ url }, ctx = {}) {
     if (!/^https?:\/\//i.test(String(url || ''))) throw new Error('Provide a full http(s) URL');
+    const env = ctx.env || process.env || {};
+    const isBlocked = (t) =>
+      String(t).length < 600 &&
+      /just a moment|enable javascript|attention required|verify you are human|captcha|cf-browser-verification|access denied|are you a robot|please enable cookies/i.test(t);
+    const titleOf = (html) => {
+      const m = (html || '').match(/<title[^>]*>([\s\S]*?)<\/title>/i);
+      return m ? m[1].replace(/\s+/g, ' ').trim().slice(0, 200) : '';
+    };
+
     const resp = await fetchText(url, {}, 10000);
-    const titleM = (resp.body || '').match(/<title[^>]*>([\s\S]*?)<\/title>/i);
-    const text = htmlToText(resp.body).slice(0, 6000);
-    // Many JS-heavy sites (Quora, LinkedIn) serve a bot-wall / JS challenge to a
-    // plain fetch — flag it so the caller doesn't mistake the stub for content.
-    const blocked = text.length < 600 && /just a moment|enable javascript|attention required|verify you are human|captcha|cf-browser-verification|access denied|are you a robot|please enable cookies/i.test(text);
+    let title = titleOf(resp.body);
+    let text = htmlToText(resp.body).slice(0, 6000);
+    let blocked = isBlocked(text);
+    let rendered = false;
+
+    // Fallback: if a plain fetch is bot-walled (Quora/LinkedIn) and Scrape.do is
+    // configured, re-fetch with JS rendering to get the real content.
+    if (blocked && env.SCRAPE_DO_API_KEY) {
+      try {
+        const api = `https://api.scrape.do/?token=${encodeURIComponent(env.SCRAPE_DO_API_KEY)}&render=true&url=${encodeURIComponent(url)}`;
+        const r2 = await fetchText(api, {}, 22000);
+        const t2 = htmlToText(r2.body).slice(0, 6000);
+        if (t2 && !isBlocked(t2) && t2.length > text.length) {
+          text = t2;
+          title = titleOf(r2.body) || title;
+          blocked = false;
+          rendered = true;
+        }
+      } catch {
+        /* keep the original blocked result */
+      }
+    }
+
     return {
       url,
       status: resp.status,
       blocked,
-      title: titleM ? titleM[1].replace(/\s+/g, ' ').trim().slice(0, 200) : '',
-      text: blocked ? '(page is JS/bot-walled — could not read server-side; rely on the search snippet instead)' : text,
+      rendered,
+      title,
+      text: blocked ? '(page is JS/bot-walled — could not read even with rendering; rely on the search snippet instead)' : text,
     };
   },
 };
