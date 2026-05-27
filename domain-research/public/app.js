@@ -784,24 +784,49 @@ function usptoLink(o) {
   if (regno) return `https://tsdr.uspto.gov/#caseNumber=${regno}&caseType=US_REGISTRATION_NO&searchType=statusSearch`;
   return '';
 }
+// Repair mojibake (UTF-8 bytes mis-decoded as Latin-1, e.g. "IndÃºstria" ->
+// "Indústria") that some USPTO/Signa records carry. Only touches strings with
+// the tell-tale Ã/Â + continuation-byte pattern, so clean text is left alone.
+function fixText(s) {
+  s = String(s == null ? '' : s);
+  if (!/[ÃÂ][-¿]/.test(s)) return s;
+  try {
+    const bytes = Uint8Array.from(Array.from(s, (c) => c.charCodeAt(0) & 0xff));
+    return new TextDecoder('utf-8', { fatal: false }).decode(bytes);
+  } catch {
+    return s;
+  }
+}
 function renderTrademarks(items) {
   return items
     .map((o) => {
-      const mark = escapeHtml(o.mark_text || pickr(o, ['mark', 'markText', 'text', 'name']) || '(mark)');
-      const owner = escapeHtml(o.owner_name || pickr(o, ['owner', 'applicant', 'ownerName']));
+      const mark = escapeHtml(fixText(o.mark_text || pickr(o, ['mark', 'markText', 'text', 'name']) || '(mark)'));
+      const owner = escapeHtml(fixText(o.owner_name || pickr(o, ['owner', 'applicant', 'ownerName'])));
       const si = tmStatusInfo(o.status);
       const classes = tmClasses(o);
-      const classStr = classes.length ? `Class ${classes.join(', ')}` : '';
-      const filed = escapeHtml(o.filing_date || '');
-      const reg = escapeHtml(o.registration_date || '');
-      const rn = escapeHtml(o.registration_number || '');
       const badge = `<span class="tm-badge ${si.bucket}">${escapeHtml(si.label)}</span>`;
       const ch = (si.challenges || []).length ? `<span class="tm-chip">${escapeHtml(si.challenges.join(', ').replace(/_/g, ' '))}</span>` : '';
-      const meta = [owner && `Owner: ${owner}`, classStr, filed && `Filed: ${filed}`, reg && `Reg: ${reg}`, rn && `RN ${rn}`].filter(Boolean).join(' · ');
+      const fields = [
+        classes.length && ['Class', escapeHtml(classes.join(', '))],
+        o.filing_date && ['Filed', escapeHtml(o.filing_date)],
+        o.registration_date && ['Registered', escapeHtml(o.registration_date)],
+        o.registration_number && ['Reg. no', escapeHtml(o.registration_number)],
+      ]
+        .filter(Boolean)
+        .map(([k, v]) => `<div class="tm-field"><dt>${k}</dt><dd>${v}</dd></div>`)
+        .join('');
       const link = usptoLink(o);
       const linkHtml = link ? `<a class="tm-link" href="${escapeHtml(link)}" target="_blank" rel="noopener">USPTO listing ↗</a>` : '';
       const raw = escapeHtml(JSON.stringify(o, null, 2).slice(0, 1800));
-      return `<li class="tool-item"><div class="tm-head"><span class="tool-title">${mark}</span>${badge}${ch}</div>${meta ? `<div class="tool-meta">${meta}</div>` : ''}${linkHtml ? `<div class="tm-actions">${linkHtml}</div>` : ''}<details class="src-detail"><summary>raw</summary><pre>${raw}</pre></details></li>`;
+      return (
+        `<li class="tool-item tm-item">` +
+        `<div class="tm-head"><span class="tool-title">${mark}</span>${badge}${ch}</div>` +
+        (owner ? `<div class="tm-owner">${owner}</div>` : '') +
+        (fields ? `<dl class="tm-fields">${fields}</dl>` : '') +
+        (linkHtml ? `<div class="tm-actions">${linkHtml}</div>` : '') +
+        `<details class="src-detail"><summary>raw</summary><pre>${raw}</pre></details>` +
+        `</li>`
+      );
     })
     .join('');
 }

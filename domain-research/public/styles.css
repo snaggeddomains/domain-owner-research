@@ -109,10 +109,17 @@ a.wordmark:hover { text-decoration: none; opacity: .9; }
 .appraisal-result { margin-top: 16px; }
 .tool-title { font-family: var(--body); font-weight: 800; font-size: 1.05rem; color: var(--navy); overflow-wrap: anywhere; }
 .tool-meta { color: var(--navy-2); font-size: .9rem; margin-top: 4px; overflow-wrap: anywhere; }
-.tm-actions { margin-top: 8px; }
+.tm-actions { margin-top: 10px; }
 .tm-link { display: inline-flex; align-items: center; gap: 4px; font-size: .82rem; font-weight: 700; color: var(--teal-deep); text-decoration: none; padding: 4px 10px; border: 1.5px solid var(--line); border-radius: 999px; }
 .tm-link:hover { border-color: var(--coral); }
 .tm-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+/* Structured, skimmable trademark result */
+.tm-item { padding: 16px 18px; }
+.tm-owner { margin-top: 6px; font-weight: 700; color: var(--navy); overflow-wrap: anywhere; }
+.tm-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 8px 18px; margin: 12px 0 0; }
+.tm-field { display: flex; flex-direction: column; gap: 1px; }
+.tm-field dt { font-family: var(--body); font-weight: 800; font-size: .66rem; text-transform: uppercase; letter-spacing: .05em; color: var(--navy-3); }
+.tm-field dd { margin: 0; font-size: .95rem; color: var(--navy); font-variant-numeric: tabular-nums; }
 .tm-badge { font-family: var(--body); font-weight: 700; font-size: .72rem; text-transform: uppercase; letter-spacing: .04em; padding: 3px 10px; border-radius: 999px; border: 1.5px solid var(--line); color: var(--navy-2); }
 .tm-badge.active { background: rgba(47,163,107,.12); color: #1f7a4d; border-color: #2fa36b; }
 .tm-badge.pending { background: rgba(217,154,60,.16); color: #8a5a12; border-color: var(--gold); }
