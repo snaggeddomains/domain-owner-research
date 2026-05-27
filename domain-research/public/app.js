@@ -66,10 +66,13 @@ function saveRecent(kind, key, data) {
   serverSaveTool(kind, key, data);
 }
 const TOOL_PATH = { tm: 'trademark', ap: 'appraisal' };
+const TOOL_LABEL = { tm: 'trademark searches', ap: 'appraisals' };
+// Per-tool history view state (collapsed recent-5 vs expanded searchable list).
+const toolHistory = { tm: { all: [], expanded: false, q: '' }, ap: { all: [], expanded: false, q: '' } };
 
-async function serverListTool(kind) {
+async function serverListTool(kind, limit = 5) {
   try {
-    const res = await fetch(`/api/tool-history?kind=${kind}`);
+    const res = await fetch(`/api/tool-history?kind=${kind}&limit=${limit}`);
     if (!res.ok) return null;
     const d = await res.json();
     if (!Array.isArray(d.lookups)) return null;
@@ -94,26 +97,58 @@ function serverSaveTool(kind, key, data) {
   } catch { /* ignore */ }
 }
 
-// Recent-5 under the tool search: server history first, localStorage fallback.
-// Clicking an item navigates to its deeplink (which loads the saved result).
+// Tool history shown at the BOTTOM of the tool page: recent 5 collapsed, with a
+// "Show all … " link (when >5) that expands into a searchable full list. Server-
+// backed, with localStorage as the offline fallback.
 async function refreshToolRecent(el, kind) {
   if (!el) return;
-  const server = await serverListTool(kind);
+  const server = await serverListTool(kind, 200);
   const list = server && server.length ? server : loadRecents(kind).map((r) => ({ key: r.key, ts: r.ts }));
-  if (!list.length) { el.hidden = true; el.innerHTML = ''; return; }
+  toolHistory[kind].all = list;
+  renderToolHistory(el, kind);
+}
+function renderToolHistory(el, kind) {
+  const st = toolHistory[kind];
+  const all = st.all || [];
+  if (!all.length) { el.hidden = true; el.innerHTML = ''; return; }
   el.hidden = false;
+  const tool = TOOL_PATH[kind];
+  const label = TOOL_LABEL[kind];
+  const item = (r) =>
+    `<li class="recent-run" data-key="${escapeHtml(r.key)}"><span class="recent-domain">${escapeHtml(r.key)}</span><span class="recent-when">${escapeHtml(r.ts ? new Date(r.ts).toLocaleString() : '')}</span></li>`;
+  const wire = (root) =>
+    root.querySelectorAll('.recent-run').forEach((li) => {
+      li.addEventListener('click', () => { setToolUrl(tool, li.dataset.key); route(); });
+    });
+
+  if (!st.expanded) {
+    el.innerHTML =
+      `<div class="recent-title">Recent</div><ul class="recent-list">${all.slice(0, 5).map(item).join('')}</ul>` +
+      (all.length > 5 ? `<a class="show-all" href="#">Show all past ${label} &rarr;</a>` : '');
+    wire(el);
+    const sa = el.querySelector('.show-all');
+    if (sa) sa.addEventListener('click', (e) => { e.preventDefault(); st.expanded = true; renderToolHistory(el, kind); });
+    return;
+  }
+  // Expanded: persistent search input + a list container we redraw on input
+  // (so the input keeps focus while typing).
   el.innerHTML =
-    '<div class="recent-title">Recent</div><ul class="recent-list">' +
-    list
-      .map(
-        (r) =>
-          `<li class="recent-run" data-key="${escapeHtml(r.key)}"><span class="recent-domain">${escapeHtml(r.key)}</span><span class="recent-when">${escapeHtml(r.ts ? new Date(r.ts).toLocaleString() : '')}</span></li>`,
-      )
-      .join('') +
-    '</ul>';
-  el.querySelectorAll('.recent-run').forEach((li) => {
-    li.addEventListener('click', () => { setToolUrl(TOOL_PATH[kind], li.dataset.key); route(); });
-  });
+    `<div class="recent-title">All past ${label} (${all.length})</div>` +
+    `<input class="tool-history-search" type="text" placeholder="Search…" autocomplete="off" />` +
+    `<ul class="recent-list th-list"></ul>` +
+    `<a class="show-all" href="#">Show less</a>`;
+  const input = el.querySelector('.tool-history-search');
+  const ul = el.querySelector('.th-list');
+  const draw = () => {
+    const q = (input.value || '').trim().toLowerCase();
+    const filtered = q ? all.filter((r) => String(r.key).toLowerCase().includes(q)) : all;
+    ul.innerHTML = filtered.length ? filtered.map(item).join('') : '<li class="muted">No matches.</li>';
+    wire(ul);
+  };
+  input.value = st.q || '';
+  input.addEventListener('input', () => { st.q = input.value; draw(); });
+  el.querySelector('.show-all').addEventListener('click', (e) => { e.preventDefault(); st.expanded = false; st.q = ''; renderToolHistory(el, kind); });
+  draw();
 }
 
 const POLL_MS = 2500;

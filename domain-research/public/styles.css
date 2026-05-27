@@ -246,6 +246,7 @@ button:disabled { opacity: .55; cursor: progress; }
 .recent-when { font-size: 13px; color: var(--navy-3); }
 .show-all { display: inline-block; margin-top: 12px; font-family: var(--body); font-weight: 700; font-size: 13px; color: var(--teal-deep); text-decoration: none; }
 .show-all:hover { text-decoration: underline; }
+.tool-history-search { width: 100%; margin: 0 0 10px; }
 
 /* Status */
 .status { padding: 14px 16px; background: var(--cream-2); border: 2px solid var(--line); border-radius: var(--radius-sm); color: var(--navy-2); margin-bottom: 20px; box-shadow: var(--shadow-sm); }

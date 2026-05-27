@@ -45,6 +45,7 @@ export default async function handler(req, res) {
     res.status(200).json({ found: Boolean(row), data: row ? row.data : null, updated_at: row ? row.updated_at : null });
     return;
   }
-  const lookups = await listToolLookups(kind, 5);
+  const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 5, 1), 200);
+  const lookups = await listToolLookups(kind, limit);
   res.status(200).json({ lookups });
 }
