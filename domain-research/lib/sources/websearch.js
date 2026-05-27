@@ -24,17 +24,32 @@ export default {
   requiresKey: ['SERPER_API_KEY'],
   async run({ query, site }, { env }) {
     if (!query || !String(query).trim()) throw new Error('Provide a search query in "query"');
-    const q = site ? `${String(query).trim()} site:${String(site).trim()}` : String(query).trim();
-    const data = await fetchJson(ENDPOINT, {
-      method: 'POST',
-      headers: { 'X-API-KEY': env.SERPER_API_KEY, 'content-type': 'application/json' },
-      body: JSON.stringify({ q, num: 10 }),
-    });
-    const organic = Array.isArray(data && data.organic) ? data.organic : [];
-    return {
-      query: q,
-      knowledge_graph: data && data.knowledgeGraph ? data.knowledgeGraph : undefined,
-      results: organic.slice(0, 10).map((r) => ({ title: r.title, link: r.link, snippet: r.snippet })),
+    const base = String(query).trim();
+    const search = async (q) => {
+      const data = await fetchJson(ENDPOINT, {
+        method: 'POST',
+        headers: { 'X-API-KEY': env.SERPER_API_KEY, 'content-type': 'application/json' },
+        body: JSON.stringify({ q, num: 10 }),
+      });
+      const organic = Array.isArray(data && data.organic) ? data.organic : [];
+      return {
+        query: q,
+        knowledge_graph: data && data.knowledgeGraph ? data.knowledgeGraph : undefined,
+        results: organic.slice(0, 10).map((r) => ({ title: r.title, link: r.link, snippet: r.snippet })),
+      };
     };
+
+    const scoped = site ? `${base} site:${String(site).trim()}` : base;
+    try {
+      return await search(scoped);
+    } catch (e) {
+      // Serper's free plan rejects advanced operators (e.g. site:) with HTTP 400.
+      // Fall back to the site as a plain keyword so the search still runs.
+      if (site && /\b400\b|not allowed/i.test(String(e?.message || e))) {
+        const kw = String(site).trim().replace(/^www\./, '').split('.')[0];
+        return await search(`${base} ${kw}`);
+      }
+      throw e;
+    }
   },
 };
