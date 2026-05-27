@@ -40,7 +40,16 @@ export default {
     }
     if (![...q.keys()].length) throw new Error('Provide name (+company), linkedin_url, or id');
 
-    let data = await fetchJson(`${BASE}/person/lookup?${q}`, { headers });
+    let data;
+    try {
+      data = await fetchJson(`${BASE}/person/lookup?${q}`, { headers });
+    } catch (err) {
+      // A 404 "could not find the person" is a normal miss, not a failure.
+      if (/\b404\b|could not find|not found/i.test(String(err?.message || err))) {
+        return { found: false, status: 'not_found', emails: [], phones: [], note: 'RocketReach has no record for this person.' };
+      }
+      throw err;
+    }
     let status = String((data && data.status) || '').toLowerCase();
     const pid = data && (data.id || (data.profile && data.profile.id));
 
@@ -64,6 +73,7 @@ export default {
     const emails = norm(p.emails, 'email');
     const phones = norm(p.phones, 'number');
     const out = {
+      found: emails.length > 0 || phones.length > 0,
       status: (data && data.status) || status || 'unknown',
       name: p.name,
       current_title: p.current_title,
