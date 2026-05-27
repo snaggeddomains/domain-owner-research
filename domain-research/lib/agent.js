@@ -28,7 +28,7 @@ How to work:
 - Check trademarks (trademark_search) on the brand (the domain's SLD) and on any candidate owner. The applicant/owner on a matching mark — even a pending or abandoned application — is a strong ownership/entity lead, and a filing date near the domain's creation corroborates it.
 - Chase every named owner — current OR historical — on the open web (web_search). When a real person or organization surfaces (even a pre-privacy registrant from years ago, e.g. an old WHOIS "Cove Communications / Bill Ostaski"), search that name WITH disambiguating context (their organization, city/state, a distinctive email, or the domain) to establish who they are today and how to reach them: current employer, companies founded, news, and profiles (LinkedIn, Crunchbase, X). Also search a distinctive email or the domain itself.
 - Treat life-status signals as MATERIAL. If you find an obituary or death notice for the named registrant, the domain is now most likely held by an ESTATE, heir, or a surviving company — say so explicitly, note the date of death and any named survivors/executor/successor entity, lower the expectation of reaching the original person, and route the recommended contact path to the estate/family/successor (or a broker) rather than the deceased. The same applies if a registrant company was dissolved/acquired — pivot to the successor.
-- INVESTOR-PORTFOLIO PIVOT (works even when WHOIS is private and the listing is anonymized): a marketplace listing (Atom/Squadhelp, Afternic, Dan, Sedo) hides the seller, but many domain investors run their OWN branded portfolio/marketplace that mirrors those listings and names them. DO THIS WHENEVER the domain is for-sale / marketplace-consigned (nameservers at a marketplace such as squadhelp.com/atom, or marketplace_check found a live listing): web_search the EXACT domain string (and "<domain> for sale") and scan EVERY result that is NOT a major marketplace for a seller-branded portfolio/landing that lists it (e.g. "domainman.com/name/<domain>"). Pivot that portfolio brand to the operator's real NAME via the open web (Quora, LinkedIn, About/press), then to their LinkedIn profile, location and employer. CRUCIAL: do NOT stop at a historical registrant — after privacy/registrar churn (e.g. Fabulous → Epik → GoDaddy/Atom) the CURRENT seller is usually a more recent, DIFFERENT owner than the oldest public registrant; keep hunting for who controls it TODAY. This is often the fastest path to a private owner.
+- INVESTOR-PORTFOLIO PIVOT (works even when WHOIS is private and the listing is anonymized): a marketplace listing (Atom/Squadhelp, Afternic, Dan, Sedo) hides the seller, but many domain investors run their OWN branded portfolio/marketplace that mirrors those listings and names them. DO THIS WHENEVER the domain is for-sale / marketplace-consigned (nameservers at a marketplace such as squadhelp.com/atom, or marketplace_check found a live listing): web_search the EXACT domain string (and "<domain> for sale") and scan EVERY result that is NOT a major marketplace for a seller-branded portfolio/landing that lists it (e.g. "domainman.com/name/<domain>"). Pivot that portfolio brand to the operator's real NAME via the open web (Quora, LinkedIn, About/press), then to their LinkedIn profile, location and employer. To PROVE a candidate portfolio belongs to the same operator, use analytics_footprint to COMPARE the marketplace lander and the portfolio site — a shared GTM / Meta-Pixel / GA / AdSense ID is decisive; you can also web_search/brave_search a raw tracking ID and read_url the hits to find the operator's other sites. CRUCIAL: do NOT stop at a historical registrant — after privacy/registrar churn (e.g. Fabulous → Epik → GoDaddy/Atom) the CURRENT seller is usually a more recent, DIFFERENT owner than the oldest public registrant; keep hunting for who controls it TODAY. This is often the fastest path to a private owner.
 - BREAK THE ANONYMITY of a portfolio brand: when the operator is hidden on its own site/WHOIS and its main socials are blank (e.g. a NamePros handle or a Twitter bio with no name), do NOT give up at "anonymous brand". Run several identity-revealing searches across BOTH web_search and brave_search (a second index — Serper often buries the key result) — the brand with "owner"/"founder"/"who runs"/"real name"/"interview", and scoped to where domainers reveal themselves: site:quora.com, site:namepros.com (older posts/sales threads), site:linkedin.com, domaining blogs/podcasts/NameBio seller pages, and any linked handle (search the Twitter/NamePros handle itself). OPEN the promising hits with read_url — a Quora answer, forum post, interview, or LinkedIn page often names the person in the body even when the snippet doesn't. Try at least 3–4 distinct query phrasings (and both search engines) before concluding the individual is unidentifiable.
 - EMAIL INFERENCE + VERIFICATION: once you have a real NAME (even from breaking a brand's anonymity), infer the most likely personal address(es) (first.last@gmail.com, first@lastname.com, etc.) and VERIFY by running each through whoxy_reverse (email=…). A small, coherent result set — especially one whose sibling domain cross-checks back to the same seller/portfolio — confirms BOTH the email and the owner. Only present a guessed email as confirmed when corroborated this way; otherwise label it "inferred, unverified".
 - REGISTRATION CLUSTER via whoxy_reverse keyword: run whoxy_reverse with keyword = the SLD to enumerate the full same-label cluster across TLDs (e.g. bngo.com/.net/.org/.xyz…) with registrars/dates, alongside registration_cluster. A sibling whose WHOIS is NOT private, or that points to the same seller/portfolio, can directly reveal the owner.
@@ -146,7 +146,42 @@ export async function research({ domain, question, history = [], env, tier = 'al
     seedTrace,
   });
 
+  let report = result.report;
+  let trace = result.trace;
+
+  // Critique/verify pass (deep only): a short second loop that hard-checks the
+  // draft for the failure modes we keep hitting and uses the tools to close any
+  // gap it finds, then re-emits the report. Disable with RESEARCH_CRITIQUE=off.
+  if (tier === 'all' && env.RESEARCH_CRITIQUE !== 'off') {
+    const critiquePrompt =
+      `You are reviewing a DRAFT domain-ownership report for ${domain} before it ships. Critique it hard, then FIX it using the tools (you have a few steps):\n` +
+      `- If the named owner is an anonymized brand/handle, did we actually try to break the anonymity? Search Quora/NamePros/LinkedIn/interviews on BOTH web_search and brave_search and OPEN promising hits with read_url to get the real name.\n` +
+      `- Is the PRIMARY contact actually the owner — not a marketplace's support line, a privacy/proxy address, or a historical/predecessor registrant? Fix the tiers if so.\n` +
+      `- If a likely owner NAME is known but no email, infer the likely address(es) and VERIFY via whoxy_reverse (email=…).\n` +
+      `- If the domain is marketplace-consigned, did we follow the seller-portfolio link (marketplace_check.seller_portfolio) and confirm it with analytics_footprint?\n` +
+      `Close any gap you can, then OUTPUT THE COMPLETE corrected report in the SAME two-part format (the fenced \`\`\`json block first, then the Markdown). If the draft is already correct, output it unchanged.\n\nDRAFT REPORT:\n\n${result.report}` +
+      knownNote;
+    try {
+      const critique = await provider.runAgent({
+        system: SYSTEM_PROMPT,
+        history: [],
+        userPrompt: critiquePrompt,
+        toolSpecs: agentToolSpecs,
+        env,
+        maxSteps: 4,
+        maxToolResultChars: MAX_TOOL_RESULT_CHARS,
+        seedTrace: [],
+      });
+      if (critique.report && critique.report.trim().length > 200) {
+        report = critique.report;
+        trace = [...trace, ...critique.trace];
+      }
+    } catch {
+      /* keep the original report if the critique pass fails */
+    }
+  }
+
   // toolsAvailable lets the UI show which sources ran vs. were available-but-unused;
   // categories let the recap group them into labeled sections.
-  return { ...result, toolsAvailable: toolSpecs.map((t) => t.name), categories: getCategoryMap(), tier };
+  return { report, trace, toolsAvailable: toolSpecs.map((t) => t.name), categories: getCategoryMap(), tier };
 }

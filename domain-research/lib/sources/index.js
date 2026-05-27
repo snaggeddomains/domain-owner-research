@@ -13,6 +13,7 @@ import whoxyHistory from './whoxyhistory.js';
 import whoxyReverse from './whoxyreverse.js';
 import readurl from './readurl.js';
 import bravesearch from './bravesearch.js';
+import analytics from './analytics.js';
 import marketplace from './marketplace.js';
 import reversewhois from './reversewhois.js';
 import reversens from './reversens.js';
@@ -25,7 +26,7 @@ import appraise from './appraise.js';
 // To add a new data source: create a module exporting { name, description,
 // parameters, requiresKey?, run(args, { env }) } and register it here.
 const ALL = [
-  rdap, whois, dns, wayback, livesite, marketplace, cluster, masterlist, rocketreach, readurl,
+  rdap, whois, dns, wayback, livesite, marketplace, cluster, masterlist, rocketreach, readurl, analytics,
   whoisxml, domainiq, bigdomaindata, reversewhois, reversens, reverseip, websearch, bravesearch, trademark, appraise,
   rocketreachLookup, whoxyHistory, whoxyReverse,
 ];
@@ -55,6 +56,7 @@ const CATEGORY = {
   reverse_ip: 'Portfolio & shared infra',
   wayback_history: 'Archive (Wayback)',
   livesite_inspect: 'Live site',
+  analytics_footprint: 'Live site',
   registration_cluster: 'Registration cluster',
   marketplace_check: 'Marketplace',
   masterlist_lookup: 'Internal list',

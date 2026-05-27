@@ -16,6 +16,16 @@ function channelsFor(domain) {
 
 const PRICE_RE = /(?:US)?\$\s?\d[\d,]{2,}(?:\.\d{2})?/g;
 
+// Hosts that are standard marketplaces/registrars/parking — NOT a seller's own
+// branded portfolio. A redirect to anything outside this set that still shows a
+// for-sale signal is a candidate seller portfolio (e.g. domainman.com) that may
+// name the owner.
+const KNOWN_PLATFORM_RE =
+  /(?:^|\.)(?:afternic|atom|squadhelp|sedo|dan|godaddy|namecheap|hugedomains|buydomains|undeveloped|efty|dynadot|sav|flippa|namebright|epik|uniregistry|bodis|parkingcrew|sedoparking|above|smartname|voodoo|domainmarket|brandbucket)\.[a-z.]+$/i;
+const hostOf = (u) => {
+  try { return new URL(u).hostname.replace(/^www\./, ''); } catch { return ''; }
+};
+
 export default {
   name: 'marketplace_check',
   description:
@@ -54,6 +64,27 @@ export default {
       }),
     );
 
-    return { domain: d, any_listed: channels.some((c) => c.listed), channels };
+    // Seller-portfolio detector: visit the domain itself and see where it lands.
+    // A redirect to a NON-major-marketplace host that shows a for-sale signal is
+    // likely the seller's own branded portfolio — which often names the owner.
+    let seller_portfolio = null;
+    try {
+      const r = await fetchText(`http://${d}/`, {}, 8000);
+      const finalHost = hostOf(r.finalUrl || '');
+      const clues = extractClues(r.body || '');
+      const forSale = clues.parking.for_sale_signals.length > 0 || PRICE_RE.test(r.body || '');
+      if (finalHost && finalHost !== d && !KNOWN_PLATFORM_RE.test(finalHost)) {
+        seller_portfolio = {
+          landing_host: finalHost,
+          landing_url: r.finalUrl,
+          for_sale: forSale,
+          note: 'Domain redirects to a non-major-marketplace host — likely the seller’s own branded portfolio; investigate it (read_url + analytics_footprint) to identify the owner.',
+        };
+      }
+    } catch {
+      /* fail-soft */
+    }
+
+    return { domain: d, any_listed: channels.some((c) => c.listed), seller_portfolio, channels };
   },
 };
