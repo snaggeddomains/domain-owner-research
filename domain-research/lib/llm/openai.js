@@ -3,7 +3,7 @@ import { runTool } from '../sources/index.js';
 
 // OpenAI adapter: drives the agent loop with chat-completions tool calling.
 // Shared shape with the Anthropic adapter — see lib/agent.js for the selector.
-export async function runAgent({ system, history, userPrompt, toolSpecs, env, maxSteps, maxToolResultChars }) {
+export async function runAgent({ system, history, userPrompt, toolSpecs, env, maxSteps, maxToolResultChars, seedTrace = [] }) {
   const client = new OpenAI({ apiKey: env.OPENAI_API_KEY });
   const model = env.OPENAI_MODEL || 'gpt-4o';
 
@@ -18,7 +18,7 @@ export async function runAgent({ system, history, userPrompt, toolSpecs, env, ma
     { role: 'user', content: userPrompt },
   ];
 
-  const trace = [];
+  const trace = [...seedTrace];
 
   for (let step = 0; step < maxSteps; step++) {
     const completion = await client.chat.completions.create({

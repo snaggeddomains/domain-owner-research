@@ -4,7 +4,7 @@ import { runTool } from '../sources/index.js';
 // Anthropic (Claude) adapter: same shape as the OpenAI adapter.
 // Uses the Messages API tool-use loop (tool_use / tool_result blocks),
 // adaptive thinking, and prompt caching on the tools + system prefix.
-export async function runAgent({ system, history, userPrompt, toolSpecs, env, maxSteps, maxToolResultChars }) {
+export async function runAgent({ system, history, userPrompt, toolSpecs, env, maxSteps, maxToolResultChars, seedTrace = [] }) {
   const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY });
   const model = env.ANTHROPIC_MODEL || 'claude-opus-4-7';
   const effort = env.ANTHROPIC_EFFORT || 'high'; // low | medium | high | xhigh | max
@@ -18,7 +18,7 @@ export async function runAgent({ system, history, userPrompt, toolSpecs, env, ma
   const systemBlocks = [{ type: 'text', text: system, cache_control: { type: 'ephemeral' } }];
 
   const messages = [...history, { role: 'user', content: userPrompt }];
-  const trace = [];
+  const trace = [...seedTrace];
 
   for (let step = 0; step < maxSteps; step++) {
     const response = await client.messages.create({

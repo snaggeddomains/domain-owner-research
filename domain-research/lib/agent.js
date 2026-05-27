@@ -1,4 +1,4 @@
-import { getToolSpecs, getCategoryMap } from './sources/index.js';
+import { getToolSpecs, getCategoryMap, runTool } from './sources/index.js';
 import * as openai from './llm/openai.js';
 import * as anthropic from './llm/anthropic.js';
 
@@ -6,7 +6,7 @@ const SYSTEM_PROMPT = `You are a meticulous domain-ownership research analyst.
 Given a domain, determine who owns or controls it, the history of that ownership, and the supporting infrastructure evidence.
 
 How to work:
-- FIRST, on every run (these are free, no credits): check our internal Master Domain List (masterlist_lookup) and the marketplace (marketplace_check) for the exact domain. A masterlist HIT returns our recorded owner/price/source/category — a strong internal ownership pointer, so lead with it. A marketplace listing names the selling channel and often the broker/holder. Do these before any paid source.
+- The internal Master Domain List has ALREADY been checked for you automatically as the first step (the result is in the task message). If it found a record, lead with it as a strong internal ownership pointer (recorded owner/price/source/category); do not call masterlist_lookup. Then, still free and early, run marketplace_check for the domain before any paid source — a listing names the selling channel and often the broker/holder.
 - Gather evidence with the available tools. Begin with rdap_whois, whois_lookup and dns_lookup, then wayback_history, then any premium sources (whoisxml_lookup, domainiq_lookup, bigdomaindata_lookup) that are available for historical WHOIS, reverse-WHOIS and related domains.
 - ALWAYS run whois_lookup (legacy port-43 WHOIS) as well as rdap_whois. Thin registries (notably .com/.net) return almost nothing useful over RDAP, but their registrar's port-43 WHOIS frequently exposes the PUBLIC registrant name, organization, email and phone. When that contact is public, report it directly — it is already public, so it must appear even on the free pre-flight pass; never make the user "go deeper" for data that is already public in WHOIS.
 - Call independent tools in parallel. Do not ask the user for permission — just gather what you need.
@@ -51,18 +51,45 @@ export async function research({ domain, question, history = [], env, tier = 'al
   }
 
   const toolSpecs = getToolSpecs(env, { tier });
-  const userPrompt = question
-    ? `Research the domain: ${domain}\n\nSpecific question: ${question}`
-    : `Research the domain: ${domain}`;
+
+  // Deterministically run the internal Master Domain List FIRST (it's free), so
+  // a hit always anchors the report and always appears first in "Sources
+  // checked" — instead of depending on the model's tool ordering. We then drop
+  // it from the model's tool list and seed the result into the task message.
+  const seedTrace = [];
+  const agentToolSpecs = toolSpecs.filter((t) => t.name !== 'masterlist_lookup');
+  let seedNote = '';
+  if (agentToolSpecs.length !== toolSpecs.length) {
+    const ml = await runTool('masterlist_lookup', { domain }, env);
+    seedTrace.push({
+      tool: 'masterlist_lookup',
+      args: { domain },
+      ok: ml.ok,
+      error: ml.error || null,
+      data: ml.ok ? JSON.stringify(ml.data).slice(0, 4000) : null,
+    });
+    if (ml.ok && ml.data && ml.data.found) {
+      seedNote = `\n\n[Already checked automatically as the first step — do NOT call masterlist_lookup again] Our internal Master Domain List HAS this domain: ${JSON.stringify(ml.data)}. Lead with this as a strong internal ownership pointer (recorded owner / price / source / category).`;
+    } else if (ml.ok) {
+      seedNote = `\n\n[Already checked automatically as the first step — do NOT call masterlist_lookup again] Our internal Master Domain List has NO record for this domain (a miss is not evidence either way).`;
+    } else {
+      seedNote = `\n\n[masterlist_lookup ran automatically as the first step but errored: ${ml.error}]`;
+    }
+  }
+
+  const userPrompt =
+    (question ? `Research the domain: ${domain}\n\nSpecific question: ${question}` : `Research the domain: ${domain}`) +
+    seedNote;
 
   const result = await provider.runAgent({
     system: SYSTEM_PROMPT,
     history,
     userPrompt,
-    toolSpecs,
+    toolSpecs: agentToolSpecs,
     env,
     maxSteps: MAX_STEPS,
     maxToolResultChars: MAX_TOOL_RESULT_CHARS,
+    seedTrace,
   });
 
   // toolsAvailable lets the UI show which sources ran vs. were available-but-unused;
