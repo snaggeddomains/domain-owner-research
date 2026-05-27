@@ -40,7 +40,7 @@ PART 2 — after the JSON block, the supporting detail in Markdown, most-useful 
 Cite the source of each key fact inline, e.g. "(RDAP)", "(WHOIS)", "(DNS)", "(Wayback)", "(DomainIQ)", "(RocketReach)", "(Signa)". If a tool failed or returned nothing useful, say so rather than guessing.`;
 
 const MAX_TOOL_RESULT_CHARS = 12000;
-const MAX_STEPS = 8;
+const MAX_STEPS = 10;
 
 // "claude" and "anthropic" are aliases for the same adapter.
 const PROVIDERS = { claude: anthropic, anthropic, openai };
@@ -79,9 +79,16 @@ export async function research({ domain, question, history = [], env, tier = 'al
     }
   }
 
+  // On the paid deep pass the user has explicitly opted in, so push the model to
+  // actually USE the premium sources instead of settling for a free-tier answer.
+  const deepNote =
+    tier === 'all'
+      ? `\n\n[PAID DEEP PASS] The user explicitly opted into the paid sources — BE THOROUGH and do not stop at a free-tier answer. Call EVERY available premium source: whoisxml_lookup, domainiq_lookup and bigdomaindata_lookup for the full historical-WHOIS ownership timeline (even for an apparently-active company); reverse_whois, reverse_ns and reverse_ip for the owner's wider portfolio and shared infrastructure; and rocketreach_lookup on the primary likely owner to retrieve their email/phone. Batch independent calls in parallel. Skipping an available premium source defeats the purpose of "go deeper" — only omit one that genuinely cannot apply.`
+      : '';
   const userPrompt =
     (question ? `Research the domain: ${domain}\n\nSpecific question: ${question}` : `Research the domain: ${domain}`) +
-    seedNote;
+    seedNote +
+    deepNote;
 
   const result = await provider.runAgent({
     system: SYSTEM_PROMPT,
