@@ -18,6 +18,15 @@ const els = {
   reportConfidence: $('report-confidence'),
   reportActions: $('report-actions'),
   exportPdf: $('export-pdf'),
+  reportFeedback: $('report-feedback'),
+  rfYes: $('rf-yes'),
+  rfNo: $('rf-no'),
+  rfCorrection: $('rf-correction'),
+  rfOwner: $('rf-owner'),
+  rfContact: $('rf-contact'),
+  rfNotes: $('rf-notes'),
+  rfSubmit: $('rf-submit'),
+  rfThanks: $('rf-thanks'),
   evidence: $('evidence'),
   trace: $('trace'),
   hero: $('hero'),
@@ -365,14 +374,43 @@ function renderConfidence(band) {
   els.reportConfidence.className = `confidence ${band}`;
   els.reportConfidence.textContent = `Identity confidence: ${band.charAt(0).toUpperCase()}${band.slice(1)}`;
 }
+let currentReportDomain = '';
 function setReportTitle(domain) {
   if (domain) {
+    currentReportDomain = domain;
     els.reportDomain.hidden = false;
     els.reportDomain.textContent = `Domain Ownership Report — ${domain}`;
   } else {
     els.reportDomain.hidden = true;
     els.reportDomain.textContent = '';
   }
+}
+// Reset + reveal the "was this right?" feedback control when a report renders.
+function resetFeedback() {
+  if (!els.reportFeedback) return;
+  els.reportFeedback.hidden = false;
+  const q = els.reportFeedback.querySelector('.rf-q');
+  const row = els.reportFeedback.querySelector('.rf-row');
+  if (q) q.hidden = false;
+  if (row) row.hidden = false;
+  if (els.rfCorrection) els.rfCorrection.hidden = true;
+  if (els.rfThanks) els.rfThanks.hidden = true;
+  ['rfOwner', 'rfContact', 'rfNotes'].forEach((k) => { if (els[k]) els[k].value = ''; });
+}
+async function submitFeedback(fields) {
+  try {
+    await fetch('/api/feedback', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ domain: currentReportDomain, run_id: currentRunId, ...fields }),
+    });
+  } catch { /* best-effort */ }
+  if (els.rfCorrection) els.rfCorrection.hidden = true;
+  const row = els.reportFeedback && els.reportFeedback.querySelector('.rf-row');
+  if (row) row.hidden = true;
+  const q = els.reportFeedback && els.reportFeedback.querySelector('.rf-q');
+  if (q) q.hidden = true;
+  if (els.rfThanks) els.rfThanks.hidden = false;
 }
 
 // The synthesis emits a fenced ```json block (verdict/contacts/timeline) first.
@@ -473,6 +511,7 @@ function renderReport(report) {
   els.report.hidden = false;
   els.report.innerHTML = summaryHtml + renderMarkdown(narrative);
   renderTrace(report && report.trace, report && report.toolsAvailable, report && report.categories);
+  resetFeedback();
 
   // Offer the paid pass only after a free (shallow) one. Surface it at the very
   // top when the free report has no clear owner; otherwise keep it below.
@@ -589,6 +628,7 @@ function enterResultMode(domain) {
   els.reportConfidence.hidden = true;
   els.reportActions.hidden = true;
   els.report.hidden = true;
+  if (els.reportFeedback) els.reportFeedback.hidden = true;
   els.evidence.hidden = true;
   els.deepenTop.hidden = true;
   els.deepenBar.hidden = true;
@@ -1133,6 +1173,7 @@ function showEntry() {
   els.status.hidden = true;
   if (els.runControls) els.runControls.hidden = true;
   els.report.hidden = true;
+  if (els.reportFeedback) els.reportFeedback.hidden = true;
   els.deepenTop.hidden = true;
   els.deepenBar.hidden = true;
   els.evidence.hidden = true;
@@ -1153,6 +1194,14 @@ els.deepenBtn?.addEventListener('click', deepen);
 els.deepenTopBtn?.addEventListener('click', deepen);
 els.cancelRun?.addEventListener('click', cancelRun);
 els.exportPdf?.addEventListener('click', () => window.print());
+els.rfYes?.addEventListener('click', () => submitFeedback({ was_correct: true }));
+els.rfNo?.addEventListener('click', () => { if (els.rfCorrection) els.rfCorrection.hidden = false; });
+els.rfSubmit?.addEventListener('click', () => submitFeedback({
+  was_correct: false,
+  correct_owner: els.rfOwner ? els.rfOwner.value.trim() : '',
+  correct_contact: els.rfContact ? els.rfContact.value.trim() : '',
+  notes: els.rfNotes ? els.rfNotes.value.trim() : '',
+}));
 
 // Mobile hamburger
 function closeNav() { els.nav?.classList.remove('open'); els.navToggle?.setAttribute('aria-expanded', 'false'); }

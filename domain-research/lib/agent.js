@@ -1,4 +1,5 @@
 import { getToolSpecs, getCategoryMap, runTool } from './sources/index.js';
+import { getKnownOwner } from './db/knownowners.js';
 import * as openai from './llm/openai.js';
 import * as anthropic from './llm/anthropic.js';
 
@@ -10,6 +11,14 @@ How to work:
 - Gather evidence with the available tools. Begin with rdap_whois, whois_lookup and dns_lookup, then wayback_history, then any premium sources (whoisxml_lookup, domainiq_lookup, bigdomaindata_lookup, whoxy_history for historical WHOIS; whoxy_reverse / reverse_whois for the owner's other domains) that are available.
 - ALWAYS run whois_lookup (legacy port-43 WHOIS) as well as rdap_whois. Thin registries (notably .com/.net) return almost nothing useful over RDAP, but their registrar's port-43 WHOIS frequently exposes the PUBLIC registrant name, organization, email and phone. When that contact is public, report it directly — it is already public, so it must appear even on the free pre-flight pass; never make the user "go deeper" for data that is already public in WHOIS.
 - Call independent tools in parallel. Do not ask the user for permission — just gather what you need.
+- Additional human tactics, apply where relevant:
+  (1) Privacy Policy / Terms / About pages usually name the OWNING legal entity even when the homepage doesn't — open them with read_url and extract the company name.
+  (2) DROP CHECK: if the creation date is recent, the domain likely dropped and was re-registered by a NEW owner — so the OLD WHOIS history is a different person; discard pre-drop history rather than naming a stale owner.
+  (3) Reverse-IP count: thousands of domains on the IP = shared host (noise); a LOW count (<~100) means a private/dedicated server, so the co-hosted siblings are strong ownership clues — pivot on them.
+  (4) If MX records are live, role addresses (admin@, contact@, support@, info@ the domain) are a viable contact path worth surfacing.
+  (5) Verify a guessed or leaked email by quote-searching it ("email@domain.com") on web_search/brave_search — a real address surfaces corroborating docs (SEC filings, signups) that can add a phone or full name.
+  (6) site:<domain> on web_search reveals hidden/unlinked indexed pages (team/contact/about) when site navigation is broken or hidden.
+  (7) Run BOTH the WhoisXML/DomainIQ history+reverse AND Whoxy — they catch different records; a small leaked field (org or location) through privacy, combined with a web search of "Brand + location", often breaks the case. For ccTLDs (.io, .ai, .co, …) the port-43 whois_lookup follows the IANA referral to the registry's official WHOIS; if a TLD comes back thin, read_url the registry's own WHOIS page as a fallback.
 - PEEL THE ONION FIRST: early on (right after the registration basics, BEFORE deep WHOIS-history archaeology), web_search the EXACT domain string the way a human would Google it — and also "<domain> for sale". This is usually the fastest first thread: it surfaces where the domain is listed, any seller-branded portfolio/landing that names the owner, and forum/news/social/prior-use mentions. Then follow that thread step by step: domain → a seller's branded portfolio site (e.g. domainman.com/name/<domain>) → search that site's brand → the operator's name (Quora/LinkedIn/About) → their LinkedIn profile → infer + verify their email. When a result looks promising but the snippet is thin, OPEN it with read_url to read the full page (the name/email/sale detail usually lives in the page, not the snippet). Do not let the WHOIS/history trail crowd out this human-style search.
 - RULE — enrich any candidate owner: as soon as you have even moderate confidence in a potential owner (a real person's name, organization, email or phone from WHOIS/RDAP/site/archive/cluster/trademark — anything), run what you have through rocketreach_search (it is FREE and spends no credits) to find additional professional context (current employer, title, LinkedIn, location). Do this on the free pre-flight pass too. Then, on the deep pass, run rocketreach_lookup (premium) on the PRIMARY likely owner — by name+company, by LinkedIn URL, or by the profile id from search — to retrieve their actual EMAIL and PHONE. Prefer the current/most-likely owner over a historical one. A search returning no profiles, or a lookup with no emails, just means RocketReach has no record (not that contact info doesn't exist) — fall back to the owner's active entity or the registrar contact form. NEVER enrich a marketplace/broker PLATFORM or its staff (Atom, GoDaddy/Afternic, Dan, Sedo, Sav, Brannans/Zito, etc.) — those are standard channels, not the owner; do not look up a broker's LinkedIn/email/phone.
 - Cross-reference findings: registrant identity/org, registrar, nameserver/hosting/email provider, creation/expiry/transfer dates, historical registrant changes, and how long content has existed (Wayback).
@@ -98,6 +107,21 @@ export async function research({ domain, question, history = [], env, tier = 'al
     ? `\n\n[Already run automatically as the first step — do NOT call these again: ${toRun.join(', ')}]\n${seedParts.join('\n')}`
     : '';
 
+  // Human-confirmed owner from prior verified research (the known-owners cache):
+  // authoritative ground truth — lead with it, use tools only to corroborate /
+  // refresh contact details.
+  const known = await getKnownOwner(domain).catch(() => null);
+  let knownNote = '';
+  if (known && known.correct_owner) {
+    seedTrace.unshift({ tool: 'known_owner', args: { domain }, ok: true, error: null, data: JSON.stringify(known).slice(0, 2000) });
+    knownNote =
+      `\n\n[CONFIRMED OWNER — prior human-verified research, treat as authoritative ground truth] ${domain} is owned by: ${known.correct_owner}` +
+      `${known.owner_type ? ` (${known.owner_type})` : ''}.` +
+      `${known.correct_contact ? ` Known contact: ${known.correct_contact}.` : ''}` +
+      `${known.notes ? ` Notes: ${known.notes}` : ''}` +
+      ` Lead with this owner at High confidence; use the tools only to corroborate and add current contact details — do NOT contradict it unless you find decisive newer evidence.`;
+  }
+
   // On the paid deep pass the user has explicitly opted in: the history sources
   // above were already run; push the model to also use the remaining premium
   // sources (which need inputs discovered during research) rather than settling.
@@ -107,6 +131,7 @@ export async function research({ domain, question, history = [], env, tier = 'al
       : '';
   const userPrompt =
     (question ? `Research the domain: ${domain}\n\nSpecific question: ${question}` : `Research the domain: ${domain}`) +
+    knownNote +
     seedNote +
     deepNote;
 

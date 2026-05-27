@@ -83,6 +83,21 @@
 
           <section id="report" class="report" hidden></section>
 
+          <div id="report-feedback" class="report-feedback" hidden>
+            <div class="rf-q">Was the owner correct?</div>
+            <div class="rf-row">
+              <button id="rf-yes" class="rf-btn" type="button">Yes</button>
+              <button id="rf-no" class="rf-btn" type="button">No / partial</button>
+            </div>
+            <div id="rf-correction" class="rf-correction" hidden>
+              <input id="rf-owner" type="text" placeholder="Correct owner (name or org)" autocomplete="off" />
+              <input id="rf-contact" type="text" placeholder="Correct contact — email / phone / URL (optional)" autocomplete="off" />
+              <textarea id="rf-notes" rows="2" placeholder="How did you find them? (optional)"></textarea>
+              <button id="rf-submit" type="button">Submit correction</button>
+            </div>
+            <div id="rf-thanks" class="rf-thanks" hidden>Thanks — saved to the known-owners cache &amp; eval set.</div>
+          </div>
+
           <div id="deepen-bar" class="deepen-bar" hidden>
             <span class="deepen-note">Free pre-flight only — no paid sources used yet.</span>
             <button id="deepen" type="button">Go deeper (uses paid sources)</button>

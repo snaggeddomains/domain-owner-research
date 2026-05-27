@@ -211,6 +211,29 @@ create table if not exists domain_research_tool_lookups (
 );
 create index if not exists idx_dr_tool_lookups_kind on domain_research_tool_lookups (kind, updated_at desc);
 
+-- ── Human-confirmed owners (feedback loop / eval set / known-owners cache) ──
+-- One row per domain. Doubles as: a labeled eval set, a cache that seeds future
+-- runs of the same domain as authoritative ground truth, and a feedback log.
+create table if not exists domain_research_known_owners (
+  id              uuid primary key default gen_random_uuid(),
+  domain          text not null unique,
+  was_correct     boolean,
+  correct_owner   text,
+  owner_type      text,
+  correct_contact text,
+  notes           text,
+  run_id          uuid,
+  created_at      timestamptz not null default now(),
+  updated_at      timestamptz not null default now()
+);
+
+-- Seed the cases we've cracked by hand (eval baseline + cache).
+insert into domain_research_known_owners (domain, was_correct, correct_owner, owner_type, correct_contact, notes) values
+  ('cove.com', false, 'William "Bill" Ostaski Jr. (Cove Communications) — deceased; domain likely held by estate/heirs', 'estate', 'bill@ostaski.net (historical)', 'Pre-privacy registrant 1995–2011; obituary indicates deceased — route contact to the estate/family.'),
+  ('judy.com', false, 'Michael Gleissner (via Fnu Management / CKL Holdings shell network)', 'domain_investor', 'via CKL Holdings N.V. / his entities (no public personal email)', 'Opaque shell operator; no published personal contact.'),
+  ('bngo.com', false, 'Najeb Alrefaie (operates the DomainMan.com portfolio)', 'domain_investor', 'najeb.alrefaie@gmail.com (verified via Whoxy reverse)', 'Listed on Atom, mirrored on domainman.com; identified via Quora→LinkedIn; email verified through whoxy_reverse.')
+on conflict (domain) do nothing;
+
 -- ── Enable RLS (no policies → backend secret key only) ──────────────────────
 do $$
 declare t text;
