@@ -351,6 +351,22 @@ button:disabled { opacity: .55; cursor: progress; }
 .rf-correction #rf-submit { justify-self: start; font-size: 13px; padding: 9px 18px; }
 .rf-thanks { color: #1f7a4d; font-weight: 700; font-size: 14px; }
 
+/* Refine chat */
+.report-chat { margin: 0 0 22px; padding: 16px 18px; background: var(--cream-2); border: 2px solid var(--line); border-radius: var(--radius-sm); box-shadow: var(--shadow-sm); }
+.report-chat .rc-head { font-family: var(--body); font-weight: 800; font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--navy-3); margin-bottom: 12px; }
+.chat-thread { display: grid; gap: 10px; max-height: 460px; overflow-y: auto; margin-bottom: 12px; }
+.chat-msg { padding: 10px 14px; border-radius: var(--radius-sm); font-family: var(--system); font-size: .95rem; line-height: 1.5; overflow-wrap: anywhere; }
+.chat-msg.me { background: var(--navy); color: var(--cream-2); justify-self: end; max-width: 85%; }
+.chat-msg.bot { background: var(--paper); border: 1.5px solid var(--line); color: var(--navy); max-width: 95%; }
+.chat-msg.bot a { color: var(--teal-deep); }
+.chat-msg.pending { color: var(--navy-3); font-style: italic; }
+.chat-msg p { margin: 0 0 6px; }
+.chat-msg p:last-child { margin-bottom: 0; }
+.chat-form { display: flex; gap: 10px; align-items: flex-end; }
+.chat-form textarea { flex: 1; resize: vertical; min-height: 44px; padding: 10px 12px; background: var(--paper); border: 1.5px solid var(--line); border-radius: var(--radius-sm); color: var(--navy); font-size: 14px; font-family: var(--system); }
+.chat-form textarea:focus { outline: none; border-color: var(--coral); }
+.chat-form button { flex: none; }
+
 /* Go deeper */
 .deepen-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding: 14px 18px; margin-bottom: 20px; background: var(--cream-2); border: 2px solid var(--line); border-radius: var(--radius-sm); box-shadow: var(--shadow-sm); }
 .deepen-note { color: var(--navy-2); font-size: 14px; }
@@ -444,7 +460,7 @@ button:disabled { opacity: .55; cursor: progress; }
   .contacts .ctype { min-width: 0; margin-right: 6px; }
 }
 @media print {
-  .sidebar, .hero, #report-actions, #status, #run-controls, #deepen-top, #deepen-bar, #evidence, #report-feedback, .copy-emails { display: none !important; }
+  .sidebar, .hero, #report-actions, #status, #run-controls, #deepen-top, #deepen-bar, #evidence, #report-feedback, #report-chat, .copy-emails { display: none !important; }
   body { background: #fff; color: #000; }
   #app { display: block; }
   .content .wrap { max-width: none; padding: 0; }

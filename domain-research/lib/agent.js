@@ -59,6 +59,37 @@ const MAX_STEPS = 10;
 // "claude" and "anthropic" are aliases for the same adapter.
 const PROVIDERS = { claude: anthropic, anthropic, openai };
 
+const CHAT_SYSTEM = `You are continuing a domain-ownership investigation as a chat assistant. The user is looking at a research report you already produced and wants to refine it or dig further.
+- Answer conversationally and CONCISELY (a few sentences, or a short list). This is a chat reply, NOT a full report — do not re-emit the json/markdown report format.
+- Actually USE the tools to do what the user asks (rocketreach_search/rocketreach_lookup, whoxy_history/whoxy_reverse, whois_lookup/rdap_whois, web_search/brave_search, read_url, analytics_footprint, identify_operator, reverse_*, trademark_search, etc.) — run them, don't just describe what you would do.
+- Keep the same standards: verify an email via whoxy_reverse before calling it confirmed; never invent a registrant/contact; label anything unverified as such; don't enrich marketplace/broker platforms.
+- When you find a new clue (a name, a verified email/phone, a portfolio link), state it plainly with its source so the user can act on it.`;
+
+// A single refine-chat turn against an existing report. Conversational, with the
+// full toolset; runs synchronously (kept short via a small step budget).
+export async function chatTurn({ domain, reportMarkdown, history = [], message, env }) {
+  const providerName = (env.LLM_PROVIDER || 'claude').toLowerCase();
+  const provider = PROVIDERS[providerName];
+  if (!provider) throw new Error(`Unknown LLM_PROVIDER "${providerName}"`);
+  const toolSpecs = getToolSpecs(env, { tier: 'all' });
+  const system = `${CHAT_SYSTEM}\n\nThe current report for ${domain} is below — use it as context:\n\n${String(reportMarkdown || '').slice(0, 14000)}`;
+  const result = await provider.runAgent({
+    system,
+    history: (Array.isArray(history) ? history : []).map((m) => ({
+      role: m.role === 'assistant' ? 'assistant' : 'user',
+      content: String(m.content || ''),
+    })),
+    userPrompt: String(message || ''),
+    toolSpecs,
+    env,
+    maxSteps: 4,
+    maxToolResultChars: MAX_TOOL_RESULT_CHARS,
+    seedTrace: [],
+  });
+  return result;
+}
+
+
 export async function research({ domain, question, history = [], env, tier = 'all' }) {
   const providerName = (env.LLM_PROVIDER || 'claude').toLowerCase();
   const provider = PROVIDERS[providerName];

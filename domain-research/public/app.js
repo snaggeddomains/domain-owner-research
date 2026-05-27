@@ -27,6 +27,11 @@ const els = {
   rfNotes: $('rf-notes'),
   rfSubmit: $('rf-submit'),
   rfThanks: $('rf-thanks'),
+  reportChat: $('report-chat'),
+  chatThread: $('chat-thread'),
+  chatForm: $('chat-form'),
+  chatInput: $('chat-input'),
+  chatSend: $('chat-send'),
   evidence: $('evidence'),
   trace: $('trace'),
   hero: $('hero'),
@@ -413,6 +418,57 @@ async function submitFeedback(fields) {
   if (els.rfThanks) els.rfThanks.hidden = false;
 }
 
+// ── Refine chat ─────────────────────────────────────────────────────────────
+let chatBusy = false;
+let chatLoadedFor = null;
+function renderChatMessages(messages) {
+  if (!els.chatThread) return;
+  els.chatThread.innerHTML = (messages || [])
+    .map((m) => `<div class="chat-msg ${m.role === 'assistant' ? 'bot' : 'me'}">${renderMarkdown(String(m.content || ''))}</div>`)
+    .join('');
+  els.chatThread.scrollTop = els.chatThread.scrollHeight;
+}
+async function loadChat(runId) {
+  if (!els.reportChat) return;
+  renderChatMessages([]);
+  if (!runId) return;
+  try {
+    const res = await fetch(`/api/chat?run_id=${encodeURIComponent(runId)}`);
+    const data = await res.json();
+    renderChatMessages(data.messages || []);
+  } catch { /* empty thread */ }
+}
+async function sendChat(message) {
+  if (chatBusy || !message || !currentRunId) return;
+  chatBusy = true;
+  if (els.chatSend) els.chatSend.disabled = true;
+  // Optimistically append the user message + a thinking placeholder.
+  const thread = els.chatThread;
+  thread.insertAdjacentHTML('beforeend', `<div class="chat-msg me">${renderMarkdown(message)}</div>`);
+  thread.insertAdjacentHTML('beforeend', `<div class="chat-msg bot pending">Looking into it…</div>`);
+  thread.scrollTop = thread.scrollHeight;
+  try {
+    const res = await fetch('/api/chat', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ run_id: currentRunId, domain: currentReportDomain, message }),
+    });
+    const data = await res.json();
+    const pending = thread.querySelector('.chat-msg.pending');
+    if (pending) {
+      pending.classList.remove('pending');
+      pending.innerHTML = renderMarkdown(res.ok ? data.reply || '(no response)' : data.error || `Failed (${res.status})`);
+    }
+  } catch (e) {
+    const pending = thread.querySelector('.chat-msg.pending');
+    if (pending) { pending.classList.remove('pending'); pending.textContent = String(e.message || e); }
+  } finally {
+    chatBusy = false;
+    if (els.chatSend) els.chatSend.disabled = false;
+    thread.scrollTop = thread.scrollHeight;
+  }
+}
+
 // The synthesis emits a fenced ```json block (verdict/contacts/timeline) first.
 function parseReportData(md) {
   const m = String(md || '').match(/```json\s*([\s\S]*?)```/i);
@@ -539,6 +595,10 @@ function renderReport(report) {
   els.report.innerHTML = summaryHtml + renderMarkdown(narrative);
   renderTrace(report && report.trace, report && report.toolsAvailable, report && report.categories);
   resetFeedback();
+  if (els.reportChat && currentRunId) {
+    els.reportChat.hidden = false;
+    if (chatLoadedFor !== currentRunId) { chatLoadedFor = currentRunId; loadChat(currentRunId); }
+  }
 
   // Offer the paid pass only after a free (shallow) one. Surface it at the very
   // top when the free report has no clear owner; otherwise keep it below.
@@ -656,6 +716,7 @@ function enterResultMode(domain) {
   els.reportActions.hidden = true;
   els.report.hidden = true;
   if (els.reportFeedback) els.reportFeedback.hidden = true;
+  if (els.reportChat) { els.reportChat.hidden = true; chatLoadedFor = null; }
   els.evidence.hidden = true;
   els.deepenTop.hidden = true;
   els.deepenBar.hidden = true;
@@ -1209,6 +1270,7 @@ function showEntry() {
   if (els.runControls) els.runControls.hidden = true;
   els.report.hidden = true;
   if (els.reportFeedback) els.reportFeedback.hidden = true;
+  if (els.reportChat) { els.reportChat.hidden = true; chatLoadedFor = null; }
   els.deepenTop.hidden = true;
   els.deepenBar.hidden = true;
   els.evidence.hidden = true;
@@ -1245,6 +1307,13 @@ els.report?.addEventListener('click', (ev) => {
 });
 els.rfYes?.addEventListener('click', () => submitFeedback({ was_correct: true }));
 els.rfNo?.addEventListener('click', () => { if (els.rfCorrection) els.rfCorrection.hidden = false; });
+els.chatForm?.addEventListener('submit', (e) => {
+  e.preventDefault();
+  const msg = els.chatInput ? els.chatInput.value.trim() : '';
+  if (!msg) return;
+  els.chatInput.value = '';
+  sendChat(msg);
+});
 els.rfSubmit?.addEventListener('click', () => submitFeedback({
   was_correct: false,
   correct_owner: els.rfOwner ? els.rfOwner.value.trim() : '',

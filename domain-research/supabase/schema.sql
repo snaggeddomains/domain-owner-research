@@ -234,6 +234,17 @@ insert into domain_research_known_owners (domain, was_correct, correct_owner, ow
   ('bngo.com', false, 'Najeb Alrefaie (operates the DomainMan.com portfolio)', 'domain_investor', 'najeb.alrefaie@gmail.com (verified via Whoxy reverse)', 'Listed on Atom, mirrored on domainman.com; identified via Quora→LinkedIn; email verified through whoxy_reverse.')
 on conflict (domain) do nothing;
 
+-- ── Refine-chat per report (also a feedback/eval transcript) ────────────────
+create table if not exists domain_research_chat (
+  id         uuid primary key default gen_random_uuid(),
+  run_id     uuid not null,
+  domain     text,
+  role       text not null,                          -- user | assistant
+  content    text not null,
+  created_at timestamptz not null default now()
+);
+create index if not exists idx_dr_chat_run on domain_research_chat (run_id, created_at);
+
 -- ── Enable RLS (no policies → backend secret key only) ──────────────────────
 do $$
 declare t text;
