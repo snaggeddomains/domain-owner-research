@@ -846,11 +846,20 @@ function renderTrademarks(items) {
       const badge = `<span class="tm-badge ${si.bucket}">${escapeHtml(si.label)}</span>`;
       const typeChip = mt ? `<span class="tm-type ${mt.kind}">${escapeHtml(mt.label)}</span>` : '';
       const ch = (si.challenges || []).length ? `<span class="tm-chip">${escapeHtml(si.challenges.join(', ').replace(/_/g, ' '))}</span>` : '';
+      // Diagnostic: surface whatever Signa returns for the mark's feature /
+      // drawing type, so we can see the real values and tune the word-vs-design
+      // bucketing (mark_feature_type alone may not split standard-character
+      // from stylized — the USPTO drawing code, if present, would).
+      const typeProbe = ['mark_feature_type', 'mark_drawing_type', 'drawing_code', 'drawing_type', 'mark_type', 'feature_type']
+        .filter((k) => o[k] != null && o[k] !== '')
+        .map((k) => `${k}=${o[k]}`)
+        .join(' · ');
       const fields = [
         classes.length && ['Class', escapeHtml(classes.join(', '))],
         o.filing_date && ['Filed', escapeHtml(o.filing_date)],
         o.registration_date && ['Registered', escapeHtml(o.registration_date)],
         o.registration_number && ['Reg. no', escapeHtml(o.registration_number)],
+        typeProbe && ['Mark type (raw)', escapeHtml(typeProbe)],
       ]
         .filter(Boolean)
         .map(([k, v]) => `<div class="tm-field"><dt>${k}</dt><dd>${v}</dd></div>`)
