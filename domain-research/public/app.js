@@ -9,7 +9,10 @@ const els = {
   form: $('search'),
   domain: $('domain'),
   go: $('go'),
+  deepToggle: $('deep-toggle'),
   status: $('status'),
+  runControls: $('run-controls'),
+  cancelRun: $('cancel-run'),
   report: $('report'),
   reportDomain: $('report-domain'),
   reportConfidence: $('report-confidence'),
@@ -374,11 +377,11 @@ els.loginForm?.addEventListener('submit', async (e) => {
 });
 
 // ── Research (async: enqueue → poll) ────────────────────────────────────────
-async function enqueue({ domain }) {
+async function enqueue({ domain, deep }) {
   const res = await fetch('/api/research', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ domain }),
+    body: JSON.stringify({ domain, deep: !!deep }),
   });
   const data = await res.json();
   if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`);
@@ -395,6 +398,7 @@ async function pollRun(runId) {
 function startPolling(runId, label) {
   currentRunId = runId;
   els.go.disabled = true;
+  if (els.runControls) els.runControls.hidden = false;
   clearTimers();
 
   // Live elapsed clock, ticking once a second; the poll updates the stage label.
@@ -411,12 +415,14 @@ function startPolling(runId, label) {
       if (r.status === 'done') {
         clearTimers();
         setStatus('');
+        if (els.runControls) els.runControls.hidden = true;
         if (r.domain) setReportTitle(r.domain);
         renderReport(r.report);
         els.go.disabled = false;
       } else if (r.status === 'error') {
         clearTimers();
         setStatus(r.error || 'The run failed.', true);
+        if (els.runControls) els.runControls.hidden = true;
         els.go.disabled = false;
       } else {
         stage = r.stage || r.status; // rendered by the clock tick
@@ -424,6 +430,7 @@ function startPolling(runId, label) {
     } catch (err) {
       clearTimers();
       setStatus(err.message || String(err), true);
+      if (els.runControls) els.runControls.hidden = true;
       els.go.disabled = false;
     }
   }, POLL_MS);
@@ -441,15 +448,18 @@ function enterResultMode(domain) {
   els.evidence.hidden = true;
   els.deepenTop.hidden = true;
   els.deepenBar.hidden = true;
+  if (els.runControls) els.runControls.hidden = true;
 }
 
-async function run({ domain }) {
+async function run({ domain, deep }) {
   enterResultMode(domain);
-  setStatus(`Researching ${domain}… this can take a few minutes.`);
+  setStatus(deep
+    ? `Researching ${domain} (deep, paid sources)… this can take a few minutes.`
+    : `Researching ${domain}… this can take a few minutes.`);
   try {
-    const runId = await enqueue({ domain });
+    const runId = await enqueue({ domain, deep });
     applyHash({ id: runId, domain, created_at: new Date().toISOString() });
-    startPolling(runId, `Researching ${domain}`);
+    startPolling(runId, deep ? `Researching ${domain} (deep)` : `Researching ${domain}`);
   } catch (err) {
     setStatus(err.message || String(err), true);
     els.go.disabled = false;
@@ -458,13 +468,11 @@ async function run({ domain }) {
 
 async function deepen() {
   if (!currentRunId) return;
+  // Keep the free pre-flight report on screen and reviewable while the paid pass
+  // runs — just lock the deepen buttons so it can't be triggered twice.
   els.deepenTop.hidden = true;
   els.deepenBar.hidden = true;
-  els.reportConfidence.hidden = true;
-  els.reportActions.hidden = true;
-  els.report.hidden = true;
-  els.evidence.hidden = true;
-  setStatus('Going deeper (paid sources)… this can take a few minutes.');
+  setStatus('Going deeper (paid sources)… this can take a few minutes. The free findings stay below.');
   try {
     const res = await fetch('/api/research', {
       method: 'POST',
@@ -476,6 +484,21 @@ async function deepen() {
     startPolling(currentRunId, 'Going deeper');
   } catch (err) {
     setStatus(err.message || String(err), true);
+  }
+}
+
+// Stop watching the current run. A typo'd pre-flight goes back to the search box;
+// if a free report is already on screen (e.g. a deep pass is running), keep it.
+function cancelRun() {
+  const hadReport = els.report && !els.report.hidden;
+  clearTimers();
+  els.go.disabled = false;
+  if (els.runControls) els.runControls.hidden = true;
+  if (hadReport) {
+    setStatus('Stopped watching — the free pre-flight result is shown below.');
+    els.deepenBar.hidden = false;
+  } else {
+    showEntry();
   }
 }
 
@@ -654,6 +677,16 @@ function tmScore(q, items) {
   if (bucket === 'green') reasons.push('No active exact or tech-lane blocker in the first-pass screen.');
   return { bucket, reasons };
 }
+// Link a USPTO mark to its TSDR status page (serial first, then registration #).
+function usptoLink(o) {
+  const office = String(o.office_code || o.office || o.jurisdiction_code || '').toLowerCase();
+  if (office && !/us|uspto/.test(office)) return '';
+  const serial = String(o.application_number || o.serial_number || o.serial || '').replace(/\D/g, '');
+  const regno = String(o.registration_number || o.registration || '').replace(/\D/g, '');
+  if (serial) return `https://tsdr.uspto.gov/#caseNumber=${serial}&caseType=SERIAL_NO&searchType=statusSearch`;
+  if (regno) return `https://tsdr.uspto.gov/#caseNumber=${regno}&caseType=US_REGISTRATION_NO&searchType=statusSearch`;
+  return '';
+}
 function renderTrademarks(items) {
   return items
     .map((o) => {
@@ -668,8 +701,10 @@ function renderTrademarks(items) {
       const badge = `<span class="tm-badge ${si.bucket}">${escapeHtml(si.label)}</span>`;
       const ch = (si.challenges || []).length ? `<span class="tm-chip">${escapeHtml(si.challenges.join(', ').replace(/_/g, ' '))}</span>` : '';
       const meta = [owner && `Owner: ${owner}`, classStr, filed && `Filed: ${filed}`, reg && `Reg: ${reg}`, rn && `RN ${rn}`].filter(Boolean).join(' · ');
+      const link = usptoLink(o);
+      const linkHtml = link ? `<a class="tm-link" href="${escapeHtml(link)}" target="_blank" rel="noopener">USPTO listing ↗</a>` : '';
       const raw = escapeHtml(JSON.stringify(o, null, 2).slice(0, 1800));
-      return `<li class="tool-item"><div class="tm-head"><span class="tool-title">${mark}</span>${badge}${ch}</div>${meta ? `<div class="tool-meta">${meta}</div>` : ''}<details class="src-detail"><summary>raw</summary><pre>${raw}</pre></details></li>`;
+      return `<li class="tool-item"><div class="tm-head"><span class="tool-title">${mark}</span>${badge}${ch}</div>${meta ? `<div class="tool-meta">${meta}</div>` : ''}${linkHtml ? `<div class="tm-actions">${linkHtml}</div>` : ''}<details class="src-detail"><summary>raw</summary><pre>${raw}</pre></details></li>`;
     })
     .join('');
 }
@@ -713,8 +748,17 @@ function fmtMoney(v) {
   const n = Number(String(v).replace(/[^0-9.]/g, ''));
   return isFinite(n) && n > 0 ? `$${n.toLocaleString()}` : String(v);
 }
+// Unwrap the valuation whether it's sync/cached (a.valuation) or a completed
+// async job (a.results[0].valuation). Returns the object itself if already flat.
+function digAppraisal(o) {
+  if (!o || typeof o !== 'object') return o;
+  if (o.valuation) return o.valuation;
+  if (Array.isArray(o.results) && o.results[0]) return o.results[0].valuation || o.results[0];
+  return o.appraisal || o.result || o;
+}
 function appraisalRange(a) {
-  const r = a.value_range || a.range || a.valueRange || a.priceRange;
+  if (!a || typeof a !== 'object') return '';
+  const r = a.value_range || a.range || a.valueRange || a.priceRange || a.estimatedValue || a.estimated_value;
   if (r && typeof r === 'object') {
     const lo = r.low ?? r.min ?? r.from ?? r.low_value;
     const hi = r.high ?? r.max ?? r.to ?? r.high_value;
@@ -746,13 +790,18 @@ function renderAppraisal(domain, a) {
     Array.isArray(arr) && arr.length
       ? `<div class="ap-block"><h3>${label}</h3><ul>${arr.map((x) => `<li>${escapeHtml(resolve(x) || x)}</li>`).join('')}</ul></div>`
       : '';
+  const analysis = pickr(a, ['marketAnalysis', 'market_analysis', 'analysis', 'notes', 'summary']);
+  const cats = Array.isArray(a.applicableCategories) ? a.applicableCategories : (Array.isArray(a.categories) ? a.categories : []);
+  const catStr = cats.map((c) => escapeHtml(resolve(c) || c)).filter(Boolean).join(', ');
   const raw = escapeHtml(JSON.stringify(a, null, 2).slice(0, 4000));
   els.apResult.hidden = false;
   els.apResult.innerHTML =
     `<div class="tool-title">${escapeHtml(domain)}</div>` +
     (rows || '<div class="muted">No value fields recognized — see the raw appraisal below.</div>') +
+    (analysis ? `<div class="ap-block"><h3>Market analysis</h3><p>${escapeHtml(analysis)}</p></div>` : '') +
     block(a.strengths || a.pros, 'Why it scored well') +
     block(a.weaknesses || a.cons || a.knocks, 'Main knocks') +
+    (catStr ? `<div class="ap-field"><span>Categories</span> ${catStr}</div>` : '') +
     `<details class="src-detail"><summary>full appraisal</summary><pre>${raw}</pre></details>`;
 }
 function finishAppraisal(domain, a) {
@@ -770,10 +819,11 @@ async function pollAppraisal(domain, jobId) {
       const res = await fetch(`/api/lookup?source=appraise_lookup&job_id=${encodeURIComponent(jobId)}`);
       const data = await res.json();
       const st = (data && data.data) || {};
-      const v = st.valuation || st.appraisal || st.result;
       const statusStr = String(st.status || st.state || '');
-      if (v || appraisalRange(st) || /complete|done|success|finished/i.test(statusStr)) {
-        finishAppraisal(domain, v || st);
+      const v = digAppraisal(st);
+      const ready = (v && v !== st) || appraisalRange(v) || /complete|done|success|finished/i.test(statusStr);
+      if (ready) {
+        finishAppraisal(domain, v);
         return;
       }
       if (/fail|error|cancel/i.test(statusStr)) { setToolStatus(els.apStatus, `Appraisal ${statusStr}.`, true); return; }
@@ -791,9 +841,9 @@ async function runAppraisal(domainInput) {
     const data = await res.json();
     if (!data.ok) throw new Error(data.error || `Failed (${res.status})`);
     const d = data.data || {};
-    if (d.appraisal) finishAppraisal(domain, d.appraisal);
+    if (d.appraisal) finishAppraisal(domain, digAppraisal(d.appraisal));
     else if (d.job_id) await pollAppraisal(domain, d.job_id);
-    else finishAppraisal(domain, d);
+    else finishAppraisal(domain, digAppraisal(d));
   } catch (e) {
     setToolStatus(els.apStatus, e.message || String(e), true);
   }
@@ -831,6 +881,7 @@ function showEntry() {
   els.reportConfidence.hidden = true;
   els.reportActions.hidden = true;
   els.status.hidden = true;
+  if (els.runControls) els.runControls.hidden = true;
   els.report.hidden = true;
   els.deepenTop.hidden = true;
   els.deepenBar.hidden = true;
@@ -846,11 +897,12 @@ els.form?.addEventListener('submit', (e) => {
   e.preventDefault();
   const domain = els.domain.value.trim();
   if (!domain) return;
-  run({ domain });
+  run({ domain, deep: !!(els.deepToggle && els.deepToggle.checked) });
 });
 
 els.deepenBtn?.addEventListener('click', deepen);
 els.deepenTopBtn?.addEventListener('click', deepen);
+els.cancelRun?.addEventListener('click', cancelRun);
 els.exportPdf?.addEventListener('click', () => window.print());
 // Mobile hamburger
 function closeNav() { els.nav?.classList.remove('open'); els.navToggle?.setAttribute('aria-expanded', 'false'); }

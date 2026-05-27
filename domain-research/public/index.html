@@ -57,6 +57,7 @@
               <input id="domain" name="domain" type="text" placeholder="example.com" required />
               <button id="go" type="submit">Research</button>
             </form>
+            <label class="deep-opt"><input type="checkbox" id="deep-toggle" /> Go straight to deep research <span class="deep-opt-note">(uses paid sources — skips the free preview)</span></label>
 
             <div id="recent" class="recent" hidden>
               <div class="recent-title">Recent</div>
@@ -72,6 +73,9 @@
           </div>
           <div id="report-confidence" class="confidence" hidden></div>
           <section id="status" class="status" hidden></section>
+          <div id="run-controls" class="run-controls" hidden>
+            <button id="cancel-run" type="button" class="cancel-run">Cancel</button>
+          </div>
 
           <div id="deepen-top" class="deepen-bar deepen-top" hidden>
             <span class="deepen-note">No clear owner from the free sources — the paid sources may surface one.</span>

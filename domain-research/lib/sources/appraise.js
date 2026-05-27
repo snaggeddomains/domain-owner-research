@@ -10,11 +10,16 @@ function headers(env) {
   };
 }
 
-// The live API wraps the result under `valuation` (some integrations normalize
-// it flat); accept either, plus appraisal/result.
-const unwrap = (o) => (o && (o.valuation || o.appraisal || o.result)) || o;
+// The result lives under `valuation` (sync/cached) or `results[0].valuation`
+// (completed async job). Dig it out.
+const unwrap = (o) => {
+  if (!o) return o;
+  if (o.valuation) return o.valuation;
+  if (Array.isArray(o.results) && o.results[0]) return o.results[0].valuation || o.results[0];
+  return o.appraisal || o.result || o;
+};
 const hasResult = (o) =>
-  o && (o.valuation || o.appraisal || o.result || o.value != null || o.estimated_value != null || o.value_range || o.range || o.low_value != null);
+  o && (o.valuation || (Array.isArray(o.results) && o.results.length) || o.appraisal || o.result || o.value != null || o.estimated_value != null || o.estimatedValue || o.range);
 
 // Premium (paid) — Appraise.net AI valuation. Tries an existing/cached appraisal,
 // else creates one; async jobs return a job_id that the caller polls (pass

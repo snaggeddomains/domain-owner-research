@@ -106,15 +106,18 @@ export default async function handler(req, res) {
     return;
   }
   const question = typeof body.question === 'string' ? body.question.slice(0, 1000) : '';
+  // Optional: skip the free pre-flight and go straight to the paid deep pass.
+  const deep = body.deep === true || body.deep === 'true';
+  const phase = deep ? 'deep' : 'shallow';
 
   const runId = await createRun({ domain, question });
   try {
-    await inngest.send({ name: RUN_REQUESTED, data: { runId, domain, question, phase: 'shallow' } });
+    await inngest.send({ name: RUN_REQUESTED, data: { runId, domain, question, phase } });
   } catch (e) {
     await failRun(runId, `Failed to enqueue job: ${e?.message || e}`);
     res.status(502).json({ error: 'Could not enqueue the research job (check Inngest config).' });
     return;
   }
 
-  res.status(202).json({ run_id: runId, domain });
+  res.status(202).json({ run_id: runId, domain, phase });
 }
