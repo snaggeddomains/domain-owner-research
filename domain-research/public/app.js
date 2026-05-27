@@ -430,12 +430,22 @@ function renderSummary(d) {
   // narrative / contact path).
   const contacts = (Array.isArray(d.contacts) ? d.contacts : []).filter((c) => !SALE_LINK_RE.test(String((c && c.value) || '')));
   if (contacts.length) {
-    html += `<div class="sum-block"><h3>Key contacts</h3><ul class="contacts">${contacts
-      .map((c) => {
-        const val = isUsefulClue(c) ? `<span class="clue">${linkify(c)}</span>` : linkify(c);
-        return `<li><span class="ctype">${e(c.type || '')}</span> ${val}${c.note ? ` <span class="muted">— ${e(c.note)}</span>` : ''}</li>`;
-      })
-      .join('')}</ul></div>`;
+    const contactLi = (c) => {
+      const val = isUsefulClue(c) ? `<span class="clue">${linkify(c)}</span>` : linkify(c);
+      return `<li><span class="ctype">${e(c.type || '')}</span> ${val}${c.note ? ` <span class="muted">— ${e(c.note)}</span>` : ''}</li>`;
+    };
+    const list = (arr) => `<ul class="contacts">${arr.map(contactLi).join('')}</ul>`;
+    const isPrimary = (c) => String((c && c.tier) || '').toLowerCase() === 'primary';
+    // Group into the primary target vs. other (secondary/tertiary/untagged)
+    // leads when the report tags tiers; otherwise show one flat list.
+    if (contacts.some(isPrimary)) {
+      const primary = contacts.filter(isPrimary);
+      const other = contacts.filter((c) => !isPrimary(c));
+      html += `<div class="sum-block"><h3>Primary target — how to reach the likely owner</h3>${list(primary)}</div>`;
+      if (other.length) html += `<div class="sum-block"><h3>Other &amp; historical leads</h3>${list(other)}</div>`;
+    } else {
+      html += `<div class="sum-block"><h3>Key contacts</h3>${list(contacts)}</div>`;
+    }
   }
   const path = Array.isArray(d.contact_path) ? d.contact_path : [];
   if (path.length) {

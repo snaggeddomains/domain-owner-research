@@ -8,6 +8,7 @@ import bigdomaindata from './bigdomaindata.js';
 import masterlist from './masterlist.js';
 import livesite from './livesite.js';
 import rocketreach from './rocketreach.js';
+import rocketreachLookup from './rocketreachlookup.js';
 import marketplace from './marketplace.js';
 import reversewhois from './reversewhois.js';
 import reversens from './reversens.js';
@@ -22,6 +23,7 @@ import appraise from './appraise.js';
 const ALL = [
   rdap, whois, dns, wayback, livesite, marketplace, cluster, masterlist, rocketreach,
   whoisxml, domainiq, bigdomaindata, reversewhois, reversens, reverseip, websearch, trademark, appraise,
+  rocketreachLookup,
 ];
 
 // Paid sources spend external API credits. They are withheld from the free
@@ -30,6 +32,7 @@ const ALL = [
 const PAID = new Set([
   'whoisxml_lookup', 'domainiq_lookup', 'bigdomaindata_lookup',
   'reverse_whois', 'reverse_ns', 'reverse_ip', 'web_search', 'trademark_search', 'appraise_lookup',
+  'rocketreach_lookup',
 ]);
 
 // Recap grouping — each source's category, used to break the "Sources checked"
@@ -50,6 +53,7 @@ const CATEGORY = {
   marketplace_check: 'Marketplace',
   masterlist_lookup: 'Internal list',
   rocketreach_search: 'People & contacts',
+  rocketreach_lookup: 'People & contacts',
   web_search: 'Web & social',
   trademark_search: 'Trademark / legal',
   appraise_lookup: 'Valuation',
