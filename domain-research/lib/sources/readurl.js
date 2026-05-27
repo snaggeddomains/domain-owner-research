@@ -45,21 +45,26 @@ export default {
     };
 
     const resp = await fetchText(url, {}, 10000);
+    let status = resp.status;
     let title = titleOf(resp.body);
     let text = htmlToText(resp.body).slice(0, 6000);
     let blocked = isBlocked(text);
     let rendered = false;
 
-    // Fallback: if a plain fetch is bot-walled (Quora/LinkedIn) and Scrape.do is
-    // configured, re-fetch with JS rendering to get the real content.
+    // Fallback: if a plain fetch is bot-walled (Quora/LinkedIn behind Cloudflare)
+    // and Scrape.do is configured, re-fetch with JS rendering + the residential
+    // anti-bot proxy (super=true), which is needed to clear Cloudflare challenges.
     if (blocked && env.SCRAPE_DO_API_KEY) {
       try {
-        const api = `https://api.scrape.do/?token=${encodeURIComponent(env.SCRAPE_DO_API_KEY)}&render=true&url=${encodeURIComponent(url)}`;
-        const r2 = await fetchText(api, {}, 22000);
+        const api =
+          `https://api.scrape.do/?token=${encodeURIComponent(env.SCRAPE_DO_API_KEY)}` +
+          `&render=true&super=true&url=${encodeURIComponent(url)}`;
+        const r2 = await fetchText(api, {}, 35000);
         const t2 = htmlToText(r2.body).slice(0, 6000);
         if (t2 && !isBlocked(t2) && t2.length > text.length) {
           text = t2;
           title = titleOf(r2.body) || title;
+          status = r2.status || status;
           blocked = false;
           rendered = true;
         }
@@ -70,7 +75,7 @@ export default {
 
     return {
       url,
-      status: resp.status,
+      status,
       blocked,
       rendered,
       title,
