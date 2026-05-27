@@ -1,5 +1,6 @@
 import dns from './dns.js';
 import rdap from './rdap.js';
+import whois from './whois.js';
 import wayback from './wayback.js';
 import whoisxml from './whoisxml.js';
 import domainiq from './domainiq.js';
@@ -19,7 +20,7 @@ import appraise from './appraise.js';
 // To add a new data source: create a module exporting { name, description,
 // parameters, requiresKey?, run(args, { env }) } and register it here.
 const ALL = [
-  rdap, dns, wayback, livesite, marketplace, cluster, masterlist, rocketreach,
+  rdap, whois, dns, wayback, livesite, marketplace, cluster, masterlist, rocketreach,
   whoisxml, domainiq, bigdomaindata, reversewhois, reversens, reverseip, websearch, trademark, appraise,
 ];
 
@@ -35,6 +36,7 @@ const PAID = new Set([
 // panel into labeled sections.
 const CATEGORY = {
   rdap_whois: 'Current registration',
+  whois_lookup: 'Current registration',
   dns_lookup: 'Infrastructure (DNS)',
   whoisxml_lookup: 'Ownership history',
   domainiq_lookup: 'Ownership history',
