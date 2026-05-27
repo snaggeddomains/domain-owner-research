@@ -205,7 +205,8 @@ button:disabled { opacity: .55; cursor: progress; }
 .search { display: flex; gap: 10px; margin-bottom: 28px; }
 .search input,
 .login-card input,
-.projects-search {
+.projects-search,
+.tool-history-search {
   width: 100%;
   padding: 13px 16px;
   background: var(--paper);
@@ -217,10 +218,12 @@ button:disabled { opacity: .55; cursor: progress; }
 }
 .search input::placeholder,
 .login-card input::placeholder,
-.projects-search::placeholder { color: var(--navy-3); }
+.projects-search::placeholder,
+.tool-history-search::placeholder { color: var(--navy-3); }
 .search input:focus,
 .login-card input:focus,
-.projects-search:focus { outline: none; border-color: var(--coral); }
+.projects-search:focus,
+.tool-history-search:focus { outline: none; border-color: var(--coral); }
 
 /* Research hero */
 .hero { text-align: center; padding: 24px 0 4px; }
