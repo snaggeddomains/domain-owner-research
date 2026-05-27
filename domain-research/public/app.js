@@ -669,7 +669,7 @@ function appraisalRange(a) {
     const hi = r.high ?? r.max ?? r.to;
     if (lo != null || hi != null) return [fmtMoney(lo), fmtMoney(hi)].filter(Boolean).join(' – ');
   }
-  if (typeof r === 'string') return r;
+  if (typeof r === 'string') return r.replace(/\d{4,}/g, (n) => Number(n).toLocaleString());
   const lo = a.low_value ?? a.low ?? a.min_value;
   const hi = a.high_value ?? a.high ?? a.max_value;
   if (lo != null || hi != null) return [fmtMoney(lo), fmtMoney(hi)].filter(Boolean).join(' – ');
@@ -700,7 +700,7 @@ function renderAppraisal(domain, a) {
   els.apResult.innerHTML =
     `<div class="tool-title">${escapeHtml(domain)}</div>` +
     (rows || '<div class="muted">No value fields recognized — see the raw appraisal below.</div>') +
-    block(a.strengths || a.pros, 'Strengths') +
+    block(a.strengths || a.pros, 'Why it scored well') +
     block(a.weaknesses || a.cons || a.knocks, 'Main knocks') +
     `<details class="src-detail"><summary>full appraisal</summary><pre>${raw}</pre></details>`;
 }

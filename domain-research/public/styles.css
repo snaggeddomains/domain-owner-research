@@ -114,7 +114,7 @@ a.wordmark:hover { text-decoration: none; opacity: .9; }
 .tm-badge.active { background: rgba(47,163,107,.12); color: #1f7a4d; border-color: #2fa36b; }
 .tm-badge.pending { background: rgba(217,154,60,.16); color: #8a5a12; border-color: var(--gold); }
 .tm-badge.abandoned { background: rgba(94,124,141,.12); color: var(--navy-3); border-color: var(--navy-3); }
-.ap-value { font-family: var(--display); font-size: 2rem; color: var(--coral); margin: 8px 0; }
+.ap-value { font-family: var(--display); font-size: 1.7rem; color: var(--coral); margin: 8px 0; line-height: 1.1; }
 .ap-field { color: var(--navy); font-size: .95rem; margin: 2px 0; }
 .ap-field span { color: var(--navy-3); font-weight: 700; margin-right: 6px; }
 .ap-block { margin-top: 12px; }
