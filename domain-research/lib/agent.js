@@ -10,7 +10,7 @@ How to work:
 - Gather evidence with the available tools. Begin with rdap_whois, whois_lookup and dns_lookup, then wayback_history, then any premium sources (whoisxml_lookup, domainiq_lookup, bigdomaindata_lookup) that are available for historical WHOIS, reverse-WHOIS and related domains.
 - ALWAYS run whois_lookup (legacy port-43 WHOIS) as well as rdap_whois. Thin registries (notably .com/.net) return almost nothing useful over RDAP, but their registrar's port-43 WHOIS frequently exposes the PUBLIC registrant name, organization, email and phone. When that contact is public, report it directly — it is already public, so it must appear even on the free pre-flight pass; never make the user "go deeper" for data that is already public in WHOIS.
 - Call independent tools in parallel. Do not ask the user for permission — just gather what you need.
-- RULE — enrich any candidate owner: as soon as you have even moderate confidence in a potential owner (a real person's name, organization, email or phone from WHOIS/RDAP/site/archive/cluster/trademark — anything), run what you have through rocketreach_search (it is FREE and spends no credits) to find additional professional context (current employer, title, LinkedIn, location). Do this on the free pre-flight pass too. Then, on the deep pass, run rocketreach_lookup (premium) on the PRIMARY likely owner — by name+company, by LinkedIn URL, or by the profile id from search — to retrieve their actual EMAIL and PHONE. Prefer the current/most-likely owner over a historical one. A search returning no profiles, or a lookup with no emails, just means RocketReach has no record (not that contact info doesn't exist) — fall back to the owner's active entity or the registrar contact form.
+- RULE — enrich any candidate owner: as soon as you have even moderate confidence in a potential owner (a real person's name, organization, email or phone from WHOIS/RDAP/site/archive/cluster/trademark — anything), run what you have through rocketreach_search (it is FREE and spends no credits) to find additional professional context (current employer, title, LinkedIn, location). Do this on the free pre-flight pass too. Then, on the deep pass, run rocketreach_lookup (premium) on the PRIMARY likely owner — by name+company, by LinkedIn URL, or by the profile id from search — to retrieve their actual EMAIL and PHONE. Prefer the current/most-likely owner over a historical one. A search returning no profiles, or a lookup with no emails, just means RocketReach has no record (not that contact info doesn't exist) — fall back to the owner's active entity or the registrar contact form. NEVER enrich a marketplace/broker PLATFORM or its staff (Atom, GoDaddy/Afternic, Dan, Sedo, Sav, Brannans/Zito, etc.) — those are standard channels, not the owner; do not look up a broker's LinkedIn/email/phone.
 - Cross-reference findings: registrant identity/org, registrar, nameserver/hosting/email provider, creation/expiry/transfer dates, historical registrant changes, and how long content has existed (Wayback).
 - Reconstruct the FULL ownership timeline from historical WHOIS (DomainIQ returns dated "eras"). Surface every historical registrant NAME, organization and email — especially a real person's name from a pre-privacy era — even when the current record is privacy-shielded.
 - Piece clues together across eras. If infrastructure is continuous across a privacy transition (e.g. the same nameservers, registrar, hosting or email pattern persist from a named era through today), infer that the historically-named registrant most likely still controls the domain — name them and explain the chain of evidence, with calibrated confidence.
@@ -33,7 +33,7 @@ PART 1 — a single fenced \`\`\`json code block FIRST (valid JSON, no comments,
   "timeline": [ { "date": "YYYY, YYYY-MM-DD, or a range", "event": "short label", "detail": "what changed: registrant / privacy / registrar / nameservers / site" } ]
 }
 "confidence" = your confidence in naming the ACTUAL owner (not merely whether it is privacy-protected). Put the STRONGEST clues here — real names, emails, phones, and the ownership movements — ordered most-useful first. Never invent a registrant.
-"contacts" should hold owner-IDENTIFYING clues — real names, personal/role-free emails, direct phones, the owner's own social/professional profile — and SHOULD include a pre-privacy HISTORICAL owner's name and contact info (e.g. a 1990s–2000s registrant and their email/phone), since those are valuable leads even if that person is not the current holder; the UI highlights these automatically. Set "tier" on each contact: "primary" for the single most-likely CURRENT owner and the concrete channels to reach THEM (their own email/phone from rocketreach_lookup, an active entity they control, a profile, or the registrar's contact-holder form); "secondary"/"tertiary" for predecessors, domain-financing/escrow holders that merely took title, related shell entities, or brokers — useful routes but not the end target. Always populate the primary tier with the best available way to reach the likely owner, even when it is an entity or a form rather than a personal email. Do NOT put marketplace/for-sale listing URLs (Afternic, Dan, Sedo, Atom, GoDaddy) in "contacts", and never type them as "social" — report any genuine listing in the Markdown Marketplace section and as a step in "contact_path" instead. Only state a domain is "listed for sale" when marketplace_check returned http_status 200 with a real for-sale signal; a 404/403/410 page or bare page-furniture prices do NOT mean it is listed.
+"contacts" should hold owner-IDENTIFYING clues — real names, personal/role-free emails, direct phones, the owner's own social/professional profile — and SHOULD include a pre-privacy HISTORICAL owner's name and contact info (e.g. a 1990s–2000s registrant and their email/phone), since those are valuable leads even if that person is not the current holder; the UI highlights these automatically. Set "tier" on each contact: "primary" for the single most-likely CURRENT owner and the concrete channels to reach THEM (their own email/phone from rocketreach_lookup, an active entity they control, a profile, or the registrar's contact-holder form); "secondary"/"tertiary" for predecessors, domain-financing/escrow holders that merely took title, related shell entities, or brokers — useful routes but not the end target. Always populate the primary tier with the best available way to reach the likely owner, even when it is an entity or a form rather than a personal email. Do NOT put marketplace/for-sale listing URLs (Afternic, Dan, Sedo, Atom, GoDaddy) in "contacts", and never type them as "social" — report any genuine listing in the Markdown Marketplace section and as a step in "contact_path" instead. Only state a domain is "listed for sale" when marketplace_check returned http_status 200 with a real for-sale signal; a 404/403/410 page or bare page-furniture prices do NOT mean it is listed. When a domain IS listed on a standard platform (Atom, Afternic, Dan, Sedo, GoDaddy, etc.), just say so with a link — do NOT provide LinkedIn/email/phone for the platform or its broker; the listing link itself is the contact route.
 
 PART 2 — after the JSON block, the supporting detail in Markdown, most-useful first, using these sections (omit any with nothing to say):
 **Current registration** · **Infrastructure** · **Live site & archive** · **Marketplace & valuation** · **Web, social & trademark** · **Confidence & gaps**.
@@ -53,37 +53,52 @@ export async function research({ domain, question, history = [], env, tier = 'al
   }
 
   const toolSpecs = getToolSpecs(env, { tier });
+  const available = new Set(toolSpecs.map((t) => t.name));
 
-  // Deterministically run the internal Master Domain List FIRST (it's free), so
-  // a hit always anchors the report and always appears first in "Sources
-  // checked" — instead of depending on the model's tool ordering. We then drop
-  // it from the model's tool list and seed the result into the task message.
+  // Run some sources DETERMINISTICALLY rather than leaving them to the model's
+  // discretion: the internal Master Domain List always (free), and on the paid
+  // deep pass the domain-only historical-WHOIS sources too — so they ALWAYS
+  // execute and anchor the report instead of being skipped. Their results are
+  // seeded into the task message and they're removed from the model's tool list.
+  const preRun = ['masterlist_lookup'];
+  if (tier === 'all') preRun.push('whoisxml_lookup', 'domainiq_lookup', 'bigdomaindata_lookup');
+  const toRun = preRun.filter((n) => available.has(n));
+
+  const ran = await Promise.all(toRun.map(async (name) => ({ name, res: await runTool(name, { domain }, env) })));
+  const byName = new Map(ran.map((r) => [r.name, r.res]));
+
   const seedTrace = [];
-  const agentToolSpecs = toolSpecs.filter((t) => t.name !== 'masterlist_lookup');
-  let seedNote = '';
-  if (agentToolSpecs.length !== toolSpecs.length) {
-    const ml = await runTool('masterlist_lookup', { domain }, env);
+  const seedParts = [];
+  for (const name of toRun) {
+    const res = byName.get(name);
     seedTrace.push({
-      tool: 'masterlist_lookup',
+      tool: name,
       args: { domain },
-      ok: ml.ok,
-      error: ml.error || null,
-      data: ml.ok ? JSON.stringify(ml.data).slice(0, 4000) : null,
+      ok: res.ok,
+      error: res.error || null,
+      data: res.ok ? JSON.stringify(res.data).slice(0, 4000) : null,
     });
-    if (ml.ok && ml.data && ml.data.found) {
-      seedNote = `\n\n[Already checked automatically as the first step — do NOT call masterlist_lookup again] Our internal Master Domain List HAS this domain: ${JSON.stringify(ml.data)}. Lead with this as a strong internal ownership pointer (recorded owner / price / source / category).`;
-    } else if (ml.ok) {
-      seedNote = `\n\n[Already checked automatically as the first step — do NOT call masterlist_lookup again] Our internal Master Domain List has NO record for this domain (a miss is not evidence either way).`;
+    if (name === 'masterlist_lookup') {
+      if (res.ok && res.data && res.data.found) seedParts.push(`Internal Master Domain List HAS this domain: ${JSON.stringify(res.data)} — lead with it as a strong internal ownership pointer (recorded owner / price / source / category).`);
+      else if (res.ok) seedParts.push(`Internal Master Domain List: NO record for this domain (a miss is not evidence either way).`);
+      else seedParts.push(`masterlist_lookup errored: ${res.error}`);
+    } else if (res.ok) {
+      seedParts.push(`${name} (ran automatically): ${JSON.stringify(res.data).slice(0, 4000)}`);
     } else {
-      seedNote = `\n\n[masterlist_lookup ran automatically as the first step but errored: ${ml.error}]`;
+      seedParts.push(`${name} (ran automatically) errored: ${res.error} — note this gap.`);
     }
   }
+  const agentToolSpecs = toolSpecs.filter((t) => !toRun.includes(t.name));
+  const seedNote = seedParts.length
+    ? `\n\n[Already run automatically as the first step — do NOT call these again: ${toRun.join(', ')}]\n${seedParts.join('\n')}`
+    : '';
 
-  // On the paid deep pass the user has explicitly opted in, so push the model to
-  // actually USE the premium sources instead of settling for a free-tier answer.
+  // On the paid deep pass the user has explicitly opted in: the history sources
+  // above were already run; push the model to also use the remaining premium
+  // sources (which need inputs discovered during research) rather than settling.
   const deepNote =
     tier === 'all'
-      ? `\n\n[PAID DEEP PASS] The user explicitly opted into the paid sources — BE THOROUGH and do not stop at a free-tier answer. Call EVERY available premium source: whoisxml_lookup, domainiq_lookup and bigdomaindata_lookup for the full historical-WHOIS ownership timeline (even for an apparently-active company); reverse_whois, reverse_ns and reverse_ip for the owner's wider portfolio and shared infrastructure; and rocketreach_lookup on the primary likely owner to retrieve their email/phone. Batch independent calls in parallel. Skipping an available premium source defeats the purpose of "go deeper" — only omit one that genuinely cannot apply.`
+      ? `\n\n[PAID DEEP PASS] The user explicitly opted into the paid sources — be thorough and do not settle for a free-tier answer. The historical-WHOIS sources above already ran. Now ALSO call the remaining available premium sources: reverse_whois, reverse_ns and reverse_ip for the owner's wider portfolio and shared infrastructure, and rocketreach_lookup on the primary likely owner to retrieve their email/phone. Batch independent calls in parallel; only skip one that genuinely cannot apply.`
       : '';
   const userPrompt =
     (question ? `Research the domain: ${domain}\n\nSpecific question: ${question}` : `Research the domain: ${domain}`) +
