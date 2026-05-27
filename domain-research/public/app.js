@@ -36,6 +36,7 @@ const els = {
   recentList: $('recent-list'),
   navTrademark: $('nav-trademark'),
   navAppraisal: $('nav-appraisal'),
+  navNaming: $('nav-naming'),
   navToggle: $('nav-toggle'),
   nav: $('nav'),
   tmForm: $('tm-form'),
@@ -709,6 +710,7 @@ const VIEWS = {
   projects: { view: 'view-projects', nav: 'nav-projects' },
   trademark: { view: 'view-trademark', nav: 'nav-trademark' },
   appraisal: { view: 'view-appraisal', nav: 'nav-appraisal' },
+  naming: { view: 'view-naming', nav: 'nav-naming' },
 };
 function showView(name) {
   for (const [k, v] of Object.entries(VIEWS)) {
@@ -1154,6 +1156,7 @@ els.navResearch?.addEventListener('click', showEntry);
 els.homeLink?.addEventListener('click', (e) => { e.preventDefault(); closeNav(); showEntry(); });
 els.navTrademark?.addEventListener('click', () => { setToolUrl('trademark', ''); route(); });
 els.navAppraisal?.addEventListener('click', () => { setToolUrl('appraisal', ''); route(); });
+els.navNaming?.addEventListener('click', () => { if (location.pathname !== '/') history.pushState(null, '', '/'); showView('naming'); });
 els.tmForm?.addEventListener('submit', (e) => { e.preventDefault(); const q = els.tmQuery.value.trim(); if (q) runTrademark(q); });
 els.apForm?.addEventListener('submit', (e) => { e.preventDefault(); const v = els.apDomain.value.trim(); if (v) runAppraisal(v); });
 // "Show all past research" (under the recent-5) opens the full Past Research list.

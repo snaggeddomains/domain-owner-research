@@ -248,6 +248,15 @@ button:disabled { opacity: .55; cursor: progress; }
 .show-all:hover { text-decoration: underline; }
 .tool-history-search { width: 100%; margin: 0 0 10px; }
 
+/* Naming exercise (coming soon) */
+.naming-form { max-width: 640px; margin: 0 auto; }
+.naming-input { width: 100%; min-height: 220px; resize: vertical; padding: 16px 18px; font-family: var(--system); font-size: 1rem; line-height: 1.5; color: var(--navy); background: var(--cream-2); border: 2px solid var(--line); border-radius: var(--radius-sm); box-shadow: var(--shadow-sm); }
+.naming-input::placeholder { color: var(--navy-3); }
+.naming-actions { display: flex; align-items: center; gap: 14px; margin-top: 14px; flex-wrap: wrap; }
+.naming-go:disabled { opacity: .55; cursor: not-allowed; box-shadow: none; transform: none; }
+.naming-go:disabled:hover { transform: none; box-shadow: none; }
+.naming-note { color: var(--navy-3); font-size: .9rem; }
+
 /* Status */
 .status { padding: 14px 16px; background: var(--cream-2); border: 2px solid var(--line); border-radius: var(--radius-sm); color: var(--navy-2); margin-bottom: 20px; box-shadow: var(--shadow-sm); }
 .status.error { color: var(--coral-deep); border-color: var(--coral); }
