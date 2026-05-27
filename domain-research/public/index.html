@@ -35,8 +35,12 @@
       <aside class="sidebar">
         <a href="/" id="home-link" class="wordmark"><img class="brand-mark" src="/logomark-round.svg" alt="" /><span class="wm-text"><span class="wm-a">Snagged</span> <span class="wm-b">Research</span></span></a>
         <nav class="nav">
+          <div class="nav-group">Research</div>
           <button id="nav-research" class="nav-btn active" type="button">New</button>
           <button id="nav-projects" class="nav-btn" type="button">Past Research</button>
+          <div class="nav-group">Tools</div>
+          <button id="nav-trademark" class="nav-btn" type="button">Trademark</button>
+          <button id="nav-appraisal" class="nav-btn" type="button">Appraisal</button>
         </nav>
       </aside>
 
@@ -94,6 +98,30 @@
           <p class="sub">Open any run to view its saved report — no re-run, no credits.</p>
           <input id="projects-search" class="projects-search" type="text" placeholder="Search by domain…" autocomplete="off" />
           <ul id="projects-list" class="projects-list"></ul>
+        </section>
+
+        <!-- Trademark tool -->
+        <section id="view-trademark" hidden>
+          <h1 class="page-title">Trademark <span class="accent">search</span></h1>
+          <p class="sub">Search trademarks (USPTO) by brand or owner — applicant, status, and filing dates.</p>
+          <form id="tm-form" class="search" autocomplete="off">
+            <input id="tm-query" type="text" placeholder="brand or owner (e.g. percent)" required />
+            <button id="tm-go" type="submit">Search</button>
+          </form>
+          <section id="tm-status" class="status" hidden></section>
+          <ul id="tm-results" class="tool-results"></ul>
+        </section>
+
+        <!-- Appraisal tool -->
+        <section id="view-appraisal" hidden>
+          <h1 class="page-title">Domain <span class="accent">appraisal</span></h1>
+          <p class="sub">AI valuation via Appraise.net. A new appraisal costs credits; cached results are cheaper.</p>
+          <form id="ap-form" class="search" autocomplete="off">
+            <input id="ap-domain" type="text" placeholder="example.com" required />
+            <button id="ap-go" type="submit">Appraise</button>
+          </form>
+          <section id="ap-status" class="status" hidden></section>
+          <div id="ap-result" class="appraisal-result" hidden></div>
         </section>
       </div>
       </div>

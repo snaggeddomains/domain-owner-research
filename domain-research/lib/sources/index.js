@@ -14,12 +14,13 @@ import reverseip from './reverseip.js';
 import websearch from './websearch.js';
 import cluster from './cluster.js';
 import trademark from './trademark.js';
+import appraise from './appraise.js';
 
 // To add a new data source: create a module exporting { name, description,
 // parameters, requiresKey?, run(args, { env }) } and register it here.
 const ALL = [
   rdap, dns, wayback, livesite, marketplace, cluster, masterlist, rocketreach,
-  whoisxml, domainiq, bigdomaindata, reversewhois, reversens, reverseip, websearch, trademark,
+  whoisxml, domainiq, bigdomaindata, reversewhois, reversens, reverseip, websearch, trademark, appraise,
 ];
 
 // Paid sources spend external API credits. They are withheld from the free
@@ -27,7 +28,7 @@ const ALL = [
 // pass (tier 'all').
 const PAID = new Set([
   'whoisxml_lookup', 'domainiq_lookup', 'bigdomaindata_lookup',
-  'reverse_whois', 'reverse_ns', 'reverse_ip', 'web_search', 'trademark_search',
+  'reverse_whois', 'reverse_ns', 'reverse_ip', 'web_search', 'trademark_search', 'appraise_lookup',
 ]);
 
 // Recap grouping — each source's category, used to break the "Sources checked"
@@ -49,6 +50,7 @@ const CATEGORY = {
   rocketreach_search: 'People & contacts',
   web_search: 'Web & social',
   trademark_search: 'Trademark / legal',
+  appraise_lookup: 'Valuation',
 };
 
 export function getCategoryMap() {

@@ -31,6 +31,16 @@ const els = {
   homeLink: $('home-link'),
   recent: $('recent'),
   recentList: $('recent-list'),
+  navTrademark: $('nav-trademark'),
+  navAppraisal: $('nav-appraisal'),
+  tmForm: $('tm-form'),
+  tmQuery: $('tm-query'),
+  tmStatus: $('tm-status'),
+  tmResults: $('tm-results'),
+  apForm: $('ap-form'),
+  apDomain: $('ap-domain'),
+  apStatus: $('ap-status'),
+  apResult: $('ap-result'),
 };
 
 const POLL_MS = 2500;
@@ -503,13 +513,85 @@ async function openProject(id) {
   }
 }
 
+const VIEWS = {
+  research: { view: 'view-research', nav: 'nav-research' },
+  projects: { view: 'view-projects', nav: 'nav-projects' },
+  trademark: { view: 'view-trademark', nav: 'nav-trademark' },
+  appraisal: { view: 'view-appraisal', nav: 'nav-appraisal' },
+};
 function showView(name) {
-  const isProjects = name === 'projects';
-  els.viewResearch.hidden = isProjects;
-  els.viewProjects.hidden = !isProjects;
-  els.navResearch.classList.toggle('active', !isProjects);
-  els.navProjects.classList.toggle('active', isProjects);
-  if (isProjects) loadProjects(els.projectsSearch.value.trim());
+  for (const [k, v] of Object.entries(VIEWS)) {
+    const view = document.getElementById(v.view);
+    if (view) view.hidden = k !== name;
+    const nav = document.getElementById(v.nav);
+    if (nav) nav.classList.toggle('active', k === name);
+  }
+  if (name === 'projects') loadProjects(els.projectsSearch.value.trim());
+}
+
+// ── Standalone tools (Trademark, Appraisal) ─────────────────────────────────
+function setToolStatus(el, text, err = false) {
+  if (!text) { el.hidden = true; return; }
+  el.hidden = false;
+  el.textContent = text;
+  el.classList.toggle('error', err);
+}
+const pick = (o, keys) => {
+  for (const k of keys) if (o && o[k] != null && o[k] !== '') return o[k];
+  return '';
+};
+
+async function runTrademark(q) {
+  els.tmResults.innerHTML = '';
+  setToolStatus(els.tmStatus, `Searching trademarks for "${q}"…`);
+  try {
+    const res = await fetch(`/api/lookup?source=trademark_search&query=${encodeURIComponent(q)}`);
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error || `Failed (${res.status})`);
+    const items = (data.data && data.data.trademarks) || [];
+    setToolStatus(els.tmStatus, items.length ? '' : 'No trademarks found.');
+    els.tmResults.innerHTML = items
+      .map((o) => {
+        const mark = escapeHtml(pick(o, ['mark', 'markText', 'wordmark', 'text', 'name', 'title']) || '(mark)');
+        const owner = escapeHtml(pick(o, ['owner', 'applicant', 'ownerName', 'owner_name', 'holder', 'applicantName']));
+        const status = escapeHtml(pick(o, ['status', 'statusType', 'markStatus']));
+        const filed = escapeHtml(pick(o, ['filingDate', 'filing_date', 'applicationDate', 'dateFiled', 'filed']));
+        const reg = escapeHtml(pick(o, ['registrationDate', 'registration_date', 'dateRegistered']));
+        const office = escapeHtml(String(pick(o, ['office']) || '').toUpperCase());
+        const meta = [owner && `Owner: ${owner}`, status && `Status: ${status}`, filed && `Filed: ${filed}`, reg && `Reg: ${reg}`, office]
+          .filter(Boolean)
+          .join(' · ');
+        const raw = escapeHtml(JSON.stringify(o, null, 2).slice(0, 1800));
+        return `<li class="tool-item"><div class="tool-title">${mark}</div>${meta ? `<div class="tool-meta">${meta}</div>` : ''}<details class="src-detail"><summary>raw</summary><pre>${raw}</pre></details></li>`;
+      })
+      .join('');
+  } catch (e) {
+    setToolStatus(els.tmStatus, e.message || String(e), true);
+  }
+}
+
+async function runAppraisal(domain) {
+  els.apResult.hidden = true;
+  els.apResult.innerHTML = '';
+  setToolStatus(els.apStatus, `Appraising ${domain}… (a new appraisal can take a few seconds)`);
+  try {
+    const res = await fetch(`/api/lookup?source=appraise_lookup&domain=${encodeURIComponent(domain)}`);
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error || `Failed (${res.status})`);
+    const d = data.data || {};
+    const a = d.appraisal || d;
+    const value = pick(a, ['estimated_value', 'value', 'appraisal_value', 'price', 'estimate', 'valuation', 'fair_market_value']);
+    setToolStatus(els.apStatus, '');
+    els.apResult.hidden = false;
+    const head = value
+      ? `<div class="ap-value">${escapeHtml(String(value))}</div>`
+      : '<div class="muted">No headline value field found — see the full appraisal below.</div>';
+    const note = d.status === 'pending' ? `<div class="muted">${escapeHtml(d.note || 'Still processing.')}</div>` : '';
+    const raw = escapeHtml(JSON.stringify(a, null, 2).slice(0, 4000));
+    els.apResult.innerHTML = `<div class="tool-title">${escapeHtml(domain)}</div>${head}${note}<details class="src-detail"><summary>full appraisal</summary><pre>${raw}</pre></details>`;
+  } catch (e) {
+    setToolStatus(els.apStatus, e.message || String(e), true);
+  }
 }
 
 // Last few runs, shown under the search bar on the homepage.
@@ -567,6 +649,10 @@ els.deepenTopBtn?.addEventListener('click', deepen);
 els.exportPdf?.addEventListener('click', () => window.print());
 els.navResearch?.addEventListener('click', showEntry);
 els.homeLink?.addEventListener('click', (e) => { e.preventDefault(); showEntry(); });
+els.navTrademark?.addEventListener('click', () => showView('trademark'));
+els.navAppraisal?.addEventListener('click', () => showView('appraisal'));
+els.tmForm?.addEventListener('submit', (e) => { e.preventDefault(); const q = els.tmQuery.value.trim(); if (q) runTrademark(q); });
+els.apForm?.addEventListener('submit', (e) => { e.preventDefault(); const v = els.apDomain.value.trim(); if (v) runAppraisal(v); });
 els.navProjects?.addEventListener('click', () => showView('projects'));
 
 let searchTimer = null;

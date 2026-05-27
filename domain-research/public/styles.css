@@ -94,6 +94,16 @@ a.wordmark:hover { text-decoration: none; opacity: .9; }
 
 /* Nav (vertical, in the sidebar) */
 .nav { display: flex; flex-direction: column; gap: 8px; }
+.nav-group { font-family: var(--body); font-weight: 800; font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--navy-3); margin: 10px 0 0; padding: 0 4px; }
+.nav-group:first-child { margin-top: 0; }
+
+/* Standalone tool results (Trademark / Appraisal) */
+.tool-results { list-style: none; padding: 0; margin: 16px 0 0; display: grid; gap: 10px; }
+.tool-item, .appraisal-result { padding: 14px 16px; background: var(--cream-2); border: 2px solid var(--line); border-radius: var(--radius-sm); box-shadow: var(--shadow-sm); }
+.appraisal-result { margin-top: 16px; }
+.tool-title { font-family: var(--body); font-weight: 800; font-size: 1.05rem; color: var(--navy); }
+.tool-meta { color: var(--navy-2); font-size: .9rem; margin-top: 4px; }
+.ap-value { font-family: var(--display); font-size: 2rem; color: var(--coral); margin: 8px 0; }
 .nav-btn {
   width: 100%;
   text-align: left;
