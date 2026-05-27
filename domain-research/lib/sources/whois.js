@@ -136,7 +136,7 @@ export default {
 
     return {
       domain: d,
-      whois_server: server,
+      whois_server: serversTried[serversTried.length - 1] || start,
       servers_chased: serversTried,
       registrar: g('registrar', 'sponsoring registrar', 'registrar name'),
       created: g('creation date', 'created', 'created on', 'registered on', 'registration date'),

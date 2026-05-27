@@ -10,9 +10,14 @@ let client = null;
 
 function getClient(env) {
   const url = env.MASTERLIST_SUPABASE_URL;
-  const key = env.MASTERLIST_SUPABASE_SECRET_KEY;
+  const key =
+    env.MASTERLIST_SUPABASE_SECRET_KEY ||
+    env.MASTERLIST_SUPABASE_SERVICE_ROLE_KEY ||
+    env.MASTERLIST_SUPABASE_KEY;
   if (!url || !key) {
-    throw new Error('Master Domain List not configured — set MASTERLIST_SUPABASE_URL and MASTERLIST_SUPABASE_SECRET_KEY');
+    throw new Error(
+      'Master Domain List not configured — set MASTERLIST_SUPABASE_URL and a key (MASTERLIST_SUPABASE_SECRET_KEY or MASTERLIST_SUPABASE_SERVICE_ROLE_KEY)',
+    );
   }
   if (!client) {
     client = createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } });
@@ -32,7 +37,10 @@ export default {
     properties: { domain: { type: 'string' } },
     required: ['domain'],
   },
-  requiresKey: ['MASTERLIST_SUPABASE_URL', 'MASTERLIST_SUPABASE_SECRET_KEY'],
+  requiresKey: [
+    'MASTERLIST_SUPABASE_URL',
+    ['MASTERLIST_SUPABASE_SECRET_KEY', 'MASTERLIST_SUPABASE_SERVICE_ROLE_KEY', 'MASTERLIST_SUPABASE_KEY'],
+  ],
   async run({ domain }, { env }) {
     const d = normalizeDomain(domain);
     if (!isValidDomain(d)) throw new Error(`Invalid domain: ${domain}`);

@@ -61,7 +61,11 @@ export function getCategoryMap() {
 
 function isEnabled(source, env) {
   if (!source.requiresKey) return true;
-  return source.requiresKey.every((k) => Boolean(env[k]));
+  // A requiresKey entry may be a single var name, or an array of acceptable
+  // alternatives (satisfied when ANY of them is set).
+  return source.requiresKey.every((k) =>
+    Array.isArray(k) ? k.some((alt) => Boolean(env[alt])) : Boolean(env[k]),
+  );
 }
 
 // Only expose tools whose keys are configured (and that fit the requested cost
