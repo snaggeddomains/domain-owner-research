@@ -389,7 +389,10 @@ function renderSummary(d) {
     const ownerClue = d.likely_owner && !CLUE_NOISE_RE.test(String(d.likely_owner));
     html += `<div class="owner">${d.likely_owner ? `<span class="owner-name${ownerClue ? ' clue' : ''}">${e(d.likely_owner)}</span>` : '<span class="muted">Owner not established</span>'}${t}</div>`;
   }
-  const contacts = Array.isArray(d.contacts) ? d.contacts : [];
+  // Marketplace / for-sale listing URLs aren't owner-identifying contacts — drop
+  // them from Key contacts even on older saved reports (they belong in the
+  // narrative / contact path).
+  const contacts = (Array.isArray(d.contacts) ? d.contacts : []).filter((c) => !SALE_LINK_RE.test(String((c && c.value) || '')));
   if (contacts.length) {
     html += `<div class="sum-block"><h3>Key contacts</h3><ul class="contacts">${contacts
       .map((c) => {
