@@ -15,6 +15,7 @@ function channelsFor(domain) {
     { channel: 'atom', url: `https://www.atom.com/name/${label}` },
     { channel: 'godaddy', url: `https://www.godaddy.com/domainsearch/find?domainToCheck=${d}`, render: true },
     { channel: 'dynadot', url: `https://www.dynadot.com/domain/search?domain=${d}`, render: true },
+    { channel: 'spaceship', url: `https://www.spaceship.com/domain-search/?query=${d}&tab=domains`, render: true },
   ];
 }
 
@@ -80,6 +81,9 @@ function aftermarketSignals(body) {
   const price = maxPriceUsd(body);
   if (price >= 100 && /\bbuy it now\b|\bbuy now\b/.test(low)) out.push('buy now');
   if (price >= 100 && /\bpremium\b/.test(low)) out.push('premium');
+  // Spaceship tags an aftermarket listing "AFTERMARKET" next to a "Make Offer" —
+  // gated by an offer/price so a bare "Aftermarket" filter tab isn't a hit.
+  if (/\baftermarket\b/.test(low) && (/\bmake (?:an )?offer\b/.test(low) || price >= 100)) out.push('aftermarket');
   return out;
 }
 
@@ -88,51 +92,65 @@ function aftermarketSignals(body) {
 // for-sale signal is a candidate seller portfolio (e.g. domainman.com) that may
 // name the owner.
 const KNOWN_PLATFORM_RE =
-  /(?:^|\.)(?:afternic|atom|squadhelp|sedo|dan|godaddy|namecheap|hugedomains|buydomains|undeveloped|efty|dynadot|sav|flippa|namebright|epik|uniregistry|bodis|parkingcrew|sedoparking|above|smartname|voodoo|domainmarket|brandbucket)\.[a-z.]+$/i;
+  /(?:^|\.)(?:afternic|atom|squadhelp|sedo|dan|godaddy|namecheap|hugedomains|buydomains|undeveloped|efty|dynadot|spaceship|sav|flippa|namebright|epik|uniregistry|bodis|parkingcrew|sedoparking|above|smartname|voodoo|domainmarket|brandbucket)\.[a-z.]+$/i;
 const hostOf = (u) => {
   try { return new URL(u).hostname.replace(/^www\./, ''); } catch { return ''; }
 };
 
+// Check one marketplace channel and classify it. LISTED only when the page
+// resolves (200) AND shows a real for-sale signal; a 404/403 page — or bare
+// prices that are just marketplace page-furniture — is NOT a listing.
+async function checkChannel({ channel, url, render }, env) {
+  try {
+    const resp = await fetchChannel({ url, render }, env);
+    const ok = resp.status === 200;
+    const clues = extractClues(resp.body || '');
+    const signals = [...new Set([...clues.parking.for_sale_signals, ...aftermarketSignals(resp.body || '')])];
+    const prices = [...new Set((String(resp.body || '').match(PRICE_RE) || []).slice(0, 5))];
+    const listed = ok && signals.length > 0;
+    return {
+      channel,
+      url,
+      http_status: resp.status,
+      rendered: resp.rendered,
+      listed,
+      for_sale_signals: signals,
+      prices: listed ? prices : [],
+      emails: clues.emails.slice(0, 5),
+    };
+  } catch (e) {
+    return { channel, url, listed: false, error: String(e?.message || e) };
+  }
+}
+
 export default {
   name: 'marketplace_check',
   description:
-    'Free, best-effort. Checks domain marketplaces (Afternic, Sedo, Atom, GoDaddy, Dynadot) for an active ' +
+    'Free, best-effort. Checks domain marketplaces (Afternic, Sedo, Atom, GoDaddy, Dynadot, Spaceship) for an active ' +
     'for-sale listing — price, "Make Offer"/"Buy It Now", and broker/platform. A listing often exposes the seller or ' +
-    'broker. Each channel is fail-soft; some block automated fetches (GoDaddy/Dynadot are rendered via Scrape.do when ' +
-    'configured), so a miss is not proof the domain is unlisted.',
-  parameters: { type: 'object', properties: { domain: { type: 'string' } }, required: ['domain'] },
-  async run({ domain }, ctx = {}) {
+    'broker. Each channel is fail-soft; some block automated fetches (GoDaddy/Dynadot/Spaceship are rendered via ' +
+    'Scrape.do when configured), so a miss is not proof the domain is unlisted. Pass an optional `channel` to check ' +
+    'just one (afternic|sedo|atom|godaddy|dynadot|spaceship).',
+  parameters: {
+    type: 'object',
+    properties: { domain: { type: 'string' }, channel: { type: 'string' } },
+    required: ['domain'],
+  },
+  async run({ domain, channel }, ctx = {}) {
     const env = ctx.env || process.env || {};
     const d = normalizeDomain(domain);
     if (!isValidDomain(d)) throw new Error(`Invalid domain: ${domain}`);
+    const defs = channelsFor(d);
 
-    const channels = await Promise.all(
-      channelsFor(d).map(async ({ channel, url, render }) => {
-        try {
-          const resp = await fetchChannel({ url, render }, env);
-          const ok = resp.status === 200;
-          const clues = extractClues(resp.body || '');
-          const signals = [...new Set([...clues.parking.for_sale_signals, ...aftermarketSignals(resp.body || '')])];
-          const prices = [...new Set((String(resp.body || '').match(PRICE_RE) || []).slice(0, 5))];
-          // A channel only counts as LISTED when the page actually resolves (200)
-          // AND shows a real for-sale signal. A 404/403/410 page — or bare prices
-          // that are just marketplace page-furniture — is NOT a listing.
-          const listed = ok && signals.length > 0;
-          return {
-            channel,
-            url,
-            http_status: resp.status,
-            rendered: resp.rendered,
-            listed,
-            for_sale_signals: signals,
-            prices: listed ? prices : [],
-            emails: clues.emails.slice(0, 5),
-          };
-        } catch (e) {
-          return { channel, url, listed: false, error: String(e?.message || e) };
-        }
-      }),
-    );
+    // Single-channel fast path — lets the UI stream one marketplace at a time
+    // instead of waiting for the whole batch. Skips the seller-portfolio probe.
+    if (channel) {
+      const def = defs.find((c) => c.channel === channel);
+      if (!def) throw new Error(`Unknown channel: ${channel}`);
+      return { domain: d, channels: [await checkChannel(def, env)] };
+    }
+
+    const channels = await Promise.all(defs.map((def) => checkChannel(def, env)));
 
     // Seller-portfolio detector: visit the domain itself and see where it lands.
     // A redirect to a NON-major-marketplace host that shows a for-sale signal is

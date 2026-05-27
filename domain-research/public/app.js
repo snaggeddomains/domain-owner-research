@@ -736,15 +736,20 @@ function startPolling(runId, label) {
 
 // ── Marketplace "for sale" quick-strip ──────────────────────────────────────
 // Fires the instant a research starts (parallel to the free LLM pass) to answer
-// the first question a researcher asks: "is this for sale, and where?" Listed
-// channels show as green ✓ links; misses flash a red ✗ then fade out, leaving
-// only the live listings. A row of quick-open links covers the sources we can't
-// reliably check server-side (DomainScout needs a login).
+// the first question a researcher asks: "is this for sale, and where?" Each
+// channel is checked individually and its pill flips from "checking" to a green
+// ✓ link (listed) or a red ✗ (not found) the moment it resolves — so the fast
+// free channels report before the slower rendered ones. Misses STAY visible. A
+// row of quick-open links covers sources we can't check server-side (DomainScout
+// needs a login).
 //
 // Results are cached server-side (kind 'mk') and only re-checked once a week, so
 // re-opening the same report 5× a day doesn't re-spend Scrape.do credits. A
 // "refresh" link forces a fresh check on demand.
-const MARKET_NAMES = { afternic: 'Afternic', sedo: 'Sedo', atom: 'Atom', godaddy: 'GoDaddy', dynadot: 'Dynadot' };
+const MARKET_NAMES = {
+  afternic: 'Afternic', sedo: 'Sedo', atom: 'Atom', godaddy: 'GoDaddy', dynadot: 'Dynadot', spaceship: 'Spaceship',
+};
+const MARKET_CHANNELS = ['afternic', 'sedo', 'atom', 'godaddy', 'dynadot', 'spaceship'];
 const MARKET_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
 function quickLinks(domain) {
@@ -754,6 +759,7 @@ function quickLinks(domain) {
     ['Wayback', `https://web.archive.org/web/2024*/${domain}`],
     ['GoDaddy', `https://www.godaddy.com/domainsearch/find?domainToCheck=${d}`],
     ['Dynadot', `https://www.dynadot.com/domain/search?domain=${d}`],
+    ['Spaceship', `https://www.spaceship.com/domain-search/?query=${d}&tab=domains`],
   ];
   const main = links
     .map(([n, u]) => `<a class="ms-link" href="${u}" target="_blank" rel="noopener">${escapeHtml(n)} ↗</a>`)
@@ -778,6 +784,18 @@ function agoLabel(ts) {
   return m >= 1 ? `${m}m ago` : 'just now';
 }
 
+function metaHtml(ts) {
+  return `<span class="ms-meta">checked ${escapeHtml(agoLabel(ts))} · <a href="#" class="ms-refresh">refresh</a></span>`;
+}
+
+function channelPill(c) {
+  const name = escapeHtml(MARKET_NAMES[c.channel] || c.channel);
+  if (c.pending) return `<span class="ms-item pending" data-ch="${c.channel}">… ${name}</span>`;
+  if (c.listed)
+    return `<a class="ms-item listed" data-ch="${c.channel}" href="${escapeHtml(c.url || '#')}" target="_blank" rel="noopener">✓ ${name} ↗</a>`;
+  return `<span class="ms-item miss" data-ch="${c.channel}">✗ ${name}</span>`;
+}
+
 async function getMarketCache(domain) {
   try {
     const res = await fetch(`/api/tool-history?kind=mk&query=${encodeURIComponent(domain)}`);
@@ -790,69 +808,74 @@ async function getMarketCache(domain) {
   }
 }
 
-async function fetchMarket(domain) {
-  const res = await fetch(`/api/lookup?source=marketplace_check&domain=${encodeURIComponent(domain)}`);
-  const data = await res.json();
-  const result = data.data || null;
-  if (result) serverSaveTool('mk', domain, result); // cache for a week
-  return result;
+function marketPaint(domain, pills, metaInner) {
+  els.marketStrip.innerHTML =
+    `<div class="ms-row"><span class="ms-label">For sale:</span>${pills}${metaInner}</div>` +
+    `<div class="ms-row ms-quick"><span class="ms-label">Open:</span>${quickLinks(domain)}</div>`;
+}
+
+// Render a complete (cached) result at once — misses stay as red ✗.
+function renderMarketStrip(domain, channels, ts) {
+  const byCh = new Map(channels.map((c) => [c.channel, c]));
+  const ordered = MARKET_CHANNELS.filter((ch) => byCh.has(ch)).map((ch) => byCh.get(ch));
+  for (const c of channels) if (!MARKET_CHANNELS.includes(c.channel)) ordered.push(c);
+  marketPaint(domain, ordered.map(channelPill).join(''), ts ? metaHtml(ts) : '');
+}
+
+// Live check: one request per channel, each pill updated in place as it lands.
+async function streamMarketStrip(domain) {
+  const state = MARKET_CHANNELS.map((ch) => ({ channel: ch, pending: true }));
+  marketPaint(domain, state.map(channelPill).join(''), '<span class="ms-meta ms-checking">checking…</span>');
+  await Promise.all(
+    MARKET_CHANNELS.map(async (ch, i) => {
+      let result;
+      try {
+        const res = await fetch(
+          `/api/lookup?source=marketplace_check&domain=${encodeURIComponent(domain)}&channel=${ch}`,
+        );
+        const data = await res.json();
+        result = ((data.data && data.data.channels) || [])[0] || { channel: ch, listed: false };
+      } catch {
+        result = { channel: ch, listed: false };
+      }
+      state[i] = result;
+      if (els.marketStrip.hidden || els.marketStrip.dataset.domain !== domain) return;
+      const pill = els.marketStrip.querySelector(`.ms-item[data-ch="${ch}"]`);
+      if (pill) pill.outerHTML = channelPill(result);
+    }),
+  );
+  if (els.marketStrip.hidden || els.marketStrip.dataset.domain !== domain) return;
+  const channels = state.map((c) => ({
+    channel: c.channel,
+    url: c.url,
+    listed: !!c.listed,
+    for_sale_signals: c.for_sale_signals,
+    prices: c.prices,
+  }));
+  serverSaveTool('mk', domain, { domain, any_listed: channels.some((c) => c.listed), channels });
+  const checking = els.marketStrip.querySelector('.ms-checking');
+  if (checking) checking.outerHTML = metaHtml(Date.now());
 }
 
 async function runMarketStrip(domain, { force = false } = {}) {
   if (!els.marketStrip || !domain) return;
   els.marketStrip.hidden = false;
   els.marketStrip.dataset.domain = domain;
-  els.marketStrip.innerHTML =
-    `<div class="ms-row"><span class="ms-label">Checking marketplaces…</span></div>` +
-    `<div class="ms-row ms-quick"><span class="ms-label">Open:</span>${quickLinks(domain)}</div>`;
+  // Cheap first paint so the quick-open links are usable instantly.
+  marketPaint(domain, '<span class="ms-checking">Checking marketplaces…</span>', '');
   try {
-    let result = null;
-    let ts = 0;
     if (!force) {
       const cached = await getMarketCache(domain);
       if (cached && cached.data && Date.now() - cached.ts < MARKET_TTL_MS) {
-        result = cached.data;
-        ts = cached.ts;
+        if (els.marketStrip.hidden || els.marketStrip.dataset.domain !== domain) return;
+        renderMarketStrip(domain, cached.data.channels || [], cached.ts);
+        return;
       }
     }
-    if (!result) {
-      result = await fetchMarket(domain);
-      ts = Date.now();
-    }
-    // Guard against a slower request resolving after the user moved on.
-    if (els.marketStrip.hidden || els.marketStrip.dataset.domain !== domain) return;
-    renderMarketStrip(domain, (result && result.channels) || [], ts);
+    await streamMarketStrip(domain);
   } catch {
     // Network/parse failure — leave the quick-open links in place.
   }
-}
-
-function renderMarketStrip(domain, channels, ts) {
-  const listed = channels.filter((c) => c.listed);
-  const misses = channels.filter((c) => !c.listed);
-  const listHtml = listed
-    .map(
-      (c) =>
-        `<a class="ms-item listed" href="${escapeHtml(c.url)}" target="_blank" rel="noopener">✓ ${escapeHtml(
-          MARKET_NAMES[c.channel] || c.channel,
-        )} ↗</a>`,
-    )
-    .join('');
-  const missHtml = misses
-    .map((c) => `<span class="ms-item miss">✗ ${escapeHtml(MARKET_NAMES[c.channel] || c.channel)}</span>`)
-    .join('');
-  const none = listed.length ? '' : '<span class="ms-none">no active listings found</span>';
-  const meta = ts
-    ? `<span class="ms-meta">checked ${escapeHtml(agoLabel(ts))} · <a href="#" class="ms-refresh">refresh</a></span>`
-    : '';
-  els.marketStrip.innerHTML =
-    `<div class="ms-row"><span class="ms-label">For sale:</span>${listHtml}${missHtml}${none}${meta}</div>` +
-    `<div class="ms-row ms-quick"><span class="ms-label">Open:</span>${quickLinks(domain)}</div>`;
-  // Let the misses register, then fade and remove them so only live listings stay.
-  setTimeout(() => {
-    els.marketStrip.querySelectorAll('.ms-item.miss').forEach((el) => el.classList.add('fade'));
-    setTimeout(() => els.marketStrip.querySelectorAll('.ms-item.miss').forEach((el) => el.remove()), 600);
-  }, 3500);
 }
 
 // Switch the research view into "showing a result": hide the entry hero and
