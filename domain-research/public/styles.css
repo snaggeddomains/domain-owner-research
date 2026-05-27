@@ -310,6 +310,10 @@ button:disabled { opacity: .55; cursor: progress; }
 .contact-card .cc-name { font-family: var(--body); font-weight: 800; font-size: 1.15rem; color: var(--navy); }
 .contact-card .cc-org { font-size: .95rem; color: var(--navy-2); margin: 2px 0 10px; }
 .contact-card .contacts { gap: 6px; }
+.cc-actions { margin: 0 0 10px; }
+.copy-emails { background: var(--cream); color: var(--navy-2); border: 1.5px solid var(--line); box-shadow: none; padding: 6px 14px; font-size: 12.5px; font-weight: 700; border-radius: 999px; cursor: pointer; }
+.copy-emails:hover { border-color: var(--coral); color: var(--navy); transform: none; box-shadow: none; }
+.copy-emails.copied { background: #1f7a4d; border-color: #1f7a4d; color: #fff; }
 .cpath { margin: 0; padding-left: 20px; display: grid; gap: 5px; font-family: var(--system); font-size: .95rem; color: var(--navy); }
 .timeline li { display: flex; gap: 12px; font-family: var(--system); font-size: .95rem; min-width: 0; }
 .timeline .tl-date { flex: none; width: 120px; font-weight: 700; color: var(--coral-deep); font-variant-numeric: tabular-nums; }
@@ -436,7 +440,7 @@ button:disabled { opacity: .55; cursor: progress; }
   .contacts .ctype { min-width: 0; margin-right: 6px; }
 }
 @media print {
-  .sidebar, .hero, #report-actions, #status, #run-controls, #deepen-top, #deepen-bar, #evidence, #report-feedback { display: none !important; }
+  .sidebar, .hero, #report-actions, #status, #run-controls, #deepen-top, #deepen-bar, #evidence, #report-feedback, .copy-emails { display: none !important; }
   body { background: #fff; color: #000; }
   #app { display: block; }
   .content .wrap { max-width: none; padding: 0; }

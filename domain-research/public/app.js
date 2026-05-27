@@ -482,9 +482,11 @@ function renderSummary(d) {
       const nameC = sorted.find((c) => c.type === 'name');
       const orgC = sorted.find((c) => c.type === 'org');
       const rest = sorted.filter((c) => c !== nameC && c !== orgC);
+      const emails = arr.filter((c) => c.type === 'email' && c.value).map((c) => String(c.value).trim());
       let h = '<div class="contact-card">';
       if (nameC) h += `<div class="cc-name">${isUsefulClue(nameC) ? `<span class="clue">${e(nameC.value)}</span>` : e(nameC.value)}</div>`;
       if (orgC) h += `<div class="cc-org">${linkify(orgC)}${orgC.note ? ` <span class="muted">— ${e(orgC.note)}</span>` : ''}</div>`;
+      if (emails.length) h += `<div class="cc-actions"><button type="button" class="copy-emails" data-emails="${e(emails.join(', '))}">Copy ${emails.length === 1 ? 'email' : `all ${emails.length} emails`}</button></div>`;
       if (rest.length) h += list(rest);
       return h + '</div>';
     };
@@ -1216,6 +1218,20 @@ els.deepenBtn?.addEventListener('click', deepen);
 els.deepenTopBtn?.addEventListener('click', deepen);
 els.cancelRun?.addEventListener('click', cancelRun);
 els.exportPdf?.addEventListener('click', () => window.print());
+// One-click copy of all the primary target's email addresses (delegated, so it
+// survives report re-renders).
+els.report?.addEventListener('click', (ev) => {
+  const btn = ev.target.closest('.copy-emails');
+  if (!btn) return;
+  const emails = btn.dataset.emails || '';
+  if (!emails || !navigator.clipboard) return;
+  navigator.clipboard.writeText(emails).then(() => {
+    const orig = btn.textContent;
+    btn.textContent = 'Copied!';
+    btn.classList.add('copied');
+    setTimeout(() => { btn.textContent = orig; btn.classList.remove('copied'); }, 1500);
+  }).catch(() => {});
+});
 els.rfYes?.addEventListener('click', () => submitFeedback({ was_correct: true }));
 els.rfNo?.addEventListener('click', () => { if (els.rfCorrection) els.rfCorrection.hidden = false; });
 els.rfSubmit?.addEventListener('click', () => submitFeedback({
