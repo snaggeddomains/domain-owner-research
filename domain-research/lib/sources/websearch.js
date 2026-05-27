@@ -43,11 +43,20 @@ export default {
     try {
       return await search(scoped);
     } catch (e) {
-      // Serper's free plan rejects advanced operators (e.g. site:) with HTTP 400.
-      // Fall back to the site as a plain keyword so the search still runs.
-      if (site && /\b400\b|not allowed/i.test(String(e?.message || e))) {
-        const kw = String(site).trim().replace(/^www\./, '').split('.')[0];
-        return await search(`${base} ${kw}`);
+      // Serper's free plan rejects advanced operators (site:, quotes, OR, -, ...)
+      // with HTTP 400. Strip them (turning a scoped site: into a plain keyword)
+      // and retry so the search still returns something.
+      if (/\b400\b|not allowed/i.test(String(e?.message || e))) {
+        const kw = site ? ` ${String(site).trim().replace(/^www\./, '').split('.')[0]}` : '';
+        const plain = (base + kw)
+          .replace(/\bsite:\S+/gi, '')
+          .replace(/\b(?:intitle|inurl|intext|filetype|related|cache|allintitle|allinurl):\S+/gi, '')
+          .replace(/["']/g, '')
+          .replace(/\s+(?:OR|AND)\s+/g, ' ')
+          .replace(/(^|\s)[-+]\S+/g, ' ')
+          .replace(/\s+/g, ' ')
+          .trim();
+        if (plain && plain !== scoped) return await search(plain);
       }
       throw e;
     }

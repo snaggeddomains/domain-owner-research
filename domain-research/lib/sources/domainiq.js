@@ -59,19 +59,50 @@ async function fetchViaProxy(url, agent, timeoutMs = 12000) {
 // entries. Collapse consecutive identical ownership states into dated "eras" so
 // the FULL lineage (including old pre-privacy owners) survives the model's input
 // budget instead of being truncated to only the most recent records.
+const EMAIL_RE = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/;
+
+// Extract the registrant/owner from ONE WHOIS snapshot, tolerant of BOTH the
+// modern ICANN labels AND the pre-2013 free-form format — which is exactly
+// where the valuable pre-privacy named owners live (e.g. "Administrative
+// Contact:\n  Ostaski, Bill admin@cove.com" rather than "Registrant Name:").
+function party(t) {
+  const m = (re) => ((t.match(re) || [])[1] || '').trim();
+  let org = m(/Registrant Organization:\s*([^\n\r]+)/i);
+  let name = m(/Registrant Name:\s*([^\n\r]+)/i);
+  let email = m(/Registrant Email:\s*([^\n\r]+)/i);
+  let phone = m(/Registrant Phone:\s*([^\n\r]+)/i);
+  const registrar = m(/Registrar:\s*([^\n\r]+)/i) || m(/Registrar of Record:\s*([^\n\r]+)/i);
+
+  if (!name) {
+    name =
+      m(/Registrant(?:\s*Contact)?:\s*\r?\n\s*([^\n\r]+)/i) ||
+      m(/Administrative Contact[^:\n]*:\s*\r?\n?\s*([^\n\r]+)/i);
+  }
+  if (!email) {
+    const e = t.match(new RegExp(EMAIL_RE.source, 'i'));
+    if (e) email = e[0];
+  }
+  if (!phone) {
+    // First phone-like number with >=10 digits, excluding ZIP+4 (#####-####).
+    const cands = t.match(/\+?\d[\d\s().\-]{7,}\d/g) || [];
+    phone = cands.find((c) => c.replace(/\D/g, '').length >= 10 && !/^\d{5}-\d{4}$/.test(c.trim())) || '';
+  }
+  if (!org) {
+    // First non-label, non-numeric line is usually the org in old records.
+    const first = t
+      .split(/\r?\n/)
+      .map((s) => s.trim())
+      .find((s) => s && !/[:@]/.test(s) && !/^\d/.test(s) && !/^US$/i.test(s) && /\s/.test(s));
+    if (first) org = first;
+  }
+  // A name line often carries the email too ("Ostaski, Bill admin@cove.com").
+  if (name) name = name.replace(EMAIL_RE, '').replace(/\s{2,}/g, ' ').trim();
+  return { org, name, email, phone, registrar };
+}
+
 function summarizeHistory(data) {
   const raw = data && data.raw;
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return data;
-
-  const field = (t, re) => ((t.match(re) || [])[1] || '').trim();
-  const fingerprint = (t) =>
-    [
-      field(t, /Registrant Organization:\s*([^\n\r]+)/i),
-      field(t, /Registrant Name:\s*([^\n\r]+)/i),
-      field(t, /Registrant Email:\s*([^\n\r]+)/i),
-      field(t, /Registrant Phone:\s*([^\n\r]+)/i),
-      field(t, /Registrar:\s*([^\n\r]+)/i),
-    ].join(' | ');
 
   const entries = Object.entries(raw)
     .map(([k, v]) => ({ date: (String(k).match(/(\d{4}-\d{2}-\d{2})/) || [])[1] || String(k), text: String(v) }))
@@ -79,7 +110,8 @@ function summarizeHistory(data) {
 
   const eras = [];
   for (const e of entries) {
-    const fp = fingerprint(e.text);
+    const p = party(e.text);
+    const fp = [p.org, p.name, p.email, p.phone, p.registrar].join(' | ');
     const prev = eras[eras.length - 1];
     if (prev && prev._fp === fp) {
       prev.last_seen = e.date;
@@ -90,11 +122,11 @@ function summarizeHistory(data) {
         first_seen: e.date,
         last_seen: e.date,
         snapshots: 1,
-        registrant_org: field(e.text, /Registrant Organization:\s*([^\n\r]+)/i),
-        registrant_name: field(e.text, /Registrant Name:\s*([^\n\r]+)/i),
-        registrant_email: field(e.text, /Registrant Email:\s*([^\n\r]+)/i),
-        registrant_phone: field(e.text, /Registrant Phone:\s*([^\n\r]+)/i),
-        registrar: field(e.text, /Registrar:\s*([^\n\r]+)/i),
+        registrant_org: p.org,
+        registrant_name: p.name,
+        registrant_email: p.email,
+        registrant_phone: p.phone,
+        registrar: p.registrar,
         nameservers: [
           ...new Set(
             (e.text.match(/Name Server:\s*([^\n\r]+)/gi) || []).map((s) =>
@@ -102,7 +134,7 @@ function summarizeHistory(data) {
             ),
           ),
         ],
-        record: e.text.slice(0, 900),
+        record: e.text.slice(0, 1200),
       });
     }
   }
@@ -129,6 +161,10 @@ export default {
       .replaceAll('{domain}', encodeURIComponent(domain))
       .replaceAll('{key}', encodeURIComponent(env.DOMAINIQ_API_KEY));
     const agent = getProxyAgent();
-    return agent ? await fetchViaProxy(url, agent) : await fetchJson(url);
+    const body = agent ? await fetchViaProxy(url, agent) : await fetchJson(url);
+    // Collapse the full raw history into distinct ownership eras so the whole
+    // lineage (incl. pre-privacy named owners) survives the model's input
+    // budget instead of being truncated to only the newest snapshots.
+    return summarizeHistory(body);
   },
 };
