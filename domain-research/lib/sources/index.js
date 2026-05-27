@@ -11,6 +11,8 @@ import rocketreach from './rocketreach.js';
 import rocketreachLookup from './rocketreachlookup.js';
 import whoxyHistory from './whoxyhistory.js';
 import whoxyReverse from './whoxyreverse.js';
+import readurl from './readurl.js';
+import bravesearch from './bravesearch.js';
 import marketplace from './marketplace.js';
 import reversewhois from './reversewhois.js';
 import reversens from './reversens.js';
@@ -23,8 +25,8 @@ import appraise from './appraise.js';
 // To add a new data source: create a module exporting { name, description,
 // parameters, requiresKey?, run(args, { env }) } and register it here.
 const ALL = [
-  rdap, whois, dns, wayback, livesite, marketplace, cluster, masterlist, rocketreach,
-  whoisxml, domainiq, bigdomaindata, reversewhois, reversens, reverseip, websearch, trademark, appraise,
+  rdap, whois, dns, wayback, livesite, marketplace, cluster, masterlist, rocketreach, readurl,
+  whoisxml, domainiq, bigdomaindata, reversewhois, reversens, reverseip, websearch, bravesearch, trademark, appraise,
   rocketreachLookup, whoxyHistory, whoxyReverse,
 ];
 
@@ -33,7 +35,7 @@ const ALL = [
 // pass (tier 'all').
 const PAID = new Set([
   'whoisxml_lookup', 'domainiq_lookup', 'bigdomaindata_lookup',
-  'reverse_whois', 'reverse_ns', 'reverse_ip', 'web_search', 'trademark_search', 'appraise_lookup',
+  'reverse_whois', 'reverse_ns', 'reverse_ip', 'web_search', 'brave_search', 'trademark_search', 'appraise_lookup',
   'rocketreach_lookup', 'whoxy_history', 'whoxy_reverse',
 ]);
 
@@ -59,6 +61,8 @@ const CATEGORY = {
   rocketreach_search: 'People & contacts',
   rocketreach_lookup: 'People & contacts',
   web_search: 'Web & social',
+  brave_search: 'Web & social',
+  read_url: 'Web & social',
   trademark_search: 'Trademark / legal',
   appraise_lookup: 'Valuation',
 };
