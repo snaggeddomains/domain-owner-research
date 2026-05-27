@@ -196,6 +196,21 @@ create table if not exists domain_research_inferences (
 );
 create index if not exists idx_dr_inferences_run on domain_research_inferences (run_id);
 
+-- ── Standalone tool history (Trademark, Appraisal) ──────────────────────────
+-- Backs the "recent 5" lists and deeplinks (/trademark/<q>, /appraisal/<d>) so
+-- they persist across devices/sessions. One row per (kind, query); re-running
+-- a query upserts that row rather than piling up duplicates.
+create table if not exists domain_research_tool_lookups (
+  id         uuid primary key default gen_random_uuid(),
+  kind       text not null,                           -- tm | ap
+  query      text not null,                           -- the SLD (tm) or domain (ap)
+  data       jsonb,                                   -- saved result, re-rendered without re-running
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (kind, query)
+);
+create index if not exists idx_dr_tool_lookups_kind on domain_research_tool_lookups (kind, updated_at desc);
+
 -- ── Enable RLS (no policies → backend secret key only) ──────────────────────
 do $$
 declare t text;

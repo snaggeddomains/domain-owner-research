@@ -50,34 +50,69 @@ const els = {
   apRecent: $('ap-recent'),
 };
 
-// Cache recent tool lookups in the browser so they're one click away (and
-// re-opening a cached result costs no credits).
+// Tool history is server-backed (Supabase) so the "recent 5" and deeplinks
+// persist across devices/sessions like research runs. localStorage is kept as
+// a fast local cache + offline fallback (mobile Safari evicts it).
 function loadRecents(kind) {
   try { return JSON.parse(localStorage.getItem(`recent_${kind}`) || '[]'); } catch { return []; }
 }
-function saveRecent(kind, key, data) {
+function saveRecentLocal(kind, key, data) {
   const list = loadRecents(kind).filter((r) => r.key !== key);
   list.unshift({ key, data, ts: Date.now() });
   try { localStorage.setItem(`recent_${kind}`, JSON.stringify(list.slice(0, 5))); } catch {}
 }
-function renderToolRecent(el, kind, onPick) {
-  const list = loadRecents(kind);
-  if (!list.length) { el.hidden = true; return; }
+function saveRecent(kind, key, data) {
+  saveRecentLocal(kind, key, data);
+  serverSaveTool(kind, key, data);
+}
+const TOOL_PATH = { tm: 'trademark', ap: 'appraisal' };
+
+async function serverListTool(kind) {
+  try {
+    const res = await fetch(`/api/tool-history?kind=${kind}`);
+    if (!res.ok) return null;
+    const d = await res.json();
+    if (!Array.isArray(d.lookups)) return null;
+    return d.lookups.map((r) => ({ key: r.query, ts: r.updated_at ? Date.parse(r.updated_at) : Date.now() }));
+  } catch { return null; }
+}
+async function serverGetTool(kind, query) {
+  try {
+    const res = await fetch(`/api/tool-history?kind=${kind}&query=${encodeURIComponent(query)}`);
+    if (!res.ok) return null;
+    const d = await res.json();
+    return d.found ? d.data : null;
+  } catch { return null; }
+}
+function serverSaveTool(kind, key, data) {
+  try {
+    fetch('/api/tool-history', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ kind, query: key, data }),
+    }).catch(() => {});
+  } catch { /* ignore */ }
+}
+
+// Recent-5 under the tool search: server history first, localStorage fallback.
+// Clicking an item navigates to its deeplink (which loads the saved result).
+async function refreshToolRecent(el, kind) {
+  if (!el) return;
+  const server = await serverListTool(kind);
+  const list = server && server.length ? server : loadRecents(kind).map((r) => ({ key: r.key, ts: r.ts }));
+  if (!list.length) { el.hidden = true; el.innerHTML = ''; return; }
   el.hidden = false;
   el.innerHTML =
     '<div class="recent-title">Recent</div><ul class="recent-list">' +
     list
       .map(
         (r) =>
-          `<li class="recent-run" data-key="${escapeHtml(r.key)}"><span class="recent-domain">${escapeHtml(r.key)}</span><span class="recent-when">${escapeHtml(new Date(r.ts).toLocaleString())}</span></li>`,
+          `<li class="recent-run" data-key="${escapeHtml(r.key)}"><span class="recent-domain">${escapeHtml(r.key)}</span><span class="recent-when">${escapeHtml(r.ts ? new Date(r.ts).toLocaleString() : '')}</span></li>`,
       )
       .join('') +
     '</ul>';
   el.querySelectorAll('.recent-run').forEach((li) => {
-    li.addEventListener('click', () => {
-      const hit = loadRecents(kind).find((r) => r.key === li.dataset.key);
-      if (hit) onPick(hit.key, hit.data);
-    });
+    li.addEventListener('click', () => { setToolUrl(TOOL_PATH[kind], li.dataset.key); route(); });
   });
 }
 
@@ -142,14 +177,14 @@ function route() {
   const tr = currentToolRoute();
   if (tr && tr.tool === 'trademark') {
     showView('trademark');
-    renderToolRecent(els.tmRecent, 'tm', tmPick);
+    refreshToolRecent(els.tmRecent, 'tm');
     if (tr.slug) openToolSlug('tm', tr.slug);
     else { els.tmResults.innerHTML = ''; els.tmQuery.value = ''; setToolStatus(els.tmStatus, ''); }
     return;
   }
   if (tr && tr.tool === 'appraisal') {
     showView('appraisal');
-    renderToolRecent(els.apRecent, 'ap', apPick);
+    refreshToolRecent(els.apRecent, 'ap');
     if (tr.slug) openToolSlug('ap', tr.slug);
     else { els.apResult.hidden = true; els.apResult.innerHTML = ''; els.apDomain.value = ''; setToolStatus(els.apStatus, ''); }
     return;
@@ -665,16 +700,32 @@ const tmPick = (key, cached) => {
   const items = Array.isArray(cached) ? cached : (cached && cached.items) || [];
   showTrademarks(key, items, !!(cached && cached.isAi));
 };
-// Open a tool deeplink: render from this browser's cache if present (no
-// credits), otherwise run it fresh.
-function openToolSlug(kind, slug) {
+// Open a tool deeplink/recent. Resolve order: local cache → server history →
+// run. Trademark confirms before a fresh (paid) run; appraisal runs (the
+// server tries a cached appraisal first, which is cheaper).
+async function openToolSlug(kind, slug) {
   const hit = loadRecents(kind).find((r) => r.key === slug);
   if (hit) {
     if (kind === 'tm') tmPick(hit.key, hit.data);
     else apPick(hit.key, hit.data);
-  } else if (kind === 'tm') {
+    return;
+  }
+  const statusEl = kind === 'tm' ? els.tmStatus : els.apStatus;
+  setToolStatus(statusEl, 'Loading…');
+  const saved = await serverGetTool(kind, slug);
+  setToolStatus(statusEl, '');
+  if (saved) {
+    saveRecentLocal(kind, slug, saved);
+    if (kind === 'tm') tmPick(slug, saved);
+    else apPick(slug, saved);
+    return;
+  }
+  if (kind === 'tm') {
+    els.tmQuery.value = slug;
+    if (!confirm(`No saved trademark search for “${slug}”. Run a new USPTO search now? This uses paid credits.`)) return;
     runTrademark(slug);
   } else {
+    els.apDomain.value = slug;
     runAppraisal(slug);
   }
 }
@@ -782,7 +833,7 @@ async function runTrademark(input) {
     const items = (data.data && data.data.trademarks) || [];
     showTrademarks(q, items, isAi);
     saveRecent('tm', q, { items, isAi });
-    renderToolRecent(els.tmRecent, 'tm', tmPick);
+    refreshToolRecent(els.tmRecent, 'tm');
   } catch (e) {
     setToolStatus(els.tmStatus, e.message || String(e), true);
   }
@@ -856,7 +907,7 @@ function finishAppraisal(domain, a) {
   setToolStatus(els.apStatus, '');
   renderAppraisal(domain, a);
   saveRecent('ap', domain, a);
-  renderToolRecent(els.apRecent, 'ap', apPick);
+  refreshToolRecent(els.apRecent, 'ap');
 }
 async function pollAppraisal(domain, jobId) {
   const started = Date.now();
