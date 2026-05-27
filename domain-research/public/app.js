@@ -739,8 +739,13 @@ function startPolling(runId, label) {
 // the first question a researcher asks: "is this for sale, and where?" Listed
 // channels show as green ✓ links; misses flash a red ✗ then fade out, leaving
 // only the live listings. A row of quick-open links covers the sources we can't
-// reliably check server-side (GoDaddy 403s bots; DomainScout needs a login).
+// reliably check server-side (DomainScout needs a login).
+//
+// Results are cached server-side (kind 'mk') and only re-checked once a week, so
+// re-opening the same report 5× a day doesn't re-spend Scrape.do credits. A
+// "refresh" link forces a fresh check on demand.
 const MARKET_NAMES = { afternic: 'Afternic', sedo: 'Sedo', atom: 'Atom', godaddy: 'GoDaddy', dynadot: 'Dynadot' };
+const MARKET_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
 function quickLinks(domain) {
   const d = encodeURIComponent(domain);
@@ -749,31 +754,80 @@ function quickLinks(domain) {
     ['Wayback', `https://web.archive.org/web/2024*/${domain}`],
     ['GoDaddy', `https://www.godaddy.com/domainsearch/find?domainToCheck=${d}`],
     ['Dynadot', `https://www.dynadot.com/domain/search?domain=${d}`],
-    ['DomainScout', 'https://www.domainscout.io/dashboard'],
   ];
-  return links
+  const main = links
     .map(([n, u]) => `<a class="ms-link" href="${u}" target="_blank" rel="noopener">${escapeHtml(n)} ↗</a>`)
     .join('');
+  // DomainScout carries the domain in the hash AND copies it to the clipboard on
+  // click, so the "Add to DomainScout" bookmarklet can pick it up and submit it
+  // into your (logged-in) watchlist — the server can't, it has no session there.
+  const ds =
+    `<a class="ms-link ms-ds" data-ds-domain="${escapeHtml(domain)}" ` +
+    `href="https://www.domainscout.io/dashboard#snagged=${d}" target="_blank" rel="noopener">DomainScout ↗</a>`;
+  return main + ds;
 }
 
-async function runMarketStrip(domain) {
+function agoLabel(ts) {
+  if (!ts) return '';
+  const s = Math.max(0, Date.now() - ts);
+  const d = Math.floor(s / 86400000);
+  if (d >= 1) return `${d}d ago`;
+  const h = Math.floor(s / 3600000);
+  if (h >= 1) return `${h}h ago`;
+  const m = Math.floor(s / 60000);
+  return m >= 1 ? `${m}m ago` : 'just now';
+}
+
+async function getMarketCache(domain) {
+  try {
+    const res = await fetch(`/api/tool-history?kind=mk&query=${encodeURIComponent(domain)}`);
+    if (!res.ok) return null;
+    const d = await res.json();
+    if (!d.found) return null;
+    return { data: d.data, ts: d.updated_at ? Date.parse(d.updated_at) : 0 };
+  } catch {
+    return null;
+  }
+}
+
+async function fetchMarket(domain) {
+  const res = await fetch(`/api/lookup?source=marketplace_check&domain=${encodeURIComponent(domain)}`);
+  const data = await res.json();
+  const result = data.data || null;
+  if (result) serverSaveTool('mk', domain, result); // cache for a week
+  return result;
+}
+
+async function runMarketStrip(domain, { force = false } = {}) {
   if (!els.marketStrip || !domain) return;
   els.marketStrip.hidden = false;
+  els.marketStrip.dataset.domain = domain;
   els.marketStrip.innerHTML =
     `<div class="ms-row"><span class="ms-label">Checking marketplaces…</span></div>` +
     `<div class="ms-row ms-quick"><span class="ms-label">Open:</span>${quickLinks(domain)}</div>`;
   try {
-    const res = await fetch(`/api/lookup?source=marketplace_check&domain=${encodeURIComponent(domain)}`);
-    const data = await res.json();
+    let result = null;
+    let ts = 0;
+    if (!force) {
+      const cached = await getMarketCache(domain);
+      if (cached && cached.data && Date.now() - cached.ts < MARKET_TTL_MS) {
+        result = cached.data;
+        ts = cached.ts;
+      }
+    }
+    if (!result) {
+      result = await fetchMarket(domain);
+      ts = Date.now();
+    }
     // Guard against a slower request resolving after the user moved on.
-    if (els.marketStrip.hidden) return;
-    renderMarketStrip(domain, (data.data && data.data.channels) || []);
+    if (els.marketStrip.hidden || els.marketStrip.dataset.domain !== domain) return;
+    renderMarketStrip(domain, (result && result.channels) || [], ts);
   } catch {
     // Network/parse failure — leave the quick-open links in place.
   }
 }
 
-function renderMarketStrip(domain, channels) {
+function renderMarketStrip(domain, channels, ts) {
   const listed = channels.filter((c) => c.listed);
   const misses = channels.filter((c) => !c.listed);
   const listHtml = listed
@@ -788,8 +842,11 @@ function renderMarketStrip(domain, channels) {
     .map((c) => `<span class="ms-item miss">✗ ${escapeHtml(MARKET_NAMES[c.channel] || c.channel)}</span>`)
     .join('');
   const none = listed.length ? '' : '<span class="ms-none">no active listings found</span>';
+  const meta = ts
+    ? `<span class="ms-meta">checked ${escapeHtml(agoLabel(ts))} · <a href="#" class="ms-refresh">refresh</a></span>`
+    : '';
   els.marketStrip.innerHTML =
-    `<div class="ms-row"><span class="ms-label">For sale:</span>${listHtml}${missHtml}${none}</div>` +
+    `<div class="ms-row"><span class="ms-label">For sale:</span>${listHtml}${missHtml}${none}${meta}</div>` +
     `<div class="ms-row ms-quick"><span class="ms-label">Open:</span>${quickLinks(domain)}</div>`;
   // Let the misses register, then fade and remove them so only live listings stay.
   setTimeout(() => {
@@ -1402,6 +1459,23 @@ els.report?.addEventListener('click', (ev) => {
     setTimeout(() => { btn.textContent = orig; btn.classList.remove('copied'); }, 1500);
   }).catch(() => {});
 });
+
+// Market strip (delegated): "refresh" forces a fresh check; clicking DomainScout
+// copies the bare domain so the bookmarklet can read it from the clipboard.
+els.marketStrip?.addEventListener('click', (ev) => {
+  const refresh = ev.target.closest('.ms-refresh');
+  if (refresh) {
+    ev.preventDefault();
+    const d = els.marketStrip.dataset.domain;
+    if (d) runMarketStrip(d, { force: true });
+    return;
+  }
+  const ds = ev.target.closest('a.ms-ds');
+  if (ds && ds.dataset.dsDomain && navigator.clipboard) {
+    navigator.clipboard.writeText(ds.dataset.dsDomain).catch(() => {});
+  }
+});
+
 els.rfYes?.addEventListener('click', () => submitFeedback({ was_correct: true }));
 els.rfNo?.addEventListener('click', () => { if (els.rfCorrection) els.rfCorrection.hidden = false; });
 els.chatForm?.addEventListener('submit', (e) => {

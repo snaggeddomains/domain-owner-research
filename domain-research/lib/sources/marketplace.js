@@ -43,10 +43,12 @@ async function fetchChannel({ url, render }, env) {
   }
   if (render && env?.SCRAPE_DO_API_KEY && isBotWalled(resp.status, resp.body)) {
     try {
+      // customWait gives a JS SPA (GoDaddy loads its aftermarket price via a
+      // post-load XHR) a moment to populate before the snapshot is taken.
       const api =
         `https://api.scrape.do/?token=${encodeURIComponent(env.SCRAPE_DO_API_KEY)}` +
-        `&render=true&super=true&url=${encodeURIComponent(url)}`;
-      const r2 = await fetchText(api, {}, 30000);
+        `&render=true&super=true&customWait=4000&url=${encodeURIComponent(url)}`;
+      const r2 = await fetchText(api, {}, 35000);
       if (r2.body && r2.body.length > String(resp.body || '').length) {
         return { status: r2.status || 200, body: r2.body, rendered: true };
       }
@@ -72,9 +74,11 @@ function aftermarketSignals(body) {
   const low = String(body || '').toLowerCase();
   const out = [];
   if (/\bmake (?:an )?offer\b/.test(low)) out.push('make offer');
-  if (/\b(?:this )?domain is for sale\b|\bfor sale by owner\b|\bdomain for sale\b/.test(low)) out.push('for sale');
+  if (/\b(?:this )?domain is for sale\b|\bfor sale by owner\b|\bdomain for sale\b|\bavailable for purchase\b|\blisted for sale\b/.test(low))
+    out.push('for sale');
+  if (/\bpremium domain\b/.test(low)) out.push('premium domain');
   const price = maxPriceUsd(body);
-  if (price >= 100 && /\bbuy it now\b/.test(low)) out.push('buy it now');
+  if (price >= 100 && /\bbuy it now\b|\bbuy now\b/.test(low)) out.push('buy now');
   if (price >= 100 && /\bpremium\b/.test(low)) out.push('premium');
   return out;
 }

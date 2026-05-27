@@ -7,7 +7,9 @@ import { saveToolLookup, listToolLookups, getToolLookup } from '../lib/db/tools.
 //   POST /api/tool-history  { kind, query, data } -> upsert a result
 export const config = { maxDuration: 10 };
 
-const KINDS = new Set(['tm', 'ap']);
+// tm = trademark, ap = appraisal, mk = marketplace "for sale" strip (cached so
+// re-opening a report doesn't re-spend Scrape.do credits on every view).
+const KINDS = new Set(['tm', 'ap', 'mk']);
 
 export default async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store');
@@ -21,7 +23,7 @@ export default async function handler(req, res) {
     const kind = String(body.kind || '');
     const query = String(body.query || '').trim();
     if (!KINDS.has(kind) || !query) {
-      res.status(400).json({ error: 'Provide kind ("tm"|"ap") and query' });
+      res.status(400).json({ error: 'Provide kind ("tm"|"ap"|"mk") and query' });
       return;
     }
     const id = await saveToolLookup(kind, query, body.data ?? null);
@@ -36,7 +38,7 @@ export default async function handler(req, res) {
 
   const kind = String(req.query.kind || '');
   if (!KINDS.has(kind)) {
-    res.status(400).json({ error: 'Provide kind ("tm"|"ap")' });
+    res.status(400).json({ error: 'Provide kind ("tm"|"ap"|"mk")' });
     return;
   }
   const query = typeof req.query.query === 'string' ? req.query.query.trim() : '';
