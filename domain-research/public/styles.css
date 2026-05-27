@@ -314,6 +314,10 @@ button:disabled { opacity: .55; cursor: progress; }
 .copy-emails { background: var(--cream); color: var(--navy-2); border: 1.5px solid var(--line); box-shadow: none; padding: 6px 14px; font-size: 12.5px; font-weight: 700; border-radius: 999px; cursor: pointer; }
 .copy-emails:hover { border-color: var(--coral); color: var(--navy); transform: none; box-shadow: none; }
 .copy-emails.copied { background: #1f7a4d; border-color: #1f7a4d; color: #fff; }
+/* WhatsApp/Telegram tap links for mobile numbers */
+.msg-links { white-space: nowrap; }
+.msg-links a { display: inline-block; font-family: var(--body); font-size: .68rem; font-weight: 700; color: var(--teal-deep); text-decoration: none; border: 1px solid var(--line); border-radius: 999px; padding: 1px 8px; margin-left: 6px; }
+.msg-links a:hover { border-color: var(--coral); }
 .cpath { margin: 0; padding-left: 20px; display: grid; gap: 5px; font-family: var(--system); font-size: .95rem; color: var(--navy); }
 .timeline li { display: flex; gap: 12px; font-family: var(--system); font-size: .95rem; min-width: 0; }
 .timeline .tl-date { flex: none; width: 120px; font-weight: 700; color: var(--coral-deep); font-variant-numeric: tabular-nums; }

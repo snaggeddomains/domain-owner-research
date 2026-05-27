@@ -468,9 +468,20 @@ function renderSummary(d) {
   // narrative / contact path).
   const contacts = (Array.isArray(d.contacts) ? d.contacts : []).filter((c) => !SALE_LINK_RE.test(String((c && c.value) || '')));
   if (contacts.length) {
+    // For MOBILE phone numbers, offer one-tap WhatsApp / Telegram links (skip
+    // office/switchboard/fax lines). "Mobile" is read from the contact's note.
+    const msgLinks = (c) => {
+      if (String(c.type || '').toLowerCase() !== 'phone') return '';
+      const note = String(c.note || '');
+      const isMobile = /\b(mobile|cell|cellular|personal|whatsapp|text|sms)\b/i.test(note) &&
+        !/\b(fax|switchboard|office|landline|main line|reception|toll|hq|head ?office)\b/i.test(note);
+      const digits = String(c.value || '').replace(/\D/g, '');
+      if (!isMobile || digits.length < 10 || digits.length > 15) return '';
+      return ` <span class="msg-links"><a href="https://wa.me/${digits}" target="_blank" rel="noopener">WhatsApp</a><a href="https://t.me/${digits}" target="_blank" rel="noopener">Telegram</a></span>`;
+    };
     const contactLi = (c) => {
       const val = isUsefulClue(c) ? `<span class="clue">${linkify(c)}</span>` : linkify(c);
-      return `<li><span class="ctype">${e(c.type || '')}</span> ${val}${c.note ? ` <span class="muted">— ${e(c.note)}</span>` : ''}</li>`;
+      return `<li><span class="ctype">${e(c.type || '')}</span> ${val}${c.note ? ` <span class="muted">— ${e(c.note)}</span>` : ''}${msgLinks(c)}</li>`;
     };
     const list = (arr) => `<ul class="contacts">${arr.map(contactLi).join('')}</ul>`;
     const isPrimary = (c) => String((c && c.tier) || '').toLowerCase() === 'primary';
