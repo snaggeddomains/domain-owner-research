@@ -22,7 +22,7 @@ const els = {
   trace: $('trace'),
   hero: $('hero'),
   navResearch: $('nav-research'),
-  navProjects: $('nav-projects'),
+  showAll: $('show-all'),
   viewResearch: $('view-research'),
   viewProjects: $('view-projects'),
   deepenTop: $('deepen-top'),
@@ -36,8 +36,6 @@ const els = {
   recentList: $('recent-list'),
   navTrademark: $('nav-trademark'),
   navAppraisal: $('nav-appraisal'),
-  navToggle: $('nav-toggle'),
-  nav: $('nav'),
   tmForm: $('tm-form'),
   tmQuery: $('tm-query'),
   tmStatus: $('tm-status'),
@@ -1004,21 +1002,15 @@ els.deepenBtn?.addEventListener('click', deepen);
 els.deepenTopBtn?.addEventListener('click', deepen);
 els.cancelRun?.addEventListener('click', cancelRun);
 els.exportPdf?.addEventListener('click', () => window.print());
-// Mobile hamburger
-function closeNav() { els.nav?.classList.remove('open'); els.navToggle?.setAttribute('aria-expanded', 'false'); }
-els.navToggle?.addEventListener('click', () => {
-  const open = els.nav.classList.toggle('open');
-  els.navToggle.setAttribute('aria-expanded', open ? 'true' : 'false');
-});
-els.nav?.addEventListener('click', (e) => { if (e.target.closest('.nav-btn')) closeNav(); });
 
 els.navResearch?.addEventListener('click', showEntry);
-els.homeLink?.addEventListener('click', (e) => { e.preventDefault(); closeNav(); showEntry(); });
+els.homeLink?.addEventListener('click', (e) => { e.preventDefault(); showEntry(); });
 els.navTrademark?.addEventListener('click', () => { setToolUrl('trademark', ''); route(); });
 els.navAppraisal?.addEventListener('click', () => { setToolUrl('appraisal', ''); route(); });
 els.tmForm?.addEventListener('submit', (e) => { e.preventDefault(); const q = els.tmQuery.value.trim(); if (q) runTrademark(q); });
 els.apForm?.addEventListener('submit', (e) => { e.preventDefault(); const v = els.apDomain.value.trim(); if (v) runAppraisal(v); });
-els.navProjects?.addEventListener('click', () => { if (location.pathname !== '/') history.pushState(null, '', '/'); showView('projects'); });
+// "Show all past research" (under the recent-5) opens the full Past Research list.
+els.showAll?.addEventListener('click', (e) => { e.preventDefault(); showView('projects'); });
 
 let searchTimer = null;
 els.projectsSearch?.addEventListener('input', () => {
