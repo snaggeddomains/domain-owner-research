@@ -125,6 +125,10 @@ a.wordmark:hover { text-decoration: none; opacity: .9; }
 .tm-badge.pending { background: rgba(217,154,60,.16); color: #8a5a12; border-color: var(--gold); }
 .tm-badge.abandoned { background: rgba(94,124,141,.12); color: var(--navy-3); border-color: var(--navy-3); }
 .tm-chip { font-size: .68rem; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; padding: 2px 8px; border-radius: 999px; background: rgba(228,128,105,.14); color: var(--coral-deep); border: 1px solid var(--coral); }
+/* Mark type (word vs design/illustration) — informational chip */
+.tm-type { font-family: var(--body); font-weight: 700; font-size: .66rem; text-transform: uppercase; letter-spacing: .04em; padding: 2px 8px; border-radius: 999px; border: 1.5px solid var(--line); color: var(--navy-3); background: var(--cream); }
+.tm-type.word { color: var(--teal-deep); border-color: var(--teal-deep); }
+.tm-type.design { color: #8a5a12; border-color: var(--gold); }
 .tm-verdict { padding: 14px 16px; margin: 16px 0; border-radius: var(--radius-sm); border: 2px solid var(--line); }
 .tm-verdict.green { background: rgba(47,163,107,.10); border-color: #2fa36b; }
 .tm-verdict.yellow { background: rgba(217,154,60,.14); border-color: var(--gold); }

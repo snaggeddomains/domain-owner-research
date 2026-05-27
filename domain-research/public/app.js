@@ -812,14 +812,39 @@ function fixText(s) {
     return s;
   }
 }
+// Word mark (protects the text) vs design/figurative (protects the logo/
+// drawing). Maps Signa mark_feature_type / USPTO mark-drawing-type codes.
+function markType(o) {
+  const raw = String(o.mark_feature_type || o.mark_drawing_type || o.drawing_type || o.mark_type || o.feature_type || '')
+    .toLowerCase()
+    .trim();
+  if (!raw) return null;
+  if (/3d|three.?dimensional/.test(raw)) return { label: '3D mark', kind: 'other' };
+  if (/sound/.test(raw)) return { label: 'Sound mark', kind: 'other' };
+  if (/colou?r/.test(raw)) return { label: 'Color mark', kind: 'other' };
+  if (/combin|design.?plus.?word|word.?and.?design|^3$/.test(raw)) return { label: 'Word + design', kind: 'combined' };
+  if (/figurativ|design|image|logo|device|illustrat|drawing|styli|^[25]$/.test(raw)) return { label: 'Design mark', kind: 'design' };
+  if (/word|standard.?char|typed|typeset|text|^[14]$/.test(raw)) return { label: 'Word mark', kind: 'word' };
+  return { label: raw.replace(/_/g, ' ').replace(/\b\w/g, (m) => m.toUpperCase()), kind: 'other' };
+}
+// Sort order for the list: active first, pending next, abandoned/inactive last.
+const STATUS_RANK = { active: 0, pending: 1, abandoned: 2 };
+function statusRank(o) {
+  const b = tmStatusInfo(o.status).bucket;
+  return b in STATUS_RANK ? STATUS_RANK[b] : 3;
+}
 function renderTrademarks(items) {
   return items
+    .slice()
+    .sort((a, b) => statusRank(a) - statusRank(b))
     .map((o) => {
       const mark = escapeHtml(fixText(o.mark_text || pickr(o, ['mark', 'markText', 'text', 'name']) || '(mark)'));
       const owner = escapeHtml(fixText(o.owner_name || pickr(o, ['owner', 'applicant', 'ownerName'])));
       const si = tmStatusInfo(o.status);
       const classes = tmClasses(o);
+      const mt = markType(o);
       const badge = `<span class="tm-badge ${si.bucket}">${escapeHtml(si.label)}</span>`;
+      const typeChip = mt ? `<span class="tm-type ${mt.kind}">${escapeHtml(mt.label)}</span>` : '';
       const ch = (si.challenges || []).length ? `<span class="tm-chip">${escapeHtml(si.challenges.join(', ').replace(/_/g, ' '))}</span>` : '';
       const fields = [
         classes.length && ['Class', escapeHtml(classes.join(', '))],
@@ -835,7 +860,7 @@ function renderTrademarks(items) {
       const raw = escapeHtml(JSON.stringify(o, null, 2).slice(0, 1800));
       return (
         `<li class="tool-item tm-item">` +
-        `<div class="tm-head"><span class="tool-title">${mark}</span>${badge}${ch}</div>` +
+        `<div class="tm-head"><span class="tool-title">${mark}</span>${badge}${typeChip}${ch}</div>` +
         (owner ? `<div class="tm-owner">${owner}</div>` : '') +
         (fields ? `<dl class="tm-fields">${fields}</dl>` : '') +
         (linkHtml ? `<div class="tm-actions">${linkHtml}</div>` : '') +
