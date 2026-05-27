@@ -260,6 +260,8 @@ button:disabled { opacity: .55; cursor: progress; }
 /* Status */
 .status { padding: 14px 16px; background: var(--cream-2); border: 2px solid var(--line); border-radius: var(--radius-sm); color: var(--navy-2); margin-bottom: 20px; box-shadow: var(--shadow-sm); }
 .status.error { color: var(--coral-deep); border-color: var(--coral); }
+/* Tool status (Appraising…/Searching…) matches the 560px search bar + recent list */
+#tm-status, #ap-status { max-width: 560px; margin-left: auto; margin-right: auto; }
 
 /* Report */
 .report-domain { font-family: var(--body); font-weight: 800; font-size: 28px; margin: 4px 0 12px; color: var(--navy); word-break: break-word; }
