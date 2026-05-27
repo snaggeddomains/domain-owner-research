@@ -36,6 +36,8 @@ const els = {
   recentList: $('recent-list'),
   navTrademark: $('nav-trademark'),
   navAppraisal: $('nav-appraisal'),
+  navToggle: $('nav-toggle'),
+  nav: $('nav'),
   tmForm: $('tm-form'),
   tmQuery: $('tm-query'),
   tmStatus: $('tm-status'),
@@ -1003,8 +1005,16 @@ els.deepenTopBtn?.addEventListener('click', deepen);
 els.cancelRun?.addEventListener('click', cancelRun);
 els.exportPdf?.addEventListener('click', () => window.print());
 
+// Mobile hamburger
+function closeNav() { els.nav?.classList.remove('open'); els.navToggle?.setAttribute('aria-expanded', 'false'); }
+els.navToggle?.addEventListener('click', () => {
+  const open = els.nav.classList.toggle('open');
+  els.navToggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+});
+els.nav?.addEventListener('click', (e) => { if (e.target.closest('.nav-btn')) closeNav(); });
+
 els.navResearch?.addEventListener('click', showEntry);
-els.homeLink?.addEventListener('click', (e) => { e.preventDefault(); showEntry(); });
+els.homeLink?.addEventListener('click', (e) => { e.preventDefault(); closeNav(); showEntry(); });
 els.navTrademark?.addEventListener('click', () => { setToolUrl('trademark', ''); route(); });
 els.navAppraisal?.addEventListener('click', () => { setToolUrl('appraisal', ''); route(); });
 els.tmForm?.addEventListener('submit', (e) => { e.preventDefault(); const q = els.tmQuery.value.trim(); if (q) runTrademark(q); });
