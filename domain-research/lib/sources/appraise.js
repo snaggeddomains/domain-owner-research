@@ -10,8 +10,11 @@ function headers(env) {
   };
 }
 
+// The live API wraps the result under `valuation` (some integrations normalize
+// it flat); accept either, plus appraisal/result.
+const unwrap = (o) => (o && (o.valuation || o.appraisal || o.result)) || o;
 const hasResult = (o) =>
-  o && (o.appraisal || o.result || o.value != null || o.estimated_value != null || o.value_range || o.range || o.low_value != null);
+  o && (o.valuation || o.appraisal || o.result || o.value != null || o.estimated_value != null || o.value_range || o.range || o.low_value != null);
 
 // Premium (paid) — Appraise.net AI valuation. Tries an existing/cached appraisal,
 // else creates one; async jobs return a job_id that the caller polls (pass
@@ -44,17 +47,17 @@ export default {
     // Existing / cached appraisal first (cheaper).
     try {
       const existing = await fetchJson(`${BASE}/appraisal/${encodeURIComponent(d)}`, { headers: h });
-      if (existing) return { domain: d, cached: true, appraisal: existing.appraisal || existing.result || existing };
+      if (existing) return { domain: d, cached: true, appraisal: unwrap(existing) };
     } catch (e) {
       /* 404 = none yet; fall through to create */
     }
 
     // Create a new appraisal — sync result or an async job to poll.
     const created = await fetchJson(`${BASE}/appraisal`, { method: 'POST', headers: h, body: JSON.stringify({ domain: d }) });
-    if (hasResult(created)) return { domain: d, cached: false, appraisal: created.appraisal || created.result || created };
+    if (hasResult(created)) return { domain: d, cached: false, appraisal: unwrap(created) };
     const jobId = created && (created.job_id || created.jobId || created.id);
     if (jobId) return { domain: d, status: 'pending', job_id: jobId };
-    return { domain: d, appraisal: created };
+    return { domain: d, appraisal: unwrap(created) };
   },
 };
 

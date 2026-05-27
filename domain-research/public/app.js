@@ -714,25 +714,25 @@ function fmtMoney(v) {
   return isFinite(n) && n > 0 ? `$${n.toLocaleString()}` : String(v);
 }
 function appraisalRange(a) {
-  const r = a.value_range || a.range || a.valueRange;
+  const r = a.value_range || a.range || a.valueRange || a.priceRange;
   if (r && typeof r === 'object') {
-    const lo = r.low ?? r.min ?? r.from;
-    const hi = r.high ?? r.max ?? r.to;
+    const lo = r.low ?? r.min ?? r.from ?? r.low_value;
+    const hi = r.high ?? r.max ?? r.to ?? r.high_value;
     if (lo != null || hi != null) return [fmtMoney(lo), fmtMoney(hi)].filter(Boolean).join(' – ');
   }
   if (typeof r === 'string') return r.replace(/\d{4,}/g, (n) => Number(n).toLocaleString());
-  const lo = a.low_value ?? a.low ?? a.min_value;
-  const hi = a.high_value ?? a.high ?? a.max_value;
+  const lo = a.low_value ?? a.low ?? a.min_value ?? a.valueLow ?? a.priceLow;
+  const hi = a.high_value ?? a.high ?? a.max_value ?? a.valueHigh ?? a.priceHigh;
   if (lo != null || hi != null) return [fmtMoney(lo), fmtMoney(hi)].filter(Boolean).join(' – ');
-  const v = pickr(a, ['estimated_value', 'value', 'valuation', 'price', 'fair_market_value', 'estimate']);
+  const v = pickr(a, ['estimated_value', 'estimatedValue', 'value', 'valuation', 'price', 'fair_market_value', 'fairMarketValue', 'marketValue', 'appraisedValue', 'estimate']);
   return v ? fmtMoney(v) : '';
 }
 function renderAppraisal(domain, a) {
   const range = appraisalRange(a);
-  const conf = pickr(a, ['confidence', 'confidence_level', 'confidenceLabel']);
-  const type = pickr(a, ['type', 'domain_type', 'appraisal_type', 'category']);
-  const cert = pickr(a, ['certificate_url', 'certificate', 'certificateUrl', 'url', 'cert_url']);
-  const title = pickr(a, ['title']);
+  const conf = pickr(a, ['confidence', 'confidence_level', 'confidenceLabel', 'confidenceScore', 'confidence_score']);
+  const type = pickr(a, ['type', 'semanticType', 'semantic_type', 'domain_type', 'appraisal_type', 'category']);
+  const cert = pickr(a, ['certificate_url', 'certificateUrl', 'certificate', 'url', 'cert_url']);
+  const title = pickr(a, ['title', 'listingTitle', 'listing_title']);
   const rows = [
     range && `<div class="ap-value">${escapeHtml(range)}</div>`,
     conf && `<div class="ap-field"><span>Confidence</span> ${escapeHtml(conf)}</div>`,
@@ -770,9 +770,10 @@ async function pollAppraisal(domain, jobId) {
       const res = await fetch(`/api/lookup?source=appraise_lookup&job_id=${encodeURIComponent(jobId)}`);
       const data = await res.json();
       const st = (data && data.data) || {};
+      const v = st.valuation || st.appraisal || st.result;
       const statusStr = String(st.status || st.state || '');
-      if (appraisalRange(st) || st.appraisal || st.result || /complete|done|success|finished/i.test(statusStr)) {
-        finishAppraisal(domain, st.appraisal || st.result || st);
+      if (v || appraisalRange(st) || /complete|done|success|finished/i.test(statusStr)) {
+        finishAppraisal(domain, v || st);
         return;
       }
       if (/fail|error|cancel/i.test(statusStr)) { setToolStatus(els.apStatus, `Appraisal ${statusStr}.`, true); return; }
