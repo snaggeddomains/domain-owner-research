@@ -1,11 +1,14 @@
 import { isAuthed } from '../lib/auth.js';
 import { getRun } from '../lib/db/runs.js';
-import { appendChat, getChat } from '../lib/db/chat.js';
-import { chatTurn } from '../lib/agent.js';
+import { appendChat, getChat, getTurn } from '../lib/db/chat.js';
+import { inngest, CHAT_REQUESTED } from '../lib/inngest/client.js';
 
-// Refine-chat for a research report: GET loads the transcript, POST runs one
-// follow-up turn (with the full toolset) and persists both messages.
-export const config = { maxDuration: 60 };
+// Refine-chat for a report. Turns run ASYNC via Inngest (they can fire several
+// lookups and exceed the API function cap):
+//   GET  ?run_id=        -> full transcript
+//   GET  ?turn_id=       -> poll one turn { status, content }
+//   POST { run_id, message } -> enqueue a turn, returns { turn_id } to poll
+export const config = { maxDuration: 15 };
 
 export default async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store');
@@ -15,6 +18,11 @@ export default async function handler(req, res) {
   }
 
   if (req.method === 'GET') {
+    if (req.query.turn_id) {
+      const t = await getTurn(req.query.turn_id);
+      res.status(200).json({ status: (t && t.status) || 'pending', content: (t && t.content) || '' });
+      return;
+    }
     const runId = req.query.run_id;
     if (!runId) {
       res.status(400).json({ error: 'Missing run_id' });
@@ -43,17 +51,19 @@ export default async function handler(req, res) {
     return;
   }
   const domain = run.domain || '';
-  const reportMarkdown = (run.report && (run.report.markdown || '')) || '';
 
-  try {
-    const history = await getChat(runId);
-    const result = await chatTurn({ domain, reportMarkdown, history, message, env: process.env });
-    const reply = (result && result.report) || '(no response)';
-    // Persist both messages (transcript = feedback/eval signal).
-    await appendChat(runId, domain, 'user', message);
-    await appendChat(runId, domain, 'assistant', reply);
-    res.status(200).json({ reply });
-  } catch (e) {
-    res.status(502).json({ error: `Chat turn failed: ${String(e?.message || e).slice(0, 300)}` });
+  // Persist the user message + a pending assistant row, then enqueue the turn.
+  await appendChat(runId, domain, 'user', message, 'done');
+  const turnId = await appendChat(runId, domain, 'assistant', '', 'pending');
+  if (!turnId) {
+    res.status(500).json({ error: 'Chat storage not configured — run the domain_research_chat table SQL.' });
+    return;
   }
+  try {
+    await inngest.send({ name: CHAT_REQUESTED, data: { turnId, runId } });
+  } catch (e) {
+    res.status(502).json({ error: `Could not enqueue the chat turn: ${String(e?.message || e).slice(0, 200)}` });
+    return;
+  }
+  res.status(202).json({ turn_id: turnId });
 }

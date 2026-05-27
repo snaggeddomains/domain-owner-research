@@ -5,3 +5,4 @@ import { Inngest } from 'inngest';
 export const inngest = new Inngest({ id: 'domain-research' });
 
 export const RUN_REQUESTED = 'domain-research/run.requested';
+export const CHAT_REQUESTED = 'domain-research/chat.requested';

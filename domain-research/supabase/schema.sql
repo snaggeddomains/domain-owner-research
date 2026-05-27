@@ -240,10 +240,14 @@ create table if not exists domain_research_chat (
   run_id     uuid not null,
   domain     text,
   role       text not null,                          -- user | assistant
-  content    text not null,
+  content    text,                                   -- empty while a turn is pending
+  status     text not null default 'done',           -- pending | done | error
   created_at timestamptz not null default now()
 );
 create index if not exists idx_dr_chat_run on domain_research_chat (run_id, created_at);
+-- If the table predates async chat, add the column:
+alter table domain_research_chat add column if not exists status text not null default 'done';
+alter table domain_research_chat alter column content drop not null;
 
 -- ── Enable RLS (no policies → backend secret key only) ──────────────────────
 do $$

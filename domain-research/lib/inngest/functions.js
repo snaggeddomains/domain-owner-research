@@ -1,6 +1,7 @@
-import { inngest, RUN_REQUESTED } from './client.js';
-import { research } from '../agent.js';
-import { setRunStatus, saveRunReport, failRun } from '../db/runs.js';
+import { inngest, RUN_REQUESTED, CHAT_REQUESTED } from './client.js';
+import { research, chatTurn } from '../agent.js';
+import { setRunStatus, saveRunReport, failRun, getRun } from '../db/runs.js';
+import { getChat, updateTurn } from '../db/chat.js';
 
 // Cost-gated pipeline. The default ('shallow') pass uses only FREE sources and
 // still runs the LLM to write a narrative — but spends NO paid-API credits. A
@@ -39,4 +40,31 @@ export const runResearch = inngest.createFunction(
   },
 );
 
-export const functions = [runResearch];
+// Refine-chat turn — async so it isn't bound by the 60s API function cap (a
+// turn may run several lookups). The pending assistant row is filled in when done.
+export const runChat = inngest.createFunction(
+  { id: 'run-refine-chat', retries: 1 },
+  { event: CHAT_REQUESTED },
+  async ({ event, step }) => {
+    const { turnId, runId } = event.data;
+    try {
+      const reply = await step.run('chat', async () => {
+        const run = await getRun(runId);
+        const domain = (run && run.domain) || '';
+        const reportMarkdown = (run && run.report && run.report.markdown) || '';
+        const rows = (await getChat(runId)).filter((m) => m.status !== 'pending');
+        const message = rows.length ? rows[rows.length - 1].content : '';
+        const history = rows.slice(0, -1);
+        const result = await chatTurn({ domain, reportMarkdown, history, message, env: process.env });
+        return (result && result.report) || '(no response)';
+      });
+      await step.run('save', () => updateTurn(turnId, reply, 'done'));
+      return { turnId, ok: true };
+    } catch (err) {
+      await step.run('save-error', () => updateTurn(turnId, `⚠️ ${String(err?.message || err).slice(0, 300)}`, 'error'));
+      throw err;
+    }
+  },
+);
+
+export const functions = [runResearch, runChat];

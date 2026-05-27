@@ -421,11 +421,16 @@ async function submitFeedback(fields) {
 // ── Refine chat ─────────────────────────────────────────────────────────────
 let chatBusy = false;
 let chatLoadedFor = null;
+function chatBubble(m) {
+  const cls = m.role === 'assistant' ? 'bot' : 'me';
+  const pending = m.role === 'assistant' && m.status === 'pending';
+  const err = m.status === 'error';
+  const body = pending ? 'Looking into it…' : renderMarkdown(String(m.content || ''));
+  return `<div class="chat-msg ${cls}${pending ? ' pending' : ''}${err ? ' chat-err' : ''}">${body}</div>`;
+}
 function renderChatMessages(messages) {
   if (!els.chatThread) return;
-  els.chatThread.innerHTML = (messages || [])
-    .map((m) => `<div class="chat-msg ${m.role === 'assistant' ? 'bot' : 'me'}">${renderMarkdown(String(m.content || ''))}</div>`)
-    .join('');
+  els.chatThread.innerHTML = (messages || []).map(chatBubble).join('');
   els.chatThread.scrollTop = els.chatThread.scrollHeight;
 }
 async function loadChat(runId) {
@@ -442,11 +447,23 @@ async function sendChat(message) {
   if (chatBusy || !message || !currentRunId) return;
   chatBusy = true;
   if (els.chatSend) els.chatSend.disabled = true;
-  // Optimistically append the user message + a thinking placeholder.
   const thread = els.chatThread;
   thread.insertAdjacentHTML('beforeend', `<div class="chat-msg me">${renderMarkdown(message)}</div>`);
   thread.insertAdjacentHTML('beforeend', `<div class="chat-msg bot pending">Looking into it…</div>`);
   thread.scrollTop = thread.scrollHeight;
+  const pending = thread.querySelector('.chat-msg.pending:last-child') || thread.querySelector('.chat-msg.pending');
+  const finish = (html, isErr) => {
+    if (pending) {
+      pending.classList.remove('pending');
+      if (isErr) pending.classList.add('chat-err');
+      pending.innerHTML = renderMarkdown(html);
+    }
+    chatBusy = false;
+    if (els.chatSend) els.chatSend.disabled = false;
+    thread.scrollTop = thread.scrollHeight;
+  };
+
+  let turnId;
   try {
     const res = await fetch('/api/chat', {
       method: 'POST',
@@ -454,31 +471,29 @@ async function sendChat(message) {
       body: JSON.stringify({ run_id: currentRunId, domain: currentReportDomain, message }),
     });
     const raw = await res.text();
-    let reply = '';
-    let errMsg = '';
-    try {
-      const d = JSON.parse(raw);
-      if (res.ok) reply = d.reply || '';
-      else errMsg = d.error || `Request failed (${res.status}).`;
-    } catch {
-      // Non-JSON body — usually a Vercel timeout/error page.
-      errMsg = res.status === 504 || res.status === 502
-        ? 'That follow-up took too long or hit an error — try a narrower, more specific question.'
-        : `Request failed (${res.status}).`;
-    }
-    const pending = thread.querySelector('.chat-msg.pending');
-    if (pending) {
-      pending.classList.remove('pending');
-      pending.innerHTML = renderMarkdown(reply || `⚠️ ${errMsg || 'No response.'}`);
-    }
+    let d = {};
+    try { d = JSON.parse(raw); } catch { /* non-JSON */ }
+    if (!res.ok || !d.turn_id) { finish(`⚠️ ${d.error || `Couldn't start the chat (${res.status}).`}`, true); return; }
+    turnId = d.turn_id;
   } catch (e) {
-    const pending = thread.querySelector('.chat-msg.pending');
-    if (pending) { pending.classList.remove('pending'); pending.textContent = String(e.message || e); }
-  } finally {
-    chatBusy = false;
-    if (els.chatSend) els.chatSend.disabled = false;
-    thread.scrollTop = thread.scrollHeight;
+    finish(`⚠️ ${e.message || e}`, true);
+    return;
   }
+
+  // Poll the async turn until it's done/error (it runs on Inngest, up to ~5 min).
+  const started = Date.now();
+  const poll = async () => {
+    if (Date.now() - started > 5 * 60 * 1000) { finish('⚠️ Timed out — try a narrower question.', true); return; }
+    try {
+      const r = await fetch(`/api/chat?turn_id=${encodeURIComponent(turnId)}`);
+      const d = await r.json();
+      if (d.status === 'done') { finish(d.content || '(no response)'); return; }
+      if (d.status === 'error') { finish(d.content || '⚠️ Chat turn failed.', true); return; }
+      if (pending) pending.textContent = `Looking into it… (${Math.round((Date.now() - started) / 1000)}s)`;
+    } catch { /* keep polling */ }
+    setTimeout(poll, 2500);
+  };
+  setTimeout(poll, 2500);
 }
 
 // The synthesis emits a fenced ```json block (verdict/contacts/timeline) first.
