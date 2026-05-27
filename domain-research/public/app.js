@@ -449,7 +449,7 @@ async function sendChat(message) {
   if (els.chatSend) els.chatSend.disabled = true;
   const thread = els.chatThread;
   thread.insertAdjacentHTML('beforeend', `<div class="chat-msg me">${renderMarkdown(message)}</div>`);
-  thread.insertAdjacentHTML('beforeend', `<div class="chat-msg bot pending">Looking into it…</div>`);
+  thread.insertAdjacentHTML('beforeend', `<div class="chat-msg bot pending">Researching… this can take up to a couple of minutes.</div>`);
   thread.scrollTop = thread.scrollHeight;
   const pending = thread.querySelector('.chat-msg.pending:last-child') || thread.querySelector('.chat-msg.pending');
   const finish = (html, isErr) => {
@@ -489,7 +489,7 @@ async function sendChat(message) {
       const d = await r.json();
       if (d.status === 'done') { finish(d.content || '(no response)'); return; }
       if (d.status === 'error') { finish(d.content || '⚠️ Chat turn failed.', true); return; }
-      if (pending) pending.textContent = `Looking into it… (${Math.round((Date.now() - started) / 1000)}s)`;
+      if (pending) pending.textContent = `Researching… (${Math.round((Date.now() - started) / 1000)}s)`;
     } catch { /* keep polling */ }
     setTimeout(poll, 2500);
   };
