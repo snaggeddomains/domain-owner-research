@@ -56,7 +56,16 @@ export const runChat = inngest.createFunction(
         const message = rows.length ? rows[rows.length - 1].content : '';
         const history = rows.slice(0, -1);
         const result = await chatTurn({ domain, reportMarkdown, history, message, env: process.env });
-        return (result && result.report) || '(no response)';
+        let text = String((result && result.report) || '').trim();
+        if (!text) {
+          // The model ended without a written answer — surface what it checked so
+          // the turn is never a blank "(no response)".
+          const tools = [...new Set((result.trace || []).map((t) => t.tool).filter(Boolean))].join(', ');
+          text =
+            `I ran the lookups${tools ? ` (${tools})` : ''} but couldn't compose a written answer that turn. ` +
+            `Try a narrower, single-step ask — e.g. "run whois_lookup on horoscopes.com" or "whoxy_reverse the registrant email".`;
+        }
+        return text;
       });
       await step.run('save', () => updateTurn(turnId, reply, 'done'));
       return { turnId, ok: true };

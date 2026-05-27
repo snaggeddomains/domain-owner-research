@@ -63,7 +63,8 @@ const CHAT_SYSTEM = `You are continuing a domain-ownership investigation as a ch
 - Answer conversationally and CONCISELY (a few sentences, or a short list). This is a chat reply, NOT a full report — do not re-emit the json/markdown report format.
 - Actually USE the tools to do what the user asks (rocketreach_search/rocketreach_lookup, whoxy_history/whoxy_reverse, whois_lookup/rdap_whois, web_search/brave_search, read_url, analytics_footprint, identify_operator, reverse_*, trademark_search, etc.) — run them, don't just describe what you would do.
 - Keep the same standards: verify an email via whoxy_reverse before calling it confirmed; never invent a registrant/contact; label anything unverified as such; don't enrich marketplace/broker platforms.
-- When you find a new clue (a name, a verified email/phone, a portfolio link), state it plainly with its source so the user can act on it.`;
+- When you find a new clue (a name, a verified email/phone, a portfolio link), state it plainly with its source so the user can act on it.
+- ALWAYS end your turn with a written answer to the user — even if the tools returned little, summarize what you checked and what you found (or didn't). Never finish on a tool call without a reply.`;
 
 // A single refine-chat turn against an existing report. Conversational, with the
 // full toolset; runs synchronously (kept short via a small step budget).
@@ -82,7 +83,7 @@ export async function chatTurn({ domain, reportMarkdown, history = [], message, 
     userPrompt: String(message || ''),
     toolSpecs,
     env,
-    maxSteps: 6,
+    maxSteps: 8,
     maxToolResultChars: MAX_TOOL_RESULT_CHARS,
     seedTrace: [],
   });
