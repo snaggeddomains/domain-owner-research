@@ -9,6 +9,8 @@ import masterlist from './masterlist.js';
 import livesite from './livesite.js';
 import rocketreach from './rocketreach.js';
 import rocketreachLookup from './rocketreachlookup.js';
+import whoxyHistory from './whoxyhistory.js';
+import whoxyReverse from './whoxyreverse.js';
 import marketplace from './marketplace.js';
 import reversewhois from './reversewhois.js';
 import reversens from './reversens.js';
@@ -23,7 +25,7 @@ import appraise from './appraise.js';
 const ALL = [
   rdap, whois, dns, wayback, livesite, marketplace, cluster, masterlist, rocketreach,
   whoisxml, domainiq, bigdomaindata, reversewhois, reversens, reverseip, websearch, trademark, appraise,
-  rocketreachLookup,
+  rocketreachLookup, whoxyHistory, whoxyReverse,
 ];
 
 // Paid sources spend external API credits. They are withheld from the free
@@ -32,7 +34,7 @@ const ALL = [
 const PAID = new Set([
   'whoisxml_lookup', 'domainiq_lookup', 'bigdomaindata_lookup',
   'reverse_whois', 'reverse_ns', 'reverse_ip', 'web_search', 'trademark_search', 'appraise_lookup',
-  'rocketreach_lookup',
+  'rocketreach_lookup', 'whoxy_history', 'whoxy_reverse',
 ]);
 
 // Recap grouping — each source's category, used to break the "Sources checked"
@@ -44,7 +46,9 @@ const CATEGORY = {
   whoisxml_lookup: 'Ownership history',
   domainiq_lookup: 'Ownership history',
   bigdomaindata_lookup: 'Ownership history',
+  whoxy_history: 'Ownership history',
   reverse_whois: 'Portfolio & shared infra',
+  whoxy_reverse: 'Portfolio & shared infra',
   reverse_ns: 'Portfolio & shared infra',
   reverse_ip: 'Portfolio & shared infra',
   wayback_history: 'Archive (Wayback)',
