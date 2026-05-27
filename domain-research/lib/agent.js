@@ -27,11 +27,12 @@ PART 1 — a single fenced \`\`\`json code block FIRST (valid JSON, no comments,
   "likely_owner": "person or org name, or null",
   "owner_type": "active_company" | "former_operator" | "individual" | "domain_investor" | "marketplace_only" | "unknown",
   "summary": "1-2 sentence plain-English bottom line",
-  "contacts": [ { "type": "name" | "email" | "phone" | "org" | "social", "value": "...", "note": "where it came from / how current/strong" } ],
+  "contacts": [ { "type": "name" | "email" | "phone" | "org" | "social", "value": "...", "note": "where it came from / how current/strong", "key": true | false } ],
   "contact_path": [ "ranked, concrete next step to reach the owner" ],
   "timeline": [ { "date": "YYYY, YYYY-MM-DD, or a range", "event": "short label", "detail": "what changed: registrant / privacy / registrar / nameservers / site" } ]
 }
 "confidence" = your confidence in naming the ACTUAL owner (not merely whether it is privacy-protected). Put the STRONGEST clues here — real names, emails, phones, and the ownership movements — ordered most-useful first. Never invent a registrant.
+"key" (on each contact) = true when the value is genuinely useful for identifying or reaching the owner — a real person/organization name, a working personal or company email, a direct phone, a broker/marketplace contact, or a real social/LinkedIn profile (the UI highlights these). Set key=false for privacy/proxy/redacted or generic registrar values (e.g. "REDACTED FOR PRIVACY", "Domains By Proxy", abuse@/hostmaster@ addresses) — still list them, but they are not highlighted.
 
 PART 2 — after the JSON block, the supporting detail in Markdown, most-useful first, using these sections (omit any with nothing to say):
 **Current registration** · **Infrastructure** · **Live site & archive** · **Marketplace & valuation** · **Web, social & trademark** · **Confidence & gaps**.

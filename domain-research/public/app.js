@@ -351,6 +351,17 @@ function stripJsonBlock(md) {
 
 // Clue-first summary card: bottom line + likely owner + contacts + recommended
 // contact path + ownership timeline.
+// A clue is "useful" (highlighted green) when it actually helps identify/reach
+// the owner — a real name, working email/phone, broker or profile — but NOT
+// privacy/proxy/redacted or generic registrar values.
+const CLUE_NOISE_RE = /redact|privacy|priv(?:ate)?|proxy|whois\s?guard|data\s?protected|withheld|not\s?disclosed|undisclosed|gdpr|domains?\s?by\s?proxy|contact\s?privacy|perfect\s?privacy|identity\s?protect|statutory\s?masking|anonymi|abuse@|hostmaster@|postmaster@/i;
+function isUsefulClue(c) {
+  const v = String((c && c.value) || '');
+  if (!v) return false;
+  if (CLUE_NOISE_RE.test(v) || CLUE_NOISE_RE.test(String(c.note || ''))) return false;
+  if (typeof c.key === 'boolean') return c.key; // trust the model's call when given
+  return true;
+}
 function renderSummary(d) {
   const e = escapeHtml;
   const linkify = (c) => {
@@ -363,12 +374,16 @@ function renderSummary(d) {
   if (d.summary) html += `<p class="verdict">${e(d.summary)}</p>`;
   if (d.likely_owner || d.owner_type) {
     const t = d.owner_type ? ` <span class="owner-type">${e(String(d.owner_type).replace(/_/g, ' '))}</span>` : '';
-    html += `<div class="owner">${d.likely_owner ? `<span class="owner-name">${e(d.likely_owner)}</span>` : '<span class="muted">Owner not established</span>'}${t}</div>`;
+    const ownerClue = d.likely_owner && !CLUE_NOISE_RE.test(String(d.likely_owner));
+    html += `<div class="owner">${d.likely_owner ? `<span class="owner-name${ownerClue ? ' clue' : ''}">${e(d.likely_owner)}</span>` : '<span class="muted">Owner not established</span>'}${t}</div>`;
   }
   const contacts = Array.isArray(d.contacts) ? d.contacts : [];
   if (contacts.length) {
     html += `<div class="sum-block"><h3>Key contacts</h3><ul class="contacts">${contacts
-      .map((c) => `<li><span class="ctype">${e(c.type || '')}</span> ${linkify(c)}${c.note ? ` <span class="muted">— ${e(c.note)}</span>` : ''}</li>`)
+      .map((c) => {
+        const val = isUsefulClue(c) ? `<span class="clue">${linkify(c)}</span>` : linkify(c);
+        return `<li><span class="ctype">${e(c.type || '')}</span> ${val}${c.note ? ` <span class="muted">— ${e(c.note)}</span>` : ''}</li>`;
+      })
       .join('')}</ul></div>`;
   }
   const path = Array.isArray(d.contact_path) ? d.contact_path : [];
