@@ -10,12 +10,16 @@ function channelsFor(domain) {
   const label = domain.split('.')[0];
   const d = encodeURIComponent(domain);
   return [
+    // afternic + sedo are pure listing pages: the page exists (with a price /
+    // "Make Offer") only when the domain is actually listed. atom/godaddy/dynadot/
+    // spaceship are search SPAs that render for-sale template text for ANY query,
+    // so they're flagged `searchPage` and held to a stricter, status-aware bar.
     { channel: 'afternic', url: `https://www.afternic.com/domain/${domain}` },
     { channel: 'sedo', url: `https://sedo.com/search/details/?domain=${domain}` },
-    { channel: 'atom', url: `https://www.atom.com/name/${label}` },
-    { channel: 'godaddy', url: `https://www.godaddy.com/domainsearch/find?domainToCheck=${d}`, render: true },
-    { channel: 'dynadot', url: `https://www.dynadot.com/domain/search?domain=${d}`, render: true },
-    { channel: 'spaceship', url: `https://www.spaceship.com/domain-search/?query=${d}&tab=domains`, render: true },
+    { channel: 'atom', url: `https://www.atom.com/name/${label}`, searchPage: true },
+    { channel: 'godaddy', url: `https://www.godaddy.com/domainsearch/find?domainToCheck=${d}`, render: true, searchPage: true },
+    { channel: 'dynadot', url: `https://www.dynadot.com/domain/search?domain=${d}`, render: true, searchPage: true },
+    { channel: 'spaceship', url: `https://www.spaceship.com/domain-search/?query=${d}&tab=domains`, render: true, searchPage: true },
   ];
 }
 
@@ -51,13 +55,13 @@ async function fetchChannel({ url, render }, env) {
         `&render=true&super=true&customWait=4000&url=${encodeURIComponent(url)}`;
       const r2 = await fetchText(api, {}, 35000);
       if (r2.body && r2.body.length > String(resp.body || '').length) {
-        return { status: r2.status || 200, body: r2.body, rendered: true };
+        return { status: r2.status || 200, body: r2.body, rendered: true, finalUrl: url };
       }
     } catch {
       /* fall back to the plain (blocked) result */
     }
   }
-  return { status: resp.status, body: resp.body, rendered: false };
+  return { status: resp.status, body: resp.body, rendered: false, finalUrl: resp.finalUrl || url };
 }
 
 function maxPriceUsd(body) {
@@ -100,23 +104,51 @@ const hostOf = (u) => {
 // Check one marketplace channel and classify it. LISTED only when the page
 // resolves (200) AND shows a real for-sale signal; a 404/403 page — or bare
 // prices that are just marketplace page-furniture — is NOT a listing.
-async function checkChannel({ channel, url, render }, env) {
+// Search/availability SPAs (Atom, GoDaddy, Dynadot, Spaceship) render EVERY
+// result state into the DOM, so generic for-sale words ("Make Offer", "premium",
+// a price) leak from hidden template markup even for a plain registered domain.
+// When the page explicitly states the searched name is taken/registered — or
+// only offers to broker it (you hire a broker for a name that ISN'T listed) —
+// it is NOT a marketplace listing, so override the positive. ("Registered in
+// 1996" is Spaceship's taken badge; an aftermarket listing shows "AFTERMARKET".)
+const NOT_FOR_SALE_RE = /\btaken\b|\bregistered in \d{4}\b|\bhire a broker\b|\bget this domain\b/i;
+
+async function checkChannel({ channel, url, render, searchPage }, env, domain) {
   try {
     const resp = await fetchChannel({ url, render }, env);
+    const body = String(resp.body || '');
     const ok = resp.status === 200;
-    const clues = extractClues(resp.body || '');
-    const signals = [...new Set([...clues.parking.for_sale_signals, ...aftermarketSignals(resp.body || '')])];
-    const prices = [...new Set((String(resp.body || '').match(PRICE_RE) || []).slice(0, 5))];
-    const listed = ok && signals.length > 0;
+    const clues = extractClues(body);
+    const signals = [...new Set([...clues.parking.for_sale_signals, ...aftermarketSignals(body)])];
+    const prices = [...new Set((body.match(PRICE_RE) || []).slice(0, 5))];
+    let listed = ok && signals.length > 0;
+    let suppressed = null;
+
+    // Atom redirects an unlisted name to its generic "Premium Domains" landing.
+    // A real listing stays on /name/<slug> AND names the domain on the page; if
+    // neither holds, the for-sale words are just landing-page furniture.
+    if (listed && channel === 'atom') {
+      const sld = String(domain || '').split('.')[0].toLowerCase();
+      const fu = String(resp.finalUrl || url).toLowerCase();
+      const onListing = /atom\.com\/name\//.test(fu) && !/premium-domains-for-sale/.test(fu);
+      const landingHero = /search \d+k\+? premium|premium domain names|ai-powered domain discovery/i.test(body);
+      const namesDomain = sld && body.toLowerCase().includes(sld);
+      if (!onListing || landingHero || !namesDomain) suppressed = 'not-a-listing';
+    }
+    // Status-aware suppression for the search SPAs.
+    if (listed && !suppressed && searchPage && NOT_FOR_SALE_RE.test(body)) suppressed = 'registered/taken';
+    if (suppressed) listed = false;
+
     return {
       channel,
       url,
       http_status: resp.status,
       rendered: resp.rendered,
       listed,
-      for_sale_signals: signals,
+      for_sale_signals: listed ? signals : [],
       prices: listed ? prices : [],
       emails: clues.emails.slice(0, 5),
+      ...(suppressed ? { suppressed } : {}),
     };
   } catch (e) {
     return { channel, url, listed: false, error: String(e?.message || e) };
@@ -147,10 +179,10 @@ export default {
     if (channel) {
       const def = defs.find((c) => c.channel === channel);
       if (!def) throw new Error(`Unknown channel: ${channel}`);
-      return { domain: d, channels: [await checkChannel(def, env)] };
+      return { domain: d, channels: [await checkChannel(def, env, d)] };
     }
 
-    const channels = await Promise.all(defs.map((def) => checkChannel(def, env)));
+    const channels = await Promise.all(defs.map((def) => checkChannel(def, env, d)));
 
     // Seller-portfolio detector: visit the domain itself and see where it lands.
     // A redirect to a NON-major-marketplace host that shows a for-sale signal is
