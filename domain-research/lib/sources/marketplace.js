@@ -113,6 +113,23 @@ const hostOf = (u) => {
 // 1996" is Spaceship's taken badge; an aftermarket listing shows "AFTERMARKET".)
 const NOT_FOR_SALE_RE = /\btaken\b|\bregistered in \d{4}\b|\bhire a broker\b|\bget this domain\b/i;
 
+// True only if a "not for sale" word sits NEXT TO the searched domain. A search
+// results page lists many OTHER names (e.g. 554 other TLDs for "faker"), some
+// marked "taken" — scanning the whole page would wrongly suppress the real
+// listing for the domain we actually searched. Scope the check to the text
+// immediately around each mention of the exact domain instead.
+function negativeNearDomain(body, domain) {
+  const low = String(body || '').toLowerCase();
+  const t = String(domain || '').toLowerCase();
+  if (!t) return false;
+  let i = 0;
+  while ((i = low.indexOf(t, i)) !== -1) {
+    if (NOT_FOR_SALE_RE.test(low.slice(Math.max(0, i - 120), i + 320))) return true;
+    i += t.length;
+  }
+  return false;
+}
+
 async function checkChannel({ channel, url, render, searchPage }, env, domain) {
   try {
     const resp = await fetchChannel({ url, render }, env);
@@ -135,8 +152,9 @@ async function checkChannel({ channel, url, render, searchPage }, env, domain) {
       const namesDomain = sld && body.toLowerCase().includes(sld);
       if (!onListing || landingHero || !namesDomain) suppressed = 'not-a-listing';
     }
-    // Status-aware suppression for the search SPAs.
-    if (listed && !suppressed && searchPage && NOT_FOR_SALE_RE.test(body)) suppressed = 'registered/taken';
+    // Status-aware suppression for the search SPAs — only when the taken/
+    // registered/broker wording is right next to the searched domain.
+    if (listed && !suppressed && searchPage && negativeNearDomain(body, domain)) suppressed = 'registered/taken';
     if (suppressed) listed = false;
 
     return {
