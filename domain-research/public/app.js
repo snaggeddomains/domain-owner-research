@@ -13,6 +13,7 @@ const els = {
   status: $('status'),
   runControls: $('run-controls'),
   cancelRun: $('cancel-run'),
+  marketStrip: $('market-strip'),
   report: $('report'),
   reportDomain: $('report-domain'),
   reportConfidence: $('report-confidence'),
@@ -733,6 +734,70 @@ function startPolling(runId, label) {
   }, POLL_MS);
 }
 
+// ── Marketplace "for sale" quick-strip ──────────────────────────────────────
+// Fires the instant a research starts (parallel to the free LLM pass) to answer
+// the first question a researcher asks: "is this for sale, and where?" Listed
+// channels show as green ✓ links; misses flash a red ✗ then fade out, leaving
+// only the live listings. A row of quick-open links covers the sources we can't
+// reliably check server-side (GoDaddy 403s bots; DomainScout needs a login).
+const MARKET_NAMES = { afternic: 'Afternic', sedo: 'Sedo', dan: 'Dan', atom: 'Atom', godaddy: 'GoDaddy' };
+
+function quickLinks(domain) {
+  const d = encodeURIComponent(domain);
+  const links = [
+    ['Live site', `https://${domain}`],
+    ['Wayback', `https://web.archive.org/web/2024*/${domain}`],
+    ['GoDaddy', `https://www.godaddy.com/domainsearch/find?domainToCheck=${d}`],
+    ['Dynadot', `https://www.dynadot.com/domain/search?domain=${d}`],
+    ['DomainScout', 'https://www.domainscout.io/dashboard'],
+  ];
+  return links
+    .map(([n, u]) => `<a class="ms-link" href="${u}" target="_blank" rel="noopener">${escapeHtml(n)} ↗</a>`)
+    .join('');
+}
+
+async function runMarketStrip(domain) {
+  if (!els.marketStrip || !domain) return;
+  els.marketStrip.hidden = false;
+  els.marketStrip.innerHTML =
+    `<div class="ms-row"><span class="ms-label">Checking marketplaces…</span></div>` +
+    `<div class="ms-row ms-quick"><span class="ms-label">Open:</span>${quickLinks(domain)}</div>`;
+  try {
+    const res = await fetch(`/api/lookup?source=marketplace_check&domain=${encodeURIComponent(domain)}`);
+    const data = await res.json();
+    // Guard against a slower request resolving after the user moved on.
+    if (els.marketStrip.hidden) return;
+    renderMarketStrip(domain, (data.data && data.data.channels) || []);
+  } catch {
+    // Network/parse failure — leave the quick-open links in place.
+  }
+}
+
+function renderMarketStrip(domain, channels) {
+  const listed = channels.filter((c) => c.listed);
+  const misses = channels.filter((c) => !c.listed);
+  const listHtml = listed
+    .map(
+      (c) =>
+        `<a class="ms-item listed" href="${escapeHtml(c.url)}" target="_blank" rel="noopener">✓ ${escapeHtml(
+          MARKET_NAMES[c.channel] || c.channel,
+        )} ↗</a>`,
+    )
+    .join('');
+  const missHtml = misses
+    .map((c) => `<span class="ms-item miss">✗ ${escapeHtml(MARKET_NAMES[c.channel] || c.channel)}</span>`)
+    .join('');
+  const none = listed.length ? '' : '<span class="ms-none">no active listings found</span>';
+  els.marketStrip.innerHTML =
+    `<div class="ms-row"><span class="ms-label">For sale:</span>${listHtml}${missHtml}${none}</div>` +
+    `<div class="ms-row ms-quick"><span class="ms-label">Open:</span>${quickLinks(domain)}</div>`;
+  // Let the misses register, then fade and remove them so only live listings stay.
+  setTimeout(() => {
+    els.marketStrip.querySelectorAll('.ms-item.miss').forEach((el) => el.classList.add('fade'));
+    setTimeout(() => els.marketStrip.querySelectorAll('.ms-item.miss').forEach((el) => el.remove()), 600);
+  }, 3500);
+}
+
 // Switch the research view into "showing a result": hide the entry hero and
 // reveal the standalone report area headed by the domain name.
 function enterResultMode(domain) {
@@ -747,11 +812,14 @@ function enterResultMode(domain) {
   els.evidence.hidden = true;
   els.deepenTop.hidden = true;
   els.deepenBar.hidden = true;
+  if (els.marketStrip) els.marketStrip.hidden = true;
   if (els.runControls) els.runControls.hidden = true;
 }
 
 async function run({ domain, deep }) {
   enterResultMode(domain);
+  // First action: check the marketplaces in parallel with the free LLM pass.
+  runMarketStrip(domain);
   setStatus(deep
     ? `Researching ${domain} (deep, paid sources)… this can take a few minutes.`
     : `Researching ${domain}… this can take a few minutes.`);
@@ -857,6 +925,7 @@ async function openProject(id) {
     currentRunId = id;
     applyHash({ id, domain: r.domain, created_at: r.created_at });
     setReportTitle(r.domain);
+    if (r.domain) runMarketStrip(r.domain);
     if (r.status === 'done') {
       setStatus('');
       renderReport(r.report);
@@ -1300,6 +1369,7 @@ function showEntry() {
   if (els.reportChat) { els.reportChat.hidden = true; chatLoadedFor = null; }
   els.deepenTop.hidden = true;
   els.deepenBar.hidden = true;
+  if (els.marketStrip) els.marketStrip.hidden = true;
   els.evidence.hidden = true;
   currentRunId = null;
   els.domain.value = '';
