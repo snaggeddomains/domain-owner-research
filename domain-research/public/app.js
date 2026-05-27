@@ -122,11 +122,44 @@ function applyHash(run) {
 function clearHash() {
   if (location.hash) history.replaceState(null, '', location.pathname + location.search);
 }
-function routeAfterAuth() {
+
+// The standalone tools are PATH-routed (research stays hash-routed at "/"):
+//   /trademark           /trademark/<query>
+//   /appraisal           /appraisal/<domain>
+function currentToolRoute() {
+  const m = location.pathname.match(/^\/(trademark|appraisal)(?:\/(.+?))?\/?$/);
+  if (!m) return null;
+  return { tool: m[1], slug: m[2] ? decodeURIComponent(m[2]) : '' };
+}
+function setToolUrl(tool, slug) {
+  const path = slug ? `/${tool}/${encodeURIComponent(slug)}` : `/${tool}`;
+  if (location.pathname !== path) history.pushState(null, '', path);
+}
+
+// Single entry point for "where are we" — used after auth and on back/forward.
+function route() {
   if (els.app.hidden) return;
+  const tr = currentToolRoute();
+  if (tr && tr.tool === 'trademark') {
+    showView('trademark');
+    renderToolRecent(els.tmRecent, 'tm', tmPick);
+    if (tr.slug) openToolSlug('tm', tr.slug);
+    else { els.tmResults.innerHTML = ''; els.tmQuery.value = ''; setToolStatus(els.tmStatus, ''); }
+    return;
+  }
+  if (tr && tr.tool === 'appraisal') {
+    showView('appraisal');
+    renderToolRecent(els.apRecent, 'ap', apPick);
+    if (tr.slug) openToolSlug('ap', tr.slug);
+    else { els.apResult.hidden = true; els.apResult.innerHTML = ''; els.apDomain.value = ''; setToolStatus(els.apStatus, ''); }
+    return;
+  }
   const id = runIdFromHash();
   if (id) openProject(id);
-  else loadRecent();
+  else showEntry();
+}
+function routeAfterAuth() {
+  route();
 }
 
 const escapeHtml = (s) =>
@@ -632,6 +665,19 @@ const tmPick = (key, cached) => {
   const items = Array.isArray(cached) ? cached : (cached && cached.items) || [];
   showTrademarks(key, items, !!(cached && cached.isAi));
 };
+// Open a tool deeplink: render from this browser's cache if present (no
+// credits), otherwise run it fresh.
+function openToolSlug(kind, slug) {
+  const hit = loadRecents(kind).find((r) => r.key === slug);
+  if (hit) {
+    if (kind === 'tm') tmPick(hit.key, hit.data);
+    else apPick(hit.key, hit.data);
+  } else if (kind === 'tm') {
+    runTrademark(slug);
+  } else {
+    runAppraisal(slug);
+  }
+}
 // Signa status is an object: { primary: "active"|"dead"|…, stage: "registered"|…, challenges: [] }
 function tmStatusInfo(s) {
   const primary = String((s && s.primary) || (typeof s === 'string' ? s : '')).toLowerCase();
@@ -709,6 +755,7 @@ function renderTrademarks(items) {
     .join('');
 }
 function showTrademarks(q, items, isAi) {
+  setToolUrl('trademark', q);
   if (!items || !items.length) {
     setToolStatus(els.tmStatus, `No trademarks found for "${q}".`);
     els.tmResults.innerHTML = '';
@@ -742,7 +789,7 @@ async function runTrademark(input) {
 }
 
 // ── Appraisal tool ──
-const apPick = (key, cached) => { els.apDomain.value = key; setToolStatus(els.apStatus, ''); renderAppraisal(key, cached); };
+const apPick = (key, cached) => { setToolUrl('appraisal', key); els.apDomain.value = key; setToolStatus(els.apStatus, ''); renderAppraisal(key, cached); };
 function fmtMoney(v) {
   if (v == null || v === '') return '';
   const n = Number(String(v).replace(/[^0-9.]/g, ''));
@@ -805,6 +852,7 @@ function renderAppraisal(domain, a) {
     `<details class="src-detail"><summary>full appraisal</summary><pre>${raw}</pre></details>`;
 }
 function finishAppraisal(domain, a) {
+  setToolUrl('appraisal', domain);
   setToolStatus(els.apStatus, '');
   renderAppraisal(domain, a);
   saveRecent('ap', domain, a);
@@ -874,6 +922,7 @@ async function loadRecent() {
 // Reset the research view to the entry hero (the "New" nav button / logo).
 function showEntry() {
   clearTimers();
+  if (location.pathname !== '/') history.pushState(null, '', '/');
   clearHash();
   showView('research');
   els.hero.hidden = false;
@@ -914,11 +963,11 @@ els.nav?.addEventListener('click', (e) => { if (e.target.closest('.nav-btn')) cl
 
 els.navResearch?.addEventListener('click', showEntry);
 els.homeLink?.addEventListener('click', (e) => { e.preventDefault(); closeNav(); showEntry(); });
-els.navTrademark?.addEventListener('click', () => { showView('trademark'); renderToolRecent(els.tmRecent, 'tm', tmPick); });
-els.navAppraisal?.addEventListener('click', () => { showView('appraisal'); renderToolRecent(els.apRecent, 'ap', apPick); });
+els.navTrademark?.addEventListener('click', () => { setToolUrl('trademark', ''); route(); });
+els.navAppraisal?.addEventListener('click', () => { setToolUrl('appraisal', ''); route(); });
 els.tmForm?.addEventListener('submit', (e) => { e.preventDefault(); const q = els.tmQuery.value.trim(); if (q) runTrademark(q); });
 els.apForm?.addEventListener('submit', (e) => { e.preventDefault(); const v = els.apDomain.value.trim(); if (v) runAppraisal(v); });
-els.navProjects?.addEventListener('click', () => showView('projects'));
+els.navProjects?.addEventListener('click', () => { if (location.pathname !== '/') history.pushState(null, '', '/'); showView('projects'); });
 
 let searchTimer = null;
 els.projectsSearch?.addEventListener('input', () => {
@@ -939,10 +988,12 @@ els.recentList?.addEventListener('click', (e) => {
 // Deeplinks: open a report when the URL carries one, both on load and on
 // in-app navigation (back button / pasted link).
 window.addEventListener('hashchange', () => {
+  if (currentToolRoute()) return; // tools are path-routed, not hash-routed
   const id = runIdFromHash();
   if (id) openProject(id);
   else showEntry();
 });
+window.addEventListener('popstate', route);
 
 (async () => {
   await checkAuth();

@@ -107,28 +107,34 @@
 
         <!-- Trademark tool -->
         <section id="view-trademark" hidden>
-          <h1 class="page-title">Trademark <span class="accent">search</span></h1>
-          <p class="sub">Search trademarks (USPTO) by brand or owner — applicant, status, and filing dates.</p>
-          <form id="tm-form" class="search" autocomplete="off">
-            <input id="tm-query" type="text" placeholder="brand or owner (e.g. percent)" required />
-            <button id="tm-go" type="submit">Search</button>
-          </form>
+          <div class="hero tool-hero">
+            <img class="hero-art" src="/mascot-hero.png" alt="" />
+            <h1 class="hero-title">Trademark <span class="accent">search</span></h1>
+            <p class="hero-sub">Search trademarks (USPTO) by brand or owner — applicant, status, and filing dates.</p>
+            <form id="tm-form" class="search hero-search" autocomplete="off">
+              <input id="tm-query" type="text" placeholder="brand or owner (e.g. percent)" required />
+              <button id="tm-go" type="submit">Search</button>
+            </form>
+            <div id="tm-recent" class="recent tool-recent" hidden></div>
+          </div>
           <section id="tm-status" class="status" hidden></section>
           <ul id="tm-results" class="tool-results"></ul>
-          <div id="tm-recent" class="tool-recent" hidden></div>
         </section>
 
         <!-- Appraisal tool -->
         <section id="view-appraisal" hidden>
-          <h1 class="page-title">Domain <span class="accent">appraisal</span></h1>
-          <p class="sub">AI valuation via Appraise.net. A new appraisal costs credits; cached results are cheaper.</p>
-          <form id="ap-form" class="search" autocomplete="off">
-            <input id="ap-domain" type="text" placeholder="example.com" required />
-            <button id="ap-go" type="submit">Appraise</button>
-          </form>
+          <div class="hero tool-hero">
+            <img class="hero-art" src="/mascot-hero.png" alt="" />
+            <h1 class="hero-title">Domain <span class="accent">appraisal</span></h1>
+            <p class="hero-sub">AI valuation via Appraise.net. A new appraisal costs credits; cached results are cheaper.</p>
+            <form id="ap-form" class="search hero-search" autocomplete="off">
+              <input id="ap-domain" type="text" placeholder="example.com" required />
+              <button id="ap-go" type="submit">Appraise</button>
+            </form>
+            <div id="ap-recent" class="recent tool-recent" hidden></div>
+          </div>
           <section id="ap-status" class="status" hidden></section>
           <div id="ap-result" class="appraisal-result" hidden></div>
-          <div id="ap-recent" class="tool-recent" hidden></div>
         </section>
       </div>
       </div>

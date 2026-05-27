@@ -1,3 +1,9 @@
 {
-  "$schema": "https://openapi.vercel.sh/vercel.json"
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "rewrites": [
+    { "source": "/trademark", "destination": "/index.html" },
+    { "source": "/trademark/:slug*", "destination": "/index.html" },
+    { "source": "/appraisal", "destination": "/index.html" },
+    { "source": "/appraisal/:slug*", "destination": "/index.html" }
+  ]
 }
