@@ -754,7 +754,7 @@ const MARKET_CHANNELS = ['afternic', 'sedo', 'atom', 'godaddy', 'dynadot', 'spac
 const MARKET_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 // Bump when the for-sale detection logic changes, so cached results from an
 // older (buggier) version are ignored and re-checked instead of shown stale.
-const MARKET_V = 3;
+const MARKET_V = 4;
 
 function quickLinks(domain) {
   const d = encodeURIComponent(domain);

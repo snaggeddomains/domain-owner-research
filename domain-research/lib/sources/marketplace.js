@@ -107,21 +107,46 @@ const hostOf = (u) => {
 // 1996" is Spaceship's taken badge; an aftermarket listing shows "AFTERMARKET".)
 const NOT_FOR_SALE_RE = /\btaken\b|\bregistered in \d{4}\b|\bhire a broker\b|\bget this domain\b/i;
 
-// True only if a "not for sale" word sits NEXT TO the searched domain. A search
-// results page lists many OTHER names (e.g. 554 other TLDs for "faker"), some
-// marked "taken" — scanning the whole page would wrongly suppress the real
-// listing for the domain we actually searched. Scope the check to the text
-// immediately around each mention of the exact domain instead.
-function negativeNearDomain(body, domain) {
-  const low = String(body || '').toLowerCase();
+// Strip tags to plain text so proximity is measured in WORDS, not markup. In raw
+// HTML a result row's price/"Taken" label can sit hundreds of chars (buttons,
+// SVGs) away from the domain name; in stripped text they're adjacent.
+function toText(html) {
+  return String(html || '')
+    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+// The for-sale phrases extractClues looks for, usable on an arbitrary text slice.
+const FOR_SALE_PHRASES = [
+  'buy this domain', 'domain is for sale', 'this domain is for sale', 'make offer',
+  'make an offer', 'inquire about this domain', 'domain for sale',
+];
+function forSaleSignals(text) {
+  const low = String(text || '').toLowerCase();
+  const out = FOR_SALE_PHRASES.filter((p) => low.includes(p));
+  return [...new Set([...out, ...aftermarketSignals(text)])];
+}
+
+// Text windows around each mention of the searched domain — so signals from the
+// other 44 results / suggestions / TLDs on a search page can't leak in.
+function domainWindows(text, domain) {
+  const low = text.toLowerCase();
   const t = String(domain || '').toLowerCase();
-  if (!t) return false;
+  if (!t) return [];
+  const wins = [];
   let i = 0;
-  while ((i = low.indexOf(t, i)) !== -1) {
-    if (NOT_FOR_SALE_RE.test(low.slice(Math.max(0, i - 120), i + 320))) return true;
+  let n = 0;
+  while ((i = low.indexOf(t, i)) !== -1 && n < 8) {
+    wins.push(text.slice(Math.max(0, i - 80), i + 220));
     i += t.length;
+    n += 1;
   }
-  return false;
+  return wins;
 }
 
 async function checkChannel({ channel, url, render, searchPage }, env, domain) {
@@ -130,26 +155,43 @@ async function checkChannel({ channel, url, render, searchPage }, env, domain) {
     const body = String(resp.body || '');
     const ok = resp.status === 200;
     const clues = extractClues(body);
-    const signals = [...new Set([...clues.parking.for_sale_signals, ...aftermarketSignals(body)])];
-    const prices = [...new Set((body.match(PRICE_RE) || []).slice(0, 5))];
-    let listed = ok && signals.length > 0;
+    let signals;
+    let prices;
+    let listed;
     let suppressed = null;
 
-    // Atom redirects an unlisted name to its generic "Premium Domains" landing.
-    // A real listing stays on /name/<slug> AND names the domain on the page; if
-    // neither holds, the for-sale words are just landing-page furniture.
-    if (listed && channel === 'atom') {
-      const sld = String(domain || '').split('.')[0].toLowerCase();
-      const fu = String(resp.finalUrl || url).toLowerCase();
-      const onListing = /atom\.com\/name\//.test(fu) && !/premium-domains-for-sale/.test(fu);
-      const landingHero = /search \d+k\+? premium|premium domain names|ai-powered domain discovery/i.test(body);
-      const namesDomain = sld && body.toLowerCase().includes(sld);
-      if (!onListing || landingHero || !namesDomain) suppressed = 'not-a-listing';
+    if (searchPage) {
+      // Scope detection to the text right around the searched domain. A search
+      // SPA lists many other names whose prices/"for sale" would otherwise leak
+      // in, and renders all result states into the DOM. If the domain isn't even
+      // named in its own result, there's no listing for it here.
+      const text = toText(body);
+      const wins = domainWindows(text, domain);
+      const ctx = wins.join('  ');
+      signals = forSaleSignals(ctx);
+      prices = [...new Set((ctx.match(PRICE_RE) || []).slice(0, 5))];
+      listed = ok && wins.length > 0 && signals.length > 0;
+      if (listed && NOT_FOR_SALE_RE.test(ctx)) {
+        listed = false;
+        suppressed = 'registered/taken';
+      }
+      // Atom also redirects an unlisted name to its generic "Premium Domains"
+      // landing — make sure we're on a real /name/ listing, not the landing.
+      if (channel === 'atom') {
+        const fu = String(resp.finalUrl || url).toLowerCase();
+        const onListing = /atom\.com\/name\//.test(fu) && !/premium-domains-for-sale/.test(fu);
+        const landingHero = /search \d+k\+? premium|premium domain names|ai-powered domain discovery/i.test(text);
+        if (!onListing || landingHero) {
+          listed = false;
+          suppressed = suppressed || 'not-a-listing';
+        }
+      }
+    } else {
+      // Pure listing pages (Afternic/Sedo) — the page is about this one domain.
+      signals = [...new Set([...clues.parking.for_sale_signals, ...aftermarketSignals(body)])];
+      prices = [...new Set((body.match(PRICE_RE) || []).slice(0, 5))];
+      listed = ok && signals.length > 0;
     }
-    // Status-aware suppression for the search SPAs — only when the taken/
-    // registered/broker wording is right next to the searched domain.
-    if (listed && !suppressed && searchPage && negativeNearDomain(body, domain)) suppressed = 'registered/taken';
-    if (suppressed) listed = false;
 
     return {
       channel,
