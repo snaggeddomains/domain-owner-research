@@ -10,6 +10,7 @@ const els = {
   domain: $('domain'),
   go: $('go'),
   deepToggle: $('deep-toggle'),
+  dsToggle: $('ds-toggle'),
   status: $('status'),
   runControls: $('run-controls'),
   cancelRun: $('cancel-run'),
@@ -769,8 +770,21 @@ function quickLinks(domain) {
   // into your (logged-in) watchlist — the server can't, it has no session there.
   const ds =
     `<a class="ms-link ms-ds" data-ds-domain="${escapeHtml(domain)}" ` +
-    `href="https://www.domainscout.io/dashboard#snagged=${d}" target="_blank" rel="noopener">DomainScout ↗</a>`;
+    `href="${dsUrl(domain)}" target="domainscout">DomainScout ↗</a>`;
   return main + ds;
+}
+
+// DomainScout dashboard with the domain in the hash — the userscript/bookmarklet
+// reads #snagged=<domain> and submits it to the "Track any domains" form.
+function dsUrl(domain) {
+  return `https://www.domainscout.io/dashboard#snagged=${encodeURIComponent(domain)}`;
+}
+
+// Opt-in: open (or reuse) the DomainScout tab for a domain. The named target
+// means repeat opens reuse one tab rather than spawning many.
+function openDomainScout(domain) {
+  if (!domain) return;
+  window.open(dsUrl(domain), 'domainscout');
 }
 
 function agoLabel(ts) {
@@ -1457,10 +1471,21 @@ function showEntry() {
 }
 
 // ── Wiring ──────────────────────────────────────────────────────────────────
+// "Also add to DomainScout" preference persists across sessions.
+if (els.dsToggle) {
+  els.dsToggle.checked = localStorage.getItem('ds_autotrack') === '1';
+  els.dsToggle.addEventListener('change', () => {
+    try { localStorage.setItem('ds_autotrack', els.dsToggle.checked ? '1' : '0'); } catch { /* ignore */ }
+  });
+}
+
 els.form?.addEventListener('submit', (e) => {
   e.preventDefault();
   const domain = els.domain.value.trim();
   if (!domain) return;
+  // Open the DomainScout tab from within the click gesture (so it isn't popup-
+  // blocked); the userscript on that tab fills + submits the Track form.
+  if (els.dsToggle && els.dsToggle.checked) openDomainScout(domain);
   run({ domain, deep: !!(els.deepToggle && els.deepToggle.checked) });
 });
 
