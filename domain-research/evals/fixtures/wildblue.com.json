@@ -1,0 +1,7 @@
+{
+  "domain": "wildblue.com",
+  "notes": "Large-corporate brand-protection case. Domain held by Viasat (NASDAQ:VSAT) via AuthenticWeb after the 2009 acquisition of WildBlue Communications. The earlier report stopped at the HQ switchboard + a registrar reseller mailbox — no NAMED individuals at Viasat. The CORPORATE-HELD DOMAINS playbook rule requires the report to surface 2–4 named senior leaders across corp dev / brand / legal / IR / IT-domains. As a structural smoke-test the report must contain at least one @viasat.com address from a named individual (the substring match below catches any).",
+  "expected_present": {
+    "emails": ["@viasat.com"]
+  }
+}

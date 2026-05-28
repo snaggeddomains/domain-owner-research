@@ -26,14 +26,19 @@ The runner uses `lib/agent.js`'s `research()` directly. From the
 # load env (one-off)
 set -a; source .env; set +a
 
-# one fixture
+# one fixture (fresh deep pass — spends real credits)
 node evals/run.js ontask.ai
 
 # several
-node evals/run.js ontask.ai example.com
+node evals/run.js ontask.ai wildblue.com
 
 # every fixture in evals/fixtures/
 node evals/run.js --all
+
+# CHEAP: assert against the most recent stored 'done' run for the domain
+# (zero paid-API credits — useful after a prompt edit to re-check a fixture
+# whose latest stored run is still recent and meaningful)
+node evals/run.js ontask.ai --against-latest
 ```
 
 Exit code is `0` if all evals passed, `1` if any failed, `2` for usage errors.
