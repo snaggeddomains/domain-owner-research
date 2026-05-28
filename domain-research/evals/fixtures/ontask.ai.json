@@ -1,0 +1,13 @@
+{
+  "domain": "ontask.ai",
+  "notes": "Privacy-shielded operator (Workforce Technologies INC / Sam Putnam, founder/CEO/CTO, Dallas TX). Multi-path lookup must surface verified personal contacts via RocketReach by LinkedIn URL — the OnTask report that prompted the MULTI-PATH OWNER LOOKUP rule failed exactly here, returning only role addresses (hello@, license@) and an inferred-unverified sam@.",
+  "expected_present": {
+    "emails": [
+      "samp@ontask.ai",
+      "putnam.sam@gmail.com"
+    ],
+    "phones": [
+      "12149012140"
+    ]
+  }
+}
