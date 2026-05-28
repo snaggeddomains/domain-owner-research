@@ -754,7 +754,7 @@ const MARKET_CHANNELS = ['afternic', 'sedo', 'atom', 'godaddy', 'dynadot', 'spac
 const MARKET_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 // Bump when the for-sale detection logic changes, so cached results from an
 // older (buggier) version are ignored and re-checked instead of shown stale.
-const MARKET_V = 4;
+const MARKET_V = 5;
 
 function quickLinks(domain) {
   const d = encodeURIComponent(domain);
@@ -808,6 +808,8 @@ function metaHtml(ts) {
 function channelPill(c) {
   const name = escapeHtml(MARKET_NAMES[c.channel] || c.channel);
   if (c.pending) return `<span class="ms-item pending" data-ch="${c.channel}">… ${name}</span>`;
+  if (c.unverified)
+    return `<a class="ms-item unverified" data-ch="${c.channel}" title="Listing in progress — ownership not yet verified" href="${escapeHtml(c.url || '#')}" target="_blank" rel="noopener">◐ ${name} ↗</a>`;
   if (c.listed) {
     const title = c.via === 'afternic' ? ' title="Listed on Afternic — GoDaddy&#39;s aftermarket, so buyable via GoDaddy"' : '';
     return `<a class="ms-item listed" data-ch="${c.channel}"${title} href="${escapeHtml(c.url || '#')}" target="_blank" rel="noopener">✓ ${name} ↗</a>`;
@@ -883,6 +885,7 @@ async function streamMarketStrip(domain) {
     channel: c.channel,
     url: c.url,
     listed: !!c.listed,
+    unverified: !!c.unverified,
     for_sale_signals: c.for_sale_signals,
     prices: c.prices,
   }));

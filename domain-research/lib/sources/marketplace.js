@@ -107,6 +107,12 @@ const hostOf = (u) => {
 // 1996" is Spaceship's taken badge; an aftermarket listing shows "AFTERMARKET".)
 const NOT_FOR_SALE_RE = /\btaken\b|\bregistered in \d{4}\b|\bhire a broker\b|\bget this domain\b/i;
 
+// Atom shows this while a listing is mid-onboarding — the seller has claimed the
+// name but DNS/ownership isn't verified, so the for-sale landing isn't live yet.
+// Not a clean listing and not a plain miss → surfaced as a "pending" (yellow).
+const ATOM_PENDING_RE =
+  /ownership of this domain is not yet verified|landing page will be live once the ownership|verifying the dns status/i;
+
 // Strip tags to plain text so proximity is measured in WORDS, not markup. In raw
 // HTML a result row's price/"Taken" label can sit hundreds of chars (buttons,
 // SVGs) away from the domain name; in stripped text they're adjacent.
@@ -159,6 +165,7 @@ async function checkChannel({ channel, url, render, searchPage }, env, domain) {
     let prices;
     let listed;
     let suppressed = null;
+    let unverified = false;
 
     if (searchPage) {
       // Scope detection to the text right around the searched domain. A search
@@ -175,15 +182,22 @@ async function checkChannel({ channel, url, render, searchPage }, env, domain) {
         listed = false;
         suppressed = 'registered/taken';
       }
-      // Atom also redirects an unlisted name to its generic "Premium Domains"
-      // landing — make sure we're on a real /name/ listing, not the landing.
       if (channel === 'atom') {
-        const fu = String(resp.finalUrl || url).toLowerCase();
-        const onListing = /atom\.com\/name\//.test(fu) && !/premium-domains-for-sale/.test(fu);
-        const landingHero = /search \d+k\+? premium|premium domain names|ai-powered domain discovery/i.test(text);
-        if (!onListing || landingHero) {
+        if (ATOM_PENDING_RE.test(text)) {
+          // Listing claimed but not yet verified/live — pending, not a miss.
           listed = false;
-          suppressed = suppressed || 'not-a-listing';
+          unverified = true;
+          suppressed = null;
+        } else {
+          // Atom also redirects an unlisted name to its generic "Premium Domains"
+          // landing — make sure we're on a real /name/ listing, not the landing.
+          const fu = String(resp.finalUrl || url).toLowerCase();
+          const onListing = /atom\.com\/name\//.test(fu) && !/premium-domains-for-sale/.test(fu);
+          const landingHero = /search \d+k\+? premium|premium domain names|ai-powered domain discovery/i.test(text);
+          if (!onListing || landingHero) {
+            listed = false;
+            suppressed = suppressed || 'not-a-listing';
+          }
         }
       }
     } else {
@@ -199,6 +213,7 @@ async function checkChannel({ channel, url, render, searchPage }, env, domain) {
       http_status: resp.status,
       rendered: resp.rendered,
       listed,
+      unverified,
       for_sale_signals: listed ? signals : [],
       prices: listed ? prices : [],
       emails: clues.emails.slice(0, 5),
