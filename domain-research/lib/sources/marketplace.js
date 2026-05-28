@@ -10,12 +10,13 @@ function channelsFor(domain) {
   const label = domain.split('.')[0];
   const d = encodeURIComponent(domain);
   return [
-    // afternic + sedo are pure listing pages: the page exists (with a price /
-    // "Make Offer") only when the domain is actually listed. atom/godaddy/dynadot/
-    // spaceship are search SPAs that render for-sale template text for ANY query,
-    // so they're flagged `searchPage` and held to a stricter, status-aware bar.
+    // afternic is a pure listing page: the URL only renders meaningful content
+    // (price / "Make Offer") when the domain is actually listed. sedo/atom/
+    // godaddy/dynadot/spaceship are search pages that render many results, so
+    // they're flagged `searchPage` and detection is scoped to text around the
+    // searched domain. godaddy/dynadot/spaceship are JS SPAs (`render: true`).
     { channel: 'afternic', url: `https://www.afternic.com/domain/${domain}` },
-    { channel: 'sedo', url: `https://sedo.com/search/details/?domain=${domain}` },
+    { channel: 'sedo', url: `https://sedo.com/search/?keyword=${d}`, searchPage: true },
     { channel: 'atom', url: `https://www.atom.com/name/${label}`, searchPage: true },
     { channel: 'godaddy', url: `https://www.godaddy.com/domainsearch/find?domainToCheck=${d}`, render: true, searchPage: true },
     { channel: 'dynadot', url: `https://www.dynadot.com/domain/search?domain=${d}`, render: true, searchPage: true },
@@ -48,7 +49,7 @@ async function fetchChannel({ url, render }, env) {
     }
     return { status: 0, body: '', rendered: false, finalUrl: url };
   }
-  // Pure listing pages (Afternic/Sedo/Atom) — the plain response is real content.
+  // Plain (non-render) channels — the response is server-rendered HTML we can parse directly.
   let resp;
   try {
     resp = await fetchText(url, {}, 8000);
@@ -201,7 +202,7 @@ async function checkChannel({ channel, url, render, searchPage }, env, domain) {
         }
       }
     } else {
-      // Pure listing pages (Afternic/Sedo) — the page is about this one domain.
+      // Pure listing page (Afternic) — the page is about this one domain.
       signals = [...new Set([...clues.parking.for_sale_signals, ...aftermarketSignals(body)])];
       prices = [...new Set((body.match(PRICE_RE) || []).slice(0, 5))];
       listed = ok && signals.length > 0;
