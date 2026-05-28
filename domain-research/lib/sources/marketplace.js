@@ -25,41 +25,35 @@ function channelsFor(domain) {
 
 const PRICE_RE = /(?:US)?\$\s?\d[\d,]{2,}(?:\.\d{2})?/g;
 
-// A page can hard-block (403/429) or serve a tiny anti-bot challenge instead of
-// real content — treat both as "blocked" so we know to escalate to a renderer.
-function isBotWalled(status, body) {
-  if (status === 403 || status === 429 || status === 0) return true;
-  const t = String(body || '');
-  return (
-    t.length < 800 &&
-    /just a moment|enable javascript|attention required|verify you are human|captcha|access denied|are you a robot/i.test(t)
-  );
-}
-
-// Plain fetch first; if a `render` channel is bot-walled and Scrape.do is set,
-// re-fetch through its residential anti-bot proxy with JS rendering (super=true
-// is required to clear Cloudflare-class challenges).
+// `render` channels are JS SPAs (GoDaddy/Dynadot/Spaceship): their meaningful
+// result is rendered client-side, and a plain fetch returns either a 403 wall
+// OR — worse — a 200 *shell* full of template furniture ("Make Offer", sample
+// prices) that has nothing to do with the searched domain and causes false
+// positives. So these MUST be rendered through Scrape.do; if the render can't
+// be obtained we return an empty result (not-listed) rather than trust the
+// shell. customWait lets a post-load XHR (e.g. GoDaddy's price) populate first.
 async function fetchChannel({ url, render }, env) {
+  if (render) {
+    if (!env?.SCRAPE_DO_API_KEY) return { status: 0, body: '', rendered: false, finalUrl: url };
+    try {
+      const api =
+        `https://api.scrape.do/?token=${encodeURIComponent(env.SCRAPE_DO_API_KEY)}` +
+        `&render=true&super=true&customWait=4000&url=${encodeURIComponent(url)}`;
+      const r2 = await fetchText(api, {}, 35000);
+      if (r2.status === 200 && r2.body && r2.body.length > 500) {
+        return { status: 200, body: r2.body, rendered: true, finalUrl: url };
+      }
+    } catch {
+      /* render unavailable — fall through to the empty (not-listed) result */
+    }
+    return { status: 0, body: '', rendered: false, finalUrl: url };
+  }
+  // Pure listing pages (Afternic/Sedo/Atom) — the plain response is real content.
   let resp;
   try {
     resp = await fetchText(url, {}, 8000);
   } catch (e) {
     resp = { status: 0, body: '', error: String(e?.message || e) };
-  }
-  if (render && env?.SCRAPE_DO_API_KEY && isBotWalled(resp.status, resp.body)) {
-    try {
-      // customWait gives a JS SPA (GoDaddy loads its aftermarket price via a
-      // post-load XHR) a moment to populate before the snapshot is taken.
-      const api =
-        `https://api.scrape.do/?token=${encodeURIComponent(env.SCRAPE_DO_API_KEY)}` +
-        `&render=true&super=true&customWait=4000&url=${encodeURIComponent(url)}`;
-      const r2 = await fetchText(api, {}, 35000);
-      if (r2.body && r2.body.length > String(resp.body || '').length) {
-        return { status: r2.status || 200, body: r2.body, rendered: true, finalUrl: url };
-      }
-    } catch {
-      /* fall back to the plain (blocked) result */
-    }
   }
   return { status: resp.status, body: resp.body, rendered: false, finalUrl: resp.finalUrl || url };
 }
