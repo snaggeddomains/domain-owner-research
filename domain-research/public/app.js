@@ -805,9 +805,25 @@ function metaHtml(ts) {
 function channelPill(c) {
   const name = escapeHtml(MARKET_NAMES[c.channel] || c.channel);
   if (c.pending) return `<span class="ms-item pending" data-ch="${c.channel}">… ${name}</span>`;
-  if (c.listed)
-    return `<a class="ms-item listed" data-ch="${c.channel}" href="${escapeHtml(c.url || '#')}" target="_blank" rel="noopener">✓ ${name} ↗</a>`;
+  if (c.listed) {
+    const title = c.via === 'afternic' ? ' title="Listed on Afternic — GoDaddy&#39;s aftermarket, so buyable via GoDaddy"' : '';
+    return `<a class="ms-item listed" data-ch="${c.channel}"${title} href="${escapeHtml(c.url || '#')}" target="_blank" rel="noopener">✓ ${name} ↗</a>`;
+  }
   return `<span class="ms-item miss" data-ch="${c.channel}">✗ ${name}</span>`;
+}
+
+// GoDaddy's aftermarket inventory IS Afternic (same company), and GoDaddy's own
+// search page is the least reliable to scrape (heavy bot wall, and it loses the
+// race when several Scrape.do renders fire in parallel). So when Afternic is
+// listed, the domain is buyable via GoDaddy too — mark GoDaddy listed even if
+// its own scrape missed. Applied at render time; the raw scrape is what's cached.
+function mirrorGoDaddyFromAfternic(channels) {
+  const af = channels.find((c) => c.channel === 'afternic');
+  const gd = channels.find((c) => c.channel === 'godaddy');
+  if (af && af.listed && gd && !gd.listed) {
+    return channels.map((c) => (c.channel === 'godaddy' ? { ...c, listed: true, via: 'afternic' } : c));
+  }
+  return channels;
 }
 
 async function getMarketCache(domain) {
@@ -828,11 +844,12 @@ function marketPaint(domain, pills, metaInner) {
     `<div class="ms-row ms-quick"><span class="ms-label">Open:</span>${quickLinks(domain)}</div>`;
 }
 
-// Render a complete (cached) result at once — misses stay as red ✗.
+// Render a complete result at once — misses stay as red ✗.
 function renderMarketStrip(domain, channels, ts) {
-  const byCh = new Map(channels.map((c) => [c.channel, c]));
+  const norm = mirrorGoDaddyFromAfternic(channels);
+  const byCh = new Map(norm.map((c) => [c.channel, c]));
   const ordered = MARKET_CHANNELS.filter((ch) => byCh.has(ch)).map((ch) => byCh.get(ch));
-  for (const c of channels) if (!MARKET_CHANNELS.includes(c.channel)) ordered.push(c);
+  for (const c of norm) if (!MARKET_CHANNELS.includes(c.channel)) ordered.push(c);
   marketPaint(domain, ordered.map(channelPill).join(''), ts ? metaHtml(ts) : '');
 }
 
@@ -867,8 +884,9 @@ async function streamMarketStrip(domain) {
     prices: c.prices,
   }));
   serverSaveTool('mk', domain, { domain, any_listed: channels.some((c) => c.listed), channels });
-  const checking = els.marketStrip.querySelector('.ms-checking');
-  if (checking) checking.outerHTML = metaHtml(Date.now());
+  // Final consistent render: applies the GoDaddy←Afternic mirror and sets the
+  // "checked just now · refresh" meta, replacing the live "checking…" pills.
+  renderMarketStrip(domain, channels, Date.now());
 }
 
 async function runMarketStrip(domain, { force = false } = {}) {
