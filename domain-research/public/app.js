@@ -752,6 +752,9 @@ const MARKET_NAMES = {
 };
 const MARKET_CHANNELS = ['afternic', 'sedo', 'atom', 'godaddy', 'dynadot', 'spaceship'];
 const MARKET_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+// Bump when the for-sale detection logic changes, so cached results from an
+// older (buggier) version are ignored and re-checked instead of shown stale.
+const MARKET_V = 2;
 
 function quickLinks(domain) {
   const d = encodeURIComponent(domain);
@@ -883,7 +886,7 @@ async function streamMarketStrip(domain) {
     for_sale_signals: c.for_sale_signals,
     prices: c.prices,
   }));
-  serverSaveTool('mk', domain, { domain, any_listed: channels.some((c) => c.listed), channels });
+  serverSaveTool('mk', domain, { v: MARKET_V, domain, any_listed: channels.some((c) => c.listed), channels });
   // Final consistent render: applies the GoDaddy←Afternic mirror and sets the
   // "checked just now · refresh" meta, replacing the live "checking…" pills.
   renderMarketStrip(domain, channels, Date.now());
@@ -898,7 +901,8 @@ async function runMarketStrip(domain, { force = false } = {}) {
   try {
     if (!force) {
       const cached = await getMarketCache(domain);
-      if (cached && cached.data && Date.now() - cached.ts < MARKET_TTL_MS) {
+      // Only trust a cache from the current detection version and within TTL.
+      if (cached && cached.data && cached.data.v === MARKET_V && Date.now() - cached.ts < MARKET_TTL_MS) {
         if (els.marketStrip.hidden || els.marketStrip.dataset.domain !== domain) return;
         renderMarketStrip(domain, cached.data.channels || [], cached.ts);
         return;
