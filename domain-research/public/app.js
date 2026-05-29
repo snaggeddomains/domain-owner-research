@@ -1179,7 +1179,11 @@ function tmScore(q, items) {
   const reasons = [];
   let activeExact = 0, activeExactTech = 0, activeTech = 0;
   for (const o of items) {
-    if (!tmStatusInfo(o.status).active) continue;
+    // Use the same active definition as the "Active only" filter (isActiveMark
+    // → bucket !== 'abandoned'). Just checking tmStatusInfo(s).active lets a
+    // mark slip in when primary says "registered" but stage shows it was later
+    // cancelled/abandoned — bucket sees that, .active doesn't.
+    if (!isActiveMark(o)) continue;
     const exact = String(o.mark_text || '').toUpperCase() === Q;
     const tech = isTechMark(o);
     if (exact) {
