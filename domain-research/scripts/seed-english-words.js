@@ -35,6 +35,13 @@ function parsePosToken(token) {
   return POS_MAP[head] || null;
 }
 
+// AGID uses ?, !, ~ as suffix metadata flags (optional / preferred / related).
+// They're not part of the word — strip before regex validation. Handles
+// repeated markers ("?!") and clusters at the end of the token.
+function stripMarkers(s) {
+  return String(s || '').replace(/[?!~]+$/, '');
+}
+
 async function parseAgidFile(path) {
   // word → { is_root, pos } — collapsed so a word that appears as BOTH lemma
   // and inflected form (rare, but happens — e.g. "saw" is both a noun and
@@ -59,8 +66,9 @@ async function parseAgidFile(path) {
 
     // Normalize to lowercase ASCII letters only. Skip multi-word lemmas,
     // accented forms, anything with punctuation — we're matching against
-    // single-token SLDs.
-    const lemma = lemmaRaw.toLowerCase();
+    // single-token SLDs. AGID marks "optional/uncertain/related" forms with
+    // a trailing ?, !, or ~ which we strip before validation.
+    const lemma = stripMarkers(lemmaRaw).toLowerCase();
     if (!/^[a-z]+$/.test(lemma)) continue;
 
     // Record the lemma as a root form (don't downgrade if already seen).
@@ -73,7 +81,7 @@ async function parseAgidFile(path) {
       if (!seg) continue;
       // Inflections may include a comma-separated alternative like "trod, trodden".
       for (const word of seg.split(',')) {
-        const w = word.trim().toLowerCase();
+        const w = stripMarkers(word.trim()).toLowerCase();
         if (!/^[a-z]+$/.test(w)) continue;
         if (w === lemma) continue;
         // Don't overwrite a recorded root — a word that's both root in one
