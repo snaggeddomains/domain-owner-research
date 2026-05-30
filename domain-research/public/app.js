@@ -53,9 +53,25 @@ const els = {
   trace: $('trace'),
   hero: $('hero'),
   navResearch: $('nav-research'),
+  navAppraisal: $('nav-appraisal'),
+  navNaming: $('nav-naming'),
+  navAdmin: $('nav-admin'),
   showAll: $('show-all'),
   viewResearch: $('view-research'),
   viewProjects: $('view-projects'),
+  viewAdmin: $('view-admin'),
+  userAddForm: $('user-add-form'),
+  userAddEmail: $('user-add-email'),
+  userAddPassword: $('user-add-password'),
+  userAddDomainOwner: $('user-add-domain_owner'),
+  userAddTrademark: $('user-add-trademark'),
+  userAddAppraisal: $('user-add-appraisal'),
+  userAddNaming: $('user-add-naming'),
+  userAddAdmin: $('user-add-admin'),
+  userAddNotify: $('user-add-notify'),
+  userAddError: $('user-add-error'),
+  userList: $('user-list'),
+  userListError: $('user-list-error'),
   deepenTop: $('deepen-top'),
   deepenTopBtn: $('deepen-top-btn'),
   deepenBar: $('deepen-bar'),
@@ -715,11 +731,13 @@ async function checkAuth() {
     els.login.hidden = !locked;
     els.app.hidden = locked;
     if (locked) showLoginPanel('login');
-    // Populate the sidebar account block when signed in.
+    // Populate the sidebar account block when signed in + gate the module
+    // nav buttons by what the user is permitted to use.
     const u = data.user;
     if (!locked && u && u.email) {
       if (els.navAccountEmail) els.navAccountEmail.textContent = u.email;
       if (els.navAccount) els.navAccount.hidden = false;
+      gateNavByPermissions(u);
     } else if (els.navAccount) {
       els.navAccount.hidden = true;
     }
@@ -739,6 +757,20 @@ els.navLogout?.addEventListener('click', async (e) => {
   } catch { /* fall through — reload still shows login */ }
   window.location.assign('/');
 });
+
+// Hide nav buttons for modules the current user can't access; admins see
+// everything plus the Admin button.
+function gateNavByPermissions(user) {
+  const perms = (user && user.permissions) || {};
+  const can = (k) => Boolean(user && user.is_admin) || Boolean(perms[k]);
+  if (els.navResearch) els.navResearch.hidden = !can('domain_owner');
+  if (els.navTrademark) els.navTrademark.hidden = !can('trademark');
+  if (els.navAppraisal) els.navAppraisal.hidden = !can('appraisal');
+  if (els.navNaming) els.navNaming.hidden = !can('naming');
+  if (els.navAdmin) els.navAdmin.hidden = !(user && user.is_admin);
+}
+
+els.navAdmin?.addEventListener('click', () => { history.pushState(null, '', '/admin'); showView('admin'); closeNav(); });
 
 els.loginForm?.addEventListener('submit', async (e) => {
   e.preventDefault();
@@ -1279,6 +1311,7 @@ const VIEWS = {
   trademark: { view: 'view-trademark', nav: 'nav-trademark' },
   appraisal: { view: 'view-appraisal', nav: 'nav-appraisal' },
   naming: { view: 'view-naming', nav: 'nav-naming' },
+  admin: { view: 'view-admin', nav: 'nav-admin' },
 };
 function showView(name) {
   for (const [k, v] of Object.entries(VIEWS)) {
@@ -1288,7 +1321,167 @@ function showView(name) {
     if (nav) nav.classList.toggle('active', k === name);
   }
   if (name === 'projects') loadProjects(els.projectsSearch.value.trim());
+  if (name === 'admin') loadUsers();
 }
+
+// ── Admin: user CRUD ────────────────────────────────────────────────────────
+async function loadUsers() {
+  if (!els.userList) return;
+  els.userListError.hidden = true;
+  els.userList.hidden = true;
+  try {
+    const res = await fetch('/api/users');
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`);
+    renderUsers(data.users || []);
+  } catch (err) {
+    els.userListError.textContent = String(err.message || err);
+    els.userListError.hidden = false;
+  }
+}
+
+function renderUsers(users) {
+  if (!els.userList) return;
+  if (!users.length) {
+    els.userList.innerHTML = '<p class="user-empty">No users yet.</p>';
+    els.userList.hidden = false;
+    return;
+  }
+  const rows = users.map((u) => {
+    const perms = u.permissions || {};
+    const checked = (v) => v ? 'checked' : '';
+    return (
+      `<div class="user-row" data-id="${escapeHtml(u.id)}">` +
+        `<div class="user-row-head">` +
+          `<div class="user-row-email">${escapeHtml(u.email)}${u.is_admin ? ' <span class="user-admin-badge">ADMIN</span>' : ''}</div>` +
+          `<button class="user-row-delete" type="button" data-action="delete">Remove</button>` +
+        `</div>` +
+        `<div class="user-row-perms">` +
+          `<label><input type="checkbox" data-perm="is_admin" ${checked(u.is_admin)}/> Admin</label>` +
+          `<label><input type="checkbox" data-perm="domain_owner" ${checked(perms.domain_owner)}/> Domain Owner</label>` +
+          `<label><input type="checkbox" data-perm="trademark" ${checked(perms.trademark)}/> Trademark</label>` +
+          `<label><input type="checkbox" data-perm="appraisal" ${checked(perms.appraisal)}/> Appraisal</label>` +
+          `<label><input type="checkbox" data-perm="naming" ${checked(perms.naming)}/> Naming</label>` +
+          `<label><input type="checkbox" data-perm="email_notify_on_done" ${checked(u.email_notify_on_done)}/> Email on done</label>` +
+        `</div>` +
+        `<div class="user-row-pwd">` +
+          `<input type="password" placeholder="Set a new password (leave blank to keep)" data-field="password" minlength="8" />` +
+          `<button type="button" data-action="save-password">Update password</button>` +
+        `</div>` +
+        `<p class="user-row-error" hidden></p>` +
+      `</div>`
+    );
+  }).join('');
+  els.userList.innerHTML = rows;
+  els.userList.hidden = false;
+}
+
+async function patchUser(id, body, rowEl) {
+  const errEl = rowEl && rowEl.querySelector('.user-row-error');
+  if (errEl) errEl.hidden = true;
+  const res = await fetch('/api/users', {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ id, ...body }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    if (errEl) { errEl.textContent = data.error || `Update failed (${res.status})`; errEl.hidden = false; }
+    return null;
+  }
+  return data.user;
+}
+
+els.userList?.addEventListener('change', async (e) => {
+  const cb = e.target.closest('input[data-perm]');
+  if (!cb) return;
+  const row = cb.closest('.user-row');
+  const id = row && row.dataset.id;
+  const key = cb.dataset.perm;
+  if (!id || !key) return;
+  if (key === 'is_admin' || key === 'email_notify_on_done') {
+    await patchUser(id, { [key]: cb.checked }, row);
+  } else {
+    // Collect all permission checkboxes (excluding is_admin / notify) so the
+    // server gets the full permissions object, not a partial.
+    const perms = {};
+    row.querySelectorAll('input[data-perm]').forEach((b) => {
+      const k = b.dataset.perm;
+      if (k === 'is_admin' || k === 'email_notify_on_done') return;
+      perms[k] = b.checked;
+    });
+    await patchUser(id, { permissions: perms }, row);
+  }
+});
+
+els.userList?.addEventListener('click', async (e) => {
+  const row = e.target.closest('.user-row');
+  if (!row) return;
+  const id = row.dataset.id;
+  const action = e.target.dataset && e.target.dataset.action;
+  if (action === 'delete') {
+    if (!confirm('Remove this user? Their account and access are revoked immediately.')) return;
+    const res = await fetch('/api/users', {
+      method: 'DELETE',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ id }),
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      const errEl = row.querySelector('.user-row-error');
+      if (errEl) { errEl.textContent = data.error || `Delete failed (${res.status})`; errEl.hidden = false; }
+      return;
+    }
+    loadUsers();
+  } else if (action === 'save-password') {
+    const input = row.querySelector('input[data-field="password"]');
+    const pw = (input && input.value) || '';
+    if (pw.length < 8) {
+      const errEl = row.querySelector('.user-row-error');
+      if (errEl) { errEl.textContent = 'Password must be at least 8 characters'; errEl.hidden = false; }
+      return;
+    }
+    const updated = await patchUser(id, { password: pw }, row);
+    if (updated && input) input.value = '';
+  }
+});
+
+els.userAddForm?.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  if (els.userAddError) els.userAddError.hidden = true;
+  const email = (els.userAddEmail && els.userAddEmail.value || '').trim().toLowerCase();
+  const password = (els.userAddPassword && els.userAddPassword.value || '').trim();
+  if (!email || password.length < 8) {
+    els.userAddError.textContent = 'Enter an email and a password of 8+ characters.';
+    els.userAddError.hidden = false;
+    return;
+  }
+  const permissions = {
+    domain_owner: !!(els.userAddDomainOwner && els.userAddDomainOwner.checked),
+    trademark: !!(els.userAddTrademark && els.userAddTrademark.checked),
+    appraisal: !!(els.userAddAppraisal && els.userAddAppraisal.checked),
+    naming: !!(els.userAddNaming && els.userAddNaming.checked),
+  };
+  const is_admin = !!(els.userAddAdmin && els.userAddAdmin.checked);
+  const email_notify_on_done = !!(els.userAddNotify && els.userAddNotify.checked);
+  const res = await fetch('/api/users', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ email, password, is_admin, permissions, email_notify_on_done }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    els.userAddError.textContent = data.error || `Add failed (${res.status})`;
+    els.userAddError.hidden = false;
+    return;
+  }
+  // Clear the form, reload the list.
+  els.userAddForm.reset();
+  if (els.userAddDomainOwner) els.userAddDomainOwner.checked = true;
+  if (els.userAddTrademark) els.userAddTrademark.checked = true;
+  if (els.userAddAppraisal) els.userAddAppraisal.checked = true;
+  loadUsers();
+});
 
 // ── Standalone tools (Trademark, Appraisal) ─────────────────────────────────
 function setToolStatus(el, text, err = false) {

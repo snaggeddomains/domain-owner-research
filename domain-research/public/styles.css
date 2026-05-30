@@ -461,6 +461,31 @@ button:disabled { opacity: .55; cursor: progress; }
 .login-extra a { color: var(--teal-deep); font-weight: 600; text-decoration: none; }
 .login-extra a:hover { text-decoration: underline; }
 
+/* Admin: user CRUD view */
+.user-add { background: var(--cream-2); border: 2px solid var(--line); border-radius: var(--radius); padding: 18px; margin: 0 0 28px; display: grid; gap: 10px; }
+.user-add-title { font-family: var(--display); font-size: 18px; margin: 0 0 4px; color: var(--navy); }
+.user-add-row { display: flex; flex-wrap: wrap; gap: 10px; }
+.user-add-row input[type="email"], .user-add-row input[type="password"] { flex: 1 1 220px; padding: 10px 12px; background: var(--paper); border: 1.5px solid var(--line); border-radius: var(--radius-sm); font: inherit; color: var(--navy); }
+.user-add-perms { gap: 16px 18px; align-items: center; }
+.user-add-perms label, .user-row-perms label { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; color: var(--navy); cursor: pointer; }
+.user-add button { align-self: flex-start; padding: 10px 18px; background: var(--coral); color: var(--paper); border: 2px solid var(--coral); border-radius: var(--radius-sm); font-weight: 700; cursor: pointer; }
+.user-add button:hover { background: var(--coral-deep); border-color: var(--coral-deep); }
+
+.user-list { display: grid; gap: 12px; }
+.user-row { background: var(--cream-2); border: 2px solid var(--line); border-radius: var(--radius-sm); padding: 14px 16px; display: grid; gap: 10px; }
+.user-row-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.user-row-email { font-weight: 700; color: var(--navy); overflow-wrap: anywhere; }
+.user-admin-badge { display: inline-block; font-size: 10px; font-weight: 800; letter-spacing: .04em; color: var(--coral-deep); border: 1.5px solid var(--coral); padding: 1px 6px; border-radius: 999px; margin-left: 6px; vertical-align: middle; }
+.user-row-delete { background: transparent; color: var(--coral-deep); border: 1.5px solid var(--line); border-radius: var(--radius-sm); padding: 6px 12px; font-weight: 600; cursor: pointer; }
+.user-row-delete:hover { border-color: var(--coral); background: rgba(228,128,105,.08); }
+.user-row-perms { display: flex; flex-wrap: wrap; gap: 12px 18px; }
+.user-row-pwd { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.user-row-pwd input { flex: 1 1 220px; padding: 8px 12px; background: var(--paper); border: 1.5px solid var(--line); border-radius: var(--radius-sm); font: inherit; color: var(--navy); }
+.user-row-pwd button { padding: 8px 14px; background: transparent; color: var(--navy); border: 1.5px solid var(--line); border-radius: var(--radius-sm); font-weight: 600; cursor: pointer; }
+.user-row-pwd button:hover { border-color: var(--coral); }
+.user-row-error { color: var(--coral-deep); margin: 0; font-size: 13px; }
+.user-empty { color: var(--navy-2); }
+
 @media (max-width: 760px) {
   #app { flex-direction: column; }
   /* Mobile: brand + hamburger row, frozen to the top on scroll; the three
