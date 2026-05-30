@@ -838,10 +838,10 @@ els.forgotForm?.addEventListener('submit', async (e) => {
   const email = (els.forgotEmail && els.forgotEmail.value || '').trim();
   if (!email) return;
   try {
-    const res = await fetch('/api/password-reset-request', {
+    const res = await fetch('/api/password-reset', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ email }),
+      body: JSON.stringify({ action: 'request', email }),
     });
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));
@@ -881,10 +881,10 @@ els.resetForm?.addEventListener('submit', async (e) => {
     return;
   }
   try {
-    const res = await fetch('/api/password-reset-confirm', {
+    const res = await fetch('/api/password-reset', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ token, password: pw }),
+      body: JSON.stringify({ action: 'confirm', token, password: pw }),
     });
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));
