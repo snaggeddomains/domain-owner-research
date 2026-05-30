@@ -107,6 +107,7 @@ a.wordmark:hover { text-decoration: none; opacity: .9; }
    simply renders at the end of the drawer — separated by the border-top. */
 .nav-account { margin-top: auto; padding-top: 14px; border-top: 1.5px solid var(--line); display: flex; flex-direction: column; gap: 6px; }
 .nav-account-email { font-size: 12px; color: var(--navy-2); overflow-wrap: anywhere; }
+.nav-account-toggle { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--navy-2); cursor: pointer; }
 .nav-logout { padding: 8px 12px; background: transparent; color: var(--coral-deep); border: 1.5px solid var(--line); border-radius: var(--radius-sm); font-weight: 700; cursor: pointer; text-align: left; }
 .nav-logout:hover { border-color: var(--coral); background: rgba(228,128,105,.08); }
 .nav-toggle { display: none; align-items: center; justify-content: center; padding: 8px 12px; font-size: 20px; line-height: 1; background: var(--cream); color: var(--navy); border: 2px solid var(--line); border-radius: var(--radius-sm); box-shadow: none; cursor: pointer; }
