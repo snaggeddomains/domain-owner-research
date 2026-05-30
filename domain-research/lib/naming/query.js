@@ -58,6 +58,11 @@ function buildQuery(db, filters, keywords) {
   // rows pass through so they can surface as north-star options.
   if (filters.max_price != null) q = q.or(`best_price.lte.${filters.max_price},best_price.is.null`);
   if (filters.min_price != null) q = q.or(`best_price.gte.${filters.min_price},best_price.is.null`);
+  // Precise per-domain blocklist. validateFilters() already restricted these
+  // to [a-z0-9.-] so the comma-joined PostgREST list is safe.
+  if (Array.isArray(filters.exclude_domains) && filters.exclude_domains.length) {
+    q = q.not('domain', 'in', `(${filters.exclude_domains.join(',')})`);
+  }
   // Keyword pass: restrict the SLD to substring matches against any keyword.
   if (keywords && keywords.length) {
     const orClause = keywords.map((k) => `sld.ilike.%${k}%`).join(',');

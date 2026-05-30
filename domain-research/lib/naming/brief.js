@@ -14,6 +14,7 @@ const SYSTEM = `You are parsing a domain-naming brief into a JSON filter object.
   "max_price": 5000,
   "min_quality_score": 2.5,
   "semantic_keywords": ["tech", "B2B", "saas"],
+  "exclude_domains": [],
   "include_stretch": true
 }
 
@@ -93,6 +94,16 @@ export function validateFilters(raw) {
     ? f.semantic_keywords.filter((k) => typeof k === 'string' && k.trim()).map((k) => k.trim().toLowerCase()).slice(0, 16)
     : [];
 
+  // exclude_domains: precise per-domain blocklist for chat-driven "drop X.com"
+  // refinements. Sanitized to safe domain characters before going into the
+  // PostgREST .not('in', ...) clause — anything weird is dropped silently.
+  const exclude_domains = Array.isArray(f.exclude_domains)
+    ? [...new Set(f.exclude_domains
+        .map((d) => String(d || '').toLowerCase().trim())
+        .filter((d) => /^[a-z0-9][a-z0-9.-]{0,252}$/.test(d)))]
+        .slice(0, 200)
+    : [];
+
   const include_stretch = f.include_stretch !== false; // default true
 
   return {
@@ -105,6 +116,7 @@ export function validateFilters(raw) {
     max_price,
     min_quality_score,
     semantic_keywords,
+    exclude_domains,
     include_stretch,
   };
 }
