@@ -6,6 +6,16 @@ const els = {
   email: $('email'),
   password: $('password'),
   loginError: $('login-error'),
+  forgotLink: $('forgot-link'),
+  forgotForm: $('forgot-form'),
+  forgotEmail: $('forgot-email'),
+  forgotError: $('forgot-error'),
+  forgotSent: $('forgot-sent'),
+  backToLogin: $('back-to-login'),
+  resetForm: $('reset-form'),
+  resetPassword: $('reset-password'),
+  resetPasswordConfirm: $('reset-password-confirm'),
+  resetError: $('reset-error'),
   app: $('app'),
   form: $('search'),
   domain: $('domain'),
@@ -663,13 +673,45 @@ function renderReport(report) {
 }
 
 // ── Auth ────────────────────────────────────────────────────────────────────
+// Toggle between the three login panels (sign in / forgot / reset). Only one
+// is shown at a time. `null` hides all three (used when actually signed in).
+function showLoginPanel(which) {
+  if (els.loginForm) els.loginForm.hidden = which !== 'login';
+  if (els.forgotForm) els.forgotForm.hidden = which !== 'forgot';
+  if (els.resetForm) els.resetForm.hidden = which !== 'reset';
+}
+
+function resetTokenFromUrl() {
+  try {
+    const u = new URL(window.location.href);
+    return u.searchParams.get('reset') || '';
+  } catch { return ''; }
+}
+
+function clearResetTokenFromUrl() {
+  try {
+    const u = new URL(window.location.href);
+    u.searchParams.delete('reset');
+    history.replaceState(null, '', u.pathname + (u.search ? `?${u.searchParams.toString()}` : '') + u.hash);
+  } catch { /* ignore */ }
+}
+
 async function checkAuth() {
+  // If the URL carries a reset token, prefer the reset-password panel over
+  // anything else — the user arrived here from their inbox.
+  if (resetTokenFromUrl()) {
+    els.login.hidden = false;
+    els.app.hidden = true;
+    showLoginPanel('reset');
+    return;
+  }
   try {
     const res = await fetch('/api/me');
     const data = await res.json();
     const locked = data.gateEnabled && !data.authed;
     els.login.hidden = !locked;
     els.app.hidden = locked;
+    if (locked) showLoginPanel('login');
   } catch {
     els.login.hidden = true;
     els.app.hidden = false;
@@ -697,6 +739,97 @@ els.loginForm?.addEventListener('submit', async (e) => {
   } catch (err) {
     els.loginError.textContent = String(err.message || err);
     els.loginError.hidden = false;
+  }
+});
+
+// "Forgot password?" → swap to the email-prompt panel.
+els.forgotLink?.addEventListener('click', (e) => {
+  e.preventDefault();
+  if (els.loginError) els.loginError.hidden = true;
+  if (els.forgotError) els.forgotError.hidden = true;
+  if (els.forgotSent) els.forgotSent.hidden = true;
+  if (els.forgotEmail && els.email) els.forgotEmail.value = els.email.value || '';
+  showLoginPanel('forgot');
+  els.forgotEmail?.focus();
+});
+
+els.backToLogin?.addEventListener('click', (e) => {
+  e.preventDefault();
+  showLoginPanel('login');
+});
+
+// Forgot-password submit → request a reset link.
+els.forgotForm?.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  if (els.forgotError) els.forgotError.hidden = true;
+  if (els.forgotSent) els.forgotSent.hidden = true;
+  const email = (els.forgotEmail && els.forgotEmail.value || '').trim();
+  if (!email) return;
+  try {
+    const res = await fetch('/api/password-reset-request', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ email }),
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      els.forgotError.textContent = data.error || `Request failed (${res.status})`;
+      els.forgotError.hidden = false;
+      return;
+    }
+    // Server returns ok regardless of whether the address exists, to avoid
+    // leaking which emails are on file. Always show the same confirmation.
+    if (els.forgotSent) els.forgotSent.hidden = false;
+  } catch (err) {
+    els.forgotError.textContent = String(err.message || err);
+    els.forgotError.hidden = false;
+  }
+});
+
+// Reset-confirm submit (user arrived via emailed link with ?reset=<token>).
+els.resetForm?.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  if (els.resetError) els.resetError.hidden = true;
+  const token = resetTokenFromUrl();
+  const pw = (els.resetPassword && els.resetPassword.value) || '';
+  const pwConfirm = (els.resetPasswordConfirm && els.resetPasswordConfirm.value) || '';
+  if (!token) {
+    els.resetError.textContent = 'Reset link missing or expired — request a new one.';
+    els.resetError.hidden = false;
+    return;
+  }
+  if (pw.length < 8) {
+    els.resetError.textContent = 'Password must be at least 8 characters.';
+    els.resetError.hidden = false;
+    return;
+  }
+  if (pw !== pwConfirm) {
+    els.resetError.textContent = 'Passwords do not match.';
+    els.resetError.hidden = false;
+    return;
+  }
+  try {
+    const res = await fetch('/api/password-reset-confirm', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ token, password: pw }),
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      els.resetError.textContent = data.error || `Reset failed (${res.status})`;
+      els.resetError.hidden = false;
+      return;
+    }
+    // Password saved + user signed in. Clean the token off the URL and
+    // re-check auth so the app appears.
+    els.resetPassword.value = '';
+    els.resetPasswordConfirm.value = '';
+    clearResetTokenFromUrl();
+    await checkAuth();
+    if (typeof routeAfterAuth === 'function') routeAfterAuth();
+  } catch (err) {
+    els.resetError.textContent = String(err.message || err);
+    els.resetError.hidden = false;
   }
 });
 

@@ -175,6 +175,22 @@ export async function ensureAdminSeed() {
   }
 }
 
+// ── Password-reset tokens (signed, short-lived) ────────────────────────────
+// Same HMAC scheme as the auth cookie; namespaced so an auth cookie can't be
+// passed off as a reset token or vice versa. 1-hour expiry by default.
+const RESET_TTL_SEC = 60 * 60;
+
+export function signResetToken(userId) {
+  const payload = { p: 'reset', u: String(userId || ''), exp: Math.floor(Date.now() / 1000) + RESET_TTL_SEC };
+  return sign(payload);
+}
+
+export function verifyResetToken(token) {
+  const payload = verifyToken(token);
+  if (!payload || payload.p !== 'reset' || !payload.u) return null;
+  return { userId: payload.u };
+}
+
 // Public flag — "is there a login gate at all?" — used by /api/me so the
 // frontend can decide whether to show the login overlay.
 export async function gateEnabled() {
