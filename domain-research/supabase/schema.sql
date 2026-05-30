@@ -249,6 +249,24 @@ create index if not exists idx_dr_chat_run on domain_research_chat (run_id, crea
 alter table domain_research_chat add column if not exists status text not null default 'done';
 alter table domain_research_chat alter column content drop not null;
 
+-- ── Users (Phase 1 multi-user auth) ─────────────────────────────────────────
+create table if not exists domain_research_users (
+  id                    uuid primary key default gen_random_uuid(),
+  email                 text not null unique,
+  password_hash         text not null,
+  is_admin              boolean not null default false,
+  permissions           jsonb not null default '{"domain_owner": true, "trademark": true, "appraisal": true, "naming": false}'::jsonb,
+  email_notify_on_done  boolean not null default false,
+  created_at            timestamptz not null default now(),
+  updated_at            timestamptz
+);
+create unique index if not exists idx_dr_users_email_lower on domain_research_users (lower(email));
+
+-- Tie each run back to the user that triggered it (for per-user history + email notifications).
+alter table domain_research_runs
+  add column if not exists user_id uuid references domain_research_users(id) on delete set null;
+create index if not exists idx_dr_runs_user on domain_research_runs (user_id);
+
 -- ── Enable RLS (no policies → backend secret key only) ──────────────────────
 do $$
 declare t text;

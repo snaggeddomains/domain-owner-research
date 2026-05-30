@@ -2,12 +2,10 @@ import { getDb } from './supabase.js';
 
 const RUNS = 'domain_research_runs';
 
-export async function createRun({ domain, question, depth = 'standard' }) {
-  const { data, error } = await getDb()
-    .from(RUNS)
-    .insert({ domain, question: question || null, depth, status: 'queued' })
-    .select('id')
-    .single();
+export async function createRun({ domain, question, depth = 'standard', user_id = null }) {
+  const row = { domain, question: question || null, depth, status: 'queued' };
+  if (user_id) row.user_id = user_id;
+  const { data, error } = await getDb().from(RUNS).insert(row).select('id').single();
   if (error) throw new Error(`createRun: ${error.message}`);
   return data.id;
 }
