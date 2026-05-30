@@ -110,6 +110,20 @@ export default async function handler(req, res) {
   const deep = body.deep === true || body.deep === 'true';
   const phase = deep ? 'deep' : 'shallow';
 
+  // Reuse the most recent completed run for this domain unless the user
+  // explicitly forces a fresh research. Saves paid-API + LLM credits on what
+  // is usually a re-search of a domain just looked at. The client surfaces a
+  // "Researched X ago · Refresh" affordance to spend credits on demand.
+  const force = body.force === true || body.force === 'true';
+  if (!force) {
+    const recents = await listRuns({ q: domain, limit: 10, statuses: ['done'] });
+    const match = recents.find((r) => String(r.domain).toLowerCase() === domain.toLowerCase());
+    if (match) {
+      res.status(200).json({ run_id: match.id, domain, existing: true, created_at: match.created_at });
+      return;
+    }
+  }
+
   const runId = await createRun({ domain, question });
   try {
     await inngest.send({ name: RUN_REQUESTED, data: { runId, domain, question, phase } });
