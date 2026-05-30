@@ -191,7 +191,7 @@
           <div id="ap-recent" class="recent tool-recent" hidden></div>
         </section>
 
-        <!-- Naming exercise (coming soon) -->
+        <!-- Naming exercise -->
         <section id="view-naming" hidden>
           <div class="hero tool-hero">
             <img class="hero-art" src="/mascot-hero.png" alt="" />
@@ -199,19 +199,37 @@
             <p class="hero-sub">Tell me your criteria and I'll find readily-available names that fit.</p>
           </div>
           <div class="naming-form">
-            <textarea id="naming-input" class="naming-input" rows="9" placeholder="Give me domain name criteria like:
-- price
-- syllables
-- TLDs
-- names they like
-- names they don't like
+            <textarea id="naming-input" class="naming-input" rows="9" placeholder="Paste a brief — e.g. &quot;Tech startup, B2B SaaS, premium feel. One-word .com, easy to spell, under $5,000. Keywords: cloud, data, ops.&quot;
 
-and I'll help you come up with a list of readily available names from across all different sources that could be a good fit."></textarea>
+The model parses it into structured filters (TLDs, length, budget, tone, etc.) and queries the universe of marketplace inventory."></textarea>
             <div class="naming-actions">
-              <button id="naming-go" type="button" class="naming-go" disabled>Coming soon</button>
-              <span class="naming-note">This tool isn't live yet — coming soon.</span>
+              <button id="naming-go" type="button" class="naming-go">Find Names</button>
+              <span id="naming-status" class="naming-status" hidden></span>
             </div>
+            <p id="naming-error" class="login-error" hidden></p>
           </div>
+
+          <div id="naming-filters" class="naming-filters" hidden></div>
+
+          <section id="naming-results" class="naming-results" hidden>
+            <div class="naming-bucket" id="naming-buy-ready">
+              <div class="naming-bucket-head">
+                <h2 class="naming-bucket-title">Buy-ready <span id="naming-buy-ready-count" class="naming-bucket-count"></span></h2>
+                <div class="naming-export">
+                  <button id="naming-export-sheet" type="button" class="naming-export-btn">Export to Google Sheet</button>
+                  <button id="naming-export-csv" type="button" class="naming-export-btn">Copy as CSV</button>
+                </div>
+              </div>
+              <div id="naming-buy-ready-table" class="naming-table-wrap"></div>
+            </div>
+            <div class="naming-bucket" id="naming-stretch">
+              <div class="naming-bucket-head">
+                <h2 class="naming-bucket-title">Stretch <span id="naming-stretch-count" class="naming-bucket-count"></span></h2>
+                <p class="naming-bucket-note">High-quality north-star options — price TBD or above the cap.</p>
+              </div>
+              <div id="naming-stretch-table" class="naming-table-wrap"></div>
+            </div>
+          </section>
         </section>
 
         <!-- Admin tool -->

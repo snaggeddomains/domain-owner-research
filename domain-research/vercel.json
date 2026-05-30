@@ -4,6 +4,7 @@
     { "source": "/trademark", "destination": "/index.html" },
     { "source": "/trademark/:slug*", "destination": "/index.html" },
     { "source": "/appraisal", "destination": "/index.html" },
-    { "source": "/appraisal/:slug*", "destination": "/index.html" }
+    { "source": "/appraisal/:slug*", "destination": "/index.html" },
+    { "source": "/naming", "destination": "/index.html" }
   ]
 }

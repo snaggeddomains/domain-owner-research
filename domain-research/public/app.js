@@ -87,6 +87,18 @@ const els = {
   navTrademark: $('nav-trademark'),
   navAppraisal: $('nav-appraisal'),
   navNaming: $('nav-naming'),
+  namingInput: $('naming-input'),
+  namingGo: $('naming-go'),
+  namingStatus: $('naming-status'),
+  namingError: $('naming-error'),
+  namingFilters: $('naming-filters'),
+  namingResults: $('naming-results'),
+  namingBuyReadyCount: $('naming-buy-ready-count'),
+  namingBuyReadyTable: $('naming-buy-ready-table'),
+  namingStretchCount: $('naming-stretch-count'),
+  namingStretchTable: $('naming-stretch-table'),
+  namingExportSheet: $('naming-export-sheet'),
+  namingExportCsv: $('naming-export-csv'),
   navToggle: $('nav-toggle'),
   nav: $('nav'),
   tmForm: $('tm-form'),
@@ -251,8 +263,9 @@ function clearHash() {
 // The standalone tools are PATH-routed (research stays hash-routed at "/"):
 //   /trademark           /trademark/<query>
 //   /appraisal           /appraisal/<domain>
+//   /naming              (no slug — brief lives in the textarea, not the URL)
 function currentToolRoute() {
-  const m = location.pathname.match(/^\/(trademark|appraisal)(?:\/(.+?))?\/?$/);
+  const m = location.pathname.match(/^\/(trademark|appraisal|naming)(?:\/(.+?))?\/?$/);
   if (!m) return null;
   return { tool: m[1], slug: m[2] ? decodeURIComponent(m[2]) : '' };
 }
@@ -270,6 +283,10 @@ function route() {
     refreshToolRecent(els.tmRecent, 'tm');
     if (tr.slug) openToolSlug('tm', tr.slug);
     else { els.tmResults.innerHTML = ''; els.tmQuery.value = ''; setToolStatus(els.tmStatus, ''); }
+    return;
+  }
+  if (tr && tr.tool === 'naming') {
+    showView('naming');
     return;
   }
   if (tr && tr.tool === 'appraisal') {
@@ -2004,6 +2021,197 @@ function showEntry() {
   loadRecent();
 }
 
+// ── Naming Exercise ─────────────────────────────────────────────────────────
+// Brief → Haiku parse → name_universe query → 9-column results split into
+// Buy-ready vs Stretch buckets. Implementation spec §1-5.
+let namingLastResults = null; // cached for CSV/Sheet export of the current view
+
+async function runNaming() {
+  const brief = (els.namingInput?.value || '').trim();
+  if (!brief) return;
+  if (els.namingError) { els.namingError.hidden = true; els.namingError.textContent = ''; }
+  if (els.namingGo) els.namingGo.disabled = true;
+  setNamingStatus('Parsing the brief and searching the universe…');
+  try {
+    const res = await fetch('/api/naming', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ action: 'search', brief }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || `Search failed (${res.status})`);
+    namingLastResults = data;
+    renderNamingResults(data);
+    setNamingStatus('');
+  } catch (e) {
+    setNamingStatus('');
+    if (els.namingError) { els.namingError.textContent = String(e.message || e); els.namingError.hidden = false; }
+  } finally {
+    if (els.namingGo) els.namingGo.disabled = false;
+  }
+}
+
+function setNamingStatus(text) {
+  if (!els.namingStatus) return;
+  if (!text) { els.namingStatus.hidden = true; els.namingStatus.textContent = ''; return; }
+  els.namingStatus.textContent = text;
+  els.namingStatus.hidden = false;
+}
+
+function renderNamingResults(data) {
+  renderNamingFilters(data.filters);
+  const buy = Array.isArray(data.buyReady) ? data.buyReady : [];
+  const stretch = Array.isArray(data.stretch) ? data.stretch : [];
+  if (els.namingBuyReadyCount) els.namingBuyReadyCount.textContent = `(${buy.length} ${buy.length === 1 ? 'match' : 'matches'})`;
+  if (els.namingStretchCount) els.namingStretchCount.textContent = `(${stretch.length} ${stretch.length === 1 ? 'match' : 'matches'})`;
+  if (els.namingBuyReadyTable) els.namingBuyReadyTable.innerHTML = renderNamingTable(buy, 'Buy-ready');
+  if (els.namingStretchTable) els.namingStretchTable.innerHTML = renderNamingTable(stretch, 'Stretch');
+  if (els.namingResults) els.namingResults.hidden = false;
+}
+
+function renderNamingFilters(f) {
+  if (!els.namingFilters || !f) return;
+  const parts = [];
+  parts.push(`tlds <strong>${escapeHtml((f.tlds || []).join(', ') || '—')}</strong>`);
+  const lenMin = f.sld_length_min, lenMax = f.sld_length_max;
+  if (lenMin != null || lenMax != null) {
+    parts.push(`length <strong>${lenMin != null ? lenMin : '?'}–${lenMax != null ? lenMax : '?'}</strong>`);
+  }
+  if (f.num_words != null) parts.push(`${f.num_words} word${f.num_words === 1 ? '' : 's'}`);
+  if (f.dictionary_word_only) parts.push('dictionary words only');
+  if (f.max_price != null) parts.push(`under <strong>$${Number(f.max_price).toLocaleString()}</strong>`);
+  if (f.min_quality_score != null) parts.push(`quality ≥ <strong>${f.min_quality_score}</strong>`);
+  if (Array.isArray(f.semantic_keywords) && f.semantic_keywords.length) {
+    parts.push(`keywords <strong>${escapeHtml(f.semantic_keywords.join(' / '))}</strong>`);
+  }
+  if (!f.include_stretch) parts.push('no stretch');
+  els.namingFilters.innerHTML = `<span class="naming-filters-label">Parsed filters:</span> ${parts.join(' · ')}`;
+  els.namingFilters.hidden = false;
+}
+
+// 9-column table per §4.1. Status pills carry the §4.3 colors via CSS class.
+function renderNamingTable(rows, bucketLabel) {
+  if (!rows.length) {
+    return `<p class="naming-empty">No ${escapeHtml(bucketLabel.toLowerCase())} matches for this brief.</p>`;
+  }
+  const head =
+    '<thead><tr>' +
+      '<th>Domain</th>' +
+      '<th>Price</th>' +
+      '<th>Source</th>' +
+      '<th>Status</th>' +
+      '<th>Score</th>' +
+      '<th>Bucket</th>' +
+      '<th>Why it works</th>' +
+      '<th>Notes / Next step</th>' +
+      '<th>Link</th>' +
+    '</tr></thead>';
+  const body = rows.map((r) => {
+    const price = r.best_price == null ? 'TBD' : `$${Number(r.best_price).toLocaleString()}`;
+    const score = r.quality_score == null ? '—' : Number(r.quality_score).toFixed(1);
+    const statusClass = statusToClass(r.status);
+    const link = r.landing_url
+      ? `<a href="${escapeHtml(r.landing_url)}" target="_blank" rel="noopener noreferrer">visit</a>`
+      : '—';
+    return (
+      `<tr>` +
+        `<td class="naming-domain">${escapeHtml(r.domain)}</td>` +
+        `<td>${escapeHtml(price)}</td>` +
+        `<td>${escapeHtml(r.source_label || '—')}</td>` +
+        `<td><span class="naming-status-pill ${statusClass}">${escapeHtml(r.status || '—')}</span></td>` +
+        `<td>${escapeHtml(score)}</td>` +
+        `<td>${escapeHtml(bucketLabel)}</td>` +
+        `<td class="naming-why">—</td>` +
+        `<td class="naming-notes" contenteditable="true" data-placeholder="Add a note…"></td>` +
+        `<td>${link}</td>` +
+      `</tr>`
+    );
+  }).join('');
+  return `<table class="naming-table">${head}<tbody>${body}</tbody></table>`;
+}
+
+function statusToClass(status) {
+  switch (status) {
+    case 'For Sale': return 'status-for-sale';
+    case 'In Use': return 'status-in-use';
+    case 'Big Owner': return 'status-big-owner';
+    case "Doesn't Resolve": return 'status-no-resolve';
+    default: return 'status-for-sale';
+  }
+}
+
+function namingResultsToCsv(data) {
+  const rows = [...(data.buyReady || []), ...(data.stretch || [])];
+  const header = ['Domain', 'Price', 'Source', 'Status', 'Brandability Score', 'Bucket', 'Why it works', 'Notes / Next step', 'Link'];
+  const csvCell = (v) => {
+    const s = v == null ? '' : String(v);
+    return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  };
+  const lines = [header.map(csvCell).join(',')];
+  for (const r of rows) {
+    const bucket = r.bucket || (r.best_price != null ? 'Buy-ready' : 'Stretch');
+    lines.push([
+      r.domain,
+      r.best_price == null ? 'TBD' : r.best_price,
+      r.source_label || '',
+      r.status || '',
+      r.quality_score == null ? '' : Number(r.quality_score).toFixed(1),
+      bucket,
+      '',
+      '',
+      r.landing_url || '',
+    ].map(csvCell).join(','));
+  }
+  return lines.join('\n');
+}
+
+async function copyNamingCsv() {
+  if (!namingLastResults) return;
+  const csv = namingResultsToCsv(namingLastResults);
+  try {
+    await navigator.clipboard.writeText(csv);
+    setNamingStatus('CSV copied to clipboard.');
+    setTimeout(() => setNamingStatus(''), 2000);
+  } catch {
+    // Fallback for browsers without clipboard API — download as a file.
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'naming-exercise.csv';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+}
+
+async function exportNamingSheet() {
+  if (!namingLastResults) return;
+  const brief = (els.namingInput?.value || '').trim();
+  if (els.namingError) { els.namingError.hidden = true; els.namingError.textContent = ''; }
+  setNamingStatus('Exporting to Google Sheets…');
+  try {
+    const res = await fetch('/api/naming', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ action: 'export', brief, results: namingLastResults }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || `Export failed (${res.status})`);
+    if (data.url) {
+      window.open(data.url, '_blank', 'noopener,noreferrer');
+      setNamingStatus('Sheet opened in new tab.');
+      setTimeout(() => setNamingStatus(''), 2000);
+    } else {
+      setNamingStatus('');
+    }
+  } catch (e) {
+    setNamingStatus('');
+    if (els.namingError) { els.namingError.textContent = String(e.message || e); els.namingError.hidden = false; }
+  }
+}
+
 // ── Wiring ──────────────────────────────────────────────────────────────────
 // "Also add to DomainScout" preference persists across sessions.
 if (els.dsToggle) {
@@ -2091,7 +2299,7 @@ els.navResearch?.addEventListener('click', showEntry);
 els.homeLink?.addEventListener('click', (e) => { e.preventDefault(); closeNav(); showEntry(); });
 els.navTrademark?.addEventListener('click', () => { setToolUrl('trademark', ''); route(); });
 els.navAppraisal?.addEventListener('click', () => { setToolUrl('appraisal', ''); route(); });
-els.navNaming?.addEventListener('click', () => { if (location.pathname !== '/') history.pushState(null, '', '/'); showView('naming'); });
+els.navNaming?.addEventListener('click', () => { if (location.pathname !== '/naming') history.pushState(null, '', '/naming'); showView('naming'); closeNav(); });
 // Refresh link in the report meta — forces a fresh research (skips the cache).
 els.reportMeta?.addEventListener('click', (e) => {
   const link = e.target.closest('.report-refresh');
@@ -2104,6 +2312,13 @@ els.reportMeta?.addEventListener('click', (e) => {
 });
 els.tmForm?.addEventListener('submit', (e) => { e.preventDefault(); const q = els.tmQuery.value.trim(); if (q) runTrademark(q); });
 els.apForm?.addEventListener('submit', (e) => { e.preventDefault(); const v = els.apDomain.value.trim(); if (v) runAppraisal(v); });
+els.namingGo?.addEventListener('click', runNaming);
+els.namingInput?.addEventListener('keydown', (e) => {
+  // ⌘/Ctrl + Enter submits the brief — same affordance as the Refine chat.
+  if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.preventDefault(); runNaming(); }
+});
+els.namingExportCsv?.addEventListener('click', copyNamingCsv);
+els.namingExportSheet?.addEventListener('click', exportNamingSheet);
 // "Show all past research" (under the recent-5) opens the full Past Research list.
 els.showAll?.addEventListener('click', (e) => { e.preventDefault(); showView('projects'); });
 
