@@ -1,0 +1,41 @@
+name: Seed english_words
+
+# Manual one-shot to populate the english_words dictionary table on the
+# naming-universe Supabase. Click "Run workflow" in the Actions tab. Re-runnable
+# — the seed script upserts on the word primary key, so re-running just refreshes.
+
+on:
+  workflow_dispatch:
+    inputs:
+      wordlist_url:
+        description: "URL of the AGID infl.txt to seed from"
+        required: true
+        default: "https://raw.githubusercontent.com/en-wl/wordlist/master/agid/infl.txt"
+
+jobs:
+  seed:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: domain-research
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: domain-research/package-lock.json
+
+      - name: Install deps
+        run: npm install --omit=dev
+
+      - name: Download wordlist
+        run: curl -fLsS -o /tmp/infl.txt "${{ inputs.wordlist_url }}"
+
+      - name: Seed english_words
+        env:
+          SUPABASE_NAMING_URL: ${{ secrets.SUPABASE_NAMING_URL }}
+          SUPABASE_NAMING_SERVICE_KEY: ${{ secrets.SUPABASE_NAMING_SERVICE_KEY }}
+        run: node scripts/seed-english-words.js /tmp/infl.txt
