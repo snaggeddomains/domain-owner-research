@@ -43,12 +43,26 @@ function loadFixtures() {
     .map((f) => ({ ...JSON.parse(fs.readFileSync(path.join(FIXTURES_DIR, f), 'utf8')), _file: f }));
 }
 
+function substringFound(report, s) {
+  return (report || '').toLowerCase().includes(String(s).toLowerCase());
+}
+
 function checkExpectations(fix, report) {
   const wantEmails = (fix.expected_present && fix.expected_present.emails) || [];
   const wantPhones = (fix.expected_present && fix.expected_present.phones) || [];
+  const forbidden = (fix.expected_absent && fix.expected_absent.substrings) || [];
   const missingEmails = wantEmails.filter((e) => !emailFound(report, e));
   const missingPhones = wantPhones.filter((p) => !phoneFound(report, p));
-  return { missingEmails, missingPhones, ok: missingEmails.length === 0 && missingPhones.length === 0 };
+  // Negative assertions: substrings that must NOT appear in the report.
+  // Useful for failure modes whose fix is the absence of a wrong conclusion
+  // (e.g. "Nominal.com report must NOT name TurnCommerce as the owner").
+  const unwantedHits = forbidden.filter((s) => substringFound(report, s));
+  return {
+    missingEmails,
+    missingPhones,
+    unwantedHits,
+    ok: missingEmails.length === 0 && missingPhones.length === 0 && unwantedHits.length === 0,
+  };
 }
 
 async function runOne(fix) {
