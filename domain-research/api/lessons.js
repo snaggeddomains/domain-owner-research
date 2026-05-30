@@ -28,6 +28,22 @@ export default async function handler(req, res) {
     res.status(500).json({ error: 'Server is missing SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY' });
     return;
   }
+  try {
+    return await route(req, res);
+  } catch (e) {
+    // Surface the underlying error to the admin UI rather than a bare 500.
+    // Detect the common "table does not exist" case so the message points
+    // at the fix (apply supabase/schema.sql) instead of being opaque.
+    const msg = String((e && e.message) || e || 'unknown');
+    if (/relation .*does not exist|playbook_lessons/i.test(msg)) {
+      res.status(500).json({ error: `The playbook_lessons table doesn't exist on this Supabase yet — apply domain-research/supabase/schema.sql to create it. (${msg})` });
+      return;
+    }
+    res.status(500).json({ error: msg });
+  }
+}
+
+async function route(req, res) {
   const method = req.method;
 
   if (method === 'GET') {
