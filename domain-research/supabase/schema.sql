@@ -283,6 +283,24 @@ create table if not exists domain_research_naming_runs (
 create index if not exists idx_dr_naming_runs_user_created on domain_research_naming_runs (user_id, created_at desc);
 create index if not exists idx_dr_naming_runs_created on domain_research_naming_runs (created_at desc);
 
+-- Per-run chat thread on a saved naming run. Each user turn pairs with one
+-- assistant reply; when the assistant refines filters and re-queries the
+-- universe, the new {filters, buy_ready, stretch} ride along on the message
+-- so reloading the run replays the latest refined view (the run record
+-- itself keeps the ORIGINAL brief's snapshot, recoverable by clearing the
+-- chat or starting from the brief again).
+create table if not exists domain_research_naming_chat (
+  id                uuid primary key default gen_random_uuid(),
+  run_id            uuid not null references domain_research_naming_runs(id) on delete cascade,
+  role              text not null check (role in ('user', 'assistant')),
+  content           text not null default '',
+  refined_filters   jsonb null,
+  result_snapshot   jsonb null,
+  status            text not null default 'done' check (status in ('pending', 'done', 'error')),
+  created_at        timestamptz not null default now()
+);
+create index if not exists idx_dr_naming_chat_run on domain_research_naming_chat (run_id, created_at);
+
 -- ── Playbook lessons (chat-driven feedback loop) ───────────────────────────
 -- Refine-chat distills user corrections into reusable rules; admins approve
 -- them; approved lessons get prepended to the agent's SYSTEM_PROMPT on the

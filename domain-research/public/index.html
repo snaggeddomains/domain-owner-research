@@ -243,6 +243,17 @@ The model parses it into structured filters (TLDs, length, budget, tone, etc.) a
               <div id="naming-stretch-table" class="naming-table-wrap"></div>
             </div>
           </section>
+
+          <section id="naming-chat" class="naming-chat" hidden>
+            <h2 class="naming-bucket-title">Refine in chat</h2>
+            <p class="naming-bucket-note">Ask follow-ups, narrow the result set, or change a constraint without rewriting the brief. ⌘/Ctrl+Enter to send.</p>
+            <div id="naming-chat-thread" class="naming-chat-thread"></div>
+            <form id="naming-chat-form" class="naming-chat-form">
+              <textarea id="naming-chat-input" rows="2" placeholder="e.g. drop two-word names, raise the cap to $200K, only show ones with 'care' in the SLD…"></textarea>
+              <button id="naming-chat-send" type="submit">Send</button>
+            </form>
+            <p id="naming-chat-error" class="login-error" hidden></p>
+          </section>
         </section>
 
         <!-- Admin tool -->

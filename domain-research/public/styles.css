@@ -610,3 +610,17 @@ button:disabled { opacity: .55; cursor: progress; }
 .lesson-field textarea { resize: vertical; min-height: 110px; }
 .lesson-modal-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 8px; }
 body.modal-open { overflow: hidden; }
+
+/* Naming-run chat thread (per-run refinement) */
+.naming-chat { max-width: 1180px; margin: 28px auto 0; padding: 18px 20px; background: var(--cream-2); border: 2px solid var(--line); border-radius: var(--radius-sm); box-shadow: var(--shadow-sm); }
+.naming-chat .naming-bucket-title { margin: 0 0 4px; }
+.naming-chat-thread { display: flex; flex-direction: column; gap: 10px; max-height: 420px; overflow-y: auto; margin: 14px 0; padding: 4px; }
+.naming-chat-thread .chat-msg { padding: 10px 14px; border-radius: 12px; max-width: 92%; line-height: 1.5; }
+.naming-chat-thread .chat-msg.me { align-self: flex-end; background: var(--sky-soft); color: var(--navy); }
+.naming-chat-thread .chat-msg.bot { align-self: flex-start; background: var(--cream); color: var(--navy); border: 1px solid var(--line); }
+.naming-chat-thread .chat-msg.pending { opacity: .7; font-style: italic; }
+.naming-chat-thread .chat-msg.chat-err { background: rgba(199,95,69,.12); color: var(--coral-deep); border-color: var(--coral); }
+.naming-chat-form { display: flex; gap: 8px; align-items: flex-end; }
+.naming-chat-form textarea { flex: 1; resize: vertical; min-height: 50px; padding: 10px 12px; font: inherit; font-size: .95rem; color: var(--navy); background: var(--cream); border: 2px solid var(--line); border-radius: var(--radius-sm); }
+.naming-chat-form button { padding: 10px 18px; height: fit-content; }
+.naming-chat-form button:disabled { opacity: .55; cursor: not-allowed; }

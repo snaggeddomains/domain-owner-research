@@ -104,6 +104,12 @@ const els = {
   namingShowAll: $('naming-show-all'),
   namingProjectsSearch: $('naming-projects-search'),
   namingProjectsList: $('naming-projects-list'),
+  namingChat: $('naming-chat'),
+  namingChatThread: $('naming-chat-thread'),
+  namingChatForm: $('naming-chat-form'),
+  namingChatInput: $('naming-chat-input'),
+  namingChatSend: $('naming-chat-send'),
+  namingChatError: $('naming-chat-error'),
   lessonList: $('lesson-list'),
   lessonListEmpty: $('lesson-list-empty'),
   lessonListError: $('lesson-list-error'),
@@ -2251,8 +2257,12 @@ async function runNaming() {
     // Deep-link to the saved run so refresh / share works, and refresh the
     // Recent strip below the form. Skip the URL update if the save failed.
     if (data.run_id) {
+      currentNamingRunId = data.run_id;
       const path = `/naming/${encodeURIComponent(data.run_id)}`;
       if (location.pathname !== path) history.replaceState(null, '', path);
+      // Empty thread on a fresh run — just unhide the chat panel.
+      if (els.namingChatThread) els.namingChatThread.innerHTML = '';
+      if (els.namingChat) els.namingChat.hidden = false;
     }
     loadNamingRecent();
   } catch (e) {
@@ -2467,7 +2477,11 @@ function resetNamingView() {
   if (els.namingBuyReadyCount) els.namingBuyReadyCount.textContent = '';
   if (els.namingStretchCount) els.namingStretchCount.textContent = '';
   if (els.namingError) { els.namingError.hidden = true; els.namingError.textContent = ''; }
+  if (els.namingChat) els.namingChat.hidden = true;
+  if (els.namingChatThread) els.namingChatThread.innerHTML = '';
+  if (els.namingChatError) els.namingChatError.hidden = true;
   namingLastResults = null;
+  currentNamingRunId = null;
 }
 
 // Recent naming exercises — top 5 below the brief form. Mirrors the main
@@ -2516,7 +2530,9 @@ async function loadNamingProjects(q = '') {
 
 // Load a saved naming run by id — fills the brief textarea and renders the
 // stored buy-ready/stretch tables so the user can revisit prior work and
-// edit + re-run.
+// edit + re-run. If the run has chat history with refined results, the
+// LATEST refinement is what we render (the run record's original snapshot
+// stays untouched and is recoverable by clearing the chat).
 async function openNamingRun(id) {
   if (!id) return;
   setNamingStatus('Loading saved run…');
@@ -2525,15 +2541,101 @@ async function openNamingRun(id) {
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || `Couldn't load (${res.status})`);
     const r = data.run;
+    currentNamingRunId = r.id;
     if (els.namingInput) els.namingInput.value = String(r.brief || '');
     const buy = Array.isArray(r.buy_ready) ? r.buy_ready : [];
     const stretch = Array.isArray(r.stretch) ? r.stretch : [];
     namingLastResults = { run_id: r.id, filters: r.filters, buyReady: buy, stretch };
     renderNamingResults({ filters: r.filters, buyReady: buy, stretch });
     setNamingStatus('');
+    // Pull chat history and replay the latest refinement (if any).
+    await loadNamingChat(r.id);
   } catch (e) {
     setNamingStatus('');
     if (els.namingError) { els.namingError.textContent = String(e.message || e); els.namingError.hidden = false; }
+  }
+}
+
+// ── Naming chat (per-run refinement) ────────────────────────────────────────
+let currentNamingRunId = null;
+let namingChatBusy = false;
+
+async function loadNamingChat(runId) {
+  if (!els.namingChat || !els.namingChatThread) return;
+  els.namingChatThread.innerHTML = '';
+  els.namingChat.hidden = false;
+  if (!runId) return;
+  try {
+    const res = await fetch(`/api/naming?chat_run=${encodeURIComponent(runId)}`);
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || `Failed (${res.status})`);
+    const messages = data.messages || [];
+    els.namingChatThread.innerHTML = messages.map(namingChatBubble).join('');
+    // If the latest assistant turn shipped a result snapshot, render it so
+    // the visible tables match where the conversation left off.
+    const latest = [...messages].reverse().find((m) => m.role === 'assistant' && m.result_snapshot);
+    if (latest && latest.result_snapshot) {
+      const buy = latest.result_snapshot.buyReady || latest.result_snapshot.buy_ready || [];
+      const stretch = latest.result_snapshot.stretch || [];
+      const filters = latest.refined_filters || namingLastResults?.filters;
+      namingLastResults = { run_id: runId, filters, buyReady: buy, stretch };
+      renderNamingResults({ filters, buyReady: buy, stretch });
+    }
+    els.namingChatThread.scrollTop = els.namingChatThread.scrollHeight;
+  } catch (e) {
+    if (els.namingChatError) { els.namingChatError.textContent = String(e.message || e); els.namingChatError.hidden = false; }
+  }
+}
+
+function namingChatBubble(m) {
+  const cls = m.role === 'assistant' ? 'bot' : 'me';
+  const err = m.status === 'error';
+  const pending = m.status === 'pending';
+  const body = pending ? 'Thinking…' : renderMarkdown(String(m.content || ''));
+  return `<div class="chat-msg ${cls}${err ? ' chat-err' : ''}${pending ? ' pending' : ''}">${body}</div>`;
+}
+
+async function sendNamingChat(message) {
+  if (namingChatBusy || !message || !currentNamingRunId) return;
+  namingChatBusy = true;
+  if (els.namingChatSend) els.namingChatSend.disabled = true;
+  if (els.namingChatError) els.namingChatError.hidden = true;
+  const thread = els.namingChatThread;
+  thread.insertAdjacentHTML('beforeend', `<div class="chat-msg me">${renderMarkdown(message)}</div>`);
+  thread.insertAdjacentHTML('beforeend', `<div class="chat-msg bot pending">Thinking…</div>`);
+  thread.scrollTop = thread.scrollHeight;
+  const pending = thread.querySelector('.chat-msg.pending:last-child');
+  try {
+    const res = await fetch('/api/naming', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ action: 'chat', run_id: currentNamingRunId, message }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || `Chat failed (${res.status})`);
+    if (pending) {
+      pending.classList.remove('pending');
+      pending.innerHTML = renderMarkdown(String((data.assistant_message && data.assistant_message.content) || '(no reply)'));
+    }
+    // Refine intent → swap the live tables with the new snapshot. The
+    // saved chat message holds the snapshot too, so a reload replays it.
+    if (data.refined) {
+      const buy = data.refined.buyReady || [];
+      const stretch = data.refined.stretch || [];
+      namingLastResults = { run_id: currentNamingRunId, filters: data.refined.filters, buyReady: buy, stretch };
+      renderNamingResults({ filters: data.refined.filters, buyReady: buy, stretch });
+    }
+    thread.scrollTop = thread.scrollHeight;
+  } catch (e) {
+    if (pending) {
+      pending.classList.remove('pending');
+      pending.classList.add('chat-err');
+      pending.textContent = `⚠️ ${e.message || e}`;
+    }
+  } finally {
+    namingChatBusy = false;
+    if (els.namingChatSend) els.namingChatSend.disabled = false;
+    if (els.namingChatInput) { els.namingChatInput.value = ''; els.namingChatInput.focus(); }
   }
 }
 
@@ -2667,6 +2769,20 @@ let namingProjectsTimer = null;
 els.namingProjectsSearch?.addEventListener('input', () => {
   clearTimeout(namingProjectsTimer);
   namingProjectsTimer = setTimeout(() => loadNamingProjects(els.namingProjectsSearch.value.trim()), 200);
+});
+
+// Naming chat form: submit on click or ⌘/Ctrl+Enter.
+els.namingChatForm?.addEventListener('submit', (e) => {
+  e.preventDefault();
+  const msg = (els.namingChatInput?.value || '').trim();
+  if (msg) sendNamingChat(msg);
+});
+els.namingChatInput?.addEventListener('keydown', (e) => {
+  if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+    e.preventDefault();
+    const msg = els.namingChatInput.value.trim();
+    if (msg) sendNamingChat(msg);
+  }
 });
 // Refresh link in the report meta — forces a fresh research (skips the cache).
 els.reportMeta?.addEventListener('click', (e) => {
