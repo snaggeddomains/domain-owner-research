@@ -9,8 +9,27 @@ import { getChat, updateTurn } from '../db/chat.js';
 // sources. The deep path is split into TWO steps — gather, then critique — so
 // each phase gets its own Vercel function-duration budget (rather than trying
 // to fit gather + critique in one 300s invocation, which routinely timed out).
+// Inngest invokes onFailure as a SEPARATE function (fresh Vercel invocation,
+// fresh budget) once the main function exhausts its retries — including when
+// Vercel hard-killed the original process at maxDuration. The in-function
+// try/catch can't catch a Vercel hard-timeout (the process is killed mid-call),
+// so without this handler the run row stays in 'running' status forever and
+// the UI polls it indefinitely. Here we guarantee a failure is always recorded.
 export const runResearch = inngest.createFunction(
-  { id: 'run-domain-research', retries: 1 },
+  {
+    id: 'run-domain-research',
+    retries: 1,
+    onFailure: async ({ event, step }) => {
+      const original = event && event.data && event.data.event;
+      const runId = original && original.data && original.data.runId;
+      if (!runId) return;
+      const err = event && event.data && event.data.error;
+      const message =
+        String((err && (err.message || err.name)) || err || 'Run failed').slice(0, 500) +
+        ' (Vercel function likely hit maxDuration; marked errored by onFailure handler.)';
+      await step.run('mark-error-on-failure', () => failRun(runId, message));
+    },
+  },
   { event: RUN_REQUESTED },
   async ({ event, step }) => {
     const { runId, domain, question, phase = 'shallow' } = event.data;
