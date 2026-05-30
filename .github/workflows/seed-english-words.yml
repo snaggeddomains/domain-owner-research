@@ -24,7 +24,11 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          # Node 22 has native WebSocket — required by @supabase/realtime-js,
+          # which supabase-js boots during createClient() even though we
+          # never use realtime in this script. Bumping is cheaper than
+          # adding `ws` as a transport dep.
+          node-version: "22"
 
       # package-lock.json is gitignored in this repo (regenerated locally),
       # so no caching here — a one-shot install is fast enough on its own.
