@@ -29,6 +29,26 @@
         <input id="password" type="password" placeholder="Password" autocomplete="current-password" required />
         <button type="submit">Sign in</button>
         <p id="login-error" class="login-error" hidden></p>
+        <p class="login-extra"><a href="#" id="forgot-link">Forgot password?</a></p>
+      </form>
+      <form id="forgot-form" class="login-card" autocomplete="on" hidden>
+        <img class="login-art" src="/mascot-hero.png" alt="Snagged Research" />
+        <div class="wordmark"><span class="wm-text"><span class="wm-a">Snagged</span> <span class="wm-b">Research</span></span></div>
+        <p class="sub">Enter your email and we'll send you a reset link.</p>
+        <input id="forgot-email" type="email" placeholder="Email" autocomplete="username" required />
+        <button type="submit">Send reset link</button>
+        <p id="forgot-error" class="login-error" hidden></p>
+        <p id="forgot-sent" class="login-extra" hidden>If that email is on file, a reset link is on its way. Check your inbox.</p>
+        <p class="login-extra"><a href="#" id="back-to-login">Back to sign in</a></p>
+      </form>
+      <form id="reset-form" class="login-card" autocomplete="on" hidden>
+        <img class="login-art" src="/mascot-hero.png" alt="Snagged Research" />
+        <div class="wordmark"><span class="wm-text"><span class="wm-a">Snagged</span> <span class="wm-b">Research</span></span></div>
+        <p class="sub">Set a new password.</p>
+        <input id="reset-password" type="password" placeholder="New password (8+ characters)" autocomplete="new-password" required minlength="8" />
+        <input id="reset-password-confirm" type="password" placeholder="Confirm new password" autocomplete="new-password" required minlength="8" />
+        <button type="submit">Save password</button>
+        <p id="reset-error" class="login-error" hidden></p>
       </form>
     </div>
 

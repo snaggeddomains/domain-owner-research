@@ -447,6 +447,9 @@ button:disabled { opacity: .55; cursor: progress; }
 .login-card .wordmark { justify-content: center; font-size: 26px; }
 .login-card input { text-align: left; }
 .login-error { color: var(--coral-deep); margin: 0; font-size: 14px; }
+.login-extra { margin: 0; font-size: 13px; color: var(--navy-2); text-align: center; }
+.login-extra a { color: var(--teal-deep); font-weight: 600; text-decoration: none; }
+.login-extra a:hover { text-decoration: underline; }
 
 @media (max-width: 760px) {
   #app { flex-direction: column; }
