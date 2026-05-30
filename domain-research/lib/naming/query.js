@@ -43,7 +43,38 @@ export async function searchUniverse(filters) {
     }
     if (merged.length >= ROW_LIMIT) break;
   }
-  return splitAndShape(merged, filters);
+  // Post-filter: drop SLDs the english_words dictionary flags as inflected
+  // (is_root=false) when the chat / brief asked to exclude them. Unknown
+  // words pass through — keeps coined/technical names like saas.com.
+  const cleaned = filters.exclude_inflected ? await dropInflected(db, merged) : merged;
+
+  return splitAndShape(cleaned, filters);
+}
+
+async function dropInflected(db, rows) {
+  if (!rows.length) return rows;
+  const slds = [...new Set(rows.map((r) => String(r.sld || '').toLowerCase()).filter(Boolean))];
+  if (!slds.length) return rows;
+  try {
+    const { data, error } = await db
+      .from('english_words')
+      .select('word')
+      .in('word', slds)
+      .eq('is_root', false);
+    if (error) {
+      // Table missing or other error — fail-open so the search still works.
+      // The chat agent's reply will already have said the filter was applied;
+      // log so this gap surfaces, but don't punish the user.
+      console.error('exclude_inflected lookup failed:', error.message);
+      return rows;
+    }
+    const inflected = new Set((data || []).map((d) => d.word));
+    if (!inflected.size) return rows;
+    return rows.filter((r) => !inflected.has(String(r.sld || '').toLowerCase()));
+  } catch (e) {
+    console.error('exclude_inflected lookup threw:', e && e.message);
+    return rows;
+  }
 }
 
 function buildQuery(db, filters, keywords) {

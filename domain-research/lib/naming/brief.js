@@ -15,6 +15,7 @@ const SYSTEM = `You are parsing a domain-naming brief into a JSON filter object.
   "min_quality_score": 2.5,
   "semantic_keywords": ["tech", "B2B", "saas"],
   "exclude_domains": [],
+  "exclude_inflected": false,
   "include_stretch": true
 }
 
@@ -104,6 +105,7 @@ export function validateFilters(raw) {
         .slice(0, 200)
     : [];
 
+  const exclude_inflected = Boolean(f.exclude_inflected);
   const include_stretch = f.include_stretch !== false; // default true
 
   return {
@@ -117,6 +119,7 @@ export function validateFilters(raw) {
     min_quality_score,
     semantic_keywords,
     exclude_domains,
+    exclude_inflected,
     include_stretch,
   };
 }
