@@ -267,6 +267,22 @@ alter table domain_research_runs
   add column if not exists user_id uuid references domain_research_users(id) on delete set null;
 create index if not exists idx_dr_runs_user on domain_research_runs (user_id);
 
+-- ── Naming Exercise runs ───────────────────────────────────────────────────
+-- Persists every successful brief→results pass so the user can revisit a
+-- prior naming exercise, edit the brief, and re-run. Mirrors the Recent +
+-- "Show all past research" affordance the main research view has.
+create table if not exists domain_research_naming_runs (
+  id         uuid primary key default gen_random_uuid(),
+  user_id    uuid null references domain_research_users(id) on delete set null,
+  brief      text not null,
+  filters    jsonb null,
+  buy_ready  jsonb not null default '[]'::jsonb,
+  stretch    jsonb not null default '[]'::jsonb,
+  created_at timestamptz not null default now()
+);
+create index if not exists idx_dr_naming_runs_user_created on domain_research_naming_runs (user_id, created_at desc);
+create index if not exists idx_dr_naming_runs_created on domain_research_naming_runs (created_at desc);
+
 -- ── Playbook lessons (chat-driven feedback loop) ───────────────────────────
 -- Refine-chat distills user corrections into reusable rules; admins approve
 -- them; approved lessons get prepended to the agent's SYSTEM_PROMPT on the

@@ -5,6 +5,7 @@
     { "source": "/trademark/:slug*", "destination": "/index.html" },
     { "source": "/appraisal", "destination": "/index.html" },
     { "source": "/appraisal/:slug*", "destination": "/index.html" },
-    { "source": "/naming", "destination": "/index.html" }
+    { "source": "/naming", "destination": "/index.html" },
+    { "source": "/naming/:slug*", "destination": "/index.html" }
   ]
 }

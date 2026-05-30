@@ -159,6 +159,13 @@
           <ul id="projects-list" class="projects-list"></ul>
         </section>
 
+        <section id="view-naming-projects" hidden>
+          <h1 class="page-title">Past <span class="accent">Naming Runs</span></h1>
+          <p class="sub">Open a saved brief to revisit its results and edit the brief to re-run.</p>
+          <input id="naming-projects-search" class="projects-search" type="text" placeholder="Search by brief text…" autocomplete="off" />
+          <ul id="naming-projects-list" class="projects-list"></ul>
+        </section>
+
         <!-- Trademark tool -->
         <section id="view-trademark" hidden>
           <div class="hero tool-hero">
@@ -207,6 +214,12 @@ The model parses it into structured filters (TLDs, length, budget, tone, etc.) a
               <span id="naming-status" class="naming-status" hidden></span>
             </div>
             <p id="naming-error" class="login-error" hidden></p>
+
+            <div id="naming-recent" class="recent" hidden>
+              <div class="recent-title">Recent naming exercises</div>
+              <ul id="naming-recent-list" class="recent-list"></ul>
+              <a id="naming-show-all" class="show-all" href="#">Show all past naming runs &rarr;</a>
+            </div>
           </div>
 
           <div id="naming-filters" class="naming-filters" hidden></div>

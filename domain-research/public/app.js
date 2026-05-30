@@ -99,6 +99,11 @@ const els = {
   namingStretchTable: $('naming-stretch-table'),
   namingExportSheet: $('naming-export-sheet'),
   namingExportCsv: $('naming-export-csv'),
+  namingRecent: $('naming-recent'),
+  namingRecentList: $('naming-recent-list'),
+  namingShowAll: $('naming-show-all'),
+  namingProjectsSearch: $('naming-projects-search'),
+  namingProjectsList: $('naming-projects-list'),
   lessonList: $('lesson-list'),
   lessonListEmpty: $('lesson-list-empty'),
   lessonListError: $('lesson-list-error'),
@@ -296,7 +301,19 @@ function route() {
     return;
   }
   if (tr && tr.tool === 'naming') {
+    if (tr.slug === 'all') {
+      showView('naming-projects');
+      loadNamingProjects('');
+      if (els.namingProjectsSearch) els.namingProjectsSearch.value = '';
+      return;
+    }
     showView('naming');
+    if (tr.slug) {
+      openNamingRun(tr.slug);
+    } else {
+      resetNamingView();
+      loadNamingRecent();
+    }
     return;
   }
   if (tr && tr.tool === 'appraisal') {
@@ -1410,6 +1427,7 @@ const VIEWS = {
   trademark: { view: 'view-trademark', nav: 'nav-trademark' },
   appraisal: { view: 'view-appraisal', nav: 'nav-appraisal' },
   naming: { view: 'view-naming', nav: 'nav-naming' },
+  'naming-projects': { view: 'view-naming-projects', nav: 'nav-naming' },
   admin: { view: 'view-admin', nav: 'nav-admin' },
 };
 function showView(name) {
@@ -2230,6 +2248,13 @@ async function runNaming() {
     namingLastResults = data;
     renderNamingResults(data);
     setNamingStatus('');
+    // Deep-link to the saved run so refresh / share works, and refresh the
+    // Recent strip below the form. Skip the URL update if the save failed.
+    if (data.run_id) {
+      const path = `/naming/${encodeURIComponent(data.run_id)}`;
+      if (location.pathname !== path) history.replaceState(null, '', path);
+    }
+    loadNamingRecent();
   } catch (e) {
     setNamingStatus('');
     if (els.namingError) { els.namingError.textContent = String(e.message || e); els.namingError.hidden = false; }
@@ -2431,6 +2456,87 @@ async function exportNamingSheet() {
   }
 }
 
+// Reset /naming back to the entry state (textarea + Recent visible; result
+// sections hidden). Used when leaving a past-run view back to a fresh brief.
+function resetNamingView() {
+  if (els.namingInput) els.namingInput.value = '';
+  if (els.namingFilters) { els.namingFilters.hidden = true; els.namingFilters.innerHTML = ''; }
+  if (els.namingResults) els.namingResults.hidden = true;
+  if (els.namingBuyReadyTable) els.namingBuyReadyTable.innerHTML = '';
+  if (els.namingStretchTable) els.namingStretchTable.innerHTML = '';
+  if (els.namingBuyReadyCount) els.namingBuyReadyCount.textContent = '';
+  if (els.namingStretchCount) els.namingStretchCount.textContent = '';
+  if (els.namingError) { els.namingError.hidden = true; els.namingError.textContent = ''; }
+  namingLastResults = null;
+}
+
+// Recent naming exercises — top 5 below the brief form. Mirrors the main
+// research view's Recent block (loadRecent in app.js).
+async function loadNamingRecent() {
+  if (!els.namingRecent) return;
+  try {
+    const res = await fetch('/api/naming?list=1');
+    const data = await res.json();
+    if (!res.ok) throw new Error('failed');
+    const runs = (data.runs || []).slice(0, 5);
+    if (!runs.length) { els.namingRecent.hidden = true; return; }
+    els.namingRecentList.innerHTML = runs.map((r) => {
+      const when = r.created_at ? new Date(r.created_at).toLocaleString() : '';
+      const snippet = String(r.brief || '').replace(/\s+/g, ' ').slice(0, 90);
+      return `<li class="recent-run" data-id="${escapeHtml(r.id)}"><span class="recent-domain">${escapeHtml(snippet || '(empty brief)')}</span><span class="recent-when">${escapeHtml(when)}</span></li>`;
+    }).join('');
+    els.namingRecent.hidden = false;
+  } catch {
+    els.namingRecent.hidden = true;
+  }
+}
+
+// Past Naming Runs view — searchable list, mirrors loadProjects().
+async function loadNamingProjects(q = '') {
+  if (!els.namingProjectsList) return;
+  els.namingProjectsList.innerHTML = '<li class="muted">Loading…</li>';
+  try {
+    const res = await fetch(`/api/naming?list=1&q=${encodeURIComponent(q)}`);
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || `Failed (${res.status})`);
+    const runs = data.runs || [];
+    if (!runs.length) {
+      els.namingProjectsList.innerHTML = '<li class="muted">No naming runs yet.</li>';
+      return;
+    }
+    els.namingProjectsList.innerHTML = runs.map((r) => {
+      const when = r.created_at ? new Date(r.created_at).toLocaleString() : '';
+      const snippet = String(r.brief || '').replace(/\s+/g, ' ').slice(0, 160);
+      return `<li class="recent-run" data-id="${escapeHtml(r.id)}"><span class="recent-domain">${escapeHtml(snippet || '(empty brief)')}</span><span class="recent-when">${escapeHtml(when)}</span></li>`;
+    }).join('');
+  } catch (e) {
+    els.namingProjectsList.innerHTML = `<li class="muted">${escapeHtml(String(e.message || e))}</li>`;
+  }
+}
+
+// Load a saved naming run by id — fills the brief textarea and renders the
+// stored buy-ready/stretch tables so the user can revisit prior work and
+// edit + re-run.
+async function openNamingRun(id) {
+  if (!id) return;
+  setNamingStatus('Loading saved run…');
+  try {
+    const res = await fetch(`/api/naming?id=${encodeURIComponent(id)}`);
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || `Couldn't load (${res.status})`);
+    const r = data.run;
+    if (els.namingInput) els.namingInput.value = String(r.brief || '');
+    const buy = Array.isArray(r.buy_ready) ? r.buy_ready : [];
+    const stretch = Array.isArray(r.stretch) ? r.stretch : [];
+    namingLastResults = { run_id: r.id, filters: r.filters, buyReady: buy, stretch };
+    renderNamingResults({ filters: r.filters, buyReady: buy, stretch });
+    setNamingStatus('');
+  } catch (e) {
+    setNamingStatus('');
+    if (els.namingError) { els.namingError.textContent = String(e.message || e); els.namingError.hidden = false; }
+  }
+}
+
 // ── Wiring ──────────────────────────────────────────────────────────────────
 // "Also add to DomainScout" preference persists across sessions.
 if (els.dsToggle) {
@@ -2518,7 +2624,50 @@ els.navResearch?.addEventListener('click', showEntry);
 els.homeLink?.addEventListener('click', (e) => { e.preventDefault(); closeNav(); showEntry(); });
 els.navTrademark?.addEventListener('click', () => { setToolUrl('trademark', ''); route(); });
 els.navAppraisal?.addEventListener('click', () => { setToolUrl('appraisal', ''); route(); });
-els.navNaming?.addEventListener('click', () => { if (location.pathname !== '/naming') history.pushState(null, '', '/naming'); showView('naming'); closeNav(); });
+els.navNaming?.addEventListener('click', () => {
+  if (location.pathname !== '/naming') history.pushState(null, '', '/naming');
+  showView('naming');
+  resetNamingView();
+  loadNamingRecent();
+  closeNav();
+});
+
+// Click a Recent row → open that past naming run (deep-link path).
+els.namingRecentList?.addEventListener('click', (e) => {
+  const li = e.target.closest('.recent-run');
+  if (!li) return;
+  const id = li.dataset.id;
+  if (!id) return;
+  history.pushState(null, '', `/naming/${encodeURIComponent(id)}`);
+  showView('naming');
+  openNamingRun(id);
+});
+
+// "Show all past naming runs →" link.
+els.namingShowAll?.addEventListener('click', (e) => {
+  e.preventDefault();
+  history.pushState(null, '', '/naming/all');
+  showView('naming-projects');
+  loadNamingProjects('');
+});
+
+// Past Naming Runs list — same click pattern as Recent.
+els.namingProjectsList?.addEventListener('click', (e) => {
+  const li = e.target.closest('.recent-run');
+  if (!li) return;
+  const id = li.dataset.id;
+  if (!id) return;
+  history.pushState(null, '', `/naming/${encodeURIComponent(id)}`);
+  showView('naming');
+  openNamingRun(id);
+});
+
+// Debounced search box on the Past Naming Runs view.
+let namingProjectsTimer = null;
+els.namingProjectsSearch?.addEventListener('input', () => {
+  clearTimeout(namingProjectsTimer);
+  namingProjectsTimer = setTimeout(() => loadNamingProjects(els.namingProjectsSearch.value.trim()), 200);
+});
 // Refresh link in the report meta — forces a fresh research (skips the cache).
 els.reportMeta?.addEventListener('click', (e) => {
   const link = e.target.closest('.report-refresh');
