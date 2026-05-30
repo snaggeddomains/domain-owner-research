@@ -3,6 +3,7 @@ import { gather, critique, chatTurn } from '../agent.js';
 import { setRunStatus, saveRunReport, failRun, getRun } from '../db/runs.js';
 import { getChat, updateTurn } from '../db/chat.js';
 import { getUser } from '../db/users.js';
+import { loadLessonsAddendum, bumpAppliedCounts } from '../db/lessons.js';
 import { sendEmail, isEmailConfigured } from '../email.js';
 import { reportUrl } from '../reportUrl.js';
 import { summarizeReport } from '../reportSummary.js';
@@ -155,10 +156,16 @@ export const runResearch = inngest.createFunction(
 
     await step.run('mark-running', () => setRunStatus(runId, 'running', deep ? 'deepening' : 'gathering'));
 
+    // Approved playbook lessons get prepended to the SYSTEM_PROMPT. Loaded
+    // once per run and reused across gather + critique so both phases see
+    // the same rules. Empty when the table is absent or has no approved
+    // rows — the agent runs normally either way.
+    const { addendum: lessons, ids: lessonIds } = await step.run('load-lessons', () => loadLessonsAddendum());
+
     try {
       // Phase 1: gather — owns its own Vercel invocation (~300s budget).
       const gathered = await step.run('gather', () =>
-        gather({ domain, question, env: process.env, tier }),
+        gather({ domain, question, env: process.env, tier, lessons }),
       );
 
       let report = gathered.report;
@@ -168,7 +175,7 @@ export const runResearch = inngest.createFunction(
       if (deep && process.env.RESEARCH_CRITIQUE !== 'off') {
         await step.run('mark-verifying', () => setRunStatus(runId, 'running', 'verifying'));
         const refined = await step.run('critique', () =>
-          critique({ domain, env: process.env, tier, draft: report, priorTrace: trace }),
+          critique({ domain, env: process.env, tier, draft: report, priorTrace: trace, lessons }),
         );
         report = refined.report;
         trace = refined.trace;
@@ -190,6 +197,11 @@ export const runResearch = inngest.createFunction(
         console.error('notify-owner failed:', err && err.message);
         return { sent: false, reason: 'send failed' };
       }));
+      // Bump applied_count on the lessons that rode along on this run —
+      // fire-and-forget, drift in the counter is acceptable.
+      if (Array.isArray(lessonIds) && lessonIds.length) {
+        await step.run('bump-lesson-counts', () => bumpAppliedCounts(lessonIds));
+      }
       return { runId, ok: true, phase };
     } catch (err) {
       const message = String(err?.message || err);
@@ -214,7 +226,8 @@ export const runChat = inngest.createFunction(
         const rows = (await getChat(runId)).filter((m) => m.status !== 'pending');
         const message = rows.length ? rows[rows.length - 1].content : '';
         const history = rows.slice(0, -1);
-        const result = await chatTurn({ domain, reportMarkdown, history, message, env: process.env });
+        const { addendum: lessons } = await loadLessonsAddendum();
+        const result = await chatTurn({ domain, reportMarkdown, history, message, env: process.env, lessons });
         let text = String((result && result.report) || '').trim();
         if (!text) {
           // The model ended without a written answer — surface what it checked so

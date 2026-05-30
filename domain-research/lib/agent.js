@@ -76,12 +76,12 @@ const CHAT_SYSTEM = `You are continuing a domain-ownership investigation as a ch
 
 // A single refine-chat turn against an existing report. Conversational, with the
 // full toolset; runs synchronously (kept short via a small step budget).
-export async function chatTurn({ domain, reportMarkdown, history = [], message, env }) {
+export async function chatTurn({ domain, reportMarkdown, history = [], message, env, lessons = '' }) {
   const providerName = (env.LLM_PROVIDER || 'claude').toLowerCase();
   const provider = PROVIDERS[providerName];
   if (!provider) throw new Error(`Unknown LLM_PROVIDER "${providerName}"`);
   const toolSpecs = getToolSpecs(env, { tier: 'all' });
-  const system = `${CHAT_SYSTEM}\n\nThe current report for ${domain} is below — use it as context:\n\n${String(reportMarkdown || '').slice(0, 14000)}`;
+  const system = `${CHAT_SYSTEM}${lessons || ''}\n\nThe current report for ${domain} is below — use it as context:\n\n${String(reportMarkdown || '').slice(0, 14000)}`;
   const result = await provider.runAgent({
     system,
     history: (Array.isArray(history) ? history : []).map((m) => ({
@@ -137,7 +137,7 @@ function getProvider(env) {
 // Phase 1 of the pipeline: deterministic pre-runs + the main agent loop that
 // drafts a report. Returned shape is JSON-serializable so it can be the result
 // of an Inngest step.
-export async function gather({ domain, question, history = [], env, tier = 'all' }) {
+export async function gather({ domain, question, history = [], env, tier = 'all', lessons = '' }) {
   const provider = getProvider(env);
   const { toolSpecs, agentToolSpecs, toRun } = deriveTooling(env, tier);
 
@@ -188,7 +188,7 @@ export async function gather({ domain, question, history = [], env, tier = 'all'
     deepNote;
 
   const result = await provider.runAgent({
-    system: SYSTEM_PROMPT,
+    system: SYSTEM_PROMPT + (lessons || ''),
     history,
     userPrompt,
     toolSpecs: agentToolSpecs,
@@ -214,7 +214,7 @@ export async function gather({ domain, question, history = [], env, tier = 'all'
 // finds, then re-emits the report. Split out so each phase gets its own
 // Vercel-function budget when run as separate Inngest steps. Disable with
 // RESEARCH_CRITIQUE=off. Shallow tier skips this entirely.
-export async function critique({ domain, env, tier = 'all', draft, priorTrace = [] }) {
+export async function critique({ domain, env, tier = 'all', draft, priorTrace = [], lessons = '' }) {
   if (tier !== 'all') return { report: draft, trace: priorTrace };
   if (env.RESEARCH_CRITIQUE === 'off') return { report: draft, trace: priorTrace };
 
@@ -238,7 +238,7 @@ export async function critique({ domain, env, tier = 'all', draft, priorTrace = 
 
   try {
     const result = await provider.runAgent({
-      system: SYSTEM_PROMPT,
+      system: SYSTEM_PROMPT + (lessons || ''),
       history: [],
       userPrompt: critiquePrompt,
       toolSpecs: agentToolSpecs,

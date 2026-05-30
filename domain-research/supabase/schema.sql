@@ -267,6 +267,28 @@ alter table domain_research_runs
   add column if not exists user_id uuid references domain_research_users(id) on delete set null;
 create index if not exists idx_dr_runs_user on domain_research_runs (user_id);
 
+-- ── Playbook lessons (chat-driven feedback loop) ───────────────────────────
+-- Refine-chat distills user corrections into reusable rules; admins approve
+-- them; approved lessons get prepended to the agent's SYSTEM_PROMPT on the
+-- next run. Tags are persisted for future signal-based scoping — v1 loads
+-- every approved lesson regardless of tags.
+create table if not exists domain_research_playbook_lessons (
+  id                        uuid primary key default gen_random_uuid(),
+  status                    text not null default 'pending' check (status in ('pending', 'approved', 'disabled')),
+  title                     text not null,
+  body                      text not null,
+  tags                      text[] not null default '{}',
+  source_run_id             uuid null references domain_research_runs(id) on delete set null,
+  source_chat_message_id    uuid null,
+  created_by                uuid null references domain_research_users(id) on delete set null,
+  notes                     text null,
+  applied_count             integer not null default 0,
+  created_at                timestamptz not null default now(),
+  updated_at                timestamptz
+);
+create index if not exists idx_dr_lessons_status on domain_research_playbook_lessons (status);
+create index if not exists idx_dr_lessons_created on domain_research_playbook_lessons (created_at desc);
+
 -- ── Enable RLS (no policies → backend secret key only) ──────────────────────
 do $$
 declare t text;

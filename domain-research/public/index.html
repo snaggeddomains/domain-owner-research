@@ -259,10 +259,41 @@ The model parses it into structured filters (TLDs, length, budget, tone, etc.) a
 
           <div id="user-list" class="user-list" hidden></div>
           <p id="user-list-error" class="login-error" hidden></p>
+
+          <h2 class="admin-section-title">Playbook lessons</h2>
+          <p class="sub">Pending lessons distilled from refine-chat refinements. Approve to inject them into every future research run.</p>
+          <div id="lesson-list" class="lesson-list" hidden></div>
+          <p id="lesson-list-empty" class="user-empty" hidden>No lessons yet.</p>
+          <p id="lesson-list-error" class="login-error" hidden></p>
         </section>
       </div>
       </div>
     </main>
+
+    <!-- Save-lesson modal (filled from /api/lessons distill) -->
+    <div id="lesson-modal" class="lesson-modal" hidden>
+      <div class="lesson-modal-card">
+        <h3 class="lesson-modal-title">Save as playbook lesson</h3>
+        <p class="lesson-modal-sub">Distilling the rule from this exchange. Edit before submitting — an admin reviews and approves before it goes live.</p>
+        <label class="lesson-field">
+          <span class="lesson-field-label">Title</span>
+          <input id="lesson-modal-title" type="text" maxlength="200" placeholder="Short imperative rule" />
+        </label>
+        <label class="lesson-field">
+          <span class="lesson-field-label">Body</span>
+          <textarea id="lesson-modal-body" rows="6" maxlength="4000" placeholder="The full rule as it would appear in the agent's playbook."></textarea>
+        </label>
+        <label class="lesson-field">
+          <span class="lesson-field-label">Tags <span class="lesson-field-hint">(comma-separated kebab-case)</span></span>
+          <input id="lesson-modal-tags" type="text" maxlength="200" placeholder="live-site-credits, registrar-flip, privacy-shield" />
+        </label>
+        <p id="lesson-modal-error" class="login-error" hidden></p>
+        <div class="lesson-modal-actions">
+          <button id="lesson-modal-cancel" type="button" class="naming-export-btn">Cancel</button>
+          <button id="lesson-modal-submit" type="button">Submit for review</button>
+        </div>
+      </div>
+    </div>
 
     <script src="/app.js"></script>
   </body>

@@ -99,6 +99,16 @@ const els = {
   namingStretchTable: $('naming-stretch-table'),
   namingExportSheet: $('naming-export-sheet'),
   namingExportCsv: $('naming-export-csv'),
+  lessonList: $('lesson-list'),
+  lessonListEmpty: $('lesson-list-empty'),
+  lessonListError: $('lesson-list-error'),
+  lessonModal: $('lesson-modal'),
+  lessonModalTitle: $('lesson-modal-title'),
+  lessonModalBody: $('lesson-modal-body'),
+  lessonModalTags: $('lesson-modal-tags'),
+  lessonModalError: $('lesson-modal-error'),
+  lessonModalSubmit: $('lesson-modal-submit'),
+  lessonModalCancel: $('lesson-modal-cancel'),
   navToggle: $('nav-toggle'),
   nav: $('nav'),
   tmForm: $('tm-form'),
@@ -506,7 +516,13 @@ function chatBubble(m) {
   const pending = m.role === 'assistant' && m.status === 'pending';
   const err = m.status === 'error';
   const body = pending ? 'Looking into it…' : renderMarkdown(String(m.content || ''));
-  return `<div class="chat-msg ${cls}${pending ? ' pending' : ''}${err ? ' chat-err' : ''}">${body}</div>`;
+  const idAttr = m.id ? ` data-msg-id="${escapeHtml(m.id)}"` : '';
+  // Save-as-lesson affordance on completed assistant turns only — pending
+  // turns have no content yet, user turns aren't the corrective signal.
+  const saveLink = (m.role === 'assistant' && !pending && !err && m.id)
+    ? `<button type="button" class="chat-save-lesson" data-msg-id="${escapeHtml(m.id)}">Save as lesson</button>`
+    : '';
+  return `<div class="chat-msg ${cls}${pending ? ' pending' : ''}${err ? ' chat-err' : ''}"${idAttr}>${body}${saveLink}</div>`;
 }
 function renderChatMessages(messages) {
   if (!els.chatThread) return;
@@ -532,11 +548,16 @@ async function sendChat(message) {
   thread.insertAdjacentHTML('beforeend', `<div class="chat-msg bot pending">Researching… this can take up to a couple of minutes.</div>`);
   thread.scrollTop = thread.scrollHeight;
   const pending = thread.querySelector('.chat-msg.pending:last-child') || thread.querySelector('.chat-msg.pending');
-  const finish = (html, isErr) => {
+  const finish = (html, isErr, msgId) => {
     if (pending) {
       pending.classList.remove('pending');
       if (isErr) pending.classList.add('chat-err');
       pending.innerHTML = renderMarkdown(html);
+      if (!isErr && msgId) {
+        pending.dataset.msgId = msgId;
+        pending.insertAdjacentHTML('beforeend',
+          `<button type="button" class="chat-save-lesson" data-msg-id="${escapeHtml(msgId)}">Save as lesson</button>`);
+      }
     }
     chatBusy = false;
     if (els.chatSend) els.chatSend.disabled = false;
@@ -567,7 +588,7 @@ async function sendChat(message) {
     try {
       const r = await fetch(`/api/chat?turn_id=${encodeURIComponent(turnId)}`);
       const d = await r.json();
-      if (d.status === 'done') { finish(d.content || '(no response)'); return; }
+      if (d.status === 'done') { finish(d.content || '(no response)', false, turnId); return; }
       if (d.status === 'error') { finish(d.content || '⚠️ Chat turn failed.', true); return; }
       if (pending) pending.textContent = `Researching… (${Math.round((Date.now() - started) / 1000)}s)`;
     } catch { /* keep polling */ }
@@ -1399,7 +1420,7 @@ function showView(name) {
     if (nav) nav.classList.toggle('active', k === name);
   }
   if (name === 'projects') loadProjects(els.projectsSearch.value.trim());
-  if (name === 'admin') loadUsers();
+  if (name === 'admin') { loadUsers(); loadLessons(); }
 }
 
 // ── Admin: user CRUD ────────────────────────────────────────────────────────
@@ -2021,6 +2042,172 @@ function showEntry() {
   loadRecent();
 }
 
+// ── Playbook lessons ────────────────────────────────────────────────────────
+// Refine-chat refinements get distilled into reusable rules. Any signed-in
+// user can submit a lesson; admins approve before it joins the agent's
+// system prompt on the next research run.
+let lessonModalContext = null; // { runId, messageId } during save flow
+
+async function openLessonModal(messageId) {
+  if (!currentRunId || !messageId) return;
+  lessonModalContext = { runId: currentRunId, messageId };
+  resetLessonModal();
+  showLessonModal(true);
+  setLessonModalBusy(true, 'Distilling the rule…');
+  try {
+    const res = await fetch('/api/lessons', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ action: 'distill', run_id: currentRunId, message_id: messageId }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || `Distill failed (${res.status})`);
+    const draft = data.draft || {};
+    if (draft.empty) {
+      // The distiller saw no generalizable rule. Let the user write one
+      // from scratch rather than dead-ending them.
+      setLessonModalError('Couldn\'t auto-distill a generalizable rule from this exchange — feel free to write one yourself.');
+    }
+    if (els.lessonModalTitle) els.lessonModalTitle.value = draft.title || '';
+    if (els.lessonModalBody) els.lessonModalBody.value = draft.body || '';
+    if (els.lessonModalTags) els.lessonModalTags.value = (Array.isArray(draft.tags) ? draft.tags : []).join(', ');
+  } catch (e) {
+    setLessonModalError(String(e.message || e));
+  } finally {
+    setLessonModalBusy(false);
+  }
+}
+
+function resetLessonModal() {
+  if (els.lessonModalTitle) els.lessonModalTitle.value = '';
+  if (els.lessonModalBody) els.lessonModalBody.value = '';
+  if (els.lessonModalTags) els.lessonModalTags.value = '';
+  if (els.lessonModalError) { els.lessonModalError.hidden = true; els.lessonModalError.textContent = ''; }
+}
+
+function showLessonModal(open) {
+  if (!els.lessonModal) return;
+  els.lessonModal.hidden = !open;
+  document.body.classList.toggle('modal-open', !!open);
+  if (open && els.lessonModalTitle) setTimeout(() => els.lessonModalTitle.focus(), 50);
+}
+
+function setLessonModalBusy(busy, msg) {
+  if (els.lessonModalSubmit) els.lessonModalSubmit.disabled = !!busy;
+  if (busy && msg) setLessonModalError(msg);
+}
+
+function setLessonModalError(text) {
+  if (!els.lessonModalError) return;
+  if (!text) { els.lessonModalError.hidden = true; els.lessonModalError.textContent = ''; return; }
+  els.lessonModalError.textContent = text;
+  els.lessonModalError.hidden = false;
+}
+
+async function submitLessonModal() {
+  if (!lessonModalContext) return;
+  const title = (els.lessonModalTitle?.value || '').trim();
+  const body = (els.lessonModalBody?.value || '').trim();
+  const tagsRaw = (els.lessonModalTags?.value || '').trim();
+  if (!title || !body) { setLessonModalError('Title and body are both required.'); return; }
+  const tags = tagsRaw.split(',').map((t) => t.trim()).filter(Boolean);
+  setLessonModalBusy(true);
+  try {
+    const res = await fetch('/api/lessons', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        action: 'create',
+        title, body, tags,
+        source_run_id: lessonModalContext.runId,
+        source_chat_message_id: lessonModalContext.messageId,
+      }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || `Save failed (${res.status})`);
+    showLessonModal(false);
+    lessonModalContext = null;
+  } catch (e) {
+    setLessonModalError(String(e.message || e));
+  } finally {
+    setLessonModalBusy(false);
+  }
+}
+
+// Admin: list/curate lessons. Wired into the existing /admin view; loadUsers
+// triggers this too so a single admin visit pulls both lists.
+async function loadLessons() {
+  if (!els.lessonList) return;
+  if (els.lessonListError) els.lessonListError.hidden = true;
+  try {
+    const res = await fetch('/api/lessons?status=all');
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || `Failed to load lessons (${res.status})`);
+    renderLessons(data.lessons || []);
+  } catch (e) {
+    if (els.lessonListError) { els.lessonListError.textContent = String(e.message || e); els.lessonListError.hidden = false; }
+  }
+}
+
+function renderLessons(lessons) {
+  if (!els.lessonList) return;
+  if (!lessons.length) {
+    els.lessonList.hidden = true;
+    if (els.lessonListEmpty) els.lessonListEmpty.hidden = false;
+    return;
+  }
+  if (els.lessonListEmpty) els.lessonListEmpty.hidden = true;
+  // Pending first, then approved, then disabled — what the admin most needs
+  // to act on comes to the top.
+  const order = { pending: 0, approved: 1, disabled: 2 };
+  const sorted = [...lessons].sort((a, b) => (order[a.status] ?? 9) - (order[b.status] ?? 9));
+  els.lessonList.innerHTML = sorted.map(renderLessonRow).join('');
+  els.lessonList.hidden = false;
+}
+
+function renderLessonRow(l) {
+  const tags = Array.isArray(l.tags) && l.tags.length
+    ? l.tags.map((t) => `<span class="lesson-tag">${escapeHtml(t)}</span>`).join('')
+    : '<span class="lesson-tag lesson-tag-empty">no tags</span>';
+  return (
+    `<div class="lesson-row lesson-status-${escapeHtml(l.status)}" data-id="${escapeHtml(l.id)}">` +
+      `<div class="lesson-row-head">` +
+        `<span class="lesson-status-pill lesson-status-${escapeHtml(l.status)}">${escapeHtml(l.status)}</span>` +
+        `<strong class="lesson-row-title">${escapeHtml(l.title)}</strong>` +
+        `<span class="lesson-row-meta">applied ${Number(l.applied_count || 0)}× · ${new Date(l.created_at).toLocaleDateString()}</span>` +
+      `</div>` +
+      `<textarea class="lesson-row-body" data-field="body" rows="3">${escapeHtml(l.body)}</textarea>` +
+      `<input class="lesson-row-tags" data-field="tags" type="text" value="${escapeHtml((l.tags || []).join(', '))}" placeholder="comma-separated tags" />` +
+      `<div class="lesson-row-actions">` +
+        (l.status !== 'approved' ? `<button type="button" data-action="approve">Approve</button>` : '') +
+        (l.status !== 'disabled' ? `<button type="button" data-action="disable">Disable</button>` : '') +
+        (l.status === 'disabled' ? `<button type="button" data-action="approve">Re-approve</button>` : '') +
+        `<button type="button" data-action="save">Save edits</button>` +
+        `<button type="button" data-action="delete" class="lesson-row-delete">Delete</button>` +
+      `</div>` +
+      `<p class="lesson-row-error" hidden></p>` +
+    `</div>`
+  );
+}
+
+async function patchLesson(id, patch, rowEl) {
+  const errEl = rowEl && rowEl.querySelector('.lesson-row-error');
+  if (errEl) errEl.hidden = true;
+  try {
+    const res = await fetch('/api/lessons', {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ id, ...patch }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || `Update failed (${res.status})`);
+    return data.lesson;
+  } catch (e) {
+    if (errEl) { errEl.textContent = String(e.message || e); errEl.hidden = false; }
+    return null;
+  }
+}
+
 // ── Naming Exercise ─────────────────────────────────────────────────────────
 // Brief → Haiku parse → name_universe query → 9-column results split into
 // Buy-ready vs Stretch buckets. Implementation spec §1-5.
@@ -2351,6 +2538,54 @@ els.namingInput?.addEventListener('keydown', (e) => {
 });
 els.namingExportCsv?.addEventListener('click', copyNamingCsv);
 els.namingExportSheet?.addEventListener('click', exportNamingSheet);
+
+// Save-as-lesson click delegation on the refine-chat thread.
+els.chatThread?.addEventListener('click', (e) => {
+  const btn = e.target.closest('.chat-save-lesson');
+  if (!btn) return;
+  openLessonModal(btn.dataset.msgId);
+});
+els.lessonModalSubmit?.addEventListener('click', submitLessonModal);
+els.lessonModalCancel?.addEventListener('click', () => { showLessonModal(false); lessonModalContext = null; });
+els.lessonModal?.addEventListener('click', (e) => {
+  // Click on the backdrop (not the inner card) closes the modal.
+  if (e.target === els.lessonModal) { showLessonModal(false); lessonModalContext = null; }
+});
+
+// Admin lesson-list actions: approve, disable, save edits, delete.
+els.lessonList?.addEventListener('click', async (e) => {
+  const btn = e.target.closest('button[data-action]');
+  if (!btn) return;
+  const row = btn.closest('.lesson-row');
+  const id = row && row.dataset.id;
+  if (!id) return;
+  const action = btn.dataset.action;
+  if (action === 'approve') { await patchLesson(id, { status: 'approved' }, row); loadLessons(); return; }
+  if (action === 'disable') { await patchLesson(id, { status: 'disabled' }, row); loadLessons(); return; }
+  if (action === 'save') {
+    const bodyEl = row.querySelector('textarea[data-field="body"]');
+    const tagsEl = row.querySelector('input[data-field="tags"]');
+    const body = bodyEl ? bodyEl.value.trim() : '';
+    const tags = tagsEl ? tagsEl.value.split(',').map((t) => t.trim()).filter(Boolean) : [];
+    if (!body) return;
+    await patchLesson(id, { body, tags }, row);
+    return;
+  }
+  if (action === 'delete') {
+    if (!confirm('Delete this lesson permanently?')) return;
+    try {
+      const res = await fetch(`/api/lessons?id=${encodeURIComponent(id)}`, { method: 'DELETE' });
+      if (!res.ok && res.status !== 204) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || `Delete failed (${res.status})`);
+      }
+      loadLessons();
+    } catch (err) {
+      const errEl = row.querySelector('.lesson-row-error');
+      if (errEl) { errEl.textContent = String(err.message || err); errEl.hidden = false; }
+    }
+  }
+});
 // "Show all past research" (under the recent-5) opens the full Past Research list.
 els.showAll?.addEventListener('click', (e) => { e.preventDefault(); showView('projects'); });
 
