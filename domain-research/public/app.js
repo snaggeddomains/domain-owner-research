@@ -2,6 +2,9 @@ const $ = (id) => document.getElementById(id);
 
 const els = {
   login: $('login'),
+  navAccount: $('nav-account'),
+  navAccountEmail: $('nav-account-email'),
+  navLogout: $('nav-logout'),
   loginForm: $('login-form'),
   email: $('email'),
   password: $('password'),
@@ -712,11 +715,30 @@ async function checkAuth() {
     els.login.hidden = !locked;
     els.app.hidden = locked;
     if (locked) showLoginPanel('login');
+    // Populate the sidebar account block when signed in.
+    const u = data.user;
+    if (!locked && u && u.email) {
+      if (els.navAccountEmail) els.navAccountEmail.textContent = u.email;
+      if (els.navAccount) els.navAccount.hidden = false;
+    } else if (els.navAccount) {
+      els.navAccount.hidden = true;
+    }
   } catch {
     els.login.hidden = true;
     els.app.hidden = false;
+    if (els.navAccount) els.navAccount.hidden = true;
   }
 }
+
+// Sign out — clears the cookie server-side, then reloads so the login form
+// renders cleanly. Wired in the sidebar and the mobile hamburger drawer.
+els.navLogout?.addEventListener('click', async (e) => {
+  e.preventDefault();
+  try {
+    await fetch('/api/logout', { method: 'POST' });
+  } catch { /* fall through — reload still shows login */ }
+  window.location.assign('/');
+});
 
 els.loginForm?.addEventListener('submit', async (e) => {
   e.preventDefault();
