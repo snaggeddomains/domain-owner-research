@@ -393,21 +393,25 @@ function setReportTitle(domain) {
     els.reportDomain.textContent = '';
   }
 }
-// "Researched X ago · Refresh" — shown on any DONE report so the user can see
-// when the data is from and re-run it on demand. Refresh sends force:true so
-// the server skips the cache and starts a fresh research.
-function setReportMeta(createdAt) {
+// "<Type> · <datetime> · Refresh" — shown on any DONE report. Type tells the
+// user whether they're looking at the free pre-flight or a paid deep run;
+// the datetime lets them gauge staleness (especially on historical reports);
+// Refresh forces a fresh run at the same depth (server skips the cache).
+function setReportMeta(createdAt, phase) {
   if (!els.reportMeta) return;
   if (!createdAt) {
     els.reportMeta.hidden = true;
     els.reportMeta.innerHTML = '';
     return;
   }
+  const typeLabel = phase === 'deep' ? 'Deep research' : phase === 'shallow' ? 'Free report' : 'Report';
+  const when = new Date(createdAt).toLocaleString();
+  const refreshDeep = phase === 'deep' ? 'true' : 'false';
   els.reportMeta.hidden = false;
   els.reportMeta.innerHTML =
-    `Researched ${escapeHtml(agoLabel(createdAt))} · ` +
-    `<a href="#" class="report-refresh" data-deep="false">Refresh</a> · ` +
-    `<a href="#" class="report-refresh" data-deep="true">Refresh (deep)</a>`;
+    `<span class="rm-type">${escapeHtml(typeLabel)}</span> · ` +
+    `<span class="rm-when">${escapeHtml(when)}</span> · ` +
+    `<a href="#" class="report-refresh" data-deep="${refreshDeep}">Refresh</a>`;
 }
 function clearReportMeta() {
   setReportMeta(null);
@@ -746,7 +750,7 @@ function startPolling(runId, label) {
         if (els.runControls) els.runControls.hidden = true;
         if (r.domain) setReportTitle(r.domain);
         renderReport(r.report);
-        setReportMeta(r.created_at);
+        setReportMeta(r.created_at, r.report && r.report.phase);
         els.go.disabled = false;
       } else if (r.status === 'error') {
         clearTimers();
@@ -984,7 +988,7 @@ async function run({ domain, deep, force }) {
       setStatus('');
       if (r.domain) setReportTitle(r.domain);
       renderReport(r.report);
-      setReportMeta(r.created_at);
+      setReportMeta(r.created_at, r.report && r.report.phase);
       currentRunId = data.run_id;
       els.go.disabled = false;
       return;
@@ -1094,7 +1098,7 @@ async function openProject(id) {
     if (r.status === 'done') {
       setStatus('');
       renderReport(r.report);
-      setReportMeta(r.created_at);
+      setReportMeta(r.created_at, r.report && r.report.phase);
     } else if (r.status === 'error') {
       setStatus(r.error || 'This run failed.', true);
     } else {
