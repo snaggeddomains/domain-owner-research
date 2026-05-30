@@ -19,6 +19,7 @@ const els = {
   reportDomain: $('report-domain'),
   reportConfidence: $('report-confidence'),
   reportActions: $('report-actions'),
+  reportMeta: $('report-meta'),
   exportPdf: $('export-pdf'),
   reportFeedback: $('report-feedback'),
   rfYes: $('rf-yes'),
@@ -392,6 +393,25 @@ function setReportTitle(domain) {
     els.reportDomain.textContent = '';
   }
 }
+// "Researched X ago · Refresh" — shown on any DONE report so the user can see
+// when the data is from and re-run it on demand. Refresh sends force:true so
+// the server skips the cache and starts a fresh research.
+function setReportMeta(createdAt) {
+  if (!els.reportMeta) return;
+  if (!createdAt) {
+    els.reportMeta.hidden = true;
+    els.reportMeta.innerHTML = '';
+    return;
+  }
+  els.reportMeta.hidden = false;
+  els.reportMeta.innerHTML =
+    `Researched ${escapeHtml(agoLabel(createdAt))} · ` +
+    `<a href="#" class="report-refresh" data-deep="false">Refresh</a> · ` +
+    `<a href="#" class="report-refresh" data-deep="true">Refresh (deep)</a>`;
+}
+function clearReportMeta() {
+  setReportMeta(null);
+}
 // Reset + reveal the "was this right?" feedback control when a report renders.
 function resetFeedback() {
   if (!els.reportFeedback) return;
@@ -676,15 +696,17 @@ els.loginForm?.addEventListener('submit', async (e) => {
 });
 
 // ── Research (async: enqueue → poll) ────────────────────────────────────────
-async function enqueue({ domain, deep }) {
+async function enqueue({ domain, deep, force }) {
   const res = await fetch('/api/research', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ domain, deep: !!deep }),
+    body: JSON.stringify({ domain, deep: !!deep, force: !!force }),
   });
   const data = await res.json();
   if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`);
-  return data.run_id;
+  // data may include { existing: true, created_at } when the server returns
+  // a cached run instead of enqueueing a fresh one.
+  return data;
 }
 
 async function pollRun(runId) {
@@ -724,6 +746,7 @@ function startPolling(runId, label) {
         if (els.runControls) els.runControls.hidden = true;
         if (r.domain) setReportTitle(r.domain);
         renderReport(r.report);
+        setReportMeta(r.created_at);
         els.go.disabled = false;
       } else if (r.status === 'error') {
         clearTimers();
@@ -930,6 +953,7 @@ function enterResultMode(domain) {
   showView('research');
   els.hero.hidden = true;
   setReportTitle(domain);
+  clearReportMeta();
   els.reportConfidence.hidden = true;
   els.reportActions.hidden = true;
   els.report.hidden = true;
@@ -942,7 +966,7 @@ function enterResultMode(domain) {
   if (els.runControls) els.runControls.hidden = true;
 }
 
-async function run({ domain, deep }) {
+async function run({ domain, deep, force }) {
   enterResultMode(domain);
   // First action: check the marketplaces in parallel with the free LLM pass.
   runMarketStrip(domain);
@@ -950,7 +974,22 @@ async function run({ domain, deep }) {
     ? `Researching ${domain} (deep, paid sources)… this can take a few minutes.`
     : `Researching ${domain}… this can take a few minutes.`);
   try {
-    const runId = await enqueue({ domain, deep });
+    const data = await enqueue({ domain, deep, force });
+    // Server returned a cached completed run — open it directly instead of
+    // re-running. Shows "Researched X ago · Refresh" so the user can re-run
+    // on demand if the cached data is stale.
+    if (data.existing) {
+      const r = await pollRun(data.run_id);
+      applyHash({ id: data.run_id, domain: r.domain, created_at: r.created_at });
+      setStatus('');
+      if (r.domain) setReportTitle(r.domain);
+      renderReport(r.report);
+      setReportMeta(r.created_at);
+      currentRunId = data.run_id;
+      els.go.disabled = false;
+      return;
+    }
+    const runId = data.run_id;
     applyHash({ id: runId, domain, created_at: new Date().toISOString() });
     startPolling(runId, deep ? `Researching ${domain} (deep)` : `Researching ${domain}`);
   } catch (err) {
@@ -1055,6 +1094,7 @@ async function openProject(id) {
     if (r.status === 'done') {
       setStatus('');
       renderReport(r.report);
+      setReportMeta(r.created_at);
     } else if (r.status === 'error') {
       setStatus(r.error || 'This run failed.', true);
     } else {
@@ -1589,6 +1629,16 @@ els.homeLink?.addEventListener('click', (e) => { e.preventDefault(); closeNav();
 els.navTrademark?.addEventListener('click', () => { setToolUrl('trademark', ''); route(); });
 els.navAppraisal?.addEventListener('click', () => { setToolUrl('appraisal', ''); route(); });
 els.navNaming?.addEventListener('click', () => { if (location.pathname !== '/') history.pushState(null, '', '/'); showView('naming'); });
+// Refresh link in the report meta — forces a fresh research (skips the cache).
+els.reportMeta?.addEventListener('click', (e) => {
+  const link = e.target.closest('.report-refresh');
+  if (!link) return;
+  e.preventDefault();
+  const domain = currentReportDomain;
+  if (!domain) return;
+  const deep = link.dataset.deep === 'true';
+  run({ domain, deep, force: true });
+});
 els.tmForm?.addEventListener('submit', (e) => { e.preventDefault(); const q = els.tmQuery.value.trim(); if (q) runTrademark(q); });
 els.apForm?.addEventListener('submit', (e) => { e.preventDefault(); const v = els.apDomain.value.trim(); if (v) runAppraisal(v); });
 // "Show all past research" (under the recent-5) opens the full Past Research list.

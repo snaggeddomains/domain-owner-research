@@ -332,6 +332,9 @@ button:disabled { opacity: .55; cursor: progress; }
 /* Report header row: title left, Export PDF tucked top-right (secondary) */
 .report-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 8px; }
 .report-header .report-domain { flex: 1; min-width: 0; margin: 4px 0 0; }
+.report-meta { font-size: 14px; color: var(--muted); margin: 0 0 14px; }
+.report-meta a { color: var(--coral); text-decoration: none; font-weight: 600; }
+.report-meta a:hover { text-decoration: underline; }
 .report-actions { flex: none; margin: 6px 0 0; }
 .report-actions button {
   background: var(--cream); color: var(--navy-2); border: 1.5px solid var(--line);
