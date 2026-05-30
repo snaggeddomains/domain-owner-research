@@ -2,6 +2,35 @@ import { inngest, RUN_REQUESTED, CHAT_REQUESTED } from './client.js';
 import { gather, critique, chatTurn } from '../agent.js';
 import { setRunStatus, saveRunReport, failRun, getRun } from '../db/runs.js';
 import { getChat, updateTurn } from '../db/chat.js';
+import { getUser } from '../db/users.js';
+import { sendEmail, isEmailConfigured } from '../email.js';
+import { reportUrl } from '../reportUrl.js';
+
+// "Report is ready" notification — only sent to a user who opted in via
+// email_notify_on_done. Wrapped in its own step.run so it's durable and a
+// transient Resend failure doesn't block the run from being marked done.
+async function notifyOwnerIfWanted(runId) {
+  const run = await getRun(runId);
+  if (!run || !run.user_id) return { sent: false, reason: 'no user' };
+  const user = await getUser(run.user_id);
+  if (!user || !user.email_notify_on_done) return { sent: false, reason: 'user opted out' };
+  if (!isEmailConfigured()) return { sent: false, reason: 'RESEND_API_KEY not set' };
+  const url = reportUrl({ domain: run.domain, runId: run.id, createdAt: run.created_at });
+  await sendEmail({
+    to: user.email,
+    subject: `Your ${run.domain} report is ready`,
+    text:
+      `Your domain ownership research on ${run.domain} just finished.\n\n` +
+      `Open the report: ${url}\n\n` +
+      `(You're getting this because "Email me when reports finish" is on. Turn it off in the sidebar to stop.)`,
+    html:
+      `<p>Your domain ownership research on <strong>${run.domain}</strong> just finished.</p>` +
+      `<p><a href="${url}" style="display:inline-block;padding:10px 16px;background:#e48069;color:#fff;text-decoration:none;border-radius:8px;font-weight:700">Open the report</a></p>` +
+      `<p style="color:#666;font-size:12px">If the button doesn't work, paste this URL: ${url}</p>` +
+      `<p style="color:#999;font-size:11px">You're getting this because "Email me when reports finish" is on. Turn it off in the sidebar to stop.</p>`,
+  });
+  return { sent: true };
+}
 
 // Cost-gated pipeline. The default ('shallow') pass uses only FREE sources and
 // still runs the LLM to write a narrative — but spends NO paid-API credits. A
@@ -67,6 +96,12 @@ export const runResearch = inngest.createFunction(
           phase,
         }),
       );
+      // Optional notification — its own durable step so a transient Resend
+      // failure can retry without blocking save-report from succeeding.
+      await step.run('notify-owner', () => notifyOwnerIfWanted(runId).catch((err) => {
+        console.error('notify-owner failed:', err && err.message);
+        return { sent: false, reason: 'send failed' };
+      }));
       return { runId, ok: true, phase };
     } catch (err) {
       const message = String(err?.message || err);

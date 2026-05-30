@@ -4,6 +4,7 @@ const els = {
   login: $('login'),
   navAccount: $('nav-account'),
   navAccountEmail: $('nav-account-email'),
+  navNotifyToggle: $('nav-notify-toggle'),
   navLogout: $('nav-logout'),
   loginForm: $('login-form'),
   email: $('email'),
@@ -737,6 +738,7 @@ async function checkAuth() {
     if (!locked && u && u.email) {
       if (els.navAccountEmail) els.navAccountEmail.textContent = u.email;
       if (els.navAccount) els.navAccount.hidden = false;
+      if (els.navNotifyToggle) els.navNotifyToggle.checked = Boolean(u.email_notify_on_done);
       gateNavByPermissions(u);
     } else if (els.navAccount) {
       els.navAccount.hidden = true;
@@ -771,6 +773,22 @@ function gateNavByPermissions(user) {
 }
 
 els.navAdmin?.addEventListener('click', () => { history.pushState(null, '', '/admin'); showView('admin'); closeNav(); });
+
+// Self-serve toggle for "Email me when reports finish". PATCH /api/me;
+// optimistic UI — if the patch fails, revert the checkbox.
+els.navNotifyToggle?.addEventListener('change', async (e) => {
+  const want = e.target.checked;
+  try {
+    const res = await fetch('/api/me', {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ email_notify_on_done: want }),
+    });
+    if (!res.ok) throw new Error('patch failed');
+  } catch {
+    if (els.navNotifyToggle) els.navNotifyToggle.checked = !want;
+  }
+});
 
 els.loginForm?.addEventListener('submit', async (e) => {
   e.preventDefault();
