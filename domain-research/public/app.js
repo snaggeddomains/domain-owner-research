@@ -2105,7 +2105,13 @@ function renderNamingFilters(f) {
   }
   if (f.num_words != null) parts.push(`${f.num_words} word${f.num_words === 1 ? '' : 's'}`);
   if (f.dictionary_word_only) parts.push('dictionary words only');
-  if (f.max_price != null) parts.push(`under <strong>$${Number(f.max_price).toLocaleString()}</strong>`);
+  if (f.min_price != null && f.max_price != null) {
+    parts.push(`<strong>$${Number(f.min_price).toLocaleString()}–$${Number(f.max_price).toLocaleString()}</strong>`);
+  } else if (f.max_price != null) {
+    parts.push(`under <strong>$${Number(f.max_price).toLocaleString()}</strong>`);
+  } else if (f.min_price != null) {
+    parts.push(`over <strong>$${Number(f.min_price).toLocaleString()}</strong>`);
+  }
   if (f.min_quality_score != null) parts.push(`quality ≥ <strong>${f.min_quality_score}</strong>`);
   if (Array.isArray(f.semantic_keywords) && f.semantic_keywords.length) {
     parts.push(`keywords <strong>${escapeHtml(f.semantic_keywords.join(' / '))}</strong>`);

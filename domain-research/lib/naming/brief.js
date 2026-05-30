@@ -10,6 +10,7 @@ const SYSTEM = `You are parsing a domain-naming brief into a JSON filter object.
   "sld_length_max": 10,
   "num_words": 1,
   "dictionary_word_only": true,
+  "min_price": null,
   "max_price": 5000,
   "min_quality_score": 2.5,
   "semantic_keywords": ["tech", "B2B", "saas"],
@@ -22,7 +23,8 @@ Rules:
 - min_quality_score: default 2.5. Bump higher (3.0+) ONLY if the brief explicitly demands a premium or top-tier feel AND num_words is 1. Two-word names typically score lower, so when num_words is 2 or null, keep min_quality_score at 2.5 or below.
 - dictionary_word_only + num_words=1 together imply a very tight filter — only set both when the brief explicitly asks for a single common-English word.
 - If they say "easy to spell" without specifying word count, set dictionary_word_only: true but leave num_words: null.
-- If they say "premium", set max_price high (50000+). If they give a range, take the high end as max_price.
+- Price: if the brief gives a RANGE ("$50K to $150K", "between 5k and 20k"), put the LOW end in min_price and the HIGH end in max_price. If they give only an upper bound ("under $5K", "up to $50K"), set max_price only and leave min_price null. If they say "premium" without a number, set max_price high (50000+).
+- semantic_keywords: extract industry, theme, and tone hints (lowercase, short). For "health care startup", include "health", "care", "medical", "wellness". Skip generic words like "startup", "company", "brand".
 - Output JSON only — no prose, no code fences.`;
 
 export async function parseBrief(brief, env) {
@@ -72,8 +74,12 @@ export function validateFilters(raw) {
 
   const dictionary_word_only = Boolean(f.dictionary_word_only);
 
+  const minPriceRaw = Number(f.min_price);
+  const min_price = Number.isFinite(minPriceRaw) && minPriceRaw > 0 ? minPriceRaw : null;
   const maxPriceRaw = Number(f.max_price);
-  const max_price = Number.isFinite(maxPriceRaw) && maxPriceRaw > 0 ? maxPriceRaw : null;
+  let max_price = Number.isFinite(maxPriceRaw) && maxPriceRaw > 0 ? maxPriceRaw : null;
+  // Guard against a parser that flipped the bounds — keep them ordered.
+  if (min_price != null && max_price != null && max_price < min_price) max_price = null;
 
   const mqsRaw = Number(f.min_quality_score);
   // §2.3 default is 2.5; cap at 3.0 since two-word names — which often have
@@ -95,6 +101,7 @@ export function validateFilters(raw) {
     sld_length_max,
     num_words,
     dictionary_word_only,
+    min_price,
     max_price,
     min_quality_score,
     semantic_keywords,
