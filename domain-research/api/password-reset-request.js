@@ -24,12 +24,17 @@ export default async function handler(req, res) {
     console.error('password-reset-request lookup failed:', err && err.message);
   }
 
+  // Diagnostic logging so the Vercel log makes it obvious WHICH branch fired
+  // when an email doesn't arrive. Doesn't leak the address to the client.
+  if (!user) console.log(`password-reset-request: no user found for ${email}`);
+  else if (!isEmailConfigured()) console.log('password-reset-request: RESEND_API_KEY not set; skipping send');
   if (user && user.id && isEmailConfigured()) {
     try {
       const token = signResetToken(user.id);
       const origin = (req.headers['x-forwarded-proto'] ? `${req.headers['x-forwarded-proto']}://` : 'https://') +
         (req.headers['x-forwarded-host'] || req.headers.host || 'research.snagged.com');
       const link = `${origin}/?reset=${encodeURIComponent(token)}`;
+      console.log(`password-reset-request: sending reset link to ${user.email}`);
       await sendEmail({
         to: user.email,
         subject: 'Reset your Snagged Research password',
