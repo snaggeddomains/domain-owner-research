@@ -1,7 +1,7 @@
 import { inngest, RUN_REQUESTED } from '../lib/inngest/client.js';
 import { isValidDomain, normalizeDomain } from '../lib/util.js';
 import { checkRateLimit, clientIp } from '../lib/ratelimit.js';
-import { isAuthed, currentUser, userCan } from '../lib/auth.js';
+import { isAuthed, currentUser, userCan, userCanReportPhase } from '../lib/auth.js';
 import { isDbConfigured } from '../lib/db/supabase.js';
 import { createRun, getRun, failRun, setRunStatus, listRuns } from '../lib/db/runs.js';
 
@@ -87,6 +87,10 @@ export default async function handler(req, res) {
 
   // ── Deepen an existing run (paid pass) ──────────────────────────────────────
   if (body.deepen) {
+    if (_userForPerm && !userCanReportPhase(_userForPerm, 'deep')) {
+      res.status(403).json({ error: "You don't have access to deep research reports — ask an admin to enable it." });
+      return;
+    }
     const run = await getRun(body.id);
     if (!run) {
       res.status(404).json({ error: 'Run not found' });
@@ -117,6 +121,12 @@ export default async function handler(req, res) {
   // Optional: skip the free pre-flight and go straight to the paid deep pass.
   const deep = body.deep === true || body.deep === 'true';
   const phase = deep ? 'deep' : 'shallow';
+  // Phase-level permission: free vs deep can be independently granted by admin.
+  if (_userForPerm && !userCanReportPhase(_userForPerm, phase)) {
+    const label = phase === 'deep' ? 'deep research' : 'free';
+    res.status(403).json({ error: `You don't have access to ${label} reports — ask an admin to enable it.` });
+    return;
+  }
 
   // Reuse the most recent completed run for this domain unless the user
   // explicitly forces a fresh research. Saves paid-API + LLM credits on what

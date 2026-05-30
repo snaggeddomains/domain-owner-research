@@ -143,6 +143,20 @@ export function userCan(user, module) {
   return Boolean(perms[module]);
 }
 
+// Phase-level gate for the Domain Owner module: admin can grant free reports
+// (shallow pre-flight), deep reports (paid), or both. A user without
+// 'domain_owner' fails outright; admin always passes. The phase keys
+// (report_shallow / report_deep) DEFAULT TO TRUE when absent so existing user
+// rows that predate this field keep working — only an explicit `false` denies.
+export function userCanReportPhase(user, phase) {
+  if (!user) return false;
+  if (user.is_admin) return true;
+  if (!userCan(user, 'domain_owner')) return false;
+  const perms = user.permissions || {};
+  const key = phase === 'deep' ? 'report_deep' : 'report_shallow';
+  return perms[key] === undefined ? true : Boolean(perms[key]);
+}
+
 // Source name (as registered in lib/sources/index.js) → module permission key.
 // Sources not listed here fall under 'domain_owner' (they're agent tools used
 // during a research run).

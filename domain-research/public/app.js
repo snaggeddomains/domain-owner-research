@@ -65,6 +65,8 @@ const els = {
   userAddEmail: $('user-add-email'),
   userAddPassword: $('user-add-password'),
   userAddDomainOwner: $('user-add-domain_owner'),
+  userAddReportShallow: $('user-add-report_shallow'),
+  userAddReportDeep: $('user-add-report_deep'),
   userAddTrademark: $('user-add-trademark'),
   userAddAppraisal: $('user-add-appraisal'),
   userAddNaming: $('user-add-naming'),
@@ -690,10 +692,13 @@ function renderReport(report) {
 
   // Offer the paid pass only after a free (shallow) one. Surface it at the very
   // top when the free report has no clear owner; otherwise keep it below.
+  // Suppress both entirely when the signed-in user lacks the deep-reports
+  // permission — they'd just hit a 403 if they clicked.
   const shallow = report && report.phase === 'shallow';
   const low = shallow && (band === 'low' || (!band && looksLowConfidence(md)));
-  els.deepenTop.hidden = !low;
-  els.deepenBar.hidden = !(shallow && !low);
+  const canDeep = canPhase(currentUser, 'deep');
+  els.deepenTop.hidden = !(low && canDeep);
+  els.deepenBar.hidden = !(shallow && !low && canDeep);
 }
 
 // ── Auth ────────────────────────────────────────────────────────────────────
@@ -740,10 +745,12 @@ async function checkAuth() {
     // nav buttons by what the user is permitted to use.
     const u = data.user;
     if (!locked && u && u.email) {
+      currentUser = u;
       if (els.navAccountEmail) els.navAccountEmail.textContent = u.email;
       if (els.navAccount) els.navAccount.hidden = false;
       if (els.navNotifyToggle) els.navNotifyToggle.checked = Boolean(u.email_notify_on_done);
       gateNavByPermissions(u);
+      gateReportPhaseUI(u);
     } else if (els.navAccount) {
       els.navAccount.hidden = true;
     }
@@ -763,6 +770,38 @@ els.navLogout?.addEventListener('click', async (e) => {
   } catch { /* fall through — reload still shows login */ }
   window.location.assign('/');
 });
+
+// Mirrors lib/auth.js#userCanReportPhase — phase keys default to true when
+// absent so existing user rows keep working; only explicit false denies.
+let currentUser = null;
+function canPhase(user, phase) {
+  if (!user) return false;
+  if (user.is_admin) return true;
+  const perms = user.permissions || {};
+  if (!perms.domain_owner) return false;
+  const key = phase === 'deep' ? 'report_deep' : 'report_shallow';
+  return perms[key] === undefined ? true : Boolean(perms[key]);
+}
+
+// Hide affordances the user can't use: the "Go straight to deep research"
+// upfront toggle, and (after a free run) the "Go deeper" buttons.
+function gateReportPhaseUI(user) {
+  const canDeep = canPhase(user, 'deep');
+  const canShallow = canPhase(user, 'shallow');
+  // Hide the deep-toggle row entirely when deep isn't allowed.
+  const deepToggleLabel = els.deepToggle && els.deepToggle.closest('label');
+  if (deepToggleLabel) deepToggleLabel.hidden = !canDeep;
+  if (els.deepToggle && !canDeep) els.deepToggle.checked = false;
+  // The deepen buttons get hidden by user permission AT showReport time too,
+  // but pre-set the disabled state so any in-flight render is consistent.
+  if (els.deepenTopBtn) els.deepenTopBtn.disabled = !canDeep;
+  if (els.deepenBtn) els.deepenBtn.disabled = !canDeep;
+  // If the user has neither phase, lock the search submit + message it.
+  if (els.go) els.go.disabled = !canShallow && !canDeep;
+  if (els.domain && !canShallow && !canDeep) {
+    els.domain.placeholder = 'No report access — ask an admin';
+  }
+}
 
 // Hide nav buttons for modules the current user can't access; admins see
 // everything plus the Admin button.
@@ -1372,6 +1411,10 @@ function renderUsers(users) {
   const rows = users.map((u) => {
     const perms = u.permissions || {};
     const checked = (v) => v ? 'checked' : '';
+    // report_shallow/report_deep DEFAULT to true when absent (back-compat with
+    // existing user rows that predate these sub-permissions). Mirror the same
+    // rule that userCanReportPhase uses on the server.
+    const phaseChecked = (k) => (perms[k] === undefined || perms[k]) ? 'checked' : '';
     return (
       `<div class="user-row" data-id="${escapeHtml(u.id)}">` +
         `<div class="user-row-head">` +
@@ -1381,6 +1424,8 @@ function renderUsers(users) {
         `<div class="user-row-perms">` +
           `<label><input type="checkbox" data-perm="is_admin" ${checked(u.is_admin)}/> Admin</label>` +
           `<label><input type="checkbox" data-perm="domain_owner" ${checked(perms.domain_owner)}/> Domain Owner</label>` +
+          `<label class="sub-perm"><input type="checkbox" data-perm="report_shallow" ${phaseChecked('report_shallow')}/> &nbsp;&nbsp;↳ Free reports</label>` +
+          `<label class="sub-perm"><input type="checkbox" data-perm="report_deep" ${phaseChecked('report_deep')}/> &nbsp;&nbsp;↳ Deep research reports</label>` +
           `<label><input type="checkbox" data-perm="trademark" ${checked(perms.trademark)}/> Trademark</label>` +
           `<label><input type="checkbox" data-perm="appraisal" ${checked(perms.appraisal)}/> Appraisal</label>` +
           `<label><input type="checkbox" data-perm="naming" ${checked(perms.naming)}/> Naming</label>` +
@@ -1487,6 +1532,8 @@ els.userAddForm?.addEventListener('submit', async (e) => {
   }
   const permissions = {
     domain_owner: !!(els.userAddDomainOwner && els.userAddDomainOwner.checked),
+    report_shallow: !!(els.userAddReportShallow && els.userAddReportShallow.checked),
+    report_deep: !!(els.userAddReportDeep && els.userAddReportDeep.checked),
     trademark: !!(els.userAddTrademark && els.userAddTrademark.checked),
     appraisal: !!(els.userAddAppraisal && els.userAddAppraisal.checked),
     naming: !!(els.userAddNaming && els.userAddNaming.checked),
@@ -1517,6 +1564,8 @@ els.userAddForm?.addEventListener('submit', async (e) => {
   // Clear the form, reload the list.
   els.userAddForm.reset();
   if (els.userAddDomainOwner) els.userAddDomainOwner.checked = true;
+  if (els.userAddReportShallow) els.userAddReportShallow.checked = true;
+  if (els.userAddReportDeep) els.userAddReportDeep.checked = true;
   if (els.userAddTrademark) els.userAddTrademark.checked = true;
   if (els.userAddAppraisal) els.userAddAppraisal.checked = true;
   loadUsers();
@@ -1971,7 +2020,12 @@ els.form?.addEventListener('submit', (e) => {
   // Open the DomainScout tab from within the click gesture (so it isn't popup-
   // blocked); the userscript on that tab fills + submits the Track form.
   if (els.dsToggle && els.dsToggle.checked) openDomainScout(domain);
-  run({ domain, deep: !!(els.deepToggle && els.deepToggle.checked) });
+  // Choose phase against the user's permissions. The checkbox is the user's
+  // explicit ask; otherwise default to shallow. When the user has ONLY deep
+  // (admin disabled free reports), force deep so the server doesn't 403 them.
+  let deep = !!(els.deepToggle && els.deepToggle.checked);
+  if (!deep && !canPhase(currentUser, 'shallow') && canPhase(currentUser, 'deep')) deep = true;
+  run({ domain, deep });
 });
 
 els.deepenBtn?.addEventListener('click', deepen);

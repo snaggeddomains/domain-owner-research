@@ -152,14 +152,20 @@ export default async function handler(req, res) {
 // Whitelist only the keys we expect, coerced to booleans. Free-form jsonb but
 // don't trust the client to set arbitrary fields.
 function sanitizePermissions(p) {
-  const known = ['domain_owner', 'trademark', 'appraisal', 'naming'];
+  // report_shallow / report_deep are sub-permissions of domain_owner — admin
+  // can grant free reports, deep reports, or both. Absence in old user rows
+  // is treated as "allowed" by userCanReportPhase, but newly-created users
+  // get them explicitly set so the admin UI reflects intent.
+  const known = ['domain_owner', 'trademark', 'appraisal', 'naming', 'report_shallow', 'report_deep'];
   const out = {};
   if (p && typeof p === 'object') {
     for (const k of known) if (p[k] !== undefined) out[k] = Boolean(p[k]);
   }
   // Sensible default if the client sent nothing: full access for backwards
   // compatibility with how the admin seed user was created.
-  if (Object.keys(out).length === 0) return { domain_owner: true, trademark: true, appraisal: true, naming: false };
+  if (Object.keys(out).length === 0) {
+    return { domain_owner: true, trademark: true, appraisal: true, naming: false, report_shallow: true, report_deep: true };
+  }
   return out;
 }
 
