@@ -1,33 +1,50 @@
 import { inngest, RUN_REQUESTED, CHAT_REQUESTED } from './client.js';
-import { research, chatTurn } from '../agent.js';
+import { gather, critique, chatTurn } from '../agent.js';
 import { setRunStatus, saveRunReport, failRun, getRun } from '../db/runs.js';
 import { getChat, updateTurn } from '../db/chat.js';
 
 // Cost-gated pipeline. The default ('shallow') pass uses only FREE sources and
 // still runs the LLM to write a narrative — but spends NO paid-API credits. A
 // deliberate 'deep' pass (triggered by the user's "go deeper") opens the paid
-// sources. Each step is durable; Inngest invokes /api/inngest per step, so the
-// run survives well beyond a single function timeout.
+// sources. The deep path is split into TWO steps — gather, then critique — so
+// each phase gets its own Vercel function-duration budget (rather than trying
+// to fit gather + critique in one 300s invocation, which routinely timed out).
 export const runResearch = inngest.createFunction(
   { id: 'run-domain-research', retries: 1 },
   { event: RUN_REQUESTED },
   async ({ event, step }) => {
     const { runId, domain, question, phase = 'shallow' } = event.data;
     const deep = phase === 'deep';
+    const tier = deep ? 'all' : 'free';
 
     await step.run('mark-running', () => setRunStatus(runId, 'running', deep ? 'deepening' : 'gathering'));
 
     try {
-      const result = await step.run('research', () =>
-        research({ domain, question, env: process.env, tier: deep ? 'all' : 'free' }),
+      // Phase 1: gather — owns its own Vercel invocation (~300s budget).
+      const gathered = await step.run('gather', () =>
+        gather({ domain, question, env: process.env, tier }),
       );
+
+      let report = gathered.report;
+      let trace = gathered.trace;
+
+      // Phase 2: critique — deep only, separate Vercel invocation.
+      if (deep && process.env.RESEARCH_CRITIQUE !== 'off') {
+        await step.run('mark-verifying', () => setRunStatus(runId, 'running', 'verifying'));
+        const refined = await step.run('critique', () =>
+          critique({ domain, env: process.env, tier, draft: report, priorTrace: trace }),
+        );
+        report = refined.report;
+        trace = refined.trace;
+      }
+
       await step.run('save-report', () =>
         saveRunReport(runId, {
           format: 'markdown',
-          markdown: result.report,
-          trace: result.trace,
-          toolsAvailable: result.toolsAvailable,
-          categories: result.categories,
+          markdown: report,
+          trace,
+          toolsAvailable: gathered.toolsAvailable,
+          categories: gathered.categories,
           phase,
         }),
       );

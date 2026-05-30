@@ -97,25 +97,53 @@ export async function chatTurn({ domain, reportMarkdown, history = [], message, 
 }
 
 
-export async function research({ domain, question, history = [], env, tier = 'all' }) {
-  const providerName = (env.LLM_PROVIDER || 'claude').toLowerCase();
-  const provider = PROVIDERS[providerName];
-  if (!provider) {
-    throw new Error(`Unknown LLM_PROVIDER "${providerName}" — use "claude" or "openai"`);
-  }
-
+// Derive the tool-spec lists that both gather() and critique() use, so the
+// critique pass sees the same tool surface (minus the pre-runs) without having
+// to re-run those expensive sources.
+function deriveTooling(env, tier) {
   const toolSpecs = getToolSpecs(env, { tier });
   const available = new Set(toolSpecs.map((t) => t.name));
+  const preRun = ['masterlist_lookup'];
+  if (tier === 'all') preRun.push('whoisxml_lookup', 'domainiq_lookup', 'bigdomaindata_lookup', 'whoxy_history');
+  const toRun = preRun.filter((n) => available.has(n));
+  const agentToolSpecs = toolSpecs.filter((t) => !toRun.includes(t.name));
+  return { toolSpecs, agentToolSpecs, toRun };
+}
+
+// Pull the human-confirmed owner from the known-owners cache once; the same
+// note is woven into both the gather prompt and the critique prompt.
+async function deriveKnownNote(domain) {
+  const known = await getKnownOwner(domain).catch(() => null);
+  if (!known || !known.correct_owner) return { knownNote: '', seedEntry: null };
+  const knownNote =
+    `\n\n[CONFIRMED OWNER — prior human-verified research, treat as authoritative ground truth] ${domain} is owned by: ${known.correct_owner}` +
+    `${known.owner_type ? ` (${known.owner_type})` : ''}.` +
+    `${known.correct_contact ? ` Known contact: ${known.correct_contact}.` : ''}` +
+    `${known.notes ? ` Notes: ${known.notes}` : ''}` +
+    ` Lead with this owner at High confidence; use the tools only to corroborate and add current contact details — do NOT contradict it unless you find decisive newer evidence.`;
+  const seedEntry = { tool: 'known_owner', args: { domain }, ok: true, error: null, data: JSON.stringify(known).slice(0, 2000) };
+  return { knownNote, seedEntry };
+}
+
+function getProvider(env) {
+  const providerName = (env.LLM_PROVIDER || 'claude').toLowerCase();
+  const provider = PROVIDERS[providerName];
+  if (!provider) throw new Error(`Unknown LLM_PROVIDER "${providerName}" — use "claude" or "openai"`);
+  return provider;
+}
+
+// Phase 1 of the pipeline: deterministic pre-runs + the main agent loop that
+// drafts a report. Returned shape is JSON-serializable so it can be the result
+// of an Inngest step.
+export async function gather({ domain, question, history = [], env, tier = 'all' }) {
+  const provider = getProvider(env);
+  const { toolSpecs, agentToolSpecs, toRun } = deriveTooling(env, tier);
 
   // Run some sources DETERMINISTICALLY rather than leaving them to the model's
   // discretion: the internal Master Domain List always (free), and on the paid
   // deep pass the domain-only historical-WHOIS sources too — so they ALWAYS
   // execute and anchor the report instead of being skipped. Their results are
   // seeded into the task message and they're removed from the model's tool list.
-  const preRun = ['masterlist_lookup'];
-  if (tier === 'all') preRun.push('whoisxml_lookup', 'domainiq_lookup', 'bigdomaindata_lookup', 'whoxy_history');
-  const toRun = preRun.filter((n) => available.has(n));
-
   const ran = await Promise.all(toRun.map(async (name) => ({ name, res: await runTool(name, { domain }, env) })));
   const byName = new Map(ran.map((r) => [r.name, r.res]));
 
@@ -140,29 +168,13 @@ export async function research({ domain, question, history = [], env, tier = 'al
       seedParts.push(`${name} (ran automatically) errored: ${res.error} — note this gap.`);
     }
   }
-  const agentToolSpecs = toolSpecs.filter((t) => !toRun.includes(t.name));
   const seedNote = seedParts.length
     ? `\n\n[Already run automatically as the first step — do NOT call these again: ${toRun.join(', ')}]\n${seedParts.join('\n')}`
     : '';
 
-  // Human-confirmed owner from prior verified research (the known-owners cache):
-  // authoritative ground truth — lead with it, use tools only to corroborate /
-  // refresh contact details.
-  const known = await getKnownOwner(domain).catch(() => null);
-  let knownNote = '';
-  if (known && known.correct_owner) {
-    seedTrace.unshift({ tool: 'known_owner', args: { domain }, ok: true, error: null, data: JSON.stringify(known).slice(0, 2000) });
-    knownNote =
-      `\n\n[CONFIRMED OWNER — prior human-verified research, treat as authoritative ground truth] ${domain} is owned by: ${known.correct_owner}` +
-      `${known.owner_type ? ` (${known.owner_type})` : ''}.` +
-      `${known.correct_contact ? ` Known contact: ${known.correct_contact}.` : ''}` +
-      `${known.notes ? ` Notes: ${known.notes}` : ''}` +
-      ` Lead with this owner at High confidence; use the tools only to corroborate and add current contact details — do NOT contradict it unless you find decisive newer evidence.`;
-  }
+  const { knownNote, seedEntry } = await deriveKnownNote(domain);
+  if (seedEntry) seedTrace.unshift(seedEntry);
 
-  // On the paid deep pass the user has explicitly opted in: the history sources
-  // above were already run; push the model to also use the remaining premium
-  // sources (which need inputs discovered during research) rather than settling.
   const deepNote =
     tier === 'all'
       ? `\n\n[PAID DEEP PASS] The user explicitly opted into the paid sources — be thorough and do not settle for a free-tier answer. The historical-WHOIS sources above already ran. Now ALSO call the remaining available premium sources: whoxy_reverse (and reverse_whois / reverse_ns / reverse_ip) for the owner's wider portfolio and shared infrastructure — search whoxy_reverse by the owner's email/company/name (current OR historical) — and rocketreach_lookup on the primary likely owner to retrieve their email/phone. Batch independent calls in parallel; only skip one that genuinely cannot apply.`
@@ -184,46 +196,82 @@ export async function research({ domain, question, history = [], env, tier = 'al
     seedTrace,
   });
 
-  let report = result.report;
-  let trace = result.trace;
-
-  // Critique/verify pass (deep only): a short second loop that hard-checks the
-  // draft for the failure modes we keep hitting and uses the tools to close any
-  // gap it finds, then re-emits the report. Disable with RESEARCH_CRITIQUE=off.
-  if (tier === 'all' && env.RESEARCH_CRITIQUE !== 'off') {
-    const critiquePrompt =
-      `You are reviewing a DRAFT domain-ownership report for ${domain} before it ships. Critique it hard, then FIX it using the tools (you have a few steps):\n` +
-      `- If the named owner is an anonymized brand/handle, did we actually try to break the anonymity? Search Quora/NamePros/LinkedIn/interviews on BOTH web_search and brave_search and OPEN promising hits with read_url to get the real name.\n` +
-      `- Is the PRIMARY contact actually the owner — not a marketplace's support line, a privacy/proxy address, or a historical/predecessor registrant? Fix the tiers if so.\n` +
-      `- Did the draft attribute the domain to a TRADEMARK HOLDER or a brand operator (often a startup running at <brand>app.com / <brand>.io) without a WHOIS-fingerprint check against the named historical registrant? If the current WHOIS is privacy-shielded AND the claimed current owner is different from the last named historical registrant, WHOIS one of the historical registrant's other known domains and compare registrar + creation/expiry/updated-at + nameservers + state leak. An identical fingerprint (especially updated-at to the second) means the historical registrant still owns it — fix the report. A workaround domain like <brand>app.com is evidence AGAINST the brand owning the bare <brand>.com.\n` +
-      `- Does EVERY infrastructure claim about a non-target domain (the suspected operator's <brand>app.com, a sibling TLD, a portfolio domain) come from an actual dns_lookup of THAT domain? If the draft says "<other>.com shares MX/NS/A with <target>.com" or "<other>.com uses <target>.com's mail server", verify by running dns_lookup on <other>.com — if the records don't actually match, the claim is fabricated and must be removed (and any conclusion that rested on it revisited).\n` +
-      `- If a likely owner NAME is known but no email, infer the likely address(es) and VERIFY via whoxy_reverse (email=…).\n` +
-      `- For each NAMED candidate owner (the primary AND any reachable employee/contact at the owning company), did we exhaust the MULTI-PATH OWNER LOOKUP — rocketreach_search by name+company, by name+location, by company-only, AND web_search/brave_search for "<name>" "<company>" linkedin.com/in/ — to surface a LinkedIn URL? An empty result on one input is NOT a stop signal; reformulate (different company string, drop the title, add the city, swap the search engine) and re-search before concluding the person is unreachable. For every LinkedIn URL surfaced by any path, run rocketreach_lookup by linkedin_url to pull email/phone — do not leave a LinkedIn URL un-looked-up.\n` +
-      `- If the owner is a LARGE corporate entity (publicly traded, defensive/non-trading legacy brand, brand-protection registrar like AuthenticWeb/MarkMonitor/CSC/Safenames/Com Laude/Brandsight), did we surface NAMED senior leaders at the operating company — not just the HQ switchboard or a generic legal@/abuse@? If the primary tier contains only a switchboard or a privacy-relay address, run rocketreach_search company-only with title hints (VP, Director, "Head of", General Counsel, Investor Relations, Corporate Development, Brand, Domain) and rocketreach_lookup every returned LinkedIn URL; produce 2–4 named contacts spread across corp dev / brand / legal / IR / IT-domains and add them to the primary/secondary tiers.\n` +
-      `- If the domain is marketplace-consigned, did we follow the seller-portfolio link (marketplace_check.seller_portfolio) and confirm it with analytics_footprint?\n` +
-      `Close any gap you can, then OUTPUT ONLY THE COMPLETE corrected report in the SAME two-part format (the fenced \`\`\`json block first, then the Markdown sections). CRITICAL: output the finished report and NOTHING ELSE — no "Critique", no "Fixes applied", no "the draft listed…", no reviewer notes or commentary about what you changed. The user sees only this text, so it must read as the final clean report. If the draft is already correct, output it unchanged.\n\nDRAFT REPORT:\n\n${result.report}` +
-      knownNote;
-    try {
-      const critique = await provider.runAgent({
-        system: SYSTEM_PROMPT,
-        history: [],
-        userPrompt: critiquePrompt,
-        toolSpecs: agentToolSpecs,
-        env,
-        maxSteps: 4,
-        maxToolResultChars: MAX_TOOL_RESULT_CHARS,
-        seedTrace: [],
-      });
-      if (critique.report && critique.report.trim().length > 200) {
-        report = critique.report;
-        trace = [...trace, ...critique.trace];
-      }
-    } catch {
-      /* keep the original report if the critique pass fails */
-    }
-  }
-
   // toolsAvailable lets the UI show which sources ran vs. were available-but-unused;
   // categories let the recap group them into labeled sections.
-  return { report, trace, toolsAvailable: toolSpecs.map((t) => t.name), categories: getCategoryMap(), tier };
+  return {
+    report: result.report,
+    trace: result.trace,
+    toolsAvailable: toolSpecs.map((t) => t.name),
+    categories: getCategoryMap(),
+    tier,
+  };
+}
+
+// Phase 2 of the pipeline: a short second loop that hard-checks the draft for
+// the failure modes we keep hitting and uses the tools to close any gap it
+// finds, then re-emits the report. Split out so each phase gets its own
+// Vercel-function budget when run as separate Inngest steps. Disable with
+// RESEARCH_CRITIQUE=off. Shallow tier skips this entirely.
+export async function critique({ domain, env, tier = 'all', draft, priorTrace = [] }) {
+  if (tier !== 'all') return { report: draft, trace: priorTrace };
+  if (env.RESEARCH_CRITIQUE === 'off') return { report: draft, trace: priorTrace };
+
+  const provider = getProvider(env);
+  const { agentToolSpecs } = deriveTooling(env, tier);
+  const { knownNote } = await deriveKnownNote(domain);
+
+  const critiquePrompt =
+    `You are reviewing a DRAFT domain-ownership report for ${domain} before it ships. Critique it hard, then FIX it using the tools (you have a few steps):\n` +
+    `- If the named owner is an anonymized brand/handle, did we actually try to break the anonymity? Search Quora/NamePros/LinkedIn/interviews on BOTH web_search and brave_search and OPEN promising hits with read_url to get the real name.\n` +
+    `- Is the PRIMARY contact actually the owner — not a marketplace's support line, a privacy/proxy address, or a historical/predecessor registrant? Fix the tiers if so.\n` +
+    `- Did the draft attribute the domain to a TRADEMARK HOLDER or a brand operator (often a startup running at <brand>app.com / <brand>.io) without a WHOIS-fingerprint check against the named historical registrant? If the current WHOIS is privacy-shielded AND the claimed current owner is different from the last named historical registrant, WHOIS one of the historical registrant's other known domains and compare registrar + creation/expiry/updated-at + nameservers + state leak. An identical fingerprint (especially updated-at to the second) means the historical registrant still owns it — fix the report. A workaround domain like <brand>app.com is evidence AGAINST the brand owning the bare <brand>.com.\n` +
+    `- Does EVERY infrastructure claim about a non-target domain (the suspected operator's <brand>app.com, a sibling TLD, a portfolio domain) come from an actual dns_lookup of THAT domain? If the draft says "<other>.com shares MX/NS/A with <target>.com" or "<other>.com uses <target>.com's mail server", verify by running dns_lookup on <other>.com — if the records don't actually match, the claim is fabricated and must be removed (and any conclusion that rested on it revisited).\n` +
+    `- If a likely owner NAME is known but no email, infer the likely address(es) and VERIFY via whoxy_reverse (email=…).\n` +
+    `- For each NAMED candidate owner (the primary AND any reachable employee/contact at the owning company), did we exhaust the MULTI-PATH OWNER LOOKUP — rocketreach_search by name+company, by name+location, by company-only, AND web_search/brave_search for "<name>" "<company>" linkedin.com/in/ — to surface a LinkedIn URL? An empty result on one input is NOT a stop signal; reformulate (different company string, drop the title, add the city, swap the search engine) and re-search before concluding the person is unreachable. For every LinkedIn URL surfaced by any path, run rocketreach_lookup by linkedin_url to pull email/phone — do not leave a LinkedIn URL un-looked-up.\n` +
+    `- If the owner is a LARGE corporate entity (publicly traded, defensive/non-trading legacy brand, brand-protection registrar like AuthenticWeb/MarkMonitor/CSC/Safenames/Com Laude/Brandsight), did we surface NAMED senior leaders at the operating company — not just the HQ switchboard or a generic legal@/abuse@? If the primary tier contains only a switchboard or a privacy-relay address, run rocketreach_search company-only with title hints (VP, Director, "Head of", General Counsel, Investor Relations, Corporate Development, Brand, Domain) and rocketreach_lookup every returned LinkedIn URL; produce 2–4 named contacts spread across corp dev / brand / legal / IR / IT-domains and add them to the primary/secondary tiers.\n` +
+    `- If the domain is marketplace-consigned, did we follow the seller-portfolio link (marketplace_check.seller_portfolio) and confirm it with analytics_footprint?\n` +
+    `Close any gap you can, then OUTPUT ONLY THE COMPLETE corrected report in the SAME two-part format (the fenced \`\`\`json block first, then the Markdown sections). CRITICAL: output the finished report and NOTHING ELSE — no "Critique", no "Fixes applied", no "the draft listed…", no reviewer notes or commentary about what you changed. The user sees only this text, so it must read as the final clean report. If the draft is already correct, output it unchanged.\n\nDRAFT REPORT:\n\n${draft}` +
+    knownNote;
+
+  try {
+    const result = await provider.runAgent({
+      system: SYSTEM_PROMPT,
+      history: [],
+      userPrompt: critiquePrompt,
+      toolSpecs: agentToolSpecs,
+      env,
+      maxSteps: 4,
+      maxToolResultChars: MAX_TOOL_RESULT_CHARS,
+      seedTrace: [],
+    });
+    if (result.report && result.report.trim().length > 200) {
+      return { report: result.report, trace: [...priorTrace, ...result.trace] };
+    }
+    return { report: draft, trace: priorTrace };
+  } catch {
+    // Keep the original draft if the critique pass fails.
+    return { report: draft, trace: priorTrace };
+  }
+}
+
+// Backwards-compatible wrapper: gather + (deep only) critique, in one call.
+// The Inngest pipeline now invokes gather() and critique() as separate steps
+// so each gets its own Vercel function-duration budget; this wrapper remains
+// for direct callers (e.g. the eval harness) that want the combined result.
+export async function research({ domain, question, history = [], env, tier = 'all' }) {
+  const gathered = await gather({ domain, question, history, env, tier });
+  let report = gathered.report;
+  let trace = gathered.trace;
+  if (tier === 'all' && env.RESEARCH_CRITIQUE !== 'off') {
+    const refined = await critique({ domain, env, tier, draft: report, priorTrace: trace });
+    report = refined.report;
+    trace = refined.trace;
+  }
+  return {
+    report,
+    trace,
+    toolsAvailable: gathered.toolsAvailable,
+    categories: gathered.categories,
+    tier,
+  };
 }
