@@ -61,8 +61,8 @@
           <button id="nav-trademark" class="nav-btn" type="button">Trademark</button>
           <button id="nav-appraisal" class="nav-btn" type="button">Appraisal</button>
           <button id="nav-naming" class="nav-btn" type="button">Naming Exercise</button>
-          <button id="nav-admin" class="nav-btn" type="button" hidden>Admin</button>
           <div class="nav-account" id="nav-account" hidden>
+            <button id="nav-admin" class="nav-btn nav-btn-admin" type="button" hidden>Admin</button>
             <div class="nav-account-email" id="nav-account-email"></div>
             <label class="nav-account-toggle"><input type="checkbox" id="nav-notify-toggle" /> Email me when reports finish</label>
             <button id="nav-logout" type="button" class="nav-logout">Sign out</button>
@@ -223,7 +223,7 @@ and I'll help you come up with a list of readily available names from across all
             <h2 class="user-add-title">Add a user</h2>
             <div class="user-add-row">
               <input id="user-add-email" type="email" placeholder="user@example.com" autocomplete="off" required />
-              <input id="user-add-password" type="password" placeholder="Temp password (8+ chars)" autocomplete="new-password" required minlength="8" />
+              <input id="user-add-password" type="password" placeholder="Password (blank = send invite email)" autocomplete="new-password" />
             </div>
             <div class="user-add-row user-add-perms">
               <label><input type="checkbox" id="user-add-domain_owner" checked /> Domain Owner</label>

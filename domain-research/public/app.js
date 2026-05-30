@@ -121,7 +121,7 @@ const toolHistory = { tm: { all: [], expanded: false, q: '' }, ap: { all: [], ex
 
 async function serverListTool(kind, limit = 5) {
   try {
-    const res = await fetch(`/api/tool-history?kind=${kind}&limit=${limit}`);
+    const res = await fetch(`/api/lookup?kind=${kind}&limit=${limit}`);
     if (!res.ok) return null;
     const d = await res.json();
     if (!Array.isArray(d.lookups)) return null;
@@ -130,15 +130,19 @@ async function serverListTool(kind, limit = 5) {
 }
 async function serverGetTool(kind, query) {
   try {
-    const res = await fetch(`/api/tool-history?kind=${kind}&query=${encodeURIComponent(query)}`);
+    const res = await fetch(`/api/lookup?kind=${kind}&query=${encodeURIComponent(query)}`);
     if (!res.ok) return null;
     const d = await res.json();
-    return d.found ? d.data : null;
+    if (!d.found) return null;
+    // updated_at comes from Postgres as an ISO string; convert to ms so callers
+    // can compare against Date.now() and feed agoLabel().
+    const updatedAt = d.updated_at ? Date.parse(d.updated_at) || null : null;
+    return { data: d.data, updatedAt };
   } catch { return null; }
 }
 function serverSaveTool(kind, key, data) {
   try {
-    fetch('/api/tool-history', {
+    fetch('/api/lookup', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ kind, query: key, data }),
@@ -755,7 +759,7 @@ async function checkAuth() {
 els.navLogout?.addEventListener('click', async (e) => {
   e.preventDefault();
   try {
-    await fetch('/api/logout', { method: 'POST' });
+    await fetch('/api/me', { method: 'DELETE' });
   } catch { /* fall through — reload still shows login */ }
   window.location.assign('/');
 });
@@ -838,10 +842,10 @@ els.forgotForm?.addEventListener('submit', async (e) => {
   const email = (els.forgotEmail && els.forgotEmail.value || '').trim();
   if (!email) return;
   try {
-    const res = await fetch('/api/password-reset', {
+    const res = await fetch('/api/login', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ action: 'request', email }),
+      body: JSON.stringify({ action: 'reset-request', email }),
     });
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));
@@ -881,10 +885,10 @@ els.resetForm?.addEventListener('submit', async (e) => {
     return;
   }
   try {
-    const res = await fetch('/api/password-reset', {
+    const res = await fetch('/api/login', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ action: 'confirm', token, password: pw }),
+      body: JSON.stringify({ action: 'reset-confirm', token, password: pw }),
     });
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));
@@ -1073,7 +1077,7 @@ function mirrorGoDaddyFromAfternic(channels) {
 
 async function getMarketCache(domain) {
   try {
-    const res = await fetch(`/api/tool-history?kind=mk&query=${encodeURIComponent(domain)}`);
+    const res = await fetch(`/api/lookup?kind=mk&query=${encodeURIComponent(domain)}`);
     if (!res.ok) return null;
     const d = await res.json();
     if (!d.found) return null;
@@ -1469,8 +1473,15 @@ els.userAddForm?.addEventListener('submit', async (e) => {
   if (els.userAddError) els.userAddError.hidden = true;
   const email = (els.userAddEmail && els.userAddEmail.value || '').trim().toLowerCase();
   const password = (els.userAddPassword && els.userAddPassword.value || '').trim();
-  if (!email || password.length < 8) {
-    els.userAddError.textContent = 'Enter an email and a password of 8+ characters.';
+  if (!email) {
+    els.userAddError.textContent = 'Enter an email (leave the password blank to send an invite).';
+    els.userAddError.hidden = false;
+    return;
+  }
+  // Blank password = invite mode; the server emails a reset link. Any non-blank
+  // value must still be 8+ chars so the manual-password path stays strong.
+  if (password.length > 0 && password.length < 8) {
+    els.userAddError.textContent = 'Password must be 8+ characters (or leave blank to send an invite).';
     els.userAddError.hidden = false;
     return;
   }
@@ -1492,6 +1503,16 @@ els.userAddForm?.addEventListener('submit', async (e) => {
     els.userAddError.textContent = data.error || `Add failed (${res.status})`;
     els.userAddError.hidden = false;
     return;
+  }
+  // Surface invite-mode feedback inline so the admin knows whether the user
+  // got an email or needs the link shared manually.
+  if (data && data.invited) {
+    els.userAddError.style.color = data.invite_warning ? '' : 'var(--teal-deep)';
+    els.userAddError.textContent = data.invite_warning
+      || `Invite email sent to ${email} — they'll set their password via the reset link.`;
+    els.userAddError.hidden = false;
+    // Auto-clear the inline notice after a few seconds so the form is clean.
+    setTimeout(() => { if (els.userAddError) { els.userAddError.hidden = true; els.userAddError.style.color = ''; } }, 6000);
   }
   // Clear the form, reload the list.
   els.userAddForm.reset();
@@ -1553,7 +1574,7 @@ async function openToolSlug(kind, slug) {
   const hit = loadRecents(kind).find((r) => r.key === slug);
   if (hit) {
     if (kind === 'tm') tmPick(hit.key, hit.data);
-    else apPick(hit.key, hit.data);
+    else apPick(hit.key, hit.data, hit.ts);
     return;
   }
   const statusEl = kind === 'tm' ? els.tmStatus : els.apStatus;
@@ -1561,9 +1582,9 @@ async function openToolSlug(kind, slug) {
   const saved = await serverGetTool(kind, slug);
   setToolStatus(statusEl, '');
   if (saved) {
-    saveRecentLocal(kind, slug, saved);
-    if (kind === 'tm') tmPick(slug, saved);
-    else apPick(slug, saved);
+    saveRecentLocal(kind, slug, saved.data);
+    if (kind === 'tm') tmPick(slug, saved.data);
+    else apPick(slug, saved.data, saved.updatedAt);
     return;
   }
   if (kind === 'tm') {
@@ -1763,7 +1784,7 @@ async function runTrademark(input) {
 }
 
 // ── Appraisal tool ──
-const apPick = (key, cached) => { setToolUrl('appraisal', key); els.apDomain.value = key; setToolStatus(els.apStatus, ''); renderAppraisal(key, cached); };
+const apPick = (key, cached, updatedAt) => { setToolUrl('appraisal', key); els.apDomain.value = key; setToolStatus(els.apStatus, ''); renderAppraisal(key, cached, { updatedAt }); };
 function fmtMoney(v) {
   if (v == null || v === '') return '';
   const n = Number(String(v).replace(/[^0-9.]/g, ''));
@@ -1792,7 +1813,7 @@ function appraisalRange(a) {
   const v = pickr(a, ['estimated_value', 'estimatedValue', 'value', 'valuation', 'price', 'fair_market_value', 'fairMarketValue', 'marketValue', 'appraisedValue', 'estimate']);
   return v ? fmtMoney(v) : '';
 }
-function renderAppraisal(domain, a) {
+function renderAppraisal(domain, a, meta) {
   const range = appraisalRange(a);
   const conf = pickr(a, ['confidence', 'confidence_level', 'confidenceLabel', 'confidenceScore', 'confidence_score']);
   const type = pickr(a, ['type', 'semanticType', 'semantic_type', 'domain_type', 'appraisal_type', 'category']);
@@ -1815,20 +1836,35 @@ function renderAppraisal(domain, a) {
   const cats = Array.isArray(a.applicableCategories) ? a.applicableCategories : (Array.isArray(a.categories) ? a.categories : []);
   const catStr = cats.map((c) => escapeHtml(resolve(c) || c)).filter(Boolean).join(', ');
   const raw = escapeHtml(JSON.stringify(a, null, 2).slice(0, 4000));
+  // "Last appraised <ago> · Refresh" line — lets the user see freshness and
+  // re-run a paid appraisal when the cached one is stale.
+  const updatedAt = meta && meta.updatedAt;
+  const metaRow = updatedAt
+    ? `<div class="ap-meta">Appraised ${escapeHtml(agoLabel(updatedAt))} · <button type="button" class="ap-refresh" data-refresh="${escapeHtml(domain)}">Refresh</button></div>`
+    : '';
   els.apResult.hidden = false;
   els.apResult.innerHTML =
     `<div class="tool-title">${escapeHtml(domain)}</div>` +
+    metaRow +
     (rows || '<div class="muted">No value fields recognized — see the raw appraisal below.</div>') +
     (analysis ? `<div class="ap-block"><h3>Market analysis</h3><p>${escapeHtml(analysis)}</p></div>` : '') +
     block(a.strengths || a.pros, 'Why it scored well') +
     block(a.weaknesses || a.cons || a.knocks, 'Main knocks') +
     (catStr ? `<div class="ap-field"><span>Categories</span> ${catStr}</div>` : '') +
     `<details class="src-detail"><summary>full appraisal</summary><pre>${raw}</pre></details>`;
+  // Wire the Refresh button (re-renders happen each time, so re-bind every render).
+  const refreshBtn = els.apResult.querySelector('button.ap-refresh');
+  if (refreshBtn) {
+    refreshBtn.addEventListener('click', () => {
+      const d = refreshBtn.getAttribute('data-refresh') || domain;
+      runAppraisal(d, { force: true });
+    });
+  }
 }
 function finishAppraisal(domain, a) {
   setToolUrl('appraisal', domain);
   setToolStatus(els.apStatus, '');
-  renderAppraisal(domain, a);
+  renderAppraisal(domain, a, { updatedAt: Date.now() });
   saveRecent('ap', domain, a);
   refreshToolRecent(els.apRecent, 'ap');
 }
@@ -1853,13 +1889,15 @@ async function pollAppraisal(domain, jobId) {
   }
   setToolStatus(els.apStatus, 'Still processing — try again shortly.', true);
 }
-async function runAppraisal(domainInput) {
+async function runAppraisal(domainInput, opts) {
   const domain = String(domainInput || '').trim();
+  const force = !!(opts && opts.force);
   els.apResult.hidden = true;
   els.apResult.innerHTML = '';
-  setToolStatus(els.apStatus, `Appraising ${domain}…`);
+  setToolStatus(els.apStatus, force ? `Re-appraising ${domain}…` : `Appraising ${domain}…`);
   try {
-    const res = await fetch(`/api/lookup?source=appraise_lookup&domain=${encodeURIComponent(domain)}`);
+    const qs = `source=appraise_lookup&domain=${encodeURIComponent(domain)}${force ? '&force=1' : ''}`;
+    const res = await fetch(`/api/lookup?${qs}`);
     const data = await res.json();
     if (!data.ok) throw new Error(data.error || `Failed (${res.status})`);
     const d = data.data || {};

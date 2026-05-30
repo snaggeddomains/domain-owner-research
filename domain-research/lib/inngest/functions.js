@@ -24,24 +24,26 @@ function esc(s) {
 // pass when we didn't pin down the owner); DEEP = paid pass (no further upsell).
 function buildEmailCopy({ domain, phase, summary, url }) {
   const deep = phase === 'deep';
-  const passLabel = deep ? 'Deep report' : 'Free report';
+  // Wording for the opening line — matches the phase the user opted into.
+  const passWord = deep ? 'deep research' : 'free';
   const found = summary && summary.found;
   const owner = summary && summary.likelyOwner;
   const ownerContact = summary && summary.primaryContact && summary.primaryContact.value;
   const conf = summary && summary.confidence;
 
-  // Headline = the bottom-line sentence at the top of the email; subject
-  // mirrors it so the inbox preview already tells the user what we found.
-  let subject;
+  // Subject stays simple and consistent across phases so inbox threading shows
+  // a single "<domain> Ownership Report" item regardless of free vs deep.
+  const subject = `${domain} Ownership Report`;
+
+  // Headline = the outcome line shown prominently in the body. Subject is
+  // intentionally generic, so the headline is where we tell the user what we
+  // found.
   let headline;
   if (found && owner) {
-    subject = `${passLabel} ready: ${domain} — likely owner ${owner}${conf ? ` (${conf} confidence)` : ''}`;
     headline = `Likely owner: ${owner}${conf ? ` — ${conf} confidence` : ''}.`;
   } else if (found && ownerContact) {
-    subject = `${passLabel} ready: ${domain} — owner lead ${ownerContact}${conf ? ` (${conf})` : ''}`;
     headline = `Best owner lead: ${ownerContact}${conf ? ` — ${conf} confidence` : ''}.`;
   } else {
-    subject = `${passLabel} ready: ${domain} — owner not confidently identified`;
     headline = deep
       ? `We could not confidently identify the owner from the paid + free sources we checked.`
       : `We could not confidently identify the owner from the free sources alone.`;
@@ -65,7 +67,7 @@ function buildEmailCopy({ domain, phase, summary, url }) {
     nextStepHtml = nextStepText;
   }
 
-  return { subject, headline, bottomLine, nextStepText, nextStepHtml };
+  return { subject, headline, bottomLine, nextStepText, nextStepHtml, passWord };
 }
 
 // "Report is ready" notification — only sent to a user who opted in via
@@ -81,24 +83,24 @@ async function notifyOwnerIfWanted(runId) {
   const url = reportUrl({ domain: run.domain, runId: run.id, createdAt: run.created_at });
   const phase = (run.report && run.report.phase) || 'shallow';
   const summary = summarizeReport(run.report || {});
-  const { subject, headline, bottomLine, nextStepText, nextStepHtml } = buildEmailCopy({
+  const { subject, headline, bottomLine, nextStepText, nextStepHtml, passWord } = buildEmailCopy({
     domain: run.domain,
     phase,
     summary,
     url,
   });
 
-  const textParts = [
-    `Your domain ownership research on ${run.domain} just finished.`,
-    headline,
-  ];
+  const opener = `Your ${passWord} domain ownership research on ${run.domain} just finished.`;
+  const openerHtml = `Your ${esc(passWord)} domain ownership research on <strong>${esc(run.domain)}</strong> just finished.`;
+
+  const textParts = [opener, headline];
   if (bottomLine) textParts.push(bottomLine);
   textParts.push(`Open the report: ${url}`);
   textParts.push(nextStepText);
   textParts.push(`(You're getting this because "Email me when reports finish" is on. Turn it off in the sidebar to stop.)`);
 
   const htmlParts = [
-    `<p>Your domain ownership research on <strong>${esc(run.domain)}</strong> just finished.</p>`,
+    `<p>${openerHtml}</p>`,
     `<p style="font-size:15px;font-weight:600;margin:14px 0 6px">${esc(headline)}</p>`,
   ];
   if (bottomLine) htmlParts.push(`<p style="color:#333;margin:0 0 14px">${esc(bottomLine)}</p>`);

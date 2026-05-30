@@ -1,5 +1,41 @@
-import { requireAdmin, hashPassword } from '../lib/auth.js';
+import crypto from 'node:crypto';
+import { requireAdmin, hashPassword, signResetToken } from '../lib/auth.js';
 import { listUsers, createUser, updateUser, deleteUser, getUser, findUserByEmail } from '../lib/db/users.js';
+import { sendEmail, isEmailConfigured } from '../lib/email.js';
+
+// Email a new user a "you've been invited" message containing a password-reset
+// link, so they set their own password on first sign-in. Returns true if the
+// send was attempted (success or transient failure), false if email isn't
+// configured at all. Failures don't block account creation — admins can always
+// resend / set a password manually if Resend is down.
+async function sendInviteEmail(req, user) {
+  if (!isEmailConfigured()) return false;
+  const token = signResetToken(user.id);
+  const origin = (req.headers['x-forwarded-proto'] ? `${req.headers['x-forwarded-proto']}://` : 'https://') +
+    (req.headers['x-forwarded-host'] || req.headers.host || 'research.snagged.com');
+  const link = `${origin}/?reset=${encodeURIComponent(token)}`;
+  try {
+    await sendEmail({
+      to: user.email,
+      subject: 'You\'ve been invited to Snagged Research',
+      text:
+        `Hey,\n\n` +
+        `You've been invited to get access to Snagged Research (${origin}).\n\n` +
+        `Click here to set up your password and sign in:\n${link}\n\n` +
+        `(This link expires in 1 hour — if it does, ask the admin who invited you to resend it, or use "Forgot password" on the login screen.)`,
+      html:
+        `<p>Hey,</p>` +
+        `<p>You've been invited to get access to <strong>Snagged Research</strong> (<a href="${origin}">${origin}</a>).</p>` +
+        `<p><a href="${link}" style="display:inline-block;padding:10px 16px;background:#e48069;color:#fff;text-decoration:none;border-radius:8px;font-weight:700">Set up your password</a></p>` +
+        `<p style="color:#666;font-size:12px">This link expires in 1 hour. If it does, ask the admin who invited you to resend it, or use "Forgot password" on the login screen.</p>` +
+        `<p style="color:#666;font-size:12px">If the button doesn't work, paste this URL: ${link}</p>`,
+    });
+    return true;
+  } catch (err) {
+    console.error('user-invite send failed:', err && err.message);
+    return true; // we did attempt — surface that to the admin UI as "tried"
+  }
+}
 
 // Admin-only user CRUD. One endpoint handles all four verbs:
 //   GET                 → list users
@@ -27,17 +63,36 @@ export default async function handler(req, res) {
       const email = typeof body.email === 'string' ? body.email.trim().toLowerCase() : '';
       const password = typeof body.password === 'string' ? body.password.trim() : '';
       if (!email) { res.status(400).json({ error: 'Email is required' }); return; }
-      if (password.length < 8) { res.status(400).json({ error: 'Password must be at least 8 characters' }); return; }
+      // When the admin leaves password blank, we treat this as an INVITE:
+      // create the account with a random throwaway hash and email the user a
+      // password-reset link so they set their own password on first sign-in.
+      const inviteMode = password.length === 0;
+      if (!inviteMode && password.length < 8) {
+        res.status(400).json({ error: 'Password must be at least 8 characters (leave blank to send an invite email instead)' });
+        return;
+      }
       const dupe = await findUserByEmail(email);
       if (dupe) { res.status(409).json({ error: 'A user with that email already exists' }); return; }
+      // Random 32-byte throwaway hash for invite-mode accounts; the user will
+      // overwrite it via the reset-link flow before they can ever sign in.
+      const effectivePassword = inviteMode ? crypto.randomBytes(32).toString('hex') : password;
       const user = await createUser({
         email,
-        password_hash: await hashPassword(password),
+        password_hash: await hashPassword(effectivePassword),
         is_admin: Boolean(body.is_admin),
         permissions: sanitizePermissions(body.permissions),
         email_notify_on_done: Boolean(body.email_notify_on_done),
       });
-      res.status(201).json({ user: stripHash(user) });
+      let inviteSent = false;
+      if (inviteMode) {
+        inviteSent = await sendInviteEmail(req, user);
+      }
+      res.status(201).json({
+        user: stripHash(user),
+        invited: inviteMode,
+        invite_sent: inviteSent,
+        invite_warning: inviteMode && !inviteSent ? 'Email is not configured (set RESEND_API_KEY) — share the password-reset link manually.' : null,
+      });
       return;
     }
 

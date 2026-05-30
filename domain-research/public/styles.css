@@ -159,6 +159,9 @@ a.wordmark:hover { text-decoration: none; opacity: .9; }
 .tm-toggle.on:hover { background: #1a6b43; border-color: #1a6b43; }
 .tm-filter-count { font-size: .82rem; color: var(--navy-3); }
 .ap-value { font-family: var(--body); font-weight: 800; font-size: 2.1rem; letter-spacing: -.01em; color: var(--coral-deep); margin: 10px 0; line-height: 1.1; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.ap-meta { display: flex; align-items: center; gap: 10px; color: var(--navy-3); font-size: 12px; margin: 2px 0 10px; }
+.ap-meta .ap-refresh { background: transparent; border: 1.5px solid var(--line); color: var(--coral-deep); padding: 3px 10px; border-radius: 999px; font-weight: 700; font-size: 12px; cursor: pointer; }
+.ap-meta .ap-refresh:hover { border-color: var(--coral); background: rgba(228,128,105,.08); }
 .ap-field { color: var(--navy); font-size: .95rem; margin: 2px 0; }
 .ap-field span { color: var(--navy-3); font-weight: 700; margin-right: 6px; }
 .ap-block { margin-top: 12px; }
@@ -186,6 +189,17 @@ a.wordmark:hover { text-decoration: none; opacity: .9; }
 .nav-btn:active { transform: none; box-shadow: none; }
 .nav-btn.active { background: var(--navy); color: var(--cream-2); border-color: var(--navy); }
 .nav-btn.active:hover { background: #2d4f64; }
+/* Admin variant — lives in the bottom nav-account block, tinted distinctly so
+   it reads as "privileged section" rather than another regular nav item. */
+.nav-btn.nav-btn-admin {
+  background: var(--sky-soft);
+  color: var(--deep-2);
+  border-color: var(--sky);
+  margin-bottom: 6px;
+}
+.nav-btn.nav-btn-admin:hover { background: var(--sky); border-color: var(--teal-deep); }
+.nav-btn.nav-btn-admin.active { background: var(--teal-deep); color: var(--cream-2); border-color: var(--teal-deep); }
+.nav-btn.nav-btn-admin.active:hover { background: var(--deep); }
 
 .page-title { font-size: 40px; margin: 10px 0 6px; }
 

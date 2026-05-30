@@ -1,22 +1,28 @@
+// Tool subsystem endpoint — runs a single source AND serves the cached tool-
+// history reads/writes the standalone Trademark/Appraisal tools depend on.
+// Both live here so we stay under the Vercel Hobby plan's 12-function cap.
+//
+// Routing:
+//   GET  /api/lookup?source=<name>&...      -> run a tool (spends credits)
+//   GET  /api/lookup?kind=tm                -> recent 5 lookups of that kind
+//   GET  /api/lookup?kind=tm&query=foo      -> one saved result
+//   POST /api/lookup  { kind, query, data } -> upsert a saved result
+// Presence of ?source= picks the run-tool path; otherwise it's history.
+
 import { isAuthed, currentUser, userCan, moduleForSource } from '../lib/auth.js';
 import { runTool } from '../lib/sources/index.js';
 import { normalizeDomain } from '../lib/util.js';
+import { saveToolLookup, listToolLookups, getToolLookup } from '../lib/db/tools.js';
 
-// Standalone tool runner — invokes one source directly (Trademark, Appraisal,
-// …) outside the research pipeline. Auth-gated; spends that source's credits.
+// Some tool-runs (e.g. registration_cluster, marketplace_check) need room.
 export const config = { maxDuration: 60 };
 
-export default async function handler(req, res) {
-  res.setHeader('Cache-Control', 'no-store');
-  if (!isAuthed(req)) {
-    res.status(401).json({ error: 'Not authenticated' });
-    return;
-  }
-  const source = typeof req.query.source === 'string' ? req.query.source : '';
-  if (!source) {
-    res.status(400).json({ error: 'Missing ?source=' });
-    return;
-  }
+// tm = trademark, ap = appraisal, mk = marketplace "for sale" strip (cached so
+// re-opening a report doesn't re-spend Scrape.do credits on every view).
+const KINDS = new Set(['tm', 'ap', 'mk']);
+const KIND_MODULE = { tm: 'trademark', ap: 'appraisal', mk: 'domain_owner' };
+
+async function handleRunTool(req, res, source) {
   // Gate by the module the source belongs to (trademark_search → trademark,
   // appraise_lookup → appraisal, others → domain_owner).
   const user = await currentUser(req);
@@ -31,4 +37,61 @@ export default async function handler(req, res) {
 
   const result = await runTool(source, args, process.env);
   res.status(result.ok ? 200 : 400).json({ source, ...result });
+}
+
+async function handleHistory(req, res) {
+  // Per-kind module-permission gate. POST kind lives in the body; GET in query.
+  const user = await currentUser(req);
+  const kindParam = (req.method === 'POST'
+    ? (req.body && (typeof req.body === 'string' ? JSON.parse(req.body || '{}').kind : req.body.kind))
+    : req.query.kind) || '';
+  const mod = KIND_MODULE[String(kindParam)] || 'domain_owner';
+  if (user && !userCan(user, mod)) {
+    res.status(403).json({ error: `You don't have access to the ${mod} module` });
+    return;
+  }
+
+  if (req.method === 'POST') {
+    const body = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : req.body || {};
+    const kind = String(body.kind || '');
+    const query = String(body.query || '').trim();
+    if (!KINDS.has(kind) || !query) {
+      res.status(400).json({ error: 'Provide kind ("tm"|"ap"|"mk") and query' });
+      return;
+    }
+    const id = await saveToolLookup(kind, query, body.data ?? null);
+    res.status(200).json({ ok: true, id });
+    return;
+  }
+
+  if (req.method !== 'GET') {
+    res.status(405).json({ error: 'Method not allowed' });
+    return;
+  }
+
+  const kind = String(req.query.kind || '');
+  if (!KINDS.has(kind)) {
+    res.status(400).json({ error: 'Provide kind ("tm"|"ap"|"mk")' });
+    return;
+  }
+  const query = typeof req.query.query === 'string' ? req.query.query.trim() : '';
+  if (query) {
+    const row = await getToolLookup(kind, query);
+    res.status(200).json({ found: Boolean(row), data: row ? row.data : null, updated_at: row ? row.updated_at : null });
+    return;
+  }
+  const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 5, 1), 200);
+  const lookups = await listToolLookups(kind, limit);
+  res.status(200).json({ lookups });
+}
+
+export default async function handler(req, res) {
+  res.setHeader('Cache-Control', 'no-store');
+  if (!isAuthed(req)) {
+    res.status(401).json({ error: 'Not authenticated' });
+    return;
+  }
+  const source = typeof req.query.source === 'string' ? req.query.source : '';
+  if (source) return handleRunTool(req, res, source);
+  return handleHistory(req, res);
 }

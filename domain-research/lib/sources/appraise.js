@@ -34,10 +34,11 @@ export default {
     properties: {
       domain: { type: 'string' },
       job_id: { type: 'string', description: 'Poll an in-progress appraisal job instead of starting a new one' },
+      force: { type: 'boolean', description: 'Skip the existing/cached appraisal and create a fresh one (spends credits)' },
     },
   },
   requiresKey: ['APPRAISE_NET_KEY', 'APPRAISE_NET_SECRET'],
-  async run({ domain, job_id }, { env }) {
+  async run({ domain, job_id, force }, { env }) {
     const h = headers(env);
 
     // Poll an in-progress job's status (raw — caller detects completion).
@@ -49,12 +50,16 @@ export default {
     const d = normalizeDomain(domain);
     if (!isValidDomain(d)) throw new Error(`Invalid domain: ${domain}`);
 
-    // Existing / cached appraisal first (cheaper).
-    try {
-      const existing = await fetchJson(`${BASE}/appraisal/${encodeURIComponent(d)}`, { headers: h });
-      if (existing) return { domain: d, cached: true, appraisal: unwrap(existing) };
-    } catch (e) {
-      /* 404 = none yet; fall through to create */
+    // Existing / cached appraisal first (cheaper) — unless the caller asked
+    // for a forced fresh run (the UI's Refresh button passes force=1).
+    const wantsForce = force === true || force === 'true' || force === 1 || force === '1';
+    if (!wantsForce) {
+      try {
+        const existing = await fetchJson(`${BASE}/appraisal/${encodeURIComponent(d)}`, { headers: h });
+        if (existing) return { domain: d, cached: true, appraisal: unwrap(existing) };
+      } catch (e) {
+        /* 404 = none yet; fall through to create */
+      }
     }
 
     // Create a new appraisal — sync result or an async job to poll.

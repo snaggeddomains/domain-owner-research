@@ -1,4 +1,4 @@
-import { currentUser, gateEnabled, ensureAdminSeed } from '../lib/auth.js';
+import { currentUser, gateEnabled, ensureAdminSeed, clearAuthCookie } from '../lib/auth.js';
 import { updateUser } from '../lib/db/users.js';
 
 export default async function handler(req, res) {
@@ -7,6 +7,14 @@ export default async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store');
   // Seed the first admin from env vars if the users table is still empty.
   await ensureAdminSeed();
+
+  // DELETE /api/me — sign out (clears the auth cookie). Lives here so logout
+  // doesn't need its own serverless function under the Hobby plan's 12-fn cap.
+  if (req.method === 'DELETE') {
+    res.setHeader('Set-Cookie', clearAuthCookie());
+    res.status(200).json({ ok: true });
+    return;
+  }
 
   // PATCH /api/me — the signed-in user updates their own preferences.
   // Today only email_notify_on_done is settable here; future self-serve
