@@ -5,6 +5,68 @@ import { getChat, updateTurn } from '../db/chat.js';
 import { getUser } from '../db/users.js';
 import { sendEmail, isEmailConfigured } from '../email.js';
 import { reportUrl } from '../reportUrl.js';
+import { summarizeReport } from '../reportSummary.js';
+
+// HTML-escape user/agent content before interpolating into the HTML email body
+// (the JSON likely_owner / summary / contact values come from model output and
+// can legitimately contain '<', '&', etc.).
+function esc(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+// Build phase-aware ({ subject, headline, bottomLine, nextStepText, nextStepHtml })
+// from the parsed report summary. SHALLOW = free pre-flight (encourage the deep
+// pass when we didn't pin down the owner); DEEP = paid pass (no further upsell).
+function buildEmailCopy({ domain, phase, summary, url }) {
+  const deep = phase === 'deep';
+  const passLabel = deep ? 'Deep report' : 'Free report';
+  const found = summary && summary.found;
+  const owner = summary && summary.likelyOwner;
+  const ownerContact = summary && summary.primaryContact && summary.primaryContact.value;
+  const conf = summary && summary.confidence;
+
+  // Headline = the bottom-line sentence at the top of the email; subject
+  // mirrors it so the inbox preview already tells the user what we found.
+  let subject;
+  let headline;
+  if (found && owner) {
+    subject = `${passLabel} ready: ${domain} — likely owner ${owner}${conf ? ` (${conf} confidence)` : ''}`;
+    headline = `Likely owner: ${owner}${conf ? ` — ${conf} confidence` : ''}.`;
+  } else if (found && ownerContact) {
+    subject = `${passLabel} ready: ${domain} — owner lead ${ownerContact}${conf ? ` (${conf})` : ''}`;
+    headline = `Best owner lead: ${ownerContact}${conf ? ` — ${conf} confidence` : ''}.`;
+  } else {
+    subject = `${passLabel} ready: ${domain} — owner not confidently identified`;
+    headline = deep
+      ? `We could not confidently identify the owner from the paid + free sources we checked.`
+      : `We could not confidently identify the owner from the free sources alone.`;
+  }
+
+  // One-line nuance below the headline (the model's own plain-English summary,
+  // when present, beats anything we could template).
+  const bottomLine = summary && summary.summary ? summary.summary : null;
+
+  // Next-step nudge: only the SHALLOW path upsells the deep pass. DEEP just
+  // points to the refine-chat for follow-up.
+  let nextStepText;
+  let nextStepHtml;
+  if (!deep) {
+    nextStepText = found
+      ? `This was the free pre-flight pass. If you need verified email/phone for the owner — or a deeper portfolio + reverse-WHOIS sweep — open the report and hit "Go deeper" to run the paid sources.`
+      : `This was the free pre-flight pass — it skips the paid historical-WHOIS / reverse-WHOIS / RocketReach sources that often unmask a privacy-shielded owner. Open the report and hit "Go deeper" to run them.`;
+    nextStepHtml = nextStepText;
+  } else {
+    nextStepText = `Need more? Open the report and use the chat panel to ask follow-ups — it can run targeted lookups against the same sources.`;
+    nextStepHtml = nextStepText;
+  }
+
+  return { subject, headline, bottomLine, nextStepText, nextStepHtml };
+}
 
 // "Report is ready" notification — only sent to a user who opted in via
 // email_notify_on_done. Wrapped in its own step.run so it's durable and a
@@ -15,21 +77,45 @@ async function notifyOwnerIfWanted(runId) {
   const user = await getUser(run.user_id);
   if (!user || !user.email_notify_on_done) return { sent: false, reason: 'user opted out' };
   if (!isEmailConfigured()) return { sent: false, reason: 'RESEND_API_KEY not set' };
+
   const url = reportUrl({ domain: run.domain, runId: run.id, createdAt: run.created_at });
+  const phase = (run.report && run.report.phase) || 'shallow';
+  const summary = summarizeReport(run.report || {});
+  const { subject, headline, bottomLine, nextStepText, nextStepHtml } = buildEmailCopy({
+    domain: run.domain,
+    phase,
+    summary,
+    url,
+  });
+
+  const textParts = [
+    `Your domain ownership research on ${run.domain} just finished.`,
+    headline,
+  ];
+  if (bottomLine) textParts.push(bottomLine);
+  textParts.push(`Open the report: ${url}`);
+  textParts.push(nextStepText);
+  textParts.push(`(You're getting this because "Email me when reports finish" is on. Turn it off in the sidebar to stop.)`);
+
+  const htmlParts = [
+    `<p>Your domain ownership research on <strong>${esc(run.domain)}</strong> just finished.</p>`,
+    `<p style="font-size:15px;font-weight:600;margin:14px 0 6px">${esc(headline)}</p>`,
+  ];
+  if (bottomLine) htmlParts.push(`<p style="color:#333;margin:0 0 14px">${esc(bottomLine)}</p>`);
+  htmlParts.push(
+    `<p><a href="${esc(url)}" style="display:inline-block;padding:10px 16px;background:#e48069;color:#fff;text-decoration:none;border-radius:8px;font-weight:700">Open the report</a></p>`,
+  );
+  htmlParts.push(`<p style="color:#444;font-size:13px;margin-top:14px">${esc(nextStepHtml)}</p>`);
+  htmlParts.push(`<p style="color:#666;font-size:12px">If the button doesn't work, paste this URL: ${esc(url)}</p>`);
+  htmlParts.push(`<p style="color:#999;font-size:11px">You're getting this because "Email me when reports finish" is on. Turn it off in the sidebar to stop.</p>`);
+
   await sendEmail({
     to: user.email,
-    subject: `Your ${run.domain} report is ready`,
-    text:
-      `Your domain ownership research on ${run.domain} just finished.\n\n` +
-      `Open the report: ${url}\n\n` +
-      `(You're getting this because "Email me when reports finish" is on. Turn it off in the sidebar to stop.)`,
-    html:
-      `<p>Your domain ownership research on <strong>${run.domain}</strong> just finished.</p>` +
-      `<p><a href="${url}" style="display:inline-block;padding:10px 16px;background:#e48069;color:#fff;text-decoration:none;border-radius:8px;font-weight:700">Open the report</a></p>` +
-      `<p style="color:#666;font-size:12px">If the button doesn't work, paste this URL: ${url}</p>` +
-      `<p style="color:#999;font-size:11px">You're getting this because "Email me when reports finish" is on. Turn it off in the sidebar to stop.</p>`,
+    subject,
+    text: textParts.join('\n\n'),
+    html: htmlParts.join(''),
   });
-  return { sent: true };
+  return { sent: true, phase, found: Boolean(summary && summary.found) };
 }
 
 // Cost-gated pipeline. The default ('shallow') pass uses only FREE sources and
