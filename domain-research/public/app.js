@@ -2064,9 +2064,35 @@ function renderNamingResults(data) {
   const stretch = Array.isArray(data.stretch) ? data.stretch : [];
   if (els.namingBuyReadyCount) els.namingBuyReadyCount.textContent = `(${buy.length} ${buy.length === 1 ? 'match' : 'matches'})`;
   if (els.namingStretchCount) els.namingStretchCount.textContent = `(${stretch.length} ${stretch.length === 1 ? 'match' : 'matches'})`;
-  if (els.namingBuyReadyTable) els.namingBuyReadyTable.innerHTML = renderNamingTable(buy, 'Buy-ready');
-  if (els.namingStretchTable) els.namingStretchTable.innerHTML = renderNamingTable(stretch, 'Stretch');
+  // When both buckets are empty, point at the filters most likely to be
+  // over-tight so the user can iterate instead of staring at a dead end.
+  if (!buy.length && !stretch.length) {
+    if (els.namingBuyReadyTable) els.namingBuyReadyTable.innerHTML = renderNamingNoMatchHint(data.filters);
+    if (els.namingStretchTable) els.namingStretchTable.innerHTML = '';
+    if (els.namingStretchCount) els.namingStretchCount.textContent = '';
+  } else {
+    if (els.namingBuyReadyTable) els.namingBuyReadyTable.innerHTML = renderNamingTable(buy, 'Buy-ready');
+    if (els.namingStretchTable) els.namingStretchTable.innerHTML = renderNamingTable(stretch, 'Stretch');
+  }
   if (els.namingResults) els.namingResults.hidden = false;
+}
+
+function renderNamingNoMatchHint(f) {
+  const tight = [];
+  if (f && f.num_words != null) tight.push(`<code>${f.num_words}-word only</code> — try removing the word-count constraint`);
+  if (f && f.min_quality_score != null && f.min_quality_score >= 3.0) tight.push(`<code>quality ≥ ${f.min_quality_score}</code> — try lowering or removing the quality floor`);
+  if (f && f.dictionary_word_only) tight.push(`<code>dictionary words only</code> — many strong names are coined or compound`);
+  if (f && f.sld_length_max != null && f.sld_length_max <= 6) tight.push(`<code>length ≤ ${f.sld_length_max}</code> — short names get scarce fast`);
+  const hint = tight.length
+    ? `<ul class="naming-empty-hints">${tight.map((t) => `<li>${t}</li>`).join('')}</ul>`
+    : '<p>Try broadening the brief — fewer hard constraints, wider price range, or different keywords.</p>';
+  return (
+    `<div class="naming-empty-block">` +
+      `<p><strong>No matches across either bucket for this brief.</strong> The most common over-tight filters in the parsed result above:</p>` +
+      hint +
+      `<p class="naming-empty-foot">Edit the brief and click <strong>Find Names</strong> again — the parser re-runs from scratch each click.</p>` +
+    `</div>`
+  );
 }
 
 function renderNamingFilters(f) {

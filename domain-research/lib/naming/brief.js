@@ -11,12 +11,19 @@ const SYSTEM = `You are parsing a domain-naming brief into a JSON filter object.
   "num_words": 1,
   "dictionary_word_only": true,
   "max_price": 5000,
-  "min_quality_score": 3.0,
+  "min_quality_score": 2.5,
   "semantic_keywords": ["tech", "B2B", "saas"],
   "include_stretch": true
 }
 
-If the user is vague, infer sensible defaults. If they specify "premium", set max_price high (50000+). If they say "easy to spell", set dictionary_word_only: true and num_words: 1. Always include at least .com in tlds. Output JSON only — no prose, no code fences.`;
+Rules:
+- Always include at least ".com" in tlds.
+- num_words: 1 ONLY if the brief explicitly says "one word", "single word", or "1-word only". 2 ONLY if it explicitly says "two-word only" or "exactly two words". For "one or two words", "1-2 words", "1 or 2", or anything ambiguous, return null (no constraint).
+- min_quality_score: default 2.5. Bump higher (3.0+) ONLY if the brief explicitly demands a premium or top-tier feel AND num_words is 1. Two-word names typically score lower, so when num_words is 2 or null, keep min_quality_score at 2.5 or below.
+- dictionary_word_only + num_words=1 together imply a very tight filter — only set both when the brief explicitly asks for a single common-English word.
+- If they say "easy to spell" without specifying word count, set dictionary_word_only: true but leave num_words: null.
+- If they say "premium", set max_price high (50000+). If they give a range, take the high end as max_price.
+- Output JSON only — no prose, no code fences.`;
 
 export async function parseBrief(brief, env) {
   if (!env.ANTHROPIC_API_KEY) throw new Error('ANTHROPIC_API_KEY is not set');
@@ -69,7 +76,12 @@ export function validateFilters(raw) {
   const max_price = Number.isFinite(maxPriceRaw) && maxPriceRaw > 0 ? maxPriceRaw : null;
 
   const mqsRaw = Number(f.min_quality_score);
-  const min_quality_score = Number.isFinite(mqsRaw) && mqsRaw >= 0 ? mqsRaw : 2.5;
+  // §2.3 default is 2.5; cap at 3.0 since two-word names — which often have
+  // lower zipf-derived quality scores — get effectively excluded above that.
+  // The Haiku parser sometimes bumps this aggressively for "premium" briefs;
+  // the cap keeps the result set populated even when the brief reads strict.
+  let min_quality_score = Number.isFinite(mqsRaw) && mqsRaw >= 0 ? mqsRaw : 2.5;
+  if (min_quality_score > 3.0) min_quality_score = 3.0;
 
   const semantic_keywords = Array.isArray(f.semantic_keywords)
     ? f.semantic_keywords.filter((k) => typeof k === 'string' && k.trim()).map((k) => k.trim().toLowerCase()).slice(0, 16)

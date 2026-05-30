@@ -304,6 +304,12 @@ button:disabled { opacity: .55; cursor: progress; }
 .naming-notes { min-width: 140px; color: var(--navy); }
 .naming-notes:empty::before { content: attr(data-placeholder); color: var(--navy-3); }
 .naming-empty { padding: 18px; color: var(--navy-3); text-align: center; margin: 0; }
+.naming-empty-block { padding: 22px 24px; color: var(--navy-2); line-height: 1.55; }
+.naming-empty-block p { margin: 0 0 10px; }
+.naming-empty-block code { background: var(--cream); padding: 1px 6px; border-radius: 4px; font-size: .9em; }
+.naming-empty-hints { margin: 8px 0 14px; padding-left: 22px; }
+.naming-empty-hints li { margin: 4px 0; }
+.naming-empty-foot { color: var(--navy-3); font-size: .9rem; }
 .naming-status-pill { display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: .8rem; font-weight: 600; }
 .naming-status-pill.status-for-sale { background: #16a34a; color: #fff; }
 .naming-status-pill.status-in-use { background: #fecaca; color: #7f1d1d; }
