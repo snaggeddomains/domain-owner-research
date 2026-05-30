@@ -12,7 +12,9 @@ export default async function handler(req, res) {
 
   const body = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : req.body || {};
   const email = typeof body.email === 'string' ? body.email.trim().toLowerCase() : '';
-  const password = typeof body.password === 'string' ? body.password : '';
+  // Trim the password so a stray paste-newline/space can't silently mismatch
+  // the hash we stored from the (trimmed) env var on seed.
+  const password = typeof body.password === 'string' ? body.password.trim() : '';
   if (!password) {
     res.status(400).json({ error: 'Password required' });
     return;
