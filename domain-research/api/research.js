@@ -1,7 +1,7 @@
 import { inngest, RUN_REQUESTED } from '../lib/inngest/client.js';
 import { isValidDomain, normalizeDomain } from '../lib/util.js';
 import { checkRateLimit, clientIp } from '../lib/ratelimit.js';
-import { isAuthed } from '../lib/auth.js';
+import { isAuthed, currentUser } from '../lib/auth.js';
 import { isDbConfigured } from '../lib/db/supabase.js';
 import { createRun, getRun, failRun, setRunStatus, listRuns } from '../lib/db/runs.js';
 
@@ -124,7 +124,8 @@ export default async function handler(req, res) {
     }
   }
 
-  const runId = await createRun({ domain, question });
+  const user = await currentUser(req);
+  const runId = await createRun({ domain, question, user_id: user && user.id ? user.id : null });
   try {
     await inngest.send({ name: RUN_REQUESTED, data: { runId, domain, question, phase } });
   } catch (e) {

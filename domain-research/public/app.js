@@ -3,6 +3,7 @@ const $ = (id) => document.getElementById(id);
 const els = {
   login: $('login'),
   loginForm: $('login-form'),
+  email: $('email'),
   password: $('password'),
   loginError: $('login-error'),
   app: $('app'),
@@ -682,7 +683,7 @@ els.loginForm?.addEventListener('submit', async (e) => {
     const res = await fetch('/api/login', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ password: els.password.value }),
+      body: JSON.stringify({ email: els.email && els.email.value, password: els.password.value }),
     });
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));
