@@ -23,7 +23,6 @@ import websearch from './websearch.js';
 import cluster from './cluster.js';
 import trademark from './trademark.js';
 import appraise from './appraise.js';
-import siztodump from './siztodump.js';
 
 // To add a new data source: create a module exporting { name, description,
 // parameters, requiresKey?, run(args, { env }) } and register it here.
@@ -31,7 +30,6 @@ const ALL = [
   rdap, whois, dns, wayback, livesite, marketplace, cluster, masterlist, rocketreach, readurl, analytics,
   whoisxml, domainiq, bigdomaindata, reversewhois, reversens, reverseip, websearch, bravesearch, trademark, appraise,
   rocketreachLookup, whoxyHistory, whoxyReverse, identify,
-  siztodump,
 ];
 
 // Paid sources spend external API credits. They are withheld from the free
@@ -62,7 +60,6 @@ const CATEGORY = {
   analytics_footprint: 'Live site',
   registration_cluster: 'Registration cluster',
   marketplace_check: 'Marketplace',
-  sizto_dump: 'Marketplace',
   masterlist_lookup: 'Internal list',
   rocketreach_search: 'People & contacts',
   rocketreach_lookup: 'People & contacts',
