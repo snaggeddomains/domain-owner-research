@@ -25,9 +25,9 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
-          cache: "npm"
-          cache-dependency-path: domain-research/package-lock.json
 
+      # package-lock.json is gitignored in this repo (regenerated locally),
+      # so no caching here — a one-shot install is fast enough on its own.
       - name: Install deps
         run: npm install --omit=dev
 
