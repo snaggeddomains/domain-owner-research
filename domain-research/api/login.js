@@ -35,8 +35,10 @@ export default async function handler(req, res) {
     return;
   }
 
-  // Legacy single-password path: only valid while no users exist yet.
-  if ((await countUsers()) === 0 && process.env.APP_PASSWORD && password.trim() === process.env.APP_PASSWORD.trim()) {
+  // Legacy single-password path: only valid while no users exist yet (or if
+  // the migration hasn't been applied — countUsers throws, we treat it as 0).
+  const usersExist = await countUsers().catch(() => 0);
+  if (usersExist === 0 && process.env.APP_PASSWORD && password.trim() === process.env.APP_PASSWORD.trim()) {
     const legacy = crypto.createHash('sha256').update('dr:' + process.env.APP_PASSWORD.trim()).digest('hex');
     res.setHeader('Set-Cookie', `dr_auth=${legacy}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=604800`);
     res.status(200).json({ ok: true, user: { email: 'legacy-admin', is_admin: true } });
