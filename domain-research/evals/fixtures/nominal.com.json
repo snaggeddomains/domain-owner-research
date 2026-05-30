@@ -1,0 +1,16 @@
+{
+  "domain": "nominal.com",
+  "notes": "REGISTRAR ≠ OWNER regression case. The .com is registered through NameBright (TurnCommerce) with the textbook NameBright-privacy WHOIS fingerprint — registrant org literally 'Nominal.com', address = TurnCommerce HQ, role contacts at support@namebright.com, ns1/ns2.namebrightdns.com, 'Coming Soon' lander — but the HugeDomains profile page (hugedomains.com/domain_profile.cfm?d=nominal.com) does NOT render a product page, so the domain is NOT in their retail catalog. Conclusion: privacy-shielded customer using NameBright's privacy product, NOT held by TurnCommerce/HugeDomains as inventory. Report MUST NOT name TurnCommerce / NameBright / HugeDomains as 'the owner'. (The legitimate 'Nominal' brand at nominal.io is a separate registration and is also NOT the .com owner per the trademark-holder/WHOIS-fingerprint rule.)",
+  "expected_absent": {
+    "substrings": [
+      "owned by TurnCommerce",
+      "held by TurnCommerce",
+      "owned by HugeDomains",
+      "held by HugeDomains",
+      "owned by NameBright",
+      "held by NameBright",
+      "TurnCommerce, Inc. — Domain Investor",
+      "TurnCommerce, Inc. (DBA NameBright.com / HugeDomains.com) Domain Investor"
+    ]
+  }
+}
