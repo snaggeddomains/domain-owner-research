@@ -701,7 +701,10 @@ function startPolling(runId, label) {
   clearTimers();
 
   // Live elapsed clock, ticking once a second; the poll updates the stage label.
-  const startedAt = Date.now();
+  // startedAt is mutable so we can re-anchor it to the run's actual created_at
+  // once the first poll returns it — otherwise reopening a long-running report
+  // would restart the timer at 0:00 every time the page loads.
+  let startedAt = Date.now();
   let stage = '';
   const tick = () => setStatus(`${label}…${stage ? ` (${stage})` : ''} · ${fmtElapsed(Date.now() - startedAt)}`);
   tick();
@@ -711,6 +714,10 @@ function startPolling(runId, label) {
     try {
       const r = await pollRun(runId);
       applyHash({ id: runId, domain: r.domain, created_at: r.created_at });
+      if (r.created_at) {
+        const realStart = Date.parse(r.created_at);
+        if (Number.isFinite(realStart) && realStart < startedAt) startedAt = realStart;
+      }
       if (r.status === 'done') {
         clearTimers();
         setStatus('');
