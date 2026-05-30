@@ -143,34 +143,36 @@ export function userCan(user, module) {
   return Boolean(perms[module]);
 }
 
-// ── Admin bootstrap (idempotent, one-shot per process) ──────────────────────
-// On first request after deploy, if ADMIN_EMAIL/ADMIN_PASSWORD are set and the
-// users table is empty, seed the first admin. After that this is a no-op.
-let _seedOnce = null;
-export function ensureAdminSeed() {
-  if (_seedOnce) return _seedOnce;
-  _seedOnce = (async () => {
-    if (!isDbConfigured()) return;
-    const email = (process.env.ADMIN_EMAIL || '').trim().toLowerCase();
-    const password = (process.env.ADMIN_PASSWORD || '').trim();
-    if (!email || !password) return;
-    try {
-      if ((await countUsers()) > 0) return;
-      // Defensive: don't insert twice if the seed env vars are set and the user
-      // somehow already exists with the same email.
-      if (await findUserByEmail(email)) return;
-      await createUser({
-        email,
-        password_hash: await hashPassword(password),
-        is_admin: true,
-        permissions: { domain_owner: true, trademark: true, appraisal: true, naming: false },
-        email_notify_on_done: false,
-      });
-    } catch (err) {
-      console.error('ensureAdminSeed failed:', err && err.message);
-    }
-  })();
-  return _seedOnce;
+// ── Admin bootstrap (idempotent; retries on failure) ───────────────────────
+// On first request after deploy, if ADMIN_EMAIL/ADMIN_PASSWORD are set and
+// the users table is empty, seed the first admin. Crucially, we only cache
+// the *succeeded* state — if the first attempt failed (e.g. because the
+// migration hadn't been applied yet on a warm Vercel instance), the NEXT
+// call retries instead of returning the cached failure.
+let _seedDone = false;
+export async function ensureAdminSeed() {
+  if (_seedDone) return;
+  if (!isDbConfigured()) return;
+  const email = (process.env.ADMIN_EMAIL || '').trim().toLowerCase();
+  const password = (process.env.ADMIN_PASSWORD || '').trim();
+  if (!email || !password) return;
+  try {
+    if ((await countUsers()) > 0) { _seedDone = true; return; }
+    // Defensive: don't insert twice if the user somehow already exists.
+    if (await findUserByEmail(email)) { _seedDone = true; return; }
+    await createUser({
+      email,
+      password_hash: await hashPassword(password),
+      is_admin: true,
+      permissions: { domain_owner: true, trademark: true, appraisal: true, naming: false },
+      email_notify_on_done: false,
+    });
+    _seedDone = true;
+  } catch (err) {
+    // Leave _seedDone false so the next call retries (e.g. once the
+    // migration has been applied). The next request will try again.
+    console.error('ensureAdminSeed failed:', err && err.message);
+  }
 }
 
 // Public flag — "is there a login gate at all?" — used by /api/me so the
