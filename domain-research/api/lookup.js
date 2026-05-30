@@ -1,4 +1,4 @@
-import { isAuthed } from '../lib/auth.js';
+import { isAuthed, currentUser, userCan, moduleForSource } from '../lib/auth.js';
 import { runTool } from '../lib/sources/index.js';
 import { normalizeDomain } from '../lib/util.js';
 
@@ -15,6 +15,13 @@ export default async function handler(req, res) {
   const source = typeof req.query.source === 'string' ? req.query.source : '';
   if (!source) {
     res.status(400).json({ error: 'Missing ?source=' });
+    return;
+  }
+  // Gate by the module the source belongs to (trademark_search → trademark,
+  // appraise_lookup → appraisal, others → domain_owner).
+  const user = await currentUser(req);
+  if (user && !userCan(user, moduleForSource(source))) {
+    res.status(403).json({ error: `You don't have access to the ${moduleForSource(source)} module` });
     return;
   }
   const { source: _omit, ...rest } = req.query;

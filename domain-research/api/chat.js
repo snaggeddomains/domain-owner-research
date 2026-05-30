@@ -1,4 +1,4 @@
-import { isAuthed } from '../lib/auth.js';
+import { isAuthed, currentUser, userCan } from '../lib/auth.js';
 import { getRun } from '../lib/db/runs.js';
 import { appendChat, getChat, getTurn } from '../lib/db/chat.js';
 import { inngest, CHAT_REQUESTED } from '../lib/inngest/client.js';
@@ -14,6 +14,11 @@ export default async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store');
   if (!isAuthed(req)) {
     res.status(401).json({ error: 'Not authenticated' });
+    return;
+  }
+  const _user = await currentUser(req);
+  if (_user && !userCan(_user, 'domain_owner')) {
+    res.status(403).json({ error: "You don't have access to the Domain Owner module" });
     return;
   }
 

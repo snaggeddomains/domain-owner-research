@@ -1,5 +1,7 @@
-import { isAuthed } from '../lib/auth.js';
+import { isAuthed, currentUser, userCan } from '../lib/auth.js';
 import { saveToolLookup, listToolLookups, getToolLookup } from '../lib/db/tools.js';
+
+const KIND_MODULE = { tm: 'trademark', ap: 'appraisal', mk: 'domain_owner' };
 
 // Server-backed history for the standalone tools (Trademark, Appraisal):
 //   GET  /api/tool-history?kind=tm                -> recent 5 { query, updated_at }
@@ -15,6 +17,14 @@ export default async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store');
   if (!isAuthed(req)) {
     res.status(401).json({ error: 'Not authenticated' });
+    return;
+  }
+  // Per-kind module-permission gate.
+  const _user = await currentUser(req);
+  const _kindParam = (req.method === 'POST' ? (req.body && (typeof req.body === 'string' ? JSON.parse(req.body || '{}').kind : req.body.kind)) : req.query.kind) || '';
+  const _mod = KIND_MODULE[String(_kindParam)] || 'domain_owner';
+  if (_user && !userCan(_user, _mod)) {
+    res.status(403).json({ error: `You don't have access to the ${_mod} module` });
     return;
   }
 

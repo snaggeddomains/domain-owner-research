@@ -143,6 +143,52 @@ export function userCan(user, module) {
   return Boolean(perms[module]);
 }
 
+// Source name (as registered in lib/sources/index.js) → module permission key.
+// Sources not listed here fall under 'domain_owner' (they're agent tools used
+// during a research run).
+export const SOURCE_MODULE = {
+  trademark_search: 'trademark',
+  appraise_lookup: 'appraisal',
+};
+export function moduleForSource(name) {
+  return SOURCE_MODULE[name] || 'domain_owner';
+}
+
+// Route-level helper: load the current user, 401 if not signed in. Returns
+// the user record (truthy) on success; writes the error response and returns
+// null on failure.
+export async function requireUser(req, res) {
+  const user = await currentUser(req);
+  if (!user) {
+    res.status(401).json({ error: 'Not authenticated' });
+    return null;
+  }
+  return user;
+}
+
+// Same shape as requireUser but also requires is_admin. Returns the user on
+// success; writes 401/403 and returns null on failure.
+export async function requireAdmin(req, res) {
+  const user = await requireUser(req, res);
+  if (!user) return null;
+  if (!user.is_admin) {
+    res.status(403).json({ error: 'Admin only' });
+    return null;
+  }
+  return user;
+}
+
+// Require a specific module permission. Admin passes by virtue of userCan.
+export async function requirePermission(req, res, module) {
+  const user = await requireUser(req, res);
+  if (!user) return null;
+  if (!userCan(user, module)) {
+    res.status(403).json({ error: `You don't have access to the ${module} module` });
+    return null;
+  }
+  return user;
+}
+
 // ── Admin bootstrap (idempotent; retries on failure) ───────────────────────
 // On first request after deploy, if ADMIN_EMAIL/ADMIN_PASSWORD are set and
 // the users table is empty, seed the first admin. Crucially, we only cache

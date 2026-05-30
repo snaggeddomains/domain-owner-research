@@ -1,7 +1,7 @@
 import { inngest, RUN_REQUESTED } from '../lib/inngest/client.js';
 import { isValidDomain, normalizeDomain } from '../lib/util.js';
 import { checkRateLimit, clientIp } from '../lib/ratelimit.js';
-import { isAuthed, currentUser } from '../lib/auth.js';
+import { isAuthed, currentUser, userCan } from '../lib/auth.js';
 import { isDbConfigured } from '../lib/db/supabase.js';
 import { createRun, getRun, failRun, setRunStatus, listRuns } from '../lib/db/runs.js';
 
@@ -15,6 +15,14 @@ function requiredKeyVar() {
 export default async function handler(req, res) {
   if (!isAuthed(req)) {
     res.status(401).json({ error: 'Not authenticated' });
+    return;
+  }
+
+  // Module-permission gate (skipped for the legacy single-password cookie
+  // session, where currentUser returns the synthetic admin pseudo-user).
+  const _userForPerm = await currentUser(req);
+  if (_userForPerm && !userCan(_userForPerm, 'domain_owner')) {
+    res.status(403).json({ error: "You don't have access to the Domain Owner module" });
     return;
   }
 
