@@ -77,7 +77,7 @@ OUTPUT: STRICT JSON, no prose, no fencing. Schema:
   "categories":   string[],                    // EXACTLY 1, 2, or 3 from CONTROLLED LIST A
   "industries":   string[],                    // 0-5 from CONTROLLED LIST B
   "styles":       string[],                    // 0-3 from CONTROLLED LIST C
-  "themes":       string[],                    // 5-15 lowercase concepts (freeform)
+  "themes":       string[],                    // 5-10 lowercase concepts (freeform)
   "brandable":    "high" | "medium" | "low",
   "versatility":  "open" | "broad" | "specific",
   "audience":     string[],                    // freeform: "consumer", "b2b", "premium", "playful"…
@@ -118,7 +118,7 @@ STYLES — "one-word" means the SLD is a single English dictionary word. "compou
 
 BRANDABLE — be CONSERVATIVE. "high" only when the word genuinely could anchor a real consumer or B2B brand. Inflected forms (walked, runs, running), function words (the, of, to), and stale slang are at best "low".
 
-THEMES is where conceptual neighbors live — synonyms, evoked imagery, audience associations. This is what lets a brief about "healthcare" match "thrive" without a substring overlap. Aim for 5-15 useful concepts.
+THEMES is where conceptual neighbors live — synonyms, evoked imagery, audience associations. This is what lets a brief about "healthcare" match "thrive" without a substring overlap. Aim for 5-10 useful concepts (quality over quantity — the first 5-8 carry most of the signal).
 
 CONNOTATION is your honest read of how an average brand buyer would perceive the word's vibe — not the dictionary definition alone. "criminal" is negative regardless of technical neutrality.
 
@@ -141,10 +141,16 @@ Input: "xqzry"
 Output: {"meaning":"unrecognizable letter sequence","connotation":"neutral","categories":[],"industries":[],"styles":[],"themes":[],"brandable":"low","versatility":"specific","audience":[],"skip_reason":"non-english","confidence":0.95}`;
 
 async function enrichOne(client, model, sld) {
+  // System block uses Anthropic prompt caching — cache_control on the only
+  // text block means the entire 2K-token system prompt (schema + controlled
+  // lists + rules + examples) becomes a cache key. Subsequent calls within
+  // the 5-minute TTL read the cached prefix at 10% of the input rate.
   const response = await client.messages.create({
     model,
     max_tokens: 700,
-    system: SYSTEM,
+    system: [
+      { type: 'text', text: SYSTEM, cache_control: { type: 'ephemeral' } },
+    ],
     messages: [{ role: 'user', content: `Input: "${sld}"` }],
   });
   const text = response.content
@@ -207,14 +213,20 @@ async function main() {
   console.log(`# Enrichment pilot — ${slds.length} SLDs`);
   console.log(`\n**Model**: \`${model}\` · **Schema axes**: categories (${CATEGORIES.length}), industries (${INDUSTRIES.length}), styles (${STYLES.length})`);
 
-  let totalInput = 0;
+  let totalUncachedInput = 0; // fresh input (non-cached)
+  let totalCacheCreate = 0;   // first call writes the cache (1.25× input)
+  let totalCacheRead = 0;     // subsequent calls hit the cache (0.10× input)
   let totalOutput = 0;
   const failures = [];
   for (const sld of slds) {
     process.stderr.write(`enriching ${sld}…\n`);
     try {
       const { parsed, usage } = await enrichOne(client, model, sld);
-      totalInput += usage.input_tokens || 0;
+      // usage.input_tokens reports only the FRESH (uncached) input. Cache
+      // hits/writes are reported separately and don't double-count.
+      totalUncachedInput += usage.input_tokens || 0;
+      totalCacheCreate += usage.cache_creation_input_tokens || 0;
+      totalCacheRead += usage.cache_read_input_tokens || 0;
       totalOutput += usage.output_tokens || 0;
       printResult(sld, parsed);
     } catch (e) {
@@ -223,36 +235,45 @@ async function main() {
     }
   }
 
-  // Cost extrapolation — current Haiku 4.5 list pricing. The first call
-  // includes the full system prompt; subsequent calls in this pilot don't
-  // benefit from caching (no cache window between sequential CLI calls
-  // unless we explicitly enable cache_control), so this is the worst-case
-  // no-optimizations number per row.
+  // Haiku 4.5 list pricing per million tokens (Anthropic).
+  // Cache writes are billed at 1.25× the base input rate;
+  // cache reads at 0.10× (the 90%-off discount).
   const HAIKU_INPUT_PER_M = 0.80;
   const HAIKU_OUTPUT_PER_M = 4.00;
-  const inputCost = (totalInput / 1_000_000) * HAIKU_INPUT_PER_M;
+  const CACHE_WRITE_MULT = 1.25;
+  const CACHE_READ_MULT = 0.10;
+  const uncachedInputCost = (totalUncachedInput / 1_000_000) * HAIKU_INPUT_PER_M;
+  const cacheWriteCost = (totalCacheCreate / 1_000_000) * HAIKU_INPUT_PER_M * CACHE_WRITE_MULT;
+  const cacheReadCost = (totalCacheRead / 1_000_000) * HAIKU_INPUT_PER_M * CACHE_READ_MULT;
   const outputCost = (totalOutput / 1_000_000) * HAIKU_OUTPUT_PER_M;
-  const totalCost = inputCost + outputCost;
+  const totalCost = uncachedInputCost + cacheWriteCost + cacheReadCost + outputCost;
   const perSld = totalCost / Math.max(slds.length - failures.length, 1);
+  const hits = slds.length - 1; // first call writes cache, rest read it (sequential)
+  const cacheRate = hits > 0 ? (hits / slds.length) * 100 : 0;
 
   console.log(`\n---\n## Cost`);
-  console.log(`- Tokens: **${totalInput.toLocaleString()} input + ${totalOutput.toLocaleString()} output**`);
-  console.log(`- Pilot cost: **$${totalCost.toFixed(4)}** at Haiku 4.5 list pricing (no caching, no batching)`);
+  console.log(`- Tokens:`);
+  console.log(`  - fresh input: **${totalUncachedInput.toLocaleString()}**`);
+  console.log(`  - cache writes: **${totalCacheCreate.toLocaleString()}** (1.25× input rate)`);
+  console.log(`  - cache reads: **${totalCacheRead.toLocaleString()}** (0.10× input rate — the win)`);
+  console.log(`  - output: **${totalOutput.toLocaleString()}**`);
+  console.log(`- Cache effectiveness: ~${cacheRate.toFixed(0)}% of calls hit the cache`);
+  console.log(`- Pilot cost: **$${totalCost.toFixed(4)}** at Haiku 4.5 list pricing (caching ON)`);
   console.log(`- Per SLD: **$${perSld.toFixed(5)}**`);
   console.log(`\n### Scale projection (at the measured per-SLD rate above)`);
-  console.log(`| Scope | Worst case (this rate) | With caching (~60%) | + Batch API (50%) |`);
-  console.log(`|---|---|---|---|`);
+  console.log(`| Scope | This rate (caching ON) | + Batch API (50% off)¹ |`);
+  console.log(`|---|---|---|`);
   const scopes = [
     ['200K single-word SLDs', 200_000],
     ['500K single + good 2-word', 500_000],
     ['Full 6.27M universe', 6_270_000],
   ];
   for (const [label, n] of scopes) {
-    const worst = perSld * n;
-    const cached = worst * 0.4;
+    const cached = perSld * n;
     const batched = cached * 0.5;
-    console.log(`| ${label} | $${worst.toFixed(0)} | $${cached.toFixed(0)} | $${batched.toFixed(0)} |`);
+    console.log(`| ${label} | $${cached.toFixed(0)} | $${batched.toFixed(0)} |`);
   }
+  console.log(`\n¹ Batch API gives 50% off but its 24h processing window typically defeats the 5-minute cache TTL — so in practice you pick ONE optimization, not both.`);
 
   if (failures.length) {
     console.log(`\n### Failures (${failures.length})`);
