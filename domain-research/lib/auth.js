@@ -70,11 +70,11 @@ function readCookie(req, name) {
 export function setAuthCookie(userId) {
   const payload = { u: String(userId || ''), exp: Math.floor(Date.now() / 1000) + COOKIE_MAX_AGE };
   const token = sign(payload);
-  return `${COOKIE}=${token}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${COOKIE_MAX_AGE}`;
+  return `${COOKIE}=${token}; Domain=.snagged.com; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${COOKIE_MAX_AGE}`;
 }
 
 export function clearAuthCookie() {
-  return `${COOKIE}=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0`;
+  return `${COOKIE}=; Domain=.snagged.com; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0`;
 }
 
 // ── Legacy single-password support ──────────────────────────────────────────
