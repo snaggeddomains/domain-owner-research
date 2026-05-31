@@ -26,7 +26,7 @@ Rules:
 - dictionary_word_only + num_words=1 together imply a very tight filter — only set both when the brief explicitly asks for a single common-English word.
 - If they say "easy to spell" without specifying word count, set dictionary_word_only: true but leave num_words: null.
 - Price: if the brief gives a RANGE ("$50K to $150K", "between 5k and 20k"), put the LOW end in min_price and the HIGH end in max_price. If they give only an upper bound ("under $5K", "up to $50K"), set max_price only and leave min_price null. If they say "premium" without a number, set max_price high (50000+).
-- semantic_keywords: extract industry, theme, and tone hints (lowercase, short). For "health care startup", include "health", "care", "medical", "wellness". Skip generic words like "startup", "company", "brand".
+- semantic_keywords: ENUMERATE 25-50 semantically-related terms — synonyms, adjacent concepts, sub-domains of the industry, tone-evocative roots — NOT just the literal nouns from the brief. The downstream filter does SLD-substring matching, so more semantically-adjacent terms = more relevant candidates surface. For "health care startup," return roughly: health, care, medical, wellness, healthcare, clinic, therapy, patient, doctor, hospital, pharma, biotech, dental, hospice, cure, heal, vital, body, mind, fit, life, well, wellbeing, recovery, surgical, nurse, remedy, healing, holistic, fitness, organic. Aim for breadth, not exact synonyms. Lowercase, short, [a-z0-9] only. Skip generic words like "startup", "company", "brand".
 - Output JSON only — no prose, no code fences.`;
 
 export async function parseBrief(brief, env) {
@@ -92,7 +92,7 @@ export function validateFilters(raw) {
   if (min_quality_score > 3.0) min_quality_score = 3.0;
 
   const semantic_keywords = Array.isArray(f.semantic_keywords)
-    ? f.semantic_keywords.filter((k) => typeof k === 'string' && k.trim()).map((k) => k.trim().toLowerCase()).slice(0, 16)
+    ? f.semantic_keywords.filter((k) => typeof k === 'string' && k.trim()).map((k) => k.trim().toLowerCase()).slice(0, 50)
     : [];
 
   // exclude_domains: precise per-domain blocklist for chat-driven "drop X.com"

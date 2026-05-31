@@ -119,7 +119,9 @@ function sanitizeKeywords(arr) {
     const cleaned = String(k || '').toLowerCase().replace(/[^a-z0-9]/g, '');
     if (cleaned.length >= 2 && cleaned.length <= 24) out.push(cleaned);
   }
-  return [...new Set(out)].slice(0, 12);
+  // 50-keyword cap matches the parser system prompt (25-50 enumerated terms).
+  // PostgREST handles a 50-clause .or() comfortably (~1.3KB query string).
+  return [...new Set(out)].slice(0, 50);
 }
 
 function splitAndShape(rows, filters) {
@@ -192,10 +194,40 @@ function deriveSourceLabel(r) {
   return src.replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
-// Best-effort lander URL per §4.1 column 9. Marketplace deep-links would
-// need per-source URL builders; for v1 we fall back to https://<domain>
-// since that's the universal lander for marketplaces parking the name.
+// Best-effort lander URL per §4.1 column 9. Marketplace-specific deep links
+// route the user straight to the buy/listing page rather than the domain's
+// generic lander (which is often just a marketplace banner or parked page).
+// Unknown sources fall back to https://<domain> since portfolio/Efty rows
+// generally resolve to their own seller-branded lander there.
+//
+// Add a new source here when you confirm its listing URL pattern. The key is
+// the raw `best_price_source` value (lowercase, matches the universe rows).
+const MARKETPLACE_LANDING_URL = {
+  afternic:        (d) => `https://www.afternic.com/domain/${d}`,
+  atom:            (d) => `https://atom.com/name/${d}`,
+  atom_daily:      (d) => `https://atom.com/name/${d}`,
+  sedo:            (d) => `https://sedo.com/search/details/?domain=${d}&language=us`,
+  dan:             (d) => `https://dan.com/buy-domain/${d}`,
+  spaceship:       (d) => `https://www.spaceship.com/domain/${d}/`,
+  namecheap:       (d) => `https://www.namecheap.com/domains/registration/results/?domain=${d}`,
+  namecheap_bin:   (d) => `https://www.namecheap.com/domains/registration/results/?domain=${d}`,
+  dynadot:         (d) => `https://www.dynadot.com/market/?domain=${d}`,
+  dynadot_dump:    (d) => `https://www.dynadot.com/market/?domain=${d}`,
+  godaddy:         (d) => `https://www.godaddy.com/domain-search/find?domainToCheck=${d}`,
+  // Snagged-owned rows route to the internal listing/contact page on
+  // research.snagged.com rather than the public domain.
+  snagged_snap_sheet:         (d) => `https://snagged.com/${d}`,
+  snagged_marketplace_sheet:  (d) => `https://snagged.com/${d}`,
+};
+
 function deriveLandingUrl(r) {
   if (!r.domain) return null;
+  // Best-price source decides which marketplace URL to use — that's where the
+  // priced listing actually lives. If the source isn't mapped (Efty Partner,
+  // Braden Pollack Portfolio, Rob's purchases, etc.) we fall back to the
+  // domain itself — usually a seller-branded lander, so still useful.
+  const raw = String(r.best_price_source || (Array.isArray(r.sources) ? r.sources[0] : '') || '').toLowerCase().trim();
+  const builder = MARKETPLACE_LANDING_URL[raw];
+  if (builder) return builder(r.domain);
   return `https://${r.domain}`;
 }
