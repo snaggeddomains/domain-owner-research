@@ -126,6 +126,15 @@ SKIP — if the SLD isn't a recognizable English word or common name, set skip_r
 
 OUTPUT ONLY the JSON object. No prose. No markdown code fences.
 
+COMMON ANTI-PATTERNS TO AVOID:
+- DO NOT add "emotion" or "mental-state" to categories just because a word evokes a feeling. "thrive" evokes positive emotion but it IS an action verb — categories: ["action"], not ["action", "emotion"]. "strength" evokes confidence but it IS a quality and a body attribute — categories: ["quality", "body"], not ["quality", "body", "emotion"]. Use emotion/mental-state ONLY when the word literally describes one (joy, fear, calm, focus).
+- DO NOT pad industries with weak associations. If a word doesn't strongly evoke a specific vertical, leave industries empty rather than stretching. "friday" is NOT entertainment-arts just because Fridays are fun. "knowledge" is NOT tech-software just because software stores knowledge. Empty is the right answer for most abstract words.
+- DO NOT confuse the two controlled lists. "transportation" exists in INDUSTRIES (as a vertical) but NOT in CATEGORIES (which is for word-meaning types). "fashion" exists in CATEGORIES (clothing/style sense) and a related-but-different entry "fashion-clothing" exists in INDUSTRIES. ALWAYS verify each value lives in the correct list before output.
+- DO NOT exceed 3 categories or 5 industries — these are HARD caps. Returning 4 categories is a violation, not a marginal preference.
+- DO NOT inflate brandable to "high" for inflected forms (walked, runs, dancing), function words (the, of, an), generic verbs (do, get, make), or generic plurals (things, items). Brand-worthy single-words are typically root form nouns, root form verbs with strong meaning, or evocative adjectives.
+- DO NOT set versatility to "open" while also listing many industries. If the word is genuinely open-vessel ("works for anything"), the industries array should be empty or have at most 1-2 entries. If you've listed 3+ industries, the word is broad or specific, not open.
+- DO NOT skip rows that ARE recognizable English. skip_reason is for inputs that aren't real words (xqzry, qqqq) or genuinely problematic (offensive, trademark-collision). A low-brandable word like "walked" is still a word — set brandable: low, not skip_reason.
+
 EXAMPLES:
 
 Input: "biomedical"
@@ -144,7 +153,58 @@ Input: "zen"
 Output: {"meaning":"a state of calm meditative awareness, from Japanese Buddhism","connotation":"positive","categories":["mental-state","religion"],"industries":["life-coach-motivational","health-wellness","spas-salons"],"styles":["one-word","foreign"],"themes":["calm","peace","meditation","focus","balance","mindfulness","tranquility","clarity"],"brandable":"high","versatility":"broad","audience":["consumer","premium","lifestyle"],"skip_reason":null,"confidence":0.9}
 
 Input: "kavu"
-Output: {"meaning":"a made-up phonetic word with no standard English meaning","connotation":"neutral","categories":["concept"],"industries":[],"styles":["made-up","one-word"],"themes":["coined","brandable","invented","syllabic","memorable"],"brandable":"medium","versatility":"open","audience":["consumer","playful"],"skip_reason":null,"confidence":0.65}`;
+Output: {"meaning":"a made-up phonetic word with no standard English meaning","connotation":"neutral","categories":["concept"],"industries":[],"styles":["made-up","one-word"],"themes":["coined","brandable","invented","syllabic","memorable"],"brandable":"medium","versatility":"open","audience":["consumer","playful"],"skip_reason":null,"confidence":0.65}
+
+Input: "spacetime"
+Output: {"meaning":"the four-dimensional continuum of space and time in physics","connotation":"positive","categories":["science","time"],"industries":["science-engineering","tech-software","ai-bots"],"styles":["one-word","compound"],"themes":["physics","cosmos","dimension","universe","relativity","theoretical","advanced","futuristic"],"brandable":"high","versatility":"broad","audience":["b2b","premium","technical"],"skip_reason":null,"confidence":0.85}
+
+Input: "venom"
+Output: {"meaning":"a poisonous fluid secreted by snakes, spiders, and other animals","connotation":"negative","categories":["material","body"],"industries":["gaming","fashion-clothing","entertainment-arts"],"styles":["one-word"],"themes":["poison","danger","snake","threat","edge","intensity","sting","peril"],"brandable":"medium","versatility":"specific","audience":["consumer","edgy","youth"],"skip_reason":null,"confidence":0.85}
+
+Input: "max"
+Output: {"meaning":"short for maximum, or a given name","connotation":"positive","categories":["quantity","people"],"industries":[],"styles":["one-word","masculine"],"themes":["maximum","peak","top","strong","simple","approachable","limit","power"],"brandable":"high","versatility":"open","audience":["consumer","masculine"],"skip_reason":null,"confidence":0.9}
+
+Input: "indigo"
+Output: {"meaning":"a deep blue-violet color","connotation":"positive","categories":["color"],"industries":["fashion-clothing","beauty-cosmetics","interior-design"],"styles":["one-word","colors"],"themes":["blue","violet","deep","calm","royal","dye","twilight","artistic"],"brandable":"high","versatility":"broad","audience":["consumer","premium","creative"],"skip_reason":null,"confidence":0.92}
+
+Input: "ceo"
+Output: {"meaning":"chief executive officer (acronym)","connotation":"neutral","categories":["profession","business"],"industries":["professional-services","recruitment-staffing"],"styles":["one-word"],"themes":["leadership","executive","management","corporate","decision-maker","authority"],"brandable":"low","versatility":"specific","audience":["b2b","professional"],"skip_reason":null,"confidence":0.88}
+
+Input: "alpine"
+Output: {"meaning":"relating to high mountains, especially the Alps","connotation":"positive","categories":["geography","nature"],"industries":["outdoor-adventure","travel-hotel","beauty-cosmetics"],"styles":["one-word"],"themes":["mountains","cold","fresh","pure","snow","climbing","ski","crisp"],"brandable":"high","versatility":"broad","audience":["consumer","premium","outdoor"],"skip_reason":null,"confidence":0.9}
+
+Input: "joy"
+Output: {"meaning":"a strong feeling of happiness or pleasure","connotation":"positive","categories":["emotion"],"industries":["beauty-cosmetics","life-coach-motivational","kids-baby"],"styles":["one-word","feminine"],"themes":["happiness","delight","pleasure","cheer","gladness","euphoria","celebration","warmth"],"brandable":"high","versatility":"broad","audience":["consumer","premium","feminine"],"skip_reason":null,"confidence":0.93}
+
+Input: "river"
+Output: {"meaning":"a large natural stream of water flowing to the sea, a lake, or another river","connotation":"positive","categories":["nature","geography"],"industries":[],"styles":["one-word"],"themes":["flow","water","nature","journey","movement","fresh","life","continuity"],"brandable":"high","versatility":"open","audience":["consumer","premium","lifestyle"],"skip_reason":null,"confidence":0.92}
+
+Input: "kernel"
+Output: {"meaning":"the central core, especially of a grain or seed; in computing, the core of an operating system","connotation":"neutral","categories":["technology","plant"],"industries":["tech-software","ai-bots","cybersecurity"],"styles":["one-word"],"themes":["core","center","essence","compute","system","foundation","operating"],"brandable":"high","versatility":"specific","audience":["b2b","technical","developer"],"skip_reason":null,"confidence":0.88}
+
+Input: "swift"
+Output: {"meaning":"moving with great speed; fast","connotation":"positive","categories":["motion","quality"],"industries":["transportation","tech-software","ride-sharing"],"styles":["one-word"],"themes":["fast","quick","agile","speed","nimble","rapid","efficient","sleek"],"brandable":"high","versatility":"broad","audience":["consumer","b2b","premium","modern"],"skip_reason":null,"confidence":0.9}
+
+Input: "denver"
+Output: {"meaning":"capital city of Colorado in the United States","connotation":"neutral","categories":["place","geography"],"industries":["geo-location","real-estate","travel-hotel"],"styles":["one-word","masculine"],"themes":["colorado","mountains","mile-high","western","city","outdoor","rocky"],"brandable":"medium","versatility":"specific","audience":["consumer","local"],"skip_reason":null,"confidence":0.88}
+
+Input: "qonto"
+Output: {"meaning":"a coined brand-style word with no standard meaning","connotation":"neutral","categories":["concept"],"industries":[],"styles":["made-up","one-word"],"themes":["coined","brandable","modern","tech","european","invented"],"brandable":"high","versatility":"open","audience":["b2b","tech","modern"],"skip_reason":null,"confidence":0.7}
+
+Input: "wolves"
+Output: {"meaning":"plural of wolf, large wild canines","connotation":"neutral","categories":["animal"],"industries":["sports","entertainment-arts"],"styles":["one-word","animals"],"themes":["pack","wild","predator","hunting","strength","loyalty","fierce","group"],"brandable":"medium","versatility":"broad","audience":["consumer","masculine","sports"],"skip_reason":null,"confidence":0.85}
+
+Input: "sunset"
+Output: {"meaning":"the time when the sun sets below the horizon","connotation":"positive","categories":["time","light"],"industries":["travel-hotel","photography","real-estate"],"styles":["one-word","compound"],"themes":["evening","dusk","golden","romantic","horizon","scenic","peaceful","warmth"],"brandable":"high","versatility":"broad","audience":["consumer","premium","lifestyle","creative"],"skip_reason":null,"confidence":0.92}
+
+Input: "lambda"
+Output: {"meaning":"the eleventh letter of the Greek alphabet; in computing, an anonymous function","connotation":"neutral","categories":["language","technology"],"industries":["tech-software","ai-bots","science-engineering"],"styles":["one-word","foreign"],"themes":["greek","function","compute","math","abstract","serverless","cloud","programming"],"brandable":"high","versatility":"specific","audience":["b2b","technical","developer","premium"],"skip_reason":null,"confidence":0.88}
+
+Input: "ella"
+Output: {"meaning":"a feminine given name, short for Eleanor or Isabella","connotation":"positive","categories":["people"],"industries":["fashion-clothing","beauty-cosmetics","kids-baby"],"styles":["one-word","feminine"],"themes":["girl","name","elegant","classic","gentle","soft","modern","timeless"],"brandable":"high","versatility":"broad","audience":["consumer","feminine","premium","lifestyle"],"skip_reason":null,"confidence":0.88}
+
+Input: "bigfoot"
+Output: {"meaning":"a legendary ape-like creature said to inhabit forests of North America","connotation":"neutral","categories":["concept","animal"],"industries":["outdoor-adventure","entertainment-arts","gaming"],"styles":["one-word","compound","play-on-words"],"themes":["legend","myth","cryptid","wilderness","mystery","folklore","oversized","quirky"],"brandable":"medium","versatility":"specific","audience":["consumer","playful","outdoor"],"skip_reason":null,"confidence":0.85}`;
 
 async function enrichOne(client, model, sld, debugFirstResponse = false) {
   // Use the beta messages endpoint (client.beta.messages) — even though
