@@ -74,11 +74,12 @@ OUTPUT: STRICT JSON, no prose, no fencing. Schema:
 {
   "meaning":      string,                      // one-line plain English
   "connotation":  "positive" | "neutral" | "negative",
-  "categories":   string[],                    // 1-3 from CONTROLLED LIST A
+  "categories":   string[],                    // EXACTLY 1, 2, or 3 from CONTROLLED LIST A
   "industries":   string[],                    // 0-5 from CONTROLLED LIST B
   "styles":       string[],                    // 0-3 from CONTROLLED LIST C
   "themes":       string[],                    // 5-15 lowercase concepts (freeform)
   "brandable":    "high" | "medium" | "low",
+  "versatility":  "open" | "broad" | "specific",
   "audience":     string[],                    // freeform: "consumer", "b2b", "premium", "playful"…
   "skip_reason":  null | "non-english" | "offensive" | "ambiguous" | "trademark-risk",
   "confidence":   number                       // 0.0-1.0
@@ -94,23 +95,50 @@ CONTROLLED LIST C — styles (use ONLY these values for "styles"):
 ${STYLES.join(', ')}
 
 RULES:
-- If the SLD isn't a recognizable English word or common name, set skip_reason="non-english" (or "ambiguous" if uncertain) and keep all arrays empty.
-- Be CONSERVATIVE on "brandable". "high" only when the word genuinely could anchor a real consumer or B2B brand. Inflected forms (walked, runs, running), function words (the, of, to), and stale slang are at best "low".
-- Be CONSERVATIVE on "industries". Only list one when the word is genuinely associated with that vertical. "dog" is NOT "healthcare" just because dogs see vets. Empty array is correct when nothing fits.
-- "themes" is where conceptual neighbors live — synonyms, evoked imagery, audience associations. This is what lets a brief about "healthcare" match "thrive" without a substring overlap. Aim for 5-15 useful concepts.
-- "connotation" is your honest read of how an average brand buyer would perceive the word's vibe — not the dictionary definition alone. "criminal" is negative regardless of technical neutrality.
-- Output ONLY the JSON object. No prose. No markdown code fences.
+
+CONTROLLED-LIST DISCIPLINE (critical):
+- Every value in "categories" MUST exist verbatim in LIST A. Every value in "industries" MUST exist verbatim in LIST B. Every value in "styles" MUST exist verbatim in LIST C.
+- BEFORE OUTPUT, mentally verify each entry against its list. If a concept fits one list but not another (e.g. "transportation" is in INDUSTRIES but NOT CATEGORIES), use only the list where it belongs.
+- "categories" must contain EXACTLY 1, 2, or 3 entries — never 4, never 0 (unless skip_reason is set).
+
+CATEGORIES describe the word's DENOTATION (what it literally is), not its connotation. "wellness" is health-medical (what it describes); do NOT also tag it as emotion or mental-state just because it FEELS good. Reserve emotion/mental-state for words that ARE emotions or mental states ("joy", "calm", "focus").
+
+INDUSTRIES — be CONSERVATIVE, especially for abstract words:
+- For abstract concepts and broadly-applicable words (friday, knowledge, freedom, hello, alpha), "industries" should usually be EMPTY [] or have at most 1-2 entries. Only list one when a real branded product in that vertical would plausibly use this exact word — not just any product that might mention it.
+- "knowledge" is NOT tech-software just because software stores knowledge. "friday" is NOT entertainment-arts just because Fridays are fun.
+- "dog" is NOT health-medical just because dogs see vets. Empty array is the right answer for most words.
+
+VERSATILITY describes how flexibly the word could anchor a brand across UNRELATED industries:
+- "open" — could anchor a brand in many unrelated industries (friday, thrive, alpha, max, vibe). A brand-buyer could put this word on a tech app, a fashion line, a restaurant, or a VC firm — all believable. These usually have empty or near-empty industries arrays.
+- "broad" — could anchor several RELATED industries (wellness fits health, fitness, beauty, spa; strength fits fitness, sports, motivation). Industries array typically has 2-4 related entries.
+- "specific" — locked to one or two narrow industries (biomedical → medical/bio; mortgage → finance; jersey → fashion/sports). Industries array typically has 1-2 entries from the same domain.
+- When brandable is "low" (inflected forms, function words), versatility should usually be "specific" or copy whatever industry context exists.
+
+STYLES — "one-word" means the SLD is a single English dictionary word. "compound" means two roots joined ("biomedical", "cardiovascular"). These are NOT mutually exclusive — biomedical is both. Apply both when both fit.
+
+BRANDABLE — be CONSERVATIVE. "high" only when the word genuinely could anchor a real consumer or B2B brand. Inflected forms (walked, runs, running), function words (the, of, to), and stale slang are at best "low".
+
+THEMES is where conceptual neighbors live — synonyms, evoked imagery, audience associations. This is what lets a brief about "healthcare" match "thrive" without a substring overlap. Aim for 5-15 useful concepts.
+
+CONNOTATION is your honest read of how an average brand buyer would perceive the word's vibe — not the dictionary definition alone. "criminal" is negative regardless of technical neutrality.
+
+SKIP — if the SLD isn't a recognizable English word or common name, set skip_reason="non-english" (or "ambiguous" if uncertain) and keep all arrays empty.
+
+OUTPUT ONLY the JSON object. No prose. No markdown code fences.
 
 EXAMPLES:
 
 Input: "biomedical"
-Output: {"meaning":"relating to biology applied to medicine","connotation":"positive","categories":["health-medical","science"],"industries":["biotech","pharma","medical-dental","health-wellness"],"styles":["compound","one-word"],"themes":["medicine","research","biology","health","laboratory","clinical","science","wellness"],"brandable":"high","audience":["b2b","premium","professional"],"skip_reason":null,"confidence":0.92}
+Output: {"meaning":"relating to biology applied to medicine","connotation":"positive","categories":["health-medical","science"],"industries":["biotech","pharma","medical-dental"],"styles":["one-word","compound"],"themes":["medicine","research","biology","health","laboratory","clinical","science","wellness"],"brandable":"high","versatility":"specific","audience":["b2b","premium","professional"],"skip_reason":null,"confidence":0.92}
+
+Input: "friday"
+Output: {"meaning":"the sixth day of the week","connotation":"positive","categories":["time"],"industries":[],"styles":["one-word"],"themes":["weekend","leisure","celebration","social","relaxation","fun","anticipation","relief"],"brandable":"high","versatility":"open","audience":["consumer","playful","social"],"skip_reason":null,"confidence":0.9}
 
 Input: "walked"
-Output: {"meaning":"past tense of walk","connotation":"neutral","categories":["motion"],"industries":[],"styles":["one-word"],"themes":["movement","journey","past","steps"],"brandable":"low","audience":[],"skip_reason":null,"confidence":0.6}
+Output: {"meaning":"past tense of walk","connotation":"neutral","categories":["motion"],"industries":[],"styles":["one-word"],"themes":["movement","journey","past","steps"],"brandable":"low","versatility":"specific","audience":[],"skip_reason":null,"confidence":0.6}
 
 Input: "xqzry"
-Output: {"meaning":"unrecognizable letter sequence","connotation":"neutral","categories":[],"industries":[],"styles":[],"themes":[],"brandable":"low","audience":[],"skip_reason":"non-english","confidence":0.95}`;
+Output: {"meaning":"unrecognizable letter sequence","connotation":"neutral","categories":[],"industries":[],"styles":[],"themes":[],"brandable":"low","versatility":"specific","audience":[],"skip_reason":"non-english","confidence":0.95}`;
 
 async function enrichOne(client, model, sld) {
   const response = await client.messages.create({
@@ -144,12 +172,25 @@ function printResult(sld, parsed) {
   console.log(`- **meaning**: ${parsed.meaning || '—'}`);
   console.log(`- **connotation**: ${parsed.connotation || '—'}`);
   console.log(`- **brandable**: ${parsed.brandable || '—'} (confidence ${parsed.confidence ?? '—'})`);
+  console.log(`- **versatility**: ${parsed.versatility || '—'}`);
   console.log(`- **categories**: ${arrOrDash(parsed.categories)}`);
   console.log(`- **industries**: ${arrOrDash(parsed.industries)}`);
   console.log(`- **styles**: ${arrOrDash(parsed.styles)}`);
   console.log(`- **themes**: ${arrOrDash(parsed.themes)}`);
   console.log(`- **audience**: ${arrOrDash(parsed.audience)}`);
   console.log(`- **skip_reason**: ${parsed.skip_reason || '—'}`);
+  // Surface controlled-list violations inline so they show up loud in the
+  // pilot review — this is the failure mode we explicitly tightened against.
+  const catBad = (parsed.categories || []).filter((c) => !CATEGORIES.includes(c));
+  const indBad = (parsed.industries || []).filter((i) => !INDUSTRIES.includes(i));
+  const stylesBad = (parsed.styles || []).filter((s) => !STYLES.includes(s));
+  const catCount = (parsed.categories || []).length;
+  const issues = [];
+  if (catBad.length) issues.push(`categories not in list: ${catBad.join(', ')}`);
+  if (indBad.length) issues.push(`industries not in list: ${indBad.join(', ')}`);
+  if (stylesBad.length) issues.push(`styles not in list: ${stylesBad.join(', ')}`);
+  if (parsed.skip_reason == null && (catCount < 1 || catCount > 3)) issues.push(`categories count = ${catCount} (must be 1-3)`);
+  if (issues.length) console.log(`- **⚠ violations**: ${issues.join(' · ')}`);
 }
 
 async function main() {
