@@ -125,7 +125,8 @@ function sanitizeKeywords(arr) {
 }
 
 function splitAndShape(rows, filters) {
-  const shaped = rows.map((r) => shapeRow(r));
+  const kw = Array.isArray(filters.semantic_keywords) ? filters.semantic_keywords : [];
+  const shaped = rows.map((r) => shapeRow(r, kw));
   const cap = filters.max_price;
   const floor = filters.min_price;
   const buyReady = [];
@@ -148,18 +149,39 @@ function splitAndShape(rows, filters) {
       stretch.push(r);
     }
   }
+  // Sort each bucket by relevance (matched-keyword count) first, then
+  // quality. Without this, the merged set from the keyword-pass + general-
+  // pass query is interleaved by the underlying SQL ORDER BY (quality),
+  // which doesn't reflect what the user actually cares about. With this,
+  // a healthcare brief surfaces biomedical.com (1 match) ahead of
+  // criminal.com (0 matches) within the buy-ready bucket.
+  const byRelevance = (a, b) => {
+    const dr = (b.relevance || 0) - (a.relevance || 0);
+    if (dr !== 0) return dr;
+    return (b.quality_score || 0) - (a.quality_score || 0);
+  };
+  buyReady.sort(byRelevance);
+  stretch.sort(byRelevance);
   return { buyReady, stretch };
 }
 
 // Project a name_universe row into the 9-column shape §4.1 wants. The Status
 // column defaults to "For Sale" until Phase 3 lander validation lands — the
 // LLM-generated "why it works" column also stays empty until Phase 3.
-function shapeRow(r) {
+function shapeRow(r, keywords) {
   // Treat best_price === 0 as "no public price" — Afternic in particular uses
   // 0 as a make-offer / no-BIN sentinel and the live data shows it flooding
   // results that should have routed to Stretch as TBD.
   const rawPrice = r.best_price == null ? null : Number(r.best_price);
   const best_price = rawPrice != null && rawPrice > 0 ? rawPrice : null;
+  const sld = String(r.sld || '').toLowerCase();
+  // Relevance = which of the brief's semantic_keywords appear as substrings
+  // in the SLD. Replaces the old quality_score / bucket columns in the UI
+  // because users found those abstract; matched keywords are concrete and
+  // explain WHY this candidate surfaced for the brief.
+  const matched_keywords = Array.isArray(keywords) && sld
+    ? [...new Set(keywords.filter((k) => k && sld.includes(String(k).toLowerCase())))]
+    : [];
   return {
     domain: r.domain,
     sld: r.sld,
@@ -175,6 +197,8 @@ function shapeRow(r) {
     source_label: deriveSourceLabel(r),
     status: 'For Sale',
     landing_url: deriveLandingUrl(r),
+    matched_keywords,
+    relevance: matched_keywords.length,
   };
 }
 

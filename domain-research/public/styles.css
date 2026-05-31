@@ -635,3 +635,12 @@ body.modal-open { overflow: hidden; }
 .chat-regen-btn.chat-regen-deep:hover { background: rgba(228,128,105,.10); }
 .chat-regen-status { font-size: .85rem; color: var(--navy-2); }
 .chat-regen-status.chat-regen-err { color: var(--coral-deep); }
+
+/* Relevance column on the naming table — matched semantic keywords as chips */
+.naming-relevance { line-height: 1.7; }
+.naming-kw-chip { display: inline-block; padding: 2px 9px; margin: 1px 4px 1px 0; font-size: .72rem; font-weight: 700; text-transform: lowercase; letter-spacing: .02em; background: rgba(47,163,107,.10); color: #1f7a4d; border: 1.5px solid rgba(47,163,107,.45); border-radius: 999px; }
+.naming-kw-none { color: var(--navy-3); font-size: .85rem; }
+
+/* Recent strip states (loading / empty / error) — applies to all tools */
+.recent-empty { color: var(--navy-3); font-size: .9rem; padding: 6px 0; list-style: none; }
+.recent-empty.recent-err { color: var(--coral-deep); }

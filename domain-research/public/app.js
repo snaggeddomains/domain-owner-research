@@ -2413,10 +2413,12 @@ function renderNamingFilters(f) {
   els.namingFilters.hidden = false;
 }
 
-// 9-column table per §4.1. Status pills carry the §4.3 colors via CSS class.
-function renderNamingTable(rows, bucketLabel) {
+// 6-column table — Relevance (matched semantic keywords) replaces the old
+// Score / Bucket / Why-it-works / Notes columns which users found abstract.
+// Bucket is implicit in the section header.
+function renderNamingTable(rows /* , bucketLabel */) {
   if (!rows.length) {
-    return `<p class="naming-empty">No ${escapeHtml(bucketLabel.toLowerCase())} matches for this brief.</p>`;
+    return `<p class="naming-empty">No matches for this brief.</p>`;
   }
   const head =
     '<thead><tr>' +
@@ -2424,29 +2426,26 @@ function renderNamingTable(rows, bucketLabel) {
       '<th>Price</th>' +
       '<th>Source</th>' +
       '<th>Status</th>' +
-      '<th>Score</th>' +
-      '<th>Bucket</th>' +
-      '<th>Why it works</th>' +
-      '<th>Notes / Next step</th>' +
+      '<th>Relevance</th>' +
       '<th>Link</th>' +
     '</tr></thead>';
   const body = rows.map((r) => {
     const price = r.best_price == null ? 'TBD' : `$${Number(r.best_price).toLocaleString()}`;
-    const score = r.quality_score == null ? '—' : Number(r.quality_score).toFixed(1);
     const statusClass = statusToClass(r.status);
     const link = r.landing_url
       ? `<a href="${escapeHtml(r.landing_url)}" target="_blank" rel="noopener noreferrer">visit</a>`
       : '—';
+    const matched = Array.isArray(r.matched_keywords) ? r.matched_keywords : [];
+    const relevance = matched.length
+      ? matched.map((k) => `<span class="naming-kw-chip">${escapeHtml(k)}</span>`).join('')
+      : `<span class="naming-kw-none">—</span>`;
     return (
       `<tr>` +
         `<td class="naming-domain">${escapeHtml(r.domain)}</td>` +
         `<td>${escapeHtml(price)}</td>` +
         `<td>${escapeHtml(r.source_label || '—')}</td>` +
         `<td><span class="naming-status-pill ${statusClass}">${escapeHtml(r.status || '—')}</span></td>` +
-        `<td>${escapeHtml(score)}</td>` +
-        `<td>${escapeHtml(bucketLabel)}</td>` +
-        `<td class="naming-why">—</td>` +
-        `<td class="naming-notes" contenteditable="true" data-placeholder="Add a note…"></td>` +
+        `<td class="naming-relevance">${relevance}</td>` +
         `<td>${link}</td>` +
       `</tr>`
     );
@@ -2466,7 +2465,10 @@ function statusToClass(status) {
 
 function namingResultsToCsv(data) {
   const rows = [...(data.buyReady || []), ...(data.stretch || [])];
-  const header = ['Domain', 'Price', 'Source', 'Status', 'Brandability Score', 'Bucket', 'Why it works', 'Notes / Next step', 'Link'];
+  // CSV matches the on-screen table: Domain, Price, Source, Status,
+  // Relevance (matched keywords joined), Link. Bucket is included as an
+  // extra column so a downstream sheet/script can still split if needed.
+  const header = ['Domain', 'Price', 'Source', 'Status', 'Relevance', 'Bucket', 'Link'];
   const csvCell = (v) => {
     const s = v == null ? '' : String(v);
     return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
@@ -2474,15 +2476,14 @@ function namingResultsToCsv(data) {
   const lines = [header.map(csvCell).join(',')];
   for (const r of rows) {
     const bucket = r.bucket || (r.best_price != null ? 'Buy-ready' : 'Stretch');
+    const relevance = Array.isArray(r.matched_keywords) ? r.matched_keywords.join(' / ') : '';
     lines.push([
       r.domain,
       r.best_price == null ? 'TBD' : r.best_price,
       r.source_label || '',
       r.status || '',
-      r.quality_score == null ? '' : Number(r.quality_score).toFixed(1),
+      relevance,
       bucket,
-      '',
-      '',
       r.landing_url || '',
     ].map(csvCell).join(','));
   }
@@ -2555,23 +2556,36 @@ function resetNamingView() {
 }
 
 // Recent naming exercises — top 5 below the brief form. Mirrors the main
-// research view's Recent block (loadRecent in app.js).
+// research view's Recent block, but ALWAYS visible (with an explicit empty
+// or error state) so the user can tell whether they've got past runs to
+// revisit, vs the block silently failing to render.
 async function loadNamingRecent() {
   if (!els.namingRecent) return;
+  els.namingRecent.hidden = false;
+  if (els.namingRecentList) els.namingRecentList.innerHTML = '<li class="recent-empty">Loading…</li>';
+  if (els.namingShowAll) els.namingShowAll.hidden = true;
   try {
     const res = await fetch('/api/naming?list=1');
-    const data = await res.json();
-    if (!res.ok) throw new Error('failed');
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || `Couldn't load recent runs (${res.status})`);
     const runs = (data.runs || []).slice(0, 5);
-    if (!runs.length) { els.namingRecent.hidden = true; return; }
+    if (!runs.length) {
+      if (els.namingRecentList) els.namingRecentList.innerHTML = '<li class="recent-empty">No past naming runs yet. Run your first brief above.</li>';
+      if (els.namingShowAll) els.namingShowAll.hidden = true;
+      return;
+    }
     els.namingRecentList.innerHTML = runs.map((r) => {
       const when = r.created_at ? new Date(r.created_at).toLocaleString() : '';
       const snippet = String(r.brief || '').replace(/\s+/g, ' ').slice(0, 90);
       return `<li class="recent-run" data-id="${escapeHtml(r.id)}"><span class="recent-domain">${escapeHtml(snippet || '(empty brief)')}</span><span class="recent-when">${escapeHtml(when)}</span></li>`;
     }).join('');
-    els.namingRecent.hidden = false;
-  } catch {
-    els.namingRecent.hidden = true;
+    if (els.namingShowAll) els.namingShowAll.hidden = false;
+  } catch (e) {
+    console.error('loadNamingRecent failed:', e);
+    if (els.namingRecentList) {
+      els.namingRecentList.innerHTML = `<li class="recent-empty recent-err">⚠️ ${escapeHtml(String(e.message || e))}</li>`;
+    }
+    if (els.namingShowAll) els.namingShowAll.hidden = true;
   }
 }
 
