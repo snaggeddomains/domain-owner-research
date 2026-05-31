@@ -1,7 +1,16 @@
 // Strip scheme/path/www and lowercase, so users can paste a full URL.
+// Also defends against invisible Unicode characters that survive String.trim()
+// but break the strict [a-z0-9-] regex in isValidDomain — most often picked up
+// when users paste from docs, Slack, or iOS autocorrect (zero-width joiners,
+// non-breaking spaces, byte-order marks). NFKC normalizes fullwidth Latin
+// characters (e.g. ｐｒｉｍｅｏ → primeo) to ASCII so they validate cleanly too.
 export function normalizeDomain(input) {
   return String(input || '')
-    .trim()
+    .normalize('NFKC')
+    // \s catches ASCII + most Unicode whitespace; ​-‍﻿ are
+    // zero-width chars NOT in \s;   is non-breaking space (also not in \s
+    // in some engines). Strip every flavor of invisible whitespace.
+    .replace(/[\s\u00A0\u200B-\u200F\u2060\uFEFF]/g, '')
     .toLowerCase()
     .replace(/^[a-z][a-z0-9+.-]*:\/\//, '')
     .replace(/\/.*$/, '')
