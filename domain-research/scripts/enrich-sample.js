@@ -101,7 +101,7 @@ CONTROLLED-LIST DISCIPLINE (critical):
 - BEFORE OUTPUT, mentally verify each entry against its list. If a concept fits one list but not another (e.g. "transportation" is in INDUSTRIES but NOT CATEGORIES), use only the list where it belongs.
 - "categories" must contain EXACTLY 1, 2, or 3 entries — never 4, never 0 (unless skip_reason is set).
 
-CATEGORIES describe the word's DENOTATION (what it literally is), not its connotation. "wellness" is health-medical (what it describes); do NOT also tag it as emotion or mental-state just because it FEELS good. Reserve emotion/mental-state for words that ARE emotions or mental states ("joy", "calm", "focus").
+CATEGORIES describe the word's DENOTATION (what it literally is), not its connotation. "wellness" is health-medical (what it describes); do NOT also tag it as emotion or mental-state just because it FEELS good. Reserve emotion ONLY for words that ARE emotions (joy, fear, anger, hope). Reserve mental-state ONLY for words that ARE mental states (calm, focus, clarity). An ACTION word like "thrive" (to grow) is action, not emotion. A QUALITY word like "strength" is quality/body, not emotion. If you're tempted to add emotion or mental-state because the word EVOKES a feeling, DON'T — that's connotation, not denotation.
 
 INDUSTRIES — be CONSERVATIVE, especially for abstract words:
 - For abstract concepts and broadly-applicable words (friday, knowledge, freedom, hello, alpha), "industries" should usually be EMPTY [] or have at most 1-2 entries. Only list one when a real branded product in that vertical would plausibly use this exact word — not just any product that might mention it.
@@ -138,7 +138,13 @@ Input: "walked"
 Output: {"meaning":"past tense of walk","connotation":"neutral","categories":["motion"],"industries":[],"styles":["one-word"],"themes":["movement","journey","past","steps"],"brandable":"low","versatility":"specific","audience":[],"skip_reason":null,"confidence":0.6}
 
 Input: "xqzry"
-Output: {"meaning":"unrecognizable letter sequence","connotation":"neutral","categories":[],"industries":[],"styles":[],"themes":[],"brandable":"low","versatility":"specific","audience":[],"skip_reason":"non-english","confidence":0.95}`;
+Output: {"meaning":"unrecognizable letter sequence","connotation":"neutral","categories":[],"industries":[],"styles":[],"themes":[],"brandable":"low","versatility":"specific","audience":[],"skip_reason":"non-english","confidence":0.95}
+
+Input: "zen"
+Output: {"meaning":"a state of calm meditative awareness, from Japanese Buddhism","connotation":"positive","categories":["mental-state","religion"],"industries":["life-coach-motivational","health-wellness","spas-salons"],"styles":["one-word","foreign"],"themes":["calm","peace","meditation","focus","balance","mindfulness","tranquility","clarity"],"brandable":"high","versatility":"broad","audience":["consumer","premium","lifestyle"],"skip_reason":null,"confidence":0.9}
+
+Input: "kavu"
+Output: {"meaning":"a made-up phonetic word with no standard English meaning","connotation":"neutral","categories":["concept"],"industries":[],"styles":["made-up","one-word"],"themes":["coined","brandable","invented","syllabic","memorable"],"brandable":"medium","versatility":"open","audience":["consumer","playful"],"skip_reason":null,"confidence":0.65}`;
 
 async function enrichOne(client, model, sld) {
   // System block uses Anthropic prompt caching — cache_control on the only
@@ -217,6 +223,8 @@ async function main() {
   let totalCacheCreate = 0;   // first call writes the cache (1.25× input)
   let totalCacheRead = 0;     // subsequent calls hit the cache (0.10× input)
   let totalOutput = 0;
+  let cacheHits = 0;          // measured, not assumed — counts calls where cache_read > 0
+  let cacheWrites = 0;        // counts calls where cache_creation > 0
   const failures = [];
   for (const sld of slds) {
     process.stderr.write(`enriching ${sld}…\n`);
@@ -228,6 +236,8 @@ async function main() {
       totalCacheCreate += usage.cache_creation_input_tokens || 0;
       totalCacheRead += usage.cache_read_input_tokens || 0;
       totalOutput += usage.output_tokens || 0;
+      if ((usage.cache_read_input_tokens || 0) > 0) cacheHits++;
+      if ((usage.cache_creation_input_tokens || 0) > 0) cacheWrites++;
       printResult(sld, parsed);
     } catch (e) {
       failures.push({ sld, error: String(e.message || e) });
@@ -248,8 +258,8 @@ async function main() {
   const outputCost = (totalOutput / 1_000_000) * HAIKU_OUTPUT_PER_M;
   const totalCost = uncachedInputCost + cacheWriteCost + cacheReadCost + outputCost;
   const perSld = totalCost / Math.max(slds.length - failures.length, 1);
-  const hits = slds.length - 1; // first call writes cache, rest read it (sequential)
-  const cacheRate = hits > 0 ? (hits / slds.length) * 100 : 0;
+  const cacheRate = (cacheHits / Math.max(slds.length, 1)) * 100;
+  const cachingWorking = cacheHits > 0 || cacheWrites > 0;
 
   console.log(`\n---\n## Cost`);
   console.log(`- Tokens:`);
@@ -257,7 +267,7 @@ async function main() {
   console.log(`  - cache writes: **${totalCacheCreate.toLocaleString()}** (1.25× input rate)`);
   console.log(`  - cache reads: **${totalCacheRead.toLocaleString()}** (0.10× input rate — the win)`);
   console.log(`  - output: **${totalOutput.toLocaleString()}**`);
-  console.log(`- Cache effectiveness: ~${cacheRate.toFixed(0)}% of calls hit the cache`);
+  console.log(`- Cache effectiveness: **${cacheHits}/${slds.length} calls hit (${cacheRate.toFixed(0)}%)**${cachingWorking ? '' : ' — ⚠ caching NOT firing, prompt likely under model minimum (Haiku 4.5 needs ≥2048 cached tokens)'}`);
   console.log(`- Pilot cost: **$${totalCost.toFixed(4)}** at Haiku 4.5 list pricing (caching ON)`);
   console.log(`- Per SLD: **$${perSld.toFixed(5)}**`);
   console.log(`\n### Scale projection (at the measured per-SLD rate above)`);
