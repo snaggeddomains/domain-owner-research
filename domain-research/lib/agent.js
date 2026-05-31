@@ -72,7 +72,12 @@ const CHAT_SYSTEM = `You are continuing a domain-ownership investigation as a ch
 - Actually USE the tools to do what the user asks (rocketreach_search/rocketreach_lookup, whoxy_history/whoxy_reverse, whois_lookup/rdap_whois, web_search/brave_search, read_url, analytics_footprint, identify_operator, reverse_*, trademark_search, etc.) — run them, don't just describe what you would do.
 - Keep the same standards: verify an email via whoxy_reverse before calling it confirmed; never invent a registrant/contact; label anything unverified as such; don't enrich marketplace/broker platforms.
 - When you find a new clue (a name, a verified email/phone, a portfolio link), state it plainly with its source so the user can act on it.
-- ALWAYS end your turn with a written answer to the user — even if the tools returned little, summarize what you checked and what you found (or didn't). Never finish on a tool call without a reply.`;
+- ALWAYS end your turn with a written answer to the user — even if the tools returned little, summarize what you checked and what you found (or didn't). Never finish on a tool call without a reply.
+
+REGENERATION HANDSHAKE — when the user asks to "re-run", "regenerate", "refresh", "rebuild", or "redo" the report (the FULL report, not a single lookup), DO NOT produce the report inline. Instead, start your reply with EXACTLY one of these marker tokens, then a one-sentence confirmation:
+  [REGENERATE:synth] — when the chat history has surfaced corrections to incorporate but no need for fresh tool calls. Right for "re-run given this info" / "now redo the report with what we just discussed" / "incorporate this and regenerate" — the typical case.
+  [REGENERATE:deep] — when the user explicitly asks for "deep" or "fresh research" regeneration, OR the chat surfaced a brand-new lead that demands fresh tool calls.
+The frontend detects the marker and triggers the actual report regeneration server-side; your reply MUST NOT contain the json block or the markdown sections. Example replies: "[REGENERATE:synth] Rebuilding the report with the Agarwal/Sanghvi correction now." / "[REGENERATE:deep] Kicking off a fresh deep pass with the LinkedIn lead included."`;
 
 // A single refine-chat turn against an existing report. Conversational, with the
 // full toolset; runs synchronously (kept short via a small step budget).
@@ -137,7 +142,7 @@ function getProvider(env) {
 // Phase 1 of the pipeline: deterministic pre-runs + the main agent loop that
 // drafts a report. Returned shape is JSON-serializable so it can be the result
 // of an Inngest step.
-export async function gather({ domain, question, history = [], env, tier = 'all', lessons = '' }) {
+export async function gather({ domain, question, history = [], env, tier = 'all', lessons = '', chatCorrections = '' }) {
   const provider = getProvider(env);
   const { toolSpecs, agentToolSpecs, toRun } = deriveTooling(env, tier);
 
@@ -181,11 +186,18 @@ export async function gather({ domain, question, history = [], env, tier = 'all'
     tier === 'all'
       ? `\n\n[PAID DEEP PASS] The user explicitly opted into the paid sources — be thorough and do not settle for a free-tier answer. The historical-WHOIS sources above already ran. Now ALSO call the remaining available premium sources: whoxy_reverse (and reverse_whois / reverse_ns / reverse_ip) for the owner's wider portfolio and shared infrastructure — search whoxy_reverse by the owner's email/company/name (current OR historical) — and rocketreach_lookup on the primary likely owner to retrieve their email/phone. Batch independent calls in parallel; only skip one that genuinely cannot apply.`
       : '';
+  // When a regenerate-from-chat request seeded the gather with chat
+  // corrections, surface them as AUTHORITATIVE — they're user-confirmed
+  // findings that should anchor the new pass, not be re-derived from scratch.
+  const correctionsNote = chatCorrections
+    ? `\n\n[USER-CONFIRMED CORRECTIONS from prior refine chat — treat as authoritative facts that the report MUST reflect; verify with tools where it would strengthen the case, but do not contradict them]:\n${chatCorrections}`
+    : '';
   const userPrompt =
     (question ? `Research the domain: ${domain}\n\nSpecific question: ${question}` : `Research the domain: ${domain}`) +
     knownNote +
     seedNote +
-    deepNote;
+    deepNote +
+    correctionsNote;
 
   const result = await provider.runAgent({
     system: SYSTEM_PROMPT + (lessons || ''),
@@ -214,9 +226,14 @@ export async function gather({ domain, question, history = [], env, tier = 'all'
 // finds, then re-emits the report. Split out so each phase gets its own
 // Vercel-function budget when run as separate Inngest steps. Disable with
 // RESEARCH_CRITIQUE=off. Shallow tier skips this entirely.
-export async function critique({ domain, env, tier = 'all', draft, priorTrace = [], lessons = '' }) {
-  if (tier !== 'all') return { report: draft, trace: priorTrace };
-  if (env.RESEARCH_CRITIQUE === 'off') return { report: draft, trace: priorTrace };
+export async function critique({ domain, env, tier = 'all', draft, priorTrace = [], lessons = '', chatCorrections = '' }) {
+  // The regenerate-from-chat synth flow runs critique() to rebuild the
+  // report from existing trace + user corrections — and that's worth doing
+  // even when tier !== 'all' or critique is disabled, because the corrections
+  // are the whole point of the call. Skip the early-outs in that case.
+  const hasCorrections = Boolean(chatCorrections && chatCorrections.trim());
+  if (!hasCorrections && tier !== 'all') return { report: draft, trace: priorTrace };
+  if (!hasCorrections && env.RESEARCH_CRITIQUE === 'off') return { report: draft, trace: priorTrace };
 
   const provider = getProvider(env);
   const { agentToolSpecs } = deriveTooling(env, tier);
@@ -234,7 +251,10 @@ export async function critique({ domain, env, tier = 'all', draft, priorTrace = 
     `- Did the draft name a REGISTRAR or REGISTRAR-MARKETPLACE BRAND (TurnCommerce/NameBright/HugeDomains, GoDaddy/Domains By Proxy/Afternic, Namecheap/Withheld for Privacy, Sav, Dynadot, Spaceship, Network Solutions, IronDNS, Tucows/OpenSRS, Sedo, etc.) as "the owner" purely because their name appears in the WHOIS / registrar field? That is the privacy/forwarding layer, NOT ownership. Required confirmation before naming them: verify the domain renders as a live listing in THEIR catalog — read_url https://www.hugedomains.com/domain_profile.cfm?d=<domain> (NameBright/TurnCommerce), https://www.afternic.com/domain/<domain> (GoDaddy/Afternic), or the matching retail page for the relevant marketplace. If the page redirects to the marketplace homepage or returns a generic shell, the domain is NOT in that marketplace's catalog — strike the "owned by <registrar>/<marketplace>" conclusion, change the primary contact away from the registrar's sales line, and report the situation as "owner privacy-shielded via <registrar>'s privacy product; not publicly identifiable from WHOIS alone" with the contact path routed through the registrar's WHOIS-relay form.\n` +
     `- If the domain is marketplace-consigned, did we follow the seller-portfolio link (marketplace_check.seller_portfolio) and confirm it with analytics_footprint?\n` +
     `Close any gap you can, then OUTPUT ONLY THE COMPLETE corrected report in the SAME two-part format (the fenced \`\`\`json block first, then the Markdown sections). CRITICAL: output the finished report and NOTHING ELSE — no "Critique", no "Fixes applied", no "the draft listed…", no reviewer notes or commentary about what you changed. The user sees only this text, so it must read as the final clean report. If the draft is already correct, output it unchanged.\n\nDRAFT REPORT:\n\n${draft}` +
-    knownNote;
+    knownNote +
+    (hasCorrections
+      ? `\n\nUSER-CONFIRMED CORRECTIONS from the refine chat AFTER the draft was written — these are authoritative facts the regenerated report MUST reflect. Apply them: update the json block (likely_owner, owner_type, confidence, contacts, contact_path, timeline) AND the Markdown sections to incorporate every confirmed fact. Drop or rewrite any section of the draft that contradicts them. Where the corrections change the named owner, restructure the entire report around the new owner (the prior owner's threads can be summarized as "historical" or dropped if the corrections explicitly retire them). Verify the corrections with tools where doing so would strengthen the case, but do not contradict them.\n\nCorrections:\n${chatCorrections}`
+      : '');
 
   try {
     const result = await provider.runAgent({

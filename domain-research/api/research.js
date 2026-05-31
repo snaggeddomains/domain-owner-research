@@ -85,6 +85,43 @@ export default async function handler(req, res) {
 
   const body = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : req.body || {};
 
+  // ── Regenerate report from refine-chat ─────────────────────────────────────
+  // body.regenerate_from_chat = 'synth' (re-run critique with chat as
+  // corrections, ~30-60s, no fresh tool calls) | 'deep' (re-run the full
+  // gather + critique pipeline with chat seeded as context, ~3-5min). Either
+  // mode requires the same permission as a fresh deep run, since the
+  // synthesis still uses the SYSTEM_PROMPT + tools + LLM budget.
+  if (body.regenerate_from_chat) {
+    const mode = body.regenerate_from_chat === 'deep' ? 'deep' : 'synth';
+    if (_userForPerm && !userCanReportPhase(_userForPerm, 'deep')) {
+      res.status(403).json({ error: "You don't have access to regenerate reports — ask an admin to enable deep research." });
+      return;
+    }
+    const run = await getRun(body.id);
+    if (!run) {
+      res.status(404).json({ error: 'Run not found' });
+      return;
+    }
+    if (!run.report || !run.report.markdown) {
+      res.status(409).json({ error: 'No existing report to regenerate from yet — let the initial run finish first.' });
+      return;
+    }
+    const phase = mode === 'deep' ? 'regenerate-deep' : 'regenerate-synth';
+    await setRunStatus(run.id, 'queued', 'queued');
+    try {
+      await inngest.send({
+        name: RUN_REQUESTED,
+        data: { runId: run.id, domain: run.domain, question: run.question || '', phase },
+      });
+    } catch (e) {
+      await failRun(run.id, `Failed to enqueue regeneration: ${e?.message || e}`);
+      res.status(502).json({ error: 'Could not enqueue regeneration (check Inngest config).' });
+      return;
+    }
+    res.status(202).json({ run_id: run.id, domain: run.domain, phase });
+    return;
+  }
+
   // ── Deepen an existing run (paid pass) ──────────────────────────────────────
   if (body.deepen) {
     if (_userForPerm && !userCanReportPhase(_userForPerm, 'deep')) {

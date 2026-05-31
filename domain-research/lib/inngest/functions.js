@@ -8,6 +8,19 @@ import { sendEmail, isEmailConfigured } from '../email.js';
 import { reportUrl } from '../reportUrl.js';
 import { summarizeReport } from '../reportSummary.js';
 
+// Format the refine-chat history as a single corrections block the agent can
+// treat as authoritative. Only the user-assistant pairs that contain actual
+// content go in; pending/error rows are skipped so a half-finished turn
+// can't poison the regen.
+function formatChatCorrections(rows) {
+  const useful = (rows || []).filter((m) => m.status !== 'pending' && m.status !== 'error' && m.content);
+  if (!useful.length) return '';
+  return useful
+    .map((m) => `${m.role === 'assistant' ? 'ASSISTANT' : 'USER'}: ${String(m.content).slice(0, 2400)}`)
+    .join('\n\n')
+    .slice(0, 16000);
+}
+
 // HTML-escape user/agent content before interpolating into the HTML email body
 // (the JSON likely_owner / summary / contact values come from model output and
 // can legitimately contain '<', '&', etc.).
@@ -152,9 +165,14 @@ export const runResearch = inngest.createFunction(
   async ({ event, step }) => {
     const { runId, domain, question, phase = 'shallow' } = event.data;
     const deep = phase === 'deep';
-    const tier = deep ? 'all' : 'free';
+    const isRegenSynth = phase === 'regenerate-synth';
+    const isRegenDeep = phase === 'regenerate-deep';
+    const isRegen = isRegenSynth || isRegenDeep;
+    const tier = (deep || isRegen) ? 'all' : 'free';
 
-    await step.run('mark-running', () => setRunStatus(runId, 'running', deep ? 'deepening' : 'gathering'));
+    await step.run('mark-running', () =>
+      setRunStatus(runId, 'running', isRegen ? 'regenerating' : (deep ? 'deepening' : 'gathering')),
+    );
 
     // Approved playbook lessons get prepended to the SYSTEM_PROMPT. Loaded
     // once per run and reused across gather + critique so both phases see
@@ -162,23 +180,60 @@ export const runResearch = inngest.createFunction(
     // rows — the agent runs normally either way.
     const { addendum: lessons, ids: lessonIds } = await step.run('load-lessons', () => loadLessonsAddendum());
 
+    // Regenerate-from-chat path: load the chat thread once and treat it as
+    // authoritative corrections for the gather/critique passes that follow.
+    // Synth mode skips gather() entirely and just re-runs critique() on the
+    // existing draft with the corrections; deep mode re-runs the whole
+    // pipeline seeded with them. The chat thread itself is not deleted —
+    // it stays as the audit trail of how the report got refined.
+    const chatCorrections = isRegen
+      ? await step.run('load-chat-corrections', async () => formatChatCorrections(await getChat(runId)))
+      : '';
+
     try {
-      // Phase 1: gather — owns its own Vercel invocation (~300s budget).
-      const gathered = await step.run('gather', () =>
-        gather({ domain, question, env: process.env, tier, lessons }),
-      );
-
-      let report = gathered.report;
-      let trace = gathered.trace;
-
-      // Phase 2: critique — deep only, separate Vercel invocation.
-      if (deep && process.env.RESEARCH_CRITIQUE !== 'off') {
-        await step.run('mark-verifying', () => setRunStatus(runId, 'running', 'verifying'));
-        const refined = await step.run('critique', () =>
-          critique({ domain, env: process.env, tier, draft: report, priorTrace: trace, lessons }),
+      let report;
+      let trace;
+      let gathered;
+      if (isRegenSynth) {
+        // No new gather() — pull the existing draft and trace from the run
+        // record and feed them straight into critique() with corrections.
+        const existing = await step.run('load-existing-draft', () => getRun(runId));
+        const draft = (existing && existing.report && existing.report.markdown) || '';
+        const priorTrace = (existing && existing.report && existing.report.trace) || [];
+        if (!draft) throw new Error('regenerate-synth: existing draft is empty — run gather first');
+        await step.run('mark-verifying', () => setRunStatus(runId, 'running', 'regenerating'));
+        const refined = await step.run('critique-regen', () =>
+          critique({ domain, env: process.env, tier, draft, priorTrace, lessons, chatCorrections }),
         );
         report = refined.report;
         trace = refined.trace;
+        // Preserve the original toolsAvailable/categories from the existing
+        // report so the save shape matches the original-run shape.
+        gathered = {
+          toolsAvailable: (existing && existing.report && existing.report.toolsAvailable) || [],
+          categories: (existing && existing.report && existing.report.categories) || {},
+        };
+      } else {
+        // Phase 1: gather — owns its own Vercel invocation (~300s budget).
+        // For regenerate-deep, chatCorrections gets folded into the user
+        // prompt so the new pass anchors on the user's confirmed findings.
+        gathered = await step.run('gather', () =>
+          gather({ domain, question, env: process.env, tier, lessons, chatCorrections }),
+        );
+
+        report = gathered.report;
+        trace = gathered.trace;
+
+        // Phase 2: critique — deep and regenerate-deep, separate Vercel
+        // invocation. Synth path already ran critique above.
+        if ((deep || isRegenDeep) && process.env.RESEARCH_CRITIQUE !== 'off') {
+          await step.run('mark-verifying', () => setRunStatus(runId, 'running', 'verifying'));
+          const refined = await step.run('critique', () =>
+            critique({ domain, env: process.env, tier, draft: report, priorTrace: trace, lessons, chatCorrections }),
+          );
+          report = refined.report;
+          trace = refined.trace;
+        }
       }
 
       await step.run('save-report', () =>

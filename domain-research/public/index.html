@@ -136,6 +136,12 @@
               <textarea id="chat-input" rows="2" placeholder="e.g. run RocketReach on the LinkedIn profile, or check who owns the seller's portfolio domain"></textarea>
               <button id="chat-send" type="submit">Send</button>
             </form>
+            <div class="chat-regen">
+              <span class="chat-regen-label">Regenerate the report using this conversation:</span>
+              <button id="chat-regen-synth" type="button" class="chat-regen-btn" title="Re-synthesize the report from existing trace + chat corrections. Fast (~30-60s), no new tool calls.">From chat (fast)</button>
+              <button id="chat-regen-deep" type="button" class="chat-regen-btn chat-regen-deep" title="Re-run the full deep pipeline with chat seeded as context. ~3-5 minutes, uses paid sources.">Deep re-research</button>
+              <span id="chat-regen-status" class="chat-regen-status" hidden></span>
+            </div>
           </section>
 
           <div id="deepen-bar" class="deepen-bar" hidden>

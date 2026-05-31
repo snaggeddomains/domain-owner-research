@@ -50,6 +50,9 @@ const els = {
   chatForm: $('chat-form'),
   chatInput: $('chat-input'),
   chatSend: $('chat-send'),
+  chatRegenSynth: $('chat-regen-synth'),
+  chatRegenDeep: $('chat-regen-deep'),
+  chatRegenStatus: $('chat-regen-status'),
   evidence: $('evidence'),
   trace: $('trace'),
   hero: $('hero'),
@@ -538,7 +541,11 @@ function chatBubble(m) {
   const cls = m.role === 'assistant' ? 'bot' : 'me';
   const pending = m.role === 'assistant' && m.status === 'pending';
   const err = m.status === 'error';
-  const body = pending ? 'Looking into it…' : renderMarkdown(String(m.content || ''));
+  // Strip the [REGENERATE:mode] marker from stored assistant turns so
+  // reloaded chats show the clean confirmation, not the protocol token.
+  const raw = String(m.content || '');
+  const cleanContent = m.role === 'assistant' ? detectRegenMarker(raw).cleaned || raw : raw;
+  const body = pending ? 'Looking into it…' : renderMarkdown(cleanContent);
   const idAttr = m.id ? ` data-msg-id="${escapeHtml(m.id)}"` : '';
   // Save-as-lesson affordance on completed assistant turns only — pending
   // turns have no content yet, user turns aren't the corrective signal.
@@ -611,7 +618,15 @@ async function sendChat(message) {
     try {
       const r = await fetch(`/api/chat?turn_id=${encodeURIComponent(turnId)}`);
       const d = await r.json();
-      if (d.status === 'done') { finish(d.content || '(no response)', false, turnId); return; }
+      if (d.status === 'done') {
+        // The agent emits [REGENERATE:synth] or [REGENERATE:deep] as the
+        // first token when the user asked to re-run the report. Strip it
+        // from the rendered reply and kick off the matching regen.
+        const { cleaned, mode } = detectRegenMarker(d.content || '');
+        finish(cleaned || d.content || '(no response)', false, turnId);
+        if (mode) regenerateFromChat(mode);
+        return;
+      }
       if (d.status === 'error') { finish(d.content || '⚠️ Chat turn failed.', true); return; }
       if (pending) pending.textContent = `Researching… (${Math.round((Date.now() - started) / 1000)}s)`;
     } catch { /* keep polling */ }
@@ -1028,6 +1043,61 @@ async function pollRun(runId) {
   const data = await res.json();
   if (!res.ok) throw new Error(data.error || `Poll failed (${res.status})`);
   return data;
+}
+
+// Regenerate the current report using the refine-chat history as
+// authoritative corrections. mode='synth' re-runs critique() against the
+// existing trace + corrections (fast, no fresh tool calls). mode='deep'
+// runs the whole gather+critique pipeline again with the chat seeded as
+// context (slow, paid sources). Server-side handler in api/research.js.
+async function regenerateFromChat(mode) {
+  if (!currentRunId) return;
+  if (regenInFlight) return;
+  regenInFlight = true;
+  setRegenStatus(mode === 'deep' ? 'Kicking off deep re-research…' : 'Regenerating from chat…');
+  setRegenButtonsDisabled(true);
+  try {
+    const res = await fetch('/api/research', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ id: currentRunId, regenerate_from_chat: mode }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || `Regenerate failed (${res.status})`);
+    setRegenStatus('');
+    // Hand off to the existing polling loop — it owns the live clock,
+    // stage updates, and the final renderReport() / setReportMeta() call.
+    startPolling(currentRunId, mode === 'deep' ? 'Regenerating (deep)' : 'Regenerating');
+  } catch (e) {
+    setRegenStatus(`⚠️ ${e.message || e}`, true);
+  } finally {
+    regenInFlight = false;
+    // Re-enable after a short delay so the status message stays readable.
+    setTimeout(() => setRegenButtonsDisabled(false), 1500);
+  }
+}
+
+let regenInFlight = false;
+function setRegenStatus(text, isErr = false) {
+  if (!els.chatRegenStatus) return;
+  if (!text) { els.chatRegenStatus.hidden = true; els.chatRegenStatus.textContent = ''; return; }
+  els.chatRegenStatus.textContent = text;
+  els.chatRegenStatus.classList.toggle('chat-regen-err', !!isErr);
+  els.chatRegenStatus.hidden = false;
+}
+function setRegenButtonsDisabled(d) {
+  if (els.chatRegenSynth) els.chatRegenSynth.disabled = d;
+  if (els.chatRegenDeep) els.chatRegenDeep.disabled = d;
+}
+
+// Chat replies may begin with a regeneration marker — the agent's signal
+// that the user asked to re-run the report. We strip the marker from the
+// rendered text and kick off the regen automatically. Returns the cleaned
+// reply text so the chat bubble shows the friendly confirmation only.
+function detectRegenMarker(text) {
+  const m = String(text || '').match(/^\s*\[REGENERATE:(synth|deep)\]\s*/i);
+  if (!m) return { cleaned: text, mode: null };
+  return { cleaned: text.slice(m[0].length), mode: m[1].toLowerCase() };
 }
 
 function startPolling(runId, label) {
@@ -2706,6 +2776,11 @@ els.chatForm?.addEventListener('submit', (e) => {
   if (!msg) return;
   els.chatInput.value = '';
   sendChat(msg);
+});
+els.chatRegenSynth?.addEventListener('click', () => regenerateFromChat('synth'));
+els.chatRegenDeep?.addEventListener('click', () => {
+  if (!confirm('Re-run the full deep research pipeline using the chat as context? Takes ~3-5 minutes and uses paid sources.')) return;
+  regenerateFromChat('deep');
 });
 els.rfSubmit?.addEventListener('click', () => submitFeedback({
   was_correct: false,
