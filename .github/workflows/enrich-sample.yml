@@ -1,0 +1,45 @@
+name: Enrichment pilot (10 SLDs)
+
+# Read-only pilot for the name_universe enrichment design. Runs the 10
+# representative SLDs through Haiku 4.5 with the locked schema and prints
+# the parsed outputs + cost extrapolation directly into the Actions log.
+# Writes NOTHING to any database.
+#
+# Click "Run workflow" in the Actions tab and read the output in the log.
+# Re-runnable; each run is a fresh ~$0.01-0.02 call.
+
+on:
+  workflow_dispatch:
+    inputs:
+      model:
+        description: "Model ID (default: claude-haiku-4-5-20251001)"
+        required: false
+        default: "claude-haiku-4-5-20251001"
+      slds:
+        description: "Override SLDs (comma-separated). Leave blank for the 10 defaults."
+        required: false
+        default: ""
+
+jobs:
+  enrich:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: domain-research
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install deps
+        run: npm install --omit=dev
+
+      - name: Run enrichment pilot
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          ANTHROPIC_ENRICH_MODEL: ${{ inputs.model }}
+          ENRICH_SLDS: ${{ inputs.slds }}
+        run: node scripts/enrich-sample.js
