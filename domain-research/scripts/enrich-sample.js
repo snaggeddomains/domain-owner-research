@@ -146,12 +146,13 @@ Output: {"meaning":"a state of calm meditative awareness, from Japanese Buddhism
 Input: "kavu"
 Output: {"meaning":"a made-up phonetic word with no standard English meaning","connotation":"neutral","categories":["concept"],"industries":[],"styles":["made-up","one-word"],"themes":["coined","brandable","invented","syllabic","memorable"],"brandable":"medium","versatility":"open","audience":["consumer","playful"],"skip_reason":null,"confidence":0.65}`;
 
-async function enrichOne(client, model, sld) {
-  // System block uses Anthropic prompt caching — cache_control on the only
-  // text block means the entire 2K-token system prompt (schema + controlled
-  // lists + rules + examples) becomes a cache key. Subsequent calls within
-  // the 5-minute TTL read the cached prefix at 10% of the input rate.
-  const response = await client.messages.create({
+async function enrichOne(client, model, sld, debugFirstResponse = false) {
+  // Use the beta messages endpoint (client.beta.messages) — even though
+  // cache_control is typed on the standard endpoint in SDK 0.99.0, empirical
+  // result is that the standard endpoint silently drops it (round 3-4 saw
+  // cache_creation/read both 0). The beta endpoint is documented to support
+  // prompt caching reliably and is what Anthropic's own examples use.
+  const response = await client.beta.messages.create({
     model,
     max_tokens: 700,
     system: [
@@ -159,6 +160,12 @@ async function enrichOne(client, model, sld) {
     ],
     messages: [{ role: 'user', content: `Input: "${sld}"` }],
   });
+  // One-shot diagnostic on the very first call so we can see what Anthropic
+  // is actually reporting back — if cache fields are missing entirely vs
+  // present-but-zero, that tells us where the failure is.
+  if (debugFirstResponse) {
+    process.stderr.write(`[debug] first response usage keys: ${JSON.stringify(response.usage)}\n`);
+  }
   const text = response.content
     .filter((b) => b.type === 'text')
     .map((b) => b.text)
@@ -226,10 +233,11 @@ async function main() {
   let cacheHits = 0;          // measured, not assumed — counts calls where cache_read > 0
   let cacheWrites = 0;        // counts calls where cache_creation > 0
   const failures = [];
-  for (const sld of slds) {
+  for (let i = 0; i < slds.length; i++) {
+    const sld = slds[i];
     process.stderr.write(`enriching ${sld}…\n`);
     try {
-      const { parsed, usage } = await enrichOne(client, model, sld);
+      const { parsed, usage } = await enrichOne(client, model, sld, i === 0);
       // usage.input_tokens reports only the FRESH (uncached) input. Cache
       // hits/writes are reported separately and don't double-count.
       totalUncachedInput += usage.input_tokens || 0;
