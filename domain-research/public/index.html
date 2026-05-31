@@ -6,23 +6,26 @@
     <title>Snagged Research</title>
     <meta name="description" content="AI-assisted domain ownership research." />
     <meta property="og:type" content="website" />
-    <meta property="og:url" content="https://research.snagged.com/" />
+    <meta property="og:url" content="https://app.snagged.com/research/" />
     <meta property="og:title" content="Snagged Research" />
     <meta property="og:description" content="AI-assisted domain ownership research — who owns a domain, its history, and how to reach them." />
-    <meta property="og:image" content="https://research.snagged.com/og-image.png" />
+    <meta property="og:image" content="https://app.snagged.com/research/og-image.png" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="Snagged Research" />
     <meta name="twitter:description" content="AI-assisted domain ownership research." />
-    <meta name="twitter:image" content="https://research.snagged.com/og-image.png" />
-    <link rel="icon" href="/favicon-32.png" />
-    <link rel="stylesheet" href="/styles.css" />
+    <meta name="twitter:image" content="https://app.snagged.com/research/og-image.png" />
+    <!-- Base path so every relative asset/link resolves under /research/ when
+         the app is served from /research/* (app.snagged.com/research/*). -->
+    <base href="/research/" />
+    <link rel="icon" href="favicon-32.png" />
+    <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
     <div id="login" class="login" hidden>
       <form id="login-form" class="login-card" autocomplete="on">
-        <img class="login-art" src="/mascot-hero.png" alt="Snagged Research" />
+        <img class="login-art" src="mascot-hero.png" alt="Snagged Research" />
         <div class="wordmark"><span class="wm-text"><span class="wm-a">Snagged</span> <span class="wm-b">Research</span></span></div>
         <p class="sub">Sign in to continue.</p>
         <input id="email" type="email" placeholder="Email" autocomplete="username" />
@@ -32,7 +35,7 @@
         <p class="login-extra"><a href="#" id="forgot-link">Forgot password?</a></p>
       </form>
       <form id="forgot-form" class="login-card" autocomplete="on" hidden>
-        <img class="login-art" src="/mascot-hero.png" alt="Snagged Research" />
+        <img class="login-art" src="mascot-hero.png" alt="Snagged Research" />
         <div class="wordmark"><span class="wm-text"><span class="wm-a">Snagged</span> <span class="wm-b">Research</span></span></div>
         <p class="sub">Enter your email and we'll send you a reset link.</p>
         <input id="forgot-email" type="email" placeholder="Email" autocomplete="username" required />
@@ -42,7 +45,7 @@
         <p class="login-extra"><a href="#" id="back-to-login">Back to sign in</a></p>
       </form>
       <form id="reset-form" class="login-card" autocomplete="on" hidden>
-        <img class="login-art" src="/mascot-hero.png" alt="Snagged Research" />
+        <img class="login-art" src="mascot-hero.png" alt="Snagged Research" />
         <div class="wordmark"><span class="wm-text"><span class="wm-a">Snagged</span> <span class="wm-b">Research</span></span></div>
         <p class="sub">Set a new password.</p>
         <input id="reset-password" type="password" placeholder="New password (8+ characters)" autocomplete="new-password" required minlength="8" />
@@ -54,7 +57,7 @@
 
     <main id="app" hidden>
       <aside class="sidebar">
-        <a href="/" id="home-link" class="wordmark"><img class="brand-mark" src="/logomark-round.svg" alt="" /><span class="wm-text"><span class="wm-a">Snagged</span> <span class="wm-b">Research</span></span></a>
+        <a href="./" id="home-link" class="wordmark"><img class="brand-mark" src="logomark-round.svg" alt="" /><span class="wm-text"><span class="wm-a">Snagged</span> <span class="wm-b">Research</span></span></a>
         <button id="nav-toggle" class="nav-toggle" type="button" aria-label="Menu" aria-expanded="false">&#9776;</button>
         <nav class="nav" id="nav">
           <button id="nav-research" class="nav-btn active" type="button">Domain Owner</button>
@@ -75,7 +78,7 @@
         <!-- Research view -->
         <section id="view-research">
           <div class="hero" id="hero">
-            <img class="hero-art" src="/mascot-hero.png" alt="" />
+            <img class="hero-art" src="mascot-hero.png" alt="" />
             <h1 class="hero-title">Domain <span class="accent">Research</span></h1>
             <p class="hero-sub">Enter a domain — a free pre-flight runs first (no paid credits); you can go deeper afterwards.</p>
             <form id="search" class="search hero-search" autocomplete="off">
@@ -175,7 +178,7 @@
         <!-- Trademark tool -->
         <section id="view-trademark" hidden>
           <div class="hero tool-hero">
-            <img class="hero-art" src="/mascot-hero.png" alt="" />
+            <img class="hero-art" src="mascot-hero.png" alt="" />
             <h1 class="hero-title">Trademark <span class="accent">Search</span></h1>
             <p class="hero-sub">Search trademarks (USPTO) by brand or owner — applicant, status, and filing dates.</p>
             <form id="tm-form" class="search hero-search" autocomplete="off">
@@ -191,7 +194,7 @@
         <!-- Appraisal tool -->
         <section id="view-appraisal" hidden>
           <div class="hero tool-hero">
-            <img class="hero-art" src="/mascot-hero.png" alt="" />
+            <img class="hero-art" src="mascot-hero.png" alt="" />
             <h1 class="hero-title">Domain <span class="accent">Appraisal</span></h1>
             <p class="hero-sub">AI valuation via Appraise.net. A new appraisal costs credits; cached results are cheaper.</p>
             <form id="ap-form" class="search hero-search" autocomplete="off">
@@ -207,7 +210,7 @@
         <!-- Naming exercise -->
         <section id="view-naming" hidden>
           <div class="hero tool-hero">
-            <img class="hero-art" src="/mascot-hero.png" alt="" />
+            <img class="hero-art" src="mascot-hero.png" alt="" />
             <h1 class="hero-title">Naming <span class="accent">Exercise</span></h1>
             <p class="hero-sub">Tell me your criteria and I'll find readily-available names that fit.</p>
           </div>
@@ -325,6 +328,6 @@ The model parses it into structured filters (TLDs, length, budget, tone, etc.) a
       </div>
     </div>
 
-    <script src="/app.js"></script>
+    <script src="app.js"></script>
   </body>
 </html>

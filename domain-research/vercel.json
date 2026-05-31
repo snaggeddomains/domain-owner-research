@@ -1,11 +1,37 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
+  "redirects": [
+    {
+      "source": "/",
+      "destination": "https://app.snagged.com/research",
+      "permanent": true
+    },
+    {
+      "source": "/:tool(trademark|appraisal|naming)",
+      "destination": "https://app.snagged.com/research/:tool",
+      "permanent": true
+    },
+    {
+      "source": "/:tool(trademark|appraisal|naming)/:slug*",
+      "destination": "https://app.snagged.com/research/:tool/:slug*",
+      "permanent": true
+    },
+    {
+      "source": "/admin",
+      "destination": "https://app.snagged.com/research/admin",
+      "permanent": true
+    }
+  ],
   "rewrites": [
-    { "source": "/trademark", "destination": "/index.html" },
-    { "source": "/trademark/:slug*", "destination": "/index.html" },
-    { "source": "/appraisal", "destination": "/index.html" },
-    { "source": "/appraisal/:slug*", "destination": "/index.html" },
-    { "source": "/naming", "destination": "/index.html" },
-    { "source": "/naming/:slug*", "destination": "/index.html" }
+    { "source": "/research", "destination": "/index.html" },
+    { "source": "/research/admin", "destination": "/index.html" },
+    { "source": "/research/trademark", "destination": "/index.html" },
+    { "source": "/research/trademark/:slug*", "destination": "/index.html" },
+    { "source": "/research/appraisal", "destination": "/index.html" },
+    { "source": "/research/appraisal/:slug*", "destination": "/index.html" },
+    { "source": "/research/naming", "destination": "/index.html" },
+    { "source": "/research/naming/:slug*", "destination": "/index.html" },
+    { "source": "/research/api/:fn*", "destination": "/api/:fn*" },
+    { "source": "/research/:path*", "destination": "/:path*" }
   ]
 }

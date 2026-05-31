@@ -93,9 +93,11 @@ async function handleResetRequest(req, res, body) {
   if (user && user.id && isEmailConfigured()) {
     try {
       const token = signResetToken(user.id);
-      const origin = (req.headers['x-forwarded-proto'] ? `${req.headers['x-forwarded-proto']}://` : 'https://') +
-        (req.headers['x-forwarded-host'] || req.headers.host || 'research.snagged.com');
-      const link = `${origin}/?reset=${encodeURIComponent(token)}`;
+      // The app is nested at app.snagged.com/research/* — reset links must
+      // include the /research path prefix to land on the SPA, since the
+      // root path now 301-redirects via vercel.json.
+      const base = (process.env.APP_URL || 'https://app.snagged.com/research').replace(/\/+$/, '');
+      const link = `${base}/?reset=${encodeURIComponent(token)}`;
       console.log(`password-reset request: sending reset link to ${user.email}`);
       await sendEmail({
         to: user.email,

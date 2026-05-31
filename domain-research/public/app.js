@@ -159,7 +159,7 @@ const toolHistory = { tm: { all: [], expanded: false, q: '' }, ap: { all: [], ex
 
 async function serverListTool(kind, limit = 5) {
   try {
-    const res = await fetch(`/api/lookup?kind=${kind}&limit=${limit}`);
+    const res = await fetch(`/research/api/lookup?kind=${kind}&limit=${limit}`);
     if (!res.ok) return null;
     const d = await res.json();
     if (!Array.isArray(d.lookups)) return null;
@@ -168,7 +168,7 @@ async function serverListTool(kind, limit = 5) {
 }
 async function serverGetTool(kind, query) {
   try {
-    const res = await fetch(`/api/lookup?kind=${kind}&query=${encodeURIComponent(query)}`);
+    const res = await fetch(`/research/api/lookup?kind=${kind}&query=${encodeURIComponent(query)}`);
     if (!res.ok) return null;
     const d = await res.json();
     if (!d.found) return null;
@@ -180,7 +180,7 @@ async function serverGetTool(kind, query) {
 }
 function serverSaveTool(kind, key, data) {
   try {
-    fetch('/api/lookup', {
+    fetch('/research/api/lookup', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ kind, query: key, data }),
@@ -284,17 +284,19 @@ function clearHash() {
   if (location.hash) history.replaceState(null, '', location.pathname + location.search);
 }
 
-// The standalone tools are PATH-routed (research stays hash-routed at "/"):
-//   /trademark           /trademark/<query>
-//   /appraisal           /appraisal/<domain>
-//   /naming              (no slug — brief lives in the textarea, not the URL)
+// The standalone tools are PATH-routed (research stays hash-routed at the
+// SPA root). All paths carry the /research/ prefix because the app is
+// nested at app.snagged.com/research/* — see vercel.json rewrites.
+//   /research/trademark           /research/trademark/<query>
+//   /research/appraisal           /research/appraisal/<domain>
+//   /research/naming              (no slug — brief lives in the textarea)
 function currentToolRoute() {
-  const m = location.pathname.match(/^\/(trademark|appraisal|naming)(?:\/(.+?))?\/?$/);
+  const m = location.pathname.match(/^\/research\/(trademark|appraisal|naming)(?:\/(.+?))?\/?$/);
   if (!m) return null;
   return { tool: m[1], slug: m[2] ? decodeURIComponent(m[2]) : '' };
 }
 function setToolUrl(tool, slug) {
-  const path = slug ? `/${tool}/${encodeURIComponent(slug)}` : `/${tool}`;
+  const path = slug ? `/research/${tool}/${encodeURIComponent(slug)}` : `/research/${tool}`;
   if (location.pathname !== path) history.pushState(null, '', path);
 }
 
@@ -520,7 +522,7 @@ function resetFeedback() {
 }
 async function submitFeedback(fields) {
   try {
-    await fetch('/api/feedback', {
+    await fetch('/research/api/feedback', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ domain: currentReportDomain, run_id: currentRunId, ...fields }),
@@ -564,7 +566,7 @@ async function loadChat(runId) {
   renderChatMessages([]);
   if (!runId) return;
   try {
-    const res = await fetch(`/api/chat?run_id=${encodeURIComponent(runId)}`);
+    const res = await fetch(`/research/api/chat?run_id=${encodeURIComponent(runId)}`);
     const data = await res.json();
     renderChatMessages(data.messages || []);
   } catch { /* empty thread */ }
@@ -596,7 +598,7 @@ async function sendChat(message) {
 
   let turnId;
   try {
-    const res = await fetch('/api/chat', {
+    const res = await fetch('/research/api/chat', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ run_id: currentRunId, domain: currentReportDomain, message }),
@@ -616,7 +618,7 @@ async function sendChat(message) {
   const poll = async () => {
     if (Date.now() - started > 5 * 60 * 1000) { finish('⚠️ Timed out — try a narrower question.', true); return; }
     try {
-      const r = await fetch(`/api/chat?turn_id=${encodeURIComponent(turnId)}`);
+      const r = await fetch(`/research/api/chat?turn_id=${encodeURIComponent(turnId)}`);
       const d = await r.json();
       if (d.status === 'done') {
         // The agent emits [REGENERATE:synth] or [REGENERATE:deep] as the
@@ -811,7 +813,7 @@ async function checkAuth() {
     return;
   }
   try {
-    const res = await fetch('/api/me');
+    const res = await fetch('/research/api/me');
     const data = await res.json();
     const locked = data.gateEnabled && !data.authed;
     els.login.hidden = !locked;
@@ -842,7 +844,7 @@ async function checkAuth() {
 els.navLogout?.addEventListener('click', async (e) => {
   e.preventDefault();
   try {
-    await fetch('/api/me', { method: 'DELETE' });
+    await fetch('/research/api/me', { method: 'DELETE' });
   } catch { /* fall through — reload still shows login */ }
   window.location.assign('/');
 });
@@ -891,14 +893,14 @@ function gateNavByPermissions(user) {
   if (els.navAdmin) els.navAdmin.hidden = !(user && user.is_admin);
 }
 
-els.navAdmin?.addEventListener('click', () => { history.pushState(null, '', '/admin'); showView('admin'); closeNav(); });
+els.navAdmin?.addEventListener('click', () => { history.pushState(null, '', '/research/admin'); showView('admin'); closeNav(); });
 
 // Self-serve toggle for "Email me when reports finish". PATCH /api/me;
 // optimistic UI — if the patch fails, revert the checkbox.
 els.navNotifyToggle?.addEventListener('change', async (e) => {
   const want = e.target.checked;
   try {
-    const res = await fetch('/api/me', {
+    const res = await fetch('/research/api/me', {
       method: 'PATCH',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ email_notify_on_done: want }),
@@ -913,7 +915,7 @@ els.loginForm?.addEventListener('submit', async (e) => {
   e.preventDefault();
   els.loginError.hidden = true;
   try {
-    const res = await fetch('/api/login', {
+    const res = await fetch('/research/api/login', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ email: els.email && els.email.value, password: els.password.value }),
@@ -957,7 +959,7 @@ els.forgotForm?.addEventListener('submit', async (e) => {
   const email = (els.forgotEmail && els.forgotEmail.value || '').trim();
   if (!email) return;
   try {
-    const res = await fetch('/api/login', {
+    const res = await fetch('/research/api/login', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ action: 'reset-request', email }),
@@ -1000,7 +1002,7 @@ els.resetForm?.addEventListener('submit', async (e) => {
     return;
   }
   try {
-    const res = await fetch('/api/login', {
+    const res = await fetch('/research/api/login', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ action: 'reset-confirm', token, password: pw }),
@@ -1026,7 +1028,7 @@ els.resetForm?.addEventListener('submit', async (e) => {
 
 // ── Research (async: enqueue → poll) ────────────────────────────────────────
 async function enqueue({ domain, deep, force }) {
-  const res = await fetch('/api/research', {
+  const res = await fetch('/research/api/research', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ domain, deep: !!deep, force: !!force }),
@@ -1039,7 +1041,7 @@ async function enqueue({ domain, deep, force }) {
 }
 
 async function pollRun(runId) {
-  const res = await fetch(`/api/research?id=${encodeURIComponent(runId)}`);
+  const res = await fetch(`/research/api/research?id=${encodeURIComponent(runId)}`);
   const data = await res.json();
   if (!res.ok) throw new Error(data.error || `Poll failed (${res.status})`);
   return data;
@@ -1057,7 +1059,7 @@ async function regenerateFromChat(mode) {
   setRegenStatus(mode === 'deep' ? 'Kicking off deep re-research…' : 'Regenerating from chat…');
   setRegenButtonsDisabled(true);
   try {
-    const res = await fetch('/api/research', {
+    const res = await fetch('/research/api/research', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ id: currentRunId, regenerate_from_chat: mode }),
@@ -1247,7 +1249,7 @@ function mirrorGoDaddyFromAfternic(channels) {
 
 async function getMarketCache(domain) {
   try {
-    const res = await fetch(`/api/lookup?kind=mk&query=${encodeURIComponent(domain)}`);
+    const res = await fetch(`/research/api/lookup?kind=mk&query=${encodeURIComponent(domain)}`);
     if (!res.ok) return null;
     const d = await res.json();
     if (!d.found) return null;
@@ -1281,7 +1283,7 @@ async function streamMarketStrip(domain) {
       let result;
       try {
         const res = await fetch(
-          `/api/lookup?source=marketplace_check&domain=${encodeURIComponent(domain)}&channel=${ch}`,
+          `/research/api/lookup?source=marketplace_check&domain=${encodeURIComponent(domain)}&channel=${ch}`,
         );
         const data = await res.json();
         result = ((data.data && data.data.channels) || [])[0] || { channel: ch, listed: false };
@@ -1390,7 +1392,7 @@ async function deepen() {
   els.deepenBar.hidden = true;
   setStatus('Going deeper (paid sources)… this can take a few minutes. The free findings stay below.');
   try {
-    const res = await fetch('/api/research', {
+    const res = await fetch('/research/api/research', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ id: currentRunId, deepen: true }),
@@ -1422,7 +1424,7 @@ function cancelRun() {
 async function loadProjects(q = '') {
   els.projectsList.innerHTML = '<li class="muted">Loading…</li>';
   try {
-    const res = await fetch(`/api/research?list=1&q=${encodeURIComponent(q)}`);
+    const res = await fetch(`/research/api/research?list=1&q=${encodeURIComponent(q)}`);
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || `Failed (${res.status})`);
     const runs = data.runs || [];
@@ -1523,7 +1525,7 @@ async function loadUsers() {
   els.userListError.hidden = true;
   els.userList.hidden = true;
   try {
-    const res = await fetch('/api/users');
+    const res = await fetch('/research/api/users');
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`);
     renderUsers(data.users || []);
@@ -1578,7 +1580,7 @@ function renderUsers(users) {
 async function patchUser(id, body, rowEl) {
   const errEl = rowEl && rowEl.querySelector('.user-row-error');
   if (errEl) errEl.hidden = true;
-  const res = await fetch('/api/users', {
+  const res = await fetch('/research/api/users', {
     method: 'PATCH',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ id, ...body }),
@@ -1620,7 +1622,7 @@ els.userList?.addEventListener('click', async (e) => {
   const action = e.target.dataset && e.target.dataset.action;
   if (action === 'delete') {
     if (!confirm('Remove this user? Their account and access are revoked immediately.')) return;
-    const res = await fetch('/api/users', {
+    const res = await fetch('/research/api/users', {
       method: 'DELETE',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ id }),
@@ -1672,7 +1674,7 @@ els.userAddForm?.addEventListener('submit', async (e) => {
   };
   const is_admin = !!(els.userAddAdmin && els.userAddAdmin.checked);
   const email_notify_on_done = !!(els.userAddNotify && els.userAddNotify.checked);
-  const res = await fetch('/api/users', {
+  const res = await fetch('/research/api/users', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ email, password, is_admin, permissions, email_notify_on_done }),
@@ -1952,7 +1954,7 @@ async function runTrademark(input) {
   els.tmResults.innerHTML = '';
   setToolStatus(els.tmStatus, `Searching trademarks for "${q}"…`);
   try {
-    const res = await fetch(`/api/lookup?source=trademark_search&query=${encodeURIComponent(q)}`);
+    const res = await fetch(`/research/api/lookup?source=trademark_search&query=${encodeURIComponent(q)}`);
     const data = await res.json();
     if (!data.ok) throw new Error(data.error || `Failed (${res.status})`);
     const items = (data.data && data.data.trademarks) || [];
@@ -2055,7 +2057,7 @@ async function pollAppraisal(domain, jobId) {
     setToolStatus(els.apStatus, `Appraising ${domain}… (${Math.round((Date.now() - started) / 1000)}s)`);
     await new Promise((r) => setTimeout(r, 3000));
     try {
-      const res = await fetch(`/api/lookup?source=appraise_lookup&job_id=${encodeURIComponent(jobId)}`);
+      const res = await fetch(`/research/api/lookup?source=appraise_lookup&job_id=${encodeURIComponent(jobId)}`);
       const data = await res.json();
       const st = (data && data.data) || {};
       const statusStr = String(st.status || st.state || '');
@@ -2078,7 +2080,7 @@ async function runAppraisal(domainInput, opts) {
   setToolStatus(els.apStatus, force ? `Re-appraising ${domain}…` : `Appraising ${domain}…`);
   try {
     const qs = `source=appraise_lookup&domain=${encodeURIComponent(domain)}${force ? '&force=1' : ''}`;
-    const res = await fetch(`/api/lookup?${qs}`);
+    const res = await fetch(`/research/api/lookup?${qs}`);
     const data = await res.json();
     if (!data.ok) throw new Error(data.error || `Failed (${res.status})`);
     const d = data.data || {};
@@ -2094,7 +2096,7 @@ async function runAppraisal(domainInput, opts) {
 async function loadRecent() {
   if (!els.recent) return;
   try {
-    const res = await fetch('/api/research?list=1');
+    const res = await fetch('/research/api/research?list=1');
     const data = await res.json();
     if (!res.ok) throw new Error('failed');
     const runs = (data.runs || []).slice(0, 5);
@@ -2115,7 +2117,7 @@ async function loadRecent() {
 // Reset the research view to the entry hero (the "New" nav button / logo).
 function showEntry() {
   clearTimers();
-  if (location.pathname !== '/') history.pushState(null, '', '/');
+  if (location.pathname !== '/research' && location.pathname !== '/research/') history.pushState(null, '', '/research/');
   clearHash();
   showView('research');
   els.hero.hidden = false;
@@ -2149,7 +2151,7 @@ async function openLessonModal(messageId) {
   showLessonModal(true);
   setLessonModalBusy(true, 'Distilling the rule…');
   try {
-    const res = await fetch('/api/lessons', {
+    const res = await fetch('/research/api/lessons', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ action: 'distill', run_id: currentRunId, message_id: messageId }),
@@ -2207,7 +2209,7 @@ async function submitLessonModal() {
   const tags = tagsRaw.split(',').map((t) => t.trim()).filter(Boolean);
   setLessonModalBusy(true);
   try {
-    const res = await fetch('/api/lessons', {
+    const res = await fetch('/research/api/lessons', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
@@ -2234,7 +2236,7 @@ async function loadLessons() {
   if (!els.lessonList) return;
   if (els.lessonListError) els.lessonListError.hidden = true;
   try {
-    const res = await fetch('/api/lessons?status=all');
+    const res = await fetch('/research/api/lessons?status=all');
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.error || `Failed to load lessons (${res.status})`);
     renderLessons(data.lessons || []);
@@ -2288,7 +2290,7 @@ async function patchLesson(id, patch, rowEl) {
   const errEl = rowEl && rowEl.querySelector('.lesson-row-error');
   if (errEl) errEl.hidden = true;
   try {
-    const res = await fetch('/api/lessons', {
+    const res = await fetch('/research/api/lessons', {
       method: 'PATCH',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ id, ...patch }),
@@ -2314,7 +2316,7 @@ async function runNaming() {
   if (els.namingGo) els.namingGo.disabled = true;
   setNamingStatus('Parsing the brief and searching the universe…');
   try {
-    const res = await fetch('/api/naming', {
+    const res = await fetch('/research/api/naming', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ action: 'search', brief }),
@@ -2328,7 +2330,7 @@ async function runNaming() {
     // Recent strip below the form. Skip the URL update if the save failed.
     if (data.run_id) {
       currentNamingRunId = data.run_id;
-      const path = `/naming/${encodeURIComponent(data.run_id)}`;
+      const path = `/research/naming/${encodeURIComponent(data.run_id)}`;
       if (location.pathname !== path) history.replaceState(null, '', path);
       // Empty thread on a fresh run — just unhide the chat panel.
       if (els.namingChatThread) els.namingChatThread.innerHTML = '';
@@ -2517,7 +2519,7 @@ async function exportNamingSheet() {
   if (els.namingError) { els.namingError.hidden = true; els.namingError.textContent = ''; }
   setNamingStatus('Exporting to Google Sheets…');
   try {
-    const res = await fetch('/api/naming', {
+    const res = await fetch('/research/api/naming', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ action: 'export', brief, results: namingLastResults }),
@@ -2565,7 +2567,7 @@ async function loadNamingRecent() {
   if (els.namingRecentList) els.namingRecentList.innerHTML = '<li class="recent-empty">Loading…</li>';
   if (els.namingShowAll) els.namingShowAll.hidden = true;
   try {
-    const res = await fetch('/api/naming?list=1');
+    const res = await fetch('/research/api/naming?list=1');
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.error || `Couldn't load recent runs (${res.status})`);
     const runs = (data.runs || []).slice(0, 5);
@@ -2594,7 +2596,7 @@ async function loadNamingProjects(q = '') {
   if (!els.namingProjectsList) return;
   els.namingProjectsList.innerHTML = '<li class="muted">Loading…</li>';
   try {
-    const res = await fetch(`/api/naming?list=1&q=${encodeURIComponent(q)}`);
+    const res = await fetch(`/research/api/naming?list=1&q=${encodeURIComponent(q)}`);
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || `Failed (${res.status})`);
     const runs = data.runs || [];
@@ -2621,7 +2623,7 @@ async function openNamingRun(id) {
   if (!id) return;
   setNamingStatus('Loading saved run…');
   try {
-    const res = await fetch(`/api/naming?id=${encodeURIComponent(id)}`);
+    const res = await fetch(`/research/api/naming?id=${encodeURIComponent(id)}`);
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || `Couldn't load (${res.status})`);
     const r = data.run;
@@ -2650,7 +2652,7 @@ async function loadNamingChat(runId) {
   els.namingChat.hidden = false;
   if (!runId) return;
   try {
-    const res = await fetch(`/api/naming?chat_run=${encodeURIComponent(runId)}`);
+    const res = await fetch(`/research/api/naming?chat_run=${encodeURIComponent(runId)}`);
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || `Failed (${res.status})`);
     const messages = data.messages || [];
@@ -2690,7 +2692,7 @@ async function sendNamingChat(message) {
   thread.scrollTop = thread.scrollHeight;
   const pending = thread.querySelector('.chat-msg.pending:last-child');
   try {
-    const res = await fetch('/api/naming', {
+    const res = await fetch('/research/api/naming', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ action: 'chat', run_id: currentNamingRunId, message }),
@@ -2816,7 +2818,7 @@ els.homeLink?.addEventListener('click', (e) => { e.preventDefault(); closeNav();
 els.navTrademark?.addEventListener('click', () => { setToolUrl('trademark', ''); route(); });
 els.navAppraisal?.addEventListener('click', () => { setToolUrl('appraisal', ''); route(); });
 els.navNaming?.addEventListener('click', () => {
-  if (location.pathname !== '/naming') history.pushState(null, '', '/naming');
+  if (location.pathname !== '/research/naming') history.pushState(null, '', '/research/naming');
   showView('naming');
   resetNamingView();
   loadNamingRecent();
@@ -2829,7 +2831,7 @@ els.namingRecentList?.addEventListener('click', (e) => {
   if (!li) return;
   const id = li.dataset.id;
   if (!id) return;
-  history.pushState(null, '', `/naming/${encodeURIComponent(id)}`);
+  history.pushState(null, '', `/research/naming/${encodeURIComponent(id)}`);
   showView('naming');
   openNamingRun(id);
 });
@@ -2837,7 +2839,7 @@ els.namingRecentList?.addEventListener('click', (e) => {
 // "Show all past naming runs →" link.
 els.namingShowAll?.addEventListener('click', (e) => {
   e.preventDefault();
-  history.pushState(null, '', '/naming/all');
+  history.pushState(null, '', '/research/naming/all');
   showView('naming-projects');
   loadNamingProjects('');
 });
@@ -2848,7 +2850,7 @@ els.namingProjectsList?.addEventListener('click', (e) => {
   if (!li) return;
   const id = li.dataset.id;
   if (!id) return;
-  history.pushState(null, '', `/naming/${encodeURIComponent(id)}`);
+  history.pushState(null, '', `/research/naming/${encodeURIComponent(id)}`);
   showView('naming');
   openNamingRun(id);
 });
@@ -2928,7 +2930,7 @@ els.lessonList?.addEventListener('click', async (e) => {
   if (action === 'delete') {
     if (!confirm('Delete this lesson permanently?')) return;
     try {
-      const res = await fetch(`/api/lessons?id=${encodeURIComponent(id)}`, { method: 'DELETE' });
+      const res = await fetch(`/research/api/lessons?id=${encodeURIComponent(id)}`, { method: 'DELETE' });
       if (!res.ok && res.status !== 204) {
         const data = await res.json().catch(() => ({}));
         throw new Error(data.error || `Delete failed (${res.status})`);

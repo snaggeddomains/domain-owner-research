@@ -16,6 +16,9 @@ function buildSlug({ domain, runId, createdAt }) {
 }
 
 export function reportUrl({ domain, runId, createdAt }) {
-  const base = (process.env.APP_URL || 'https://research.snagged.com').replace(/\/+$/, '');
+  // The app is nested at app.snagged.com/research/* — emailed deep-links
+  // must include the /research path prefix, since the root path on
+  // research.snagged.com now 301-redirects via vercel.json.
+  const base = (process.env.APP_URL || 'https://app.snagged.com/research').replace(/\/+$/, '');
   return `${base}/#/r/${buildSlug({ domain, runId, createdAt })}`;
 }

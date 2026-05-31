@@ -11,21 +11,23 @@ import { sendEmail, isEmailConfigured } from '../lib/email.js';
 async function sendInviteEmail(req, user) {
   if (!isEmailConfigured()) return false;
   const token = signResetToken(user.id);
-  const origin = (req.headers['x-forwarded-proto'] ? `${req.headers['x-forwarded-proto']}://` : 'https://') +
-    (req.headers['x-forwarded-host'] || req.headers.host || 'research.snagged.com');
-  const link = `${origin}/?reset=${encodeURIComponent(token)}`;
+  // The app is nested at app.snagged.com/research/* — the invite link must
+  // include the /research path prefix to land on the SPA, since the root
+  // path now 301-redirects via vercel.json.
+  const base = (process.env.APP_URL || 'https://app.snagged.com/research').replace(/\/+$/, '');
+  const link = `${base}/?reset=${encodeURIComponent(token)}`;
   try {
     await sendEmail({
       to: user.email,
       subject: 'You\'ve been invited to Snagged Research',
       text:
         `Hey,\n\n` +
-        `You've been invited to get access to Snagged Research (${origin}).\n\n` +
+        `You've been invited to get access to Snagged Research (${base}).\n\n` +
         `Click here to set up your password and sign in:\n${link}\n\n` +
         `(This link expires in 1 hour — if it does, ask the admin who invited you to resend it, or use "Forgot password" on the login screen.)`,
       html:
         `<p>Hey,</p>` +
-        `<p>You've been invited to get access to <strong>Snagged Research</strong> (<a href="${origin}">${origin}</a>).</p>` +
+        `<p>You've been invited to get access to <strong>Snagged Research</strong> (<a href="${base}">${base}</a>).</p>` +
         `<p><a href="${link}" style="display:inline-block;padding:10px 16px;background:#e48069;color:#fff;text-decoration:none;border-radius:8px;font-weight:700">Set up your password</a></p>` +
         `<p style="color:#666;font-size:12px">This link expires in 1 hour. If it does, ask the admin who invited you to resend it, or use "Forgot password" on the login screen.</p>` +
         `<p style="color:#666;font-size:12px">If the button doesn't work, paste this URL: ${link}</p>`,
