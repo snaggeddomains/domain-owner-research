@@ -644,3 +644,25 @@ body.modal-open { overflow: hidden; }
 /* Recent strip states (loading / empty / error) — applies to all tools */
 .recent-empty { color: var(--navy-3); font-size: .9rem; padding: 6px 0; list-style: none; }
 .recent-empty.recent-err { color: var(--coral-deep); }
+
+/* ── Global top bar (umbrella shell) ───────────────────────────────────────
+   Provided verbatim by the umbrella spec — DO NOT restyle these to match
+   research-local conventions; they're shared across every app under
+   app.snagged.com/*. Brand tokens come from :root. */
+.topbar { display:flex; align-items:center; gap:20px; padding-bottom:14px; margin-bottom:28px; border-bottom:1px solid var(--line); }
+.topbar__brand { font-size:1.4rem; text-decoration:none; }
+.topbar__nav { display:flex; gap:6px; }
+.topbar__nav a { padding:6px 13px; border-radius:999px; font-size:14px; font-weight:600; color:var(--navy-2); text-decoration:none; }
+.topbar__nav a:hover { background:var(--cream-2); color:var(--navy); }
+.topbar__nav a.active { background:var(--navy); color:var(--cream-2); }
+.topbar__account { margin-left:auto; display:flex; align-items:center; gap:14px; font-size:14px; }
+.topbar__account a { color:var(--teal-deep); font-weight:700; text-decoration:none; }
+
+/* ── Topbar integration glue (NOT part of the umbrella spec — local) ──────
+   Just enough to slot the umbrella's topbar above the existing sidebar +
+   content layout without changing the topbar's visual rules above.       */
+#app { flex-direction: column; }
+.app-body { display: flex; align-items: stretch; flex: 1 1 auto; min-width: 0; }
+.topbar { padding-top: 16px; padding-left: 24px; padding-right: 24px; flex-wrap: wrap; row-gap: 10px; }
+.topbar__brand { color: var(--navy); font-family: var(--body); font-weight: 800; }
+.topbar__account span { color: var(--navy-2); overflow-wrap: anywhere; }

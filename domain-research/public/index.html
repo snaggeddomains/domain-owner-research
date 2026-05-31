@@ -56,8 +56,25 @@
     </div>
 
     <main id="app" hidden>
+      <header class="topbar">
+        <!-- Brand links to the umbrella hub. Root-absolute "/" intentionally
+             ignores the <base href="/research/"> so it goes to app.snagged.com/,
+             not app.snagged.com/research/. -->
+        <a class="topbar__brand" href="/">◎ Snagged</a>
+        <nav class="topbar__nav">
+          <a href="/research" class="active">Research</a>
+          <!-- Umbrella's Admin (user management); admin-only — shown by JS. -->
+          <a href="/admin" id="topbar-admin" hidden>Admin</a>
+        </nav>
+        <div class="topbar__account" id="topbar-account" hidden>
+          <span id="topbar-account-email"></span>
+          <!-- Plain anchor to the umbrella's logout route which clears the
+               shared .snagged.com cookie. No JS handler — full-page nav. -->
+          <a href="/api/logout">Log out</a>
+        </div>
+      </header>
+      <div class="app-body">
       <aside class="sidebar">
-        <a href="./" id="home-link" class="wordmark"><img class="brand-mark" src="logomark-round.svg" alt="" /><span class="wm-text"><span class="wm-a">Snagged</span> <span class="wm-b">Research</span></span></a>
         <button id="nav-toggle" class="nav-toggle" type="button" aria-label="Menu" aria-expanded="false">&#9776;</button>
         <nav class="nav" id="nav">
           <button id="nav-research" class="nav-btn active" type="button">Domain Owner</button>
@@ -65,10 +82,11 @@
           <button id="nav-appraisal" class="nav-btn" type="button">Appraisal</button>
           <button id="nav-naming" class="nav-btn" type="button">Naming Exercise</button>
           <div class="nav-account" id="nav-account" hidden>
-            <button id="nav-admin" class="nav-btn nav-btn-admin" type="button" hidden>Admin</button>
-            <div class="nav-account-email" id="nav-account-email"></div>
+            <!-- Was "Admin" — now "Lessons" to avoid overlap with the umbrella's
+                 Admin. Same target (/research/admin) — this is the playbook-
+                 lessons curation view, scoped to the research app. -->
+            <button id="nav-admin" class="nav-btn nav-btn-admin" type="button" hidden>Lessons</button>
             <label class="nav-account-toggle"><input type="checkbox" id="nav-notify-toggle" /> Email me when reports finish</label>
-            <button id="nav-logout" type="button" class="nav-logout">Sign out</button>
           </div>
         </nav>
       </aside>
@@ -299,6 +317,7 @@ The model parses it into structured filters (TLDs, length, budget, tone, etc.) a
           <p id="lesson-list-empty" class="user-empty" hidden>No lessons yet.</p>
           <p id="lesson-list-error" class="login-error" hidden></p>
         </section>
+      </div>
       </div>
       </div>
     </main>

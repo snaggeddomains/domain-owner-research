@@ -2,10 +2,14 @@ const $ = (id) => document.getElementById(id);
 
 const els = {
   login: $('login'),
+  // Sidebar prefs block (was the account block; email + sign-out moved to topbar).
   navAccount: $('nav-account'),
-  navAccountEmail: $('nav-account-email'),
   navNotifyToggle: $('nav-notify-toggle'),
-  navLogout: $('nav-logout'),
+  // Umbrella topbar — Admin link is admin-only; account block carries the
+  // signed-in email. Log out is a plain <a href="/api/logout"> — no JS handler.
+  topbarAdmin: $('topbar-admin'),
+  topbarAccount: $('topbar-account'),
+  topbarAccountEmail: $('topbar-account-email'),
   loginForm: $('login-form'),
   email: $('email'),
   password: $('password'),
@@ -819,35 +823,36 @@ async function checkAuth() {
     els.login.hidden = !locked;
     els.app.hidden = locked;
     if (locked) showLoginPanel('login');
-    // Populate the sidebar account block when signed in + gate the module
-    // nav buttons by what the user is permitted to use.
+    // Populate the topbar account block (email + Log out) and the sidebar
+    // prefs block (Lessons button + notify toggle) when signed in. Gate the
+    // module nav buttons by what the user is permitted to use.
     const u = data.user;
     if (!locked && u && u.email) {
       currentUser = u;
-      if (els.navAccountEmail) els.navAccountEmail.textContent = u.email;
+      if (els.topbarAccountEmail) els.topbarAccountEmail.textContent = u.email;
+      if (els.topbarAccount) els.topbarAccount.hidden = false;
+      if (els.topbarAdmin) els.topbarAdmin.hidden = !u.is_admin;
       if (els.navAccount) els.navAccount.hidden = false;
       if (els.navNotifyToggle) els.navNotifyToggle.checked = Boolean(u.email_notify_on_done);
       gateNavByPermissions(u);
       gateReportPhaseUI(u);
-    } else if (els.navAccount) {
-      els.navAccount.hidden = true;
+    } else {
+      if (els.topbarAccount) els.topbarAccount.hidden = true;
+      if (els.topbarAdmin) els.topbarAdmin.hidden = true;
+      if (els.navAccount) els.navAccount.hidden = true;
     }
   } catch {
     els.login.hidden = true;
     els.app.hidden = false;
+    if (els.topbarAccount) els.topbarAccount.hidden = true;
+    if (els.topbarAdmin) els.topbarAdmin.hidden = true;
     if (els.navAccount) els.navAccount.hidden = true;
   }
 }
 
-// Sign out — clears the cookie server-side, then reloads so the login form
-// renders cleanly. Wired in the sidebar and the mobile hamburger drawer.
-els.navLogout?.addEventListener('click', async (e) => {
-  e.preventDefault();
-  try {
-    await fetch('/research/api/me', { method: 'DELETE' });
-  } catch { /* fall through — reload still shows login */ }
-  window.location.assign('/');
-});
+// Sign-out lives on the umbrella now — the topbar's "Log out" is a plain
+// <a href="/api/logout"> that clears the shared .snagged.com cookie via a
+// full-page navigation. No local handler.
 
 // Mirrors lib/auth.js#userCanReportPhase — phase keys default to true when
 // absent so existing user rows keep working; only explicit false denies.
