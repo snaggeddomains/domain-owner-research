@@ -30,7 +30,6 @@ const els = {
   domain: $('domain'),
   go: $('go'),
   deepToggle: $('deep-toggle'),
-  dsToggle: $('ds-toggle'),
   status: $('status'),
   runControls: $('run-controls'),
   cancelRun: $('cancel-run'),
@@ -138,7 +137,7 @@ const els = {
   dsSource: $('ds-source'), dsCategory: $('ds-category'), dsEmotion: $('ds-emotion'),
   dsOwner: $('ds-owner'), dsKeyword: $('ds-keyword'),
   dsApply: $('ds-apply'), dsReset: $('ds-reset'),
-  dsDbToggle: $('ds-dbtoggle'),
+  dsDbToggle: $('ds-dbtoggle'), dsCount: $('ds-count'),
   dsStatus: $('ds-status'), dsTbody: $('ds-tbody'),
   dsPager: $('ds-pager'), dsPrev: $('ds-prev'), dsNext: $('ds-next'), dsPageinfo: $('ds-pageinfo'),
   dsTable: $('ds-table'),
@@ -496,18 +495,16 @@ function dsPrice(v) {
 
 function dsRenderRows(rows) {
   if (!rows.length) {
-    els.dsTbody.innerHTML = '<tr><td colspan="5" class="muted" style="padding:18px">No domains match these filters.</td></tr>';
+    els.dsTbody.innerHTML = '<tr><td colspan="4" class="muted" style="padding:18px">No domains match these filters.</td></tr>';
     return;
   }
   els.dsTbody.innerHTML = rows.map((r) => {
     const src = (r.best_price_source || (Array.isArray(r.sources) && r.sources[0]) || '');
-    const curated = (r.db === 'master' || r.db === 'both') ? ' <span class="dbs-src dbs-curated">curated</span>' : '';
     return `<tr>` +
       `<td class="dbs-domain">${escapeHtml(r.domain || '')}</td>` +
       `<td class="dbs-num">${dsPrice(r.best_price)}</td>` +
-      `<td>${src ? `<span class="dbs-src">${escapeHtml(src)}</span>` : '<span class="muted">—</span>'}${curated}</td>` +
+      `<td>${src ? `<span class="dbs-src">${escapeHtml(src)}</span>` : '<span class="muted">—</span>'}</td>` +
       `<td>${r.owner ? escapeHtml(r.owner) : '<span class="muted">—</span>'}</td>` +
-      `<td>${r.category ? escapeHtml(r.category) : '<span class="muted">—</span>'}</td>` +
       `</tr>`;
   }).join('');
 }
@@ -523,7 +520,12 @@ async function fetchDbSearch() {
     dsRenderRows(data.rows || []);
     const start = dsState.page * DS_LIMIT;
     const shown = (data.rows || []).length;
-    els.dsPageinfo.textContent = shown ? `${start + 1}–${start + shown}${data.count ? ` of ~${data.count.toLocaleString()}` : ''}` : '0 results';
+    if (els.dsCount) {
+      els.dsCount.textContent = data.count != null
+        ? `${data.count.toLocaleString()} result${data.count === 1 ? '' : 's'}`
+        : (shown ? `${shown}+ results` : '');
+    }
+    els.dsPageinfo.textContent = shown ? `${start + 1}–${start + shown}${data.count != null ? ` of ${data.count.toLocaleString()}` : ''}` : '0 results';
     els.dsPrev.disabled = dsState.page === 0;
     els.dsNext.disabled = !data.has_more;
     els.dsPager.hidden = false;
@@ -2809,21 +2811,10 @@ async function sendNamingChat(message) {
 }
 
 // ── Wiring ──────────────────────────────────────────────────────────────────
-// "Also add to DomainScout" preference persists across sessions.
-if (els.dsToggle) {
-  els.dsToggle.checked = localStorage.getItem('ds_autotrack') === '1';
-  els.dsToggle.addEventListener('change', () => {
-    try { localStorage.setItem('ds_autotrack', els.dsToggle.checked ? '1' : '0'); } catch { /* ignore */ }
-  });
-}
-
 els.form?.addEventListener('submit', (e) => {
   e.preventDefault();
   const domain = els.domain.value.trim();
   if (!domain) return;
-  // Open the DomainScout tab from within the click gesture (so it isn't popup-
-  // blocked); the userscript on that tab fills + submits the Track form.
-  if (els.dsToggle && els.dsToggle.checked) openDomainScout(domain);
   // Choose phase against the user's permissions. The checkbox is the user's
   // explicit ask; otherwise default to shallow. When the user has ONLY deep
   // (admin disabled free reports), force deep so the server doesn't 403 them.

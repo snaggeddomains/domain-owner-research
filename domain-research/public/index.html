@@ -92,7 +92,7 @@
              Gated by the `dbscreen` permission; shown by JS. -->
         <button id="nav-dbscreen" class="nav-btn" type="button" hidden>Domain DB Screen</button>
         <!-- DB Search — filterable browse over the corpus. `dbsearch` permission. -->
-        <button id="nav-dbsearch" class="nav-btn" type="button" hidden>DB Search</button>
+        <button id="nav-dbsearch" class="nav-btn" type="button" hidden>Domain Name Search</button>
         <!-- Lessons (playbook curation) is admin-only and now lives in the
              umbrella Admin module; reachable directly at /research/admin. -->
         <button id="nav-admin" class="nav-btn nav-btn-admin" type="button" hidden style="display:none">Lessons</button>
@@ -119,7 +119,6 @@
               <button id="go" type="submit">Research</button>
             </form>
             <label class="deep-opt"><input type="checkbox" id="deep-toggle" /><span class="deep-opt-text">Go straight to deep research<span class="deep-opt-note"> — uses paid sources, skips the free preview</span></span></label>
-            <label class="deep-opt"><input type="checkbox" id="ds-toggle" /><span class="deep-opt-text">Also add to DomainScout<span class="deep-opt-note"> — opens DomainScout in a background tab &amp; tracks it (needs the userscript or bookmarklet)</span></span></label>
 
             <div id="recent" class="recent" hidden>
               <div class="recent-title">Recent</div>
@@ -258,17 +257,20 @@
         <!-- DB Search (filterable browse over the corpus) -->
         <section id="view-dbsearch" hidden>
           <div class="dbs-head">
-            <h1 class="hero-title dbs-title">DB <span class="accent">Search</span></h1>
-            <p class="hero-sub">Search and filter through the name universe.</p>
+            <h1 class="hero-title dbs-title">Domain Name <span class="accent">Search</span></h1>
+            <p class="hero-sub">Search and filter across our domain databases.</p>
           </div>
           <form id="ds-search" class="search dbs-search" autocomplete="off">
             <input id="ds-q" type="text" placeholder="Search domains…" />
             <button id="ds-go" type="submit">Search</button>
           </form>
-          <div class="dbs-dbtoggle" id="ds-dbtoggle">
-            <button type="button" data-db="both" class="active">Both DBs</button>
-            <button type="button" data-db="universe">Universe</button>
-            <button type="button" data-db="master">Master List</button>
+          <div class="dbs-toprow">
+            <div class="dbs-dbtoggle" id="ds-dbtoggle">
+              <button type="button" data-db="both" class="active">Both DBs</button>
+              <button type="button" data-db="universe">Universe</button>
+              <button type="button" data-db="master">Master List</button>
+            </div>
+            <div id="ds-count" class="dbs-count"></div>
           </div>
           <div class="dbs-layout">
             <aside class="dbs-filters" id="ds-filters">
@@ -337,7 +339,6 @@
                       <th class="dbs-sort dbs-num" data-sort="price">Price</th>
                       <th class="dbs-sort" data-sort="source">Source</th>
                       <th>Owner</th>
-                      <th>Category</th>
                     </tr>
                   </thead>
                   <tbody id="ds-tbody"></tbody>

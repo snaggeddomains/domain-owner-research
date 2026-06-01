@@ -785,7 +785,9 @@ body.modal-open { overflow: hidden; }
 .dbs-head .hero-sub { margin: 4px 0 0; text-align: left; max-width: none; font-size: 1rem; }
 .dbs-title { font-size: 1.6rem; margin: 0; }
 .dbs-search { max-width: 100%; margin: 0 0 12px; }
-.dbs-dbtoggle { display: inline-flex; gap: 0; margin: 0 0 16px; border: 1.5px solid #d9d2c2; border-radius: 999px; overflow: hidden; }
+.dbs-toprow { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin: 0 0 16px; flex-wrap: wrap; }
+.dbs-count { font-size: .95rem; font-weight: 600; color: var(--navy-2); }
+.dbs-dbtoggle { display: inline-flex; gap: 0; border: 1.5px solid #d9d2c2; border-radius: 999px; overflow: hidden; }
 .dbs-dbtoggle button { padding: 6px 16px; border: none; background: #fff; color: var(--navy); font-size: 13px; font-weight: 600; cursor: pointer; border-right: 1px solid #e3ddcf; }
 .dbs-dbtoggle button:last-child { border-right: none; }
 .dbs-dbtoggle button.active { background: var(--coral, #e08a6f); color: #fff; }

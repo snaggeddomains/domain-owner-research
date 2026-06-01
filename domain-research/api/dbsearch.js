@@ -158,11 +158,12 @@ export default async function handler(req, res) {
       return;
     }
 
-    // ── Both: fetch a capped window from each, merge, dedupe, sort, slice ──
-    const end = Math.min((page + 1) * limit, MERGE_CAP);
+    // ── Both: fetch a capped window from EACH source (not just the current
+    // page's worth — otherwise dedupe of owned domains present in both DBs can
+    // collapse a page and stop pagination), merge, dedupe, sort, then slice. ──
     const [uRes, mRes] = await Promise.all([
-      buildUniverse(p, ascending).range(0, end - 1).then((r) => r).catch((e) => ({ error: e })),
-      buildMaster(p, ascending).range(0, end - 1).then((r) => r).catch((e) => ({ error: e })),
+      buildUniverse(p, ascending).range(0, MERGE_CAP - 1).then((r) => r).catch((e) => ({ error: e })),
+      buildMaster(p, ascending).range(0, MERGE_CAP - 1).then((r) => r).catch((e) => ({ error: e })),
     ]);
     const errors = {};
     let merged = [];
@@ -183,7 +184,9 @@ export default async function handler(req, res) {
     merged = sortRows(merged, p.sort || 'domain', ascending);
     const start = page * limit;
     const rows = merged.slice(start, start + limit);
-    res.status(200).json({ rows, page, limit, db, count: null, has_more: merged.length > start + limit, errors });
+    // Total matches across both DBs (estimated; ignores cross-DB overlap).
+    const count = ((uRes && uRes.count) || 0) + ((mRes && mRes.count) || 0);
+    res.status(200).json({ rows, page, limit, db, count, has_more: merged.length > start + limit, errors });
   } catch (e) {
     res.status(500).json({ error: e.message || String(e) });
   }
