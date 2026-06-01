@@ -21,6 +21,9 @@
     <base href="/research/" />
     <link rel="icon" href="favicon-32.png" />
     <link rel="stylesheet" href="styles.css" />
+    <!-- Shared top bar (single source of truth, hosted by the umbrella; same
+         origin so the root-absolute URL resolves to app.snagged.com/brand/…). -->
+    <script src="/brand/topbar.js" defer></script>
   </head>
   <body>
     <div id="login" class="login" hidden>
@@ -56,30 +59,20 @@
     </div>
 
     <main id="app" hidden>
-      <header class="topbar">
-        <!-- Brand links to the umbrella hub. Root-absolute "/" intentionally
-             ignores the <base href="/research/"> so it goes to app.snagged.com/,
-             not app.snagged.com/research/. -->
-        <a class="topbar__brand wordmark" href="/">
-          <img class="brand-mark" src="logomark-round.svg" alt="" />
-          <span class="wm-a">Snagged</span>
-        </a>
-        <nav class="topbar__nav">
-          <a href="/research" class="active">Research</a>
-          <!-- Umbrella's Admin (user management); admin-only — shown by JS. -->
-          <a href="/admin" id="topbar-admin" hidden>Admin</a>
+      <!-- Shared top bar (logo + Research/Admin switch + account + mobile
+           hamburger) — one source of truth, hosted by the umbrella. JS sets the
+           email/show-admin attributes after /api/me. The slotted nav below is
+           the module sub-nav shown INSIDE the bar's hamburger on mobile; the
+           desktop home for these is the sidebar further down. -->
+      <snagged-topbar id="topbar" current="research" show-research home-href="/" logout-href="/api/logout">
+        <nav slot="menu" class="m-nav" id="m-nav">
+          <a href="#" class="m-link active" data-view="research">Domain Owner</a>
+          <a href="#" class="m-link" data-view="trademark">Trademark</a>
+          <a href="#" class="m-link" data-view="appraisal">Appraisal</a>
+          <a href="#" class="m-link" data-view="naming">Naming Exercise</a>
+          <a href="#" class="m-link" data-view="admin" id="m-nav-admin" hidden>Lessons</a>
         </nav>
-        <div class="topbar__account" id="topbar-account" hidden>
-          <span id="topbar-account-email"></span>
-          <!-- Plain anchor to the umbrella's logout route which clears the
-               shared .snagged.com cookie. No JS handler — full-page nav. -->
-          <a href="/api/logout">Log out</a>
-        </div>
-        <!-- Mobile-only hamburger, pinned to the top-right of the bar; toggles
-             the module-nav dropdown. Hidden on desktop, where the sidebar nav
-             is always shown. -->
-        <button id="nav-toggle" class="nav-toggle" type="button" aria-label="Menu" aria-expanded="false">&#9776;</button>
-      </header>
+      </snagged-topbar>
       <div class="app-body">
       <aside class="sidebar">
         <nav class="nav" id="nav">
@@ -93,12 +86,6 @@
                  lessons curation view, scoped to the research app. -->
             <button id="nav-admin" class="nav-btn nav-btn-admin" type="button" hidden>Lessons</button>
             <label class="nav-account-toggle"><input type="checkbox" id="nav-notify-toggle" /> Email me when reports finish</label>
-            <!-- Mobile only: the account (email + Log out) lives in the hamburger
-                 menu; on desktop it stays in the top bar (.topbar__account). -->
-            <div class="nav-mobile-account">
-              <span id="nav-account-email" class="nav-account-email"></span>
-              <a href="/api/logout" class="nav-logout">Log out</a>
-            </div>
           </div>
         </nav>
       </aside>

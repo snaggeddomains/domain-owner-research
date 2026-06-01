@@ -824,7 +824,17 @@ async function checkAuth() {
       if (els.navNotifyToggle) els.navNotifyToggle.checked = Boolean(u.email_notify_on_done);
       gateNavByPermissions(u);
       gateReportPhaseUI(u);
+      // Drive the shared <snagged-topbar>: account email + admin-only links.
+      const tb = document.getElementById('topbar');
+      if (tb) {
+        tb.setAttribute('email', u.email);
+        if (u.is_admin) tb.setAttribute('show-admin', ''); else tb.removeAttribute('show-admin');
+      }
+      const mAdmin = document.getElementById('m-nav-admin');
+      if (mAdmin) mAdmin.hidden = !u.is_admin;
     } else {
+      const tb = document.getElementById('topbar');
+      if (tb) { tb.removeAttribute('email'); tb.removeAttribute('show-admin'); }
       if (els.topbarAccount) els.topbarAccount.hidden = true;
       if (els.topbarAdmin) els.topbarAdmin.hidden = true;
       if (els.navAccount) els.navAccount.hidden = true;
@@ -2631,6 +2641,19 @@ els.navNaming?.addEventListener('click', () => {
   resetNamingView();
   loadNamingRecent();
   closeNav();
+});
+
+// Mobile module nav (slotted into the shared top bar's hamburger): delegate to
+// the existing desktop sidebar buttons so all routing/loading logic is reused,
+// then mirror the active state onto the mobile links.
+document.getElementById('m-nav')?.addEventListener('click', (e) => {
+  const link = e.target.closest('.m-link');
+  if (!link) return;
+  e.preventDefault();
+  const map = { research: 'nav-research', trademark: 'nav-trademark', appraisal: 'nav-appraisal', naming: 'nav-naming', admin: 'nav-admin' };
+  const btn = document.getElementById(map[link.dataset.view]);
+  if (btn) btn.click();
+  document.querySelectorAll('#m-nav .m-link').forEach((a) => a.classList.toggle('active', a === link));
 });
 
 // Click a Recent row → open that past naming run (deep-link path).
