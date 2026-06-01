@@ -40,3 +40,34 @@ Password-gated (single `APP_PASSWORD`). Async pipeline runs in Inngest so jobs a
 - `main` → production (research.snagged.com), no preview builds (Ignored Build Step cancels non-prod).
 - Feature branches: `claude/<slug>`. Merge to `main` only when ready to ship.
 - Stale local divergence (if any) lives on `claude-stale-divergence` for archival only.
+
+---
+
+## Domain data model — canonical (do not let this drift)
+
+Two domain corpora in **separate Supabase projects**; the search reads both.
+
+- **`name_universe`** — project `snagged-naming-universe` (`SUPABASE_NAMING_URL` /
+  `SUPABASE_NAMING_SERVICE_KEY`). **Everything automated**: all SNAP/pipeline +
+  marketplace feeds (afternic, atom, sedo, namecheap, owned sheets, BrandBucket
+  going forward). One row per `domain`, `sources[]` array, `source_tier` (1 owned,
+  2 market). Written only by the snagged-admin pipeline. **TLD stored BARE** (`com`).
+  Filters use `num_words` / `is_dictionary_word` (computed at ingest via wordfreq;
+  NULL for non-dictionary SLDs). LLM enrichment = `category`, `emotions[]`,
+  `keywords[]`, `industries[]` (arrays, separate paid pass).
+- **Master Domain List** — project `Master Domain Name List`
+  (`MASTERLIST_SUPABASE_URL` / `MASTERLIST_SUPABASE_SECRET_KEY`). **Manual / curated
+  owner attributions only** (CSV/portfolio imports + real-owner rows + broader
+  `snagged`). One row per `domain`, single `source` text + `owner`. Filters use
+  `is_single_word` / `dictionary_word` (TEXT `'Y'`/`'N'`); `emotions`/`keywords` are
+  TEXT (aligning to `text[]` planned). 2026-06 cleanup removed ~3.75M marketplace
+  placeholder dupes (backup `master_domain_list_backup`); ≈ 435K rows.
+
+**Boundary rule:** automated/SNAP + marketplace → `name_universe`; manual/curated
+owner attributions → Master. BrandBucket → `name_universe`.
+
+**Search endpoints:** `api/dbsearch.js` = Domain **Name** Search (filterable browse,
+`db=both|universe|master`, gated by `dbsearch`); `api/dbscreen.js` = Domain DB
+**Screen** (single-domain lookup, gated by `dbscreen`). Owner of owned-feed domains
+is derived in `lib/sources/universe_ownership.js` (snagged/berserk → Snagged,
+rob_purchases → Rob Schutz). TLD filters require a single-dot domain.
