@@ -666,3 +666,9 @@ body.modal-open { overflow: hidden; }
 .topbar { padding-top: 16px; padding-left: 24px; padding-right: 24px; flex-wrap: wrap; row-gap: 10px; }
 .topbar__brand { color: var(--navy); font-family: var(--body); font-weight: 800; }
 .topbar__account span { color: var(--navy-2); overflow-wrap: anywhere; }
+/* Match the umbrella's topbar logomark exactly: dashboard.css sizes
+   `.wordmark .brand-mark` at 44px and snagged-brand.css sets the wordmark gap
+   to 11px. Research's local `.brand-mark` is 34px/10px (for the login + sidebar
+   wordmark), so scope the umbrella sizing to the topbar brand only. */
+.topbar__brand.wordmark { gap: 11px; }
+.topbar__brand .brand-mark { width: 44px; height: 44px; }

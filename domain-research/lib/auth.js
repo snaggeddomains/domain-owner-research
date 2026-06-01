@@ -133,14 +133,43 @@ export async function currentUser(req) {
   return null;
 }
 
+// ── Permission catalog key resolution (shared contract with the umbrella) ──
+// Mirror of snagged-admin/dashboard/lib/permissions.ts (storageKey / isGranted).
+// The umbrella stores namespaced catalog keys ("research.domain_owner"); this
+// app has historically stored flat keys ("domain_owner"). To share identical
+// semantics, every check accepts BOTH spellings: read the namespaced catalog
+// key and fall back to the flat key. Existing flat rows keep working unchanged;
+// rows written by the umbrella under namespaced keys also resolve.
+function storageKey(key) {
+  return key.startsWith('research.') ? key.slice('research.'.length) : key;
+}
+function catalogKey(key) {
+  // Namespaced form for research modules/actions. Umbrella-only keys (e.g.
+  // 'admin') have no research-prefixed form, so this never matches a real row.
+  return key.startsWith('research.') ? key : `research.${key}`;
+}
+// Grant if either the namespaced catalog key or the flat key is explicitly
+// true — the same rule as the umbrella's isGranted().
+function isGranted(perms, key) {
+  if (!perms) return false;
+  return perms[catalogKey(key)] === true || perms[storageKey(key)] === true;
+}
+// Resolve a permission VALUE across both spellings, namespaced first. Used by
+// phase gates that distinguish "absent" (default) from an explicit false.
+function permValue(perms, key) {
+  if (!perms) return undefined;
+  const ns = perms[catalogKey(key)];
+  return ns !== undefined ? ns : perms[storageKey(key)];
+}
+
 // Permission check on a user record. Admin gets everything; otherwise look up
-// the named module in permissions. Permissions are stored as a free-form
+// the named module in permissions. Accepts flat ("domain_owner") or namespaced
+// ("research.domain_owner") catalog keys. Permissions are stored as a free-form
 // jsonb object so future modules can be added without a schema change.
 export function userCan(user, module) {
   if (!user) return false;
   if (user.is_admin) return true;
-  const perms = user.permissions || {};
-  return Boolean(perms[module]);
+  return isGranted(user.permissions || {}, module);
 }
 
 // Phase-level gate for the Domain Owner module: admin can grant free reports
@@ -148,13 +177,16 @@ export function userCan(user, module) {
 // 'domain_owner' fails outright; admin always passes. The phase keys
 // (report_shallow / report_deep) DEFAULT TO TRUE when absent so existing user
 // rows that predate this field keep working — only an explicit `false` denies.
+// Reads the namespaced catalog key ("research.report_deep") first, then the
+// flat key ("report_deep"); "absent in both" still means the default-true tier.
 export function userCanReportPhase(user, phase) {
   if (!user) return false;
   if (user.is_admin) return true;
   if (!userCan(user, 'domain_owner')) return false;
   const perms = user.permissions || {};
   const key = phase === 'deep' ? 'report_deep' : 'report_shallow';
-  return perms[key] === undefined ? true : Boolean(perms[key]);
+  const v = permValue(perms, key);
+  return v === undefined ? true : Boolean(v);
 }
 
 // Source name (as registered in lib/sources/index.js) → module permission key.
