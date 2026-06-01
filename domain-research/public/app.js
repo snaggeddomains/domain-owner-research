@@ -521,8 +521,9 @@ async function fetchDbSearch() {
     const start = dsState.page * DS_LIMIT;
     const shown = (data.rows || []).length;
     if (els.dsCount) {
+      const approx = data.approx ? '~' : '';
       els.dsCount.textContent = data.count != null
-        ? `${data.count.toLocaleString()} result${data.count === 1 ? '' : 's'}`
+        ? `${approx}${data.count.toLocaleString()} result${data.count === 1 ? '' : 's'}`
         : (shown ? `${shown}+ results` : '');
     }
     els.dsPageinfo.textContent = shown ? `${start + 1}–${start + shown}${data.count != null ? ` of ${data.count.toLocaleString()}` : ''}` : '0 results';

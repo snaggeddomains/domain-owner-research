@@ -36,14 +36,23 @@ const csv = (v) => (str(v) ? str(v).split(',').map((x) => x.trim()).filter(Boole
 // it either way. Match both forms so the TLD filter works across both DBs.
 const tldVariants = (arr) => arr.flatMap((t) => { const b = t.startsWith('.') ? t.slice(1) : t; return [b, '.' + b]; });
 
+// Any narrowing filter applied? When none are, an exact COUNT over the whole
+// corpus is wasteful — use the fast planner estimate. Once filtered, the set is
+// small enough that an exact count is cheap AND the accuracy matters.
+const FILTER_KEYS = ['q', 'price_min', 'price_max', 'tld', 'len_exact', 'len_min', 'len_max',
+  'single_word', 'dict_word', 'words_min', 'words_max', 'no_numbers', 'source', 'category', 'emotion', 'owner', 'keyword'];
+function hasActiveFilters(p) {
+  return FILTER_KEYS.some((k) => str(p[k]));
+}
+
 // Map a sort key to each table's column (they differ).
 const UNIVERSE_SORT = { domain: 'domain', price: 'best_price', source: 'best_price_source' };
 const MASTER_SORT = { domain: 'domain', price: 'price', source: 'source' };
 
-function buildUniverse(p, ascending) {
+function buildUniverse(p, ascending, countMode) {
   let q = getNamingDb()
     .from(UNIVERSE)
-    .select('domain, sld, tld, sld_length, num_words, is_dictionary_word, best_price, best_price_source, sources, category, emotions, keywords', { count: 'exact' });
+    .select('domain, sld, tld, sld_length, num_words, is_dictionary_word, best_price, best_price_source, sources, category, emotions, keywords', { count: countMode });
   const text = str(p.q);
   if (text) q = q.ilike('sld', (p.fuzzy === '1' ? '%' : '') + text.toLowerCase() + '%');
   const tlds = csv(p.tld); if (tlds) q = q.in("tld", tldVariants(tlds));
@@ -72,14 +81,14 @@ function normUniverse(r) {
   };
 }
 
-function buildMaster(p, ascending) {
+function buildMaster(p, ascending, countMode) {
   // Master Domain List columns differ: domain (no sld), price, owner, source
   // (single text), number_of_words (numeric), category, tld, sld_length, and
   // is_single_word / dictionary_word are TEXT 'Y'/'N' (NOT booleans/ints — match
   // the Admin/Supabase view exactly). keywords/emotions are TEXT (not arrays).
   let q = getMasterlistDb()
     .from(MASTER)
-    .select('domain, price, owner, source, category, tld, sld_length, number_of_words', { count: 'exact' });
+    .select('domain, price, owner, source, category, tld, sld_length, number_of_words', { count: countMode });
   const text = str(p.q);
   if (text) q = q.ilike('domain', '%' + text.toLowerCase() + '%');
   const tlds = csv(p.tld); if (tlds) q = q.in("tld", tldVariants(tlds));
@@ -139,6 +148,9 @@ export default async function handler(req, res) {
   if (!wantUniverse && !wantMaster) { res.status(500).json({ error: 'No databases configured for the selected source.' }); return; }
 
   const ownerFilter = str(p.owner) ? str(p.owner).toLowerCase() : null;
+  // Exact count only matters once filtered; the unfiltered corpus count is huge
+  // and slow to count exactly, so use the fast planner estimate by default.
+  const countMode = hasActiveFilters(p) ? 'exact' : 'estimated';
 
   try {
     // ── Single-DB modes: clean server-side pagination via range() ──
@@ -148,16 +160,16 @@ export default async function handler(req, res) {
       let rows;
       let count = null;
       if (db === 'universe') {
-        const { data, error, count: c } = await buildUniverse(p, ascending).range(start, endIdx);
+        const { data, error, count: c } = await buildUniverse(p, ascending, countMode).range(start, endIdx);
         if (error) throw error;
         rows = (data || []).map(normUniverse); count = c ?? null;
       } else {
-        const { data, error, count: c } = await buildMaster(p, ascending).range(start, endIdx);
+        const { data, error, count: c } = await buildMaster(p, ascending, countMode).range(start, endIdx);
         if (error) throw error;
         rows = (data || []).map(normMaster); count = c ?? null;
       }
       if (ownerFilter) rows = rows.filter((r) => (r.owner || '').toLowerCase().includes(ownerFilter));
-      res.status(200).json({ rows, page, limit, db, count, has_more: rows.length === limit });
+      res.status(200).json({ rows, page, limit, db, count, approx: countMode === 'estimated', has_more: rows.length === limit });
       return;
     }
 
@@ -165,8 +177,8 @@ export default async function handler(req, res) {
     // page's worth — otherwise dedupe of owned domains present in both DBs can
     // collapse a page and stop pagination), merge, dedupe, sort, then slice. ──
     const [uRes, mRes] = await Promise.all([
-      buildUniverse(p, ascending).range(0, MERGE_CAP - 1).then((r) => r).catch((e) => ({ error: e })),
-      buildMaster(p, ascending).range(0, MERGE_CAP - 1).then((r) => r).catch((e) => ({ error: e })),
+      buildUniverse(p, ascending, countMode).range(0, MERGE_CAP - 1).then((r) => r).catch((e) => ({ error: e })),
+      buildMaster(p, ascending, countMode).range(0, MERGE_CAP - 1).then((r) => r).catch((e) => ({ error: e })),
     ]);
     const errors = {};
     let merged = [];
@@ -189,7 +201,7 @@ export default async function handler(req, res) {
     const rows = merged.slice(start, start + limit);
     // Total matches across both DBs (estimated; ignores cross-DB overlap).
     const count = ((uRes && uRes.count) || 0) + ((mRes && mRes.count) || 0);
-    res.status(200).json({ rows, page, limit, db, count, has_more: merged.length > start + limit, errors });
+    res.status(200).json({ rows, page, limit, db, count, approx: countMode === 'estimated', has_more: merged.length > start + limit, errors });
   } catch (e) {
     res.status(500).json({ error: e.message || String(e) });
   }
