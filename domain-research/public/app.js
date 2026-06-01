@@ -946,6 +946,10 @@ async function checkAuth() {
 // ?domain=example.com / ?d=example.com) auto-fills the search box and kicks off
 // a FREE pre-flight report on load. Strips the query afterward so a refresh
 // doesn't re-run. Called from checkAuth once the user is signed in.
+// Set when a free report is auto-started from the URL, so the boot sequence
+// knows NOT to run the default router afterward (which would showEntry() and
+// clobber the just-shown "Researching…" view before the run hash is set).
+let autoRanFromUrl = false;
 function maybeAutoRunFromUrl() {
   const search = location.search || "";
   if (!search) return;
@@ -969,6 +973,7 @@ function maybeAutoRunFromUrl() {
   if (typeof showEntry === "function") showEntry();   // ensure the Domain Owner view
   if (els.deepToggle) els.deepToggle.checked = false;  // free pre-flight, not deep
   els.domain.value = domain;
+  autoRanFromUrl = true;
   if (els.form.requestSubmit) els.form.requestSubmit();
   else els.form.dispatchEvent(new Event("submit", { cancelable: true }));
 }
@@ -2950,5 +2955,8 @@ window.addEventListener('popstate', route);
 
 (async () => {
   await checkAuth();
-  routeAfterAuth();
+  // If a free report was auto-started from the URL (?domain=…), the research
+  // view + "Researching…" timer are already up — don't run the default router,
+  // which would showEntry() and hide it (the run hash isn't set yet).
+  if (!autoRanFromUrl) routeAfterAuth();
 })();
