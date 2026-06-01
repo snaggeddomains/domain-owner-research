@@ -62,4 +62,26 @@ if [ -f domain-research/package.json ]; then
     || echo "  ⚠ npm install failed (check connectivity / package.json)"
 fi
 
+# ── 4. Headless-browser tooling for GUI verification ───────────────────────
+# A Chromium is pre-installed in this environment; expose its path and install
+# the Playwright/jsdom npm drivers (skipping the browser DOWNLOAD, which the
+# network policy blocks — we launch the pre-installed binary via $PW_CHROME).
+# Lets Claude render the SPA + screenshot it to catch GUI regressions pre-push.
+PW_CHROME="$(find /opt/pw-browsers -name chrome -path '*chrome-linux*' 2>/dev/null | head -1)"
+TOOLS="${CLAUDE_PROJECT_DIR:-$(pwd)}/.claude/tools"
+if [ -n "${CLAUDE_ENV_FILE:-}" ]; then
+  [ -n "$PW_CHROME" ] && echo "export PW_CHROME=\"$PW_CHROME\"" >> "$CLAUDE_ENV_FILE"
+  echo "export NODE_PATH=\"$TOOLS/node_modules\"" >> "$CLAUDE_ENV_FILE"
+fi
+if command -v npm >/dev/null 2>&1 && [ ! -d "$TOOLS/node_modules/playwright" ]; then
+  mkdir -p "$TOOLS"
+  cat > "$TOOLS/package.json" <<'JSON'
+{ "name": "claude-gui-tools", "private": true, "dependencies": { "jsdom": "^25.0.0", "playwright": "^1.48.0" } }
+JSON
+  echo "▸ Installing GUI verification tools (playwright + jsdom)…"
+  ( cd "$TOOLS" && PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 npm install --no-audit --no-fund --silent ) \
+    && echo "  ✓ GUI tools ready (Chromium: ${PW_CHROME:-NOT FOUND})" \
+    || echo "  ⚠ GUI tools install failed"
+fi
+
 echo "▸ Session start hook complete."
