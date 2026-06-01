@@ -126,7 +126,21 @@ const els = {
   apStatus: $('ap-status'),
   apResult: $('ap-result'),
   apRecent: $('ap-recent'),
+  navDbscreen: $('nav-dbscreen'),
   navDbsearch: $('nav-dbsearch'),
+  dsSearch: $('ds-search'), dsQ: $('ds-q'), dsGo: $('ds-go'),
+  dsPriceMin: $('ds-price-min'), dsPriceMax: $('ds-price-max'),
+  dsTlds: $('ds-tlds'),
+  dsLenMin: $('ds-len-min'), dsLenMax: $('ds-len-max'),
+  dsSingle: $('ds-single'), dsDict: $('ds-dict'),
+  dsWordsMin: $('ds-words-min'), dsWordsMax: $('ds-words-max'),
+  dsNonum: $('ds-nonum'), dsFuzzy: $('ds-fuzzy'),
+  dsSource: $('ds-source'), dsCategory: $('ds-category'), dsEmotion: $('ds-emotion'),
+  dsOwner: $('ds-owner'), dsKeyword: $('ds-keyword'),
+  dsApply: $('ds-apply'), dsReset: $('ds-reset'),
+  dsStatus: $('ds-status'), dsTbody: $('ds-tbody'),
+  dsPager: $('ds-pager'), dsPrev: $('ds-prev'), dsNext: $('ds-next'), dsPageinfo: $('ds-pageinfo'),
+  dsTable: $('ds-table'),
   dbForm: $('db-form'),
   dbDomain: $('db-domain'),
   dbGo: $('db-go'),
@@ -287,17 +301,17 @@ function clearHash() {
 //   /research/trademark           /research/trademark/<query>
 //   /research/appraisal           /research/appraisal/<domain>
 //   /research/naming              (no slug — brief lives in the textarea)
+// Tools that also answer at a top-level vanity path (umbrella rewrites them to
+// the SPA): Domain DB Screen at /dbscreen, DB Search at /dbsearch.
+const VANITY_TOOLS = ['dbscreen', 'dbsearch'];
 function currentToolRoute() {
-  let m = location.pathname.match(/^\/research\/(trademark|appraisal|naming|dbsearch|admin)(?:\/(.+?))?\/?$/);
-  // Domain DB Search also answers at the top-level vanity path
-  // app.snagged.com/dbsearch/<domain> (umbrella rewrites it to the SPA).
-  if (!m) m = location.pathname.match(/^\/(dbsearch)(?:\/(.+?))?\/?$/);
+  let m = location.pathname.match(/^\/research\/(trademark|appraisal|naming|dbscreen|dbsearch|admin)(?:\/(.+?))?\/?$/);
+  if (!m) m = location.pathname.match(/^\/(dbscreen|dbsearch)(?:\/(.+?))?\/?$/);
   if (!m) return null;
   return { tool: m[1], slug: m[2] ? decodeURIComponent(m[2]) : '' };
 }
 function setToolUrl(tool, slug) {
-  // DB Search keeps the short /dbsearch/<domain> URL; other tools stay under /research/.
-  const base = tool === 'dbsearch' ? '/dbsearch' : `/research/${tool}`;
+  const base = VANITY_TOOLS.includes(tool) ? `/${tool}` : `/research/${tool}`;
   const path = slug ? `${base}/${encodeURIComponent(slug)}` : base;
   if (location.pathname !== path) history.pushState(null, '', path);
 }
@@ -336,19 +350,24 @@ function route() {
     else { els.apResult.hidden = true; els.apResult.innerHTML = ''; els.apDomain.value = ''; setToolStatus(els.apStatus, ''); }
     return;
   }
-  if (tr && tr.tool === 'dbsearch') {
-    showView('dbsearch');
-    // Accept either /dbsearch/<domain> (path) or /dbsearch?domain=<domain> (query).
+  if (tr && tr.tool === 'dbscreen') {
+    showView('dbscreen');
+    // Accept either /dbscreen/<domain> (path) or /dbscreen?domain=<domain> (query).
     const q = tr.slug || dbDomainFromQuery();
     if (q) {
       if (els.dbDomain) els.dbDomain.value = q;
-      if (!tr.slug) setToolUrl('dbsearch', q); // normalize ?domain= to /dbsearch/<domain>
-      runDbSearch(q);
+      if (!tr.slug) setToolUrl('dbscreen', q); // normalize ?domain= to /dbscreen/<domain>
+      runDbScreen(q);
     } else {
       if (els.dbDomain) els.dbDomain.value = '';
       if (els.dbResult) els.dbResult.hidden = true;
       setToolStatus(els.dbStatus, '');
     }
+    return;
+  }
+  if (tr && tr.tool === 'dbsearch') {
+    showView('dbsearch');
+    runDbSearch(tr.slug || '');
     return;
   }
   if (tr && tr.tool === 'admin') {
@@ -421,19 +440,100 @@ function renderDbResult(data) {
   els.dbResult.innerHTML = html;
   els.dbResult.hidden = false;
 }
-async function runDbSearch(domain) {
-  showView('dbsearch');
-  setToolStatus(els.dbStatus, 'Searching…');
+async function runDbScreen(domain) {
+  showView('dbscreen');
+  setToolStatus(els.dbStatus, 'Screening…');
   if (els.dbResult) els.dbResult.hidden = true;
   try {
-    const res = await fetch(`/research/api/dbsearch?domain=${encodeURIComponent(domain)}`);
+    const res = await fetch(`/research/api/dbscreen?domain=${encodeURIComponent(domain)}`);
     const data = await res.json().catch(() => ({}));
-    if (!res.ok) { setToolStatus(els.dbStatus, data.error || `Search failed (${res.status})`, true); return; }
+    if (!res.ok) { setToolStatus(els.dbStatus, data.error || `Screen failed (${res.status})`, true); return; }
     setToolStatus(els.dbStatus, '');
     renderDbResult(data);
   } catch (e) {
     setToolStatus(els.dbStatus, String((e && e.message) || e), true);
   }
+}
+
+// ── DB Search (filterable browse over name_universe) ────────────────────────
+const DS_LIMIT = 50;
+const dsState = { page: 0, sort: 'domain', dir: 'asc', activeTlds: new Set() };
+
+function dsBuildParams() {
+  const v = (el) => (el && el.value != null ? String(el.value).trim() : '');
+  const p = new URLSearchParams();
+  if (v(els.dsQ)) p.set('q', v(els.dsQ));
+  if (v(els.dsPriceMin)) p.set('price_min', v(els.dsPriceMin));
+  if (v(els.dsPriceMax)) p.set('price_max', v(els.dsPriceMax));
+  if (dsState.activeTlds.size) p.set('tld', [...dsState.activeTlds].join(','));
+  if (v(els.dsLenMin)) p.set('len_min', v(els.dsLenMin));
+  if (v(els.dsLenMax)) p.set('len_max', v(els.dsLenMax));
+  if (v(els.dsSingle)) p.set('single_word', v(els.dsSingle));
+  if (v(els.dsDict)) p.set('dict_word', v(els.dsDict));
+  if (v(els.dsWordsMin)) p.set('words_min', v(els.dsWordsMin));
+  if (v(els.dsWordsMax)) p.set('words_max', v(els.dsWordsMax));
+  if (els.dsNonum && els.dsNonum.checked) p.set('no_numbers', '1');
+  if (els.dsFuzzy && els.dsFuzzy.checked) p.set('fuzzy', '1');
+  if (v(els.dsSource)) p.set('source', v(els.dsSource));
+  if (v(els.dsCategory)) p.set('category', v(els.dsCategory));
+  if (v(els.dsEmotion)) p.set('emotion', v(els.dsEmotion));
+  if (v(els.dsOwner)) p.set('owner', v(els.dsOwner));
+  if (v(els.dsKeyword)) p.set('keyword', v(els.dsKeyword));
+  p.set('sort', dsState.sort);
+  p.set('dir', dsState.dir);
+  p.set('page', String(dsState.page));
+  p.set('limit', String(DS_LIMIT));
+  return p;
+}
+
+function dsPrice(v) {
+  if (v == null || v === '') return '<span class="muted">—</span>';
+  const n = Number(v);
+  return Number.isFinite(n) ? '$' + n.toLocaleString() : escapeHtml(String(v));
+}
+
+function dsRenderRows(rows) {
+  if (!rows.length) {
+    els.dsTbody.innerHTML = '<tr><td colspan="5" class="muted" style="padding:18px">No domains match these filters.</td></tr>';
+    return;
+  }
+  els.dsTbody.innerHTML = rows.map((r) => {
+    const src = (r.best_price_source || (Array.isArray(r.sources) && r.sources[0]) || '');
+    return `<tr>` +
+      `<td class="dbs-domain">${escapeHtml(r.domain || '')}</td>` +
+      `<td class="dbs-num">${dsPrice(r.best_price)}</td>` +
+      `<td>${src ? `<span class="dbs-src">${escapeHtml(src)}</span>` : '<span class="muted">—</span>'}</td>` +
+      `<td>${r.owner ? escapeHtml(r.owner) : '<span class="muted">—</span>'}</td>` +
+      `<td>${r.category ? escapeHtml(r.category) : '<span class="muted">—</span>'}</td>` +
+      `</tr>`;
+  }).join('');
+}
+
+async function fetchDbSearch() {
+  setToolStatus(els.dsStatus, 'Searching…');
+  els.dsPager.hidden = true;
+  try {
+    const res = await fetch(`/research/api/dbsearch?${dsBuildParams().toString()}`);
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) { setToolStatus(els.dsStatus, data.error || `Search failed (${res.status})`, true); els.dsTbody.innerHTML = ''; return; }
+    setToolStatus(els.dsStatus, '');
+    dsRenderRows(data.rows || []);
+    const start = dsState.page * DS_LIMIT;
+    const shown = (data.rows || []).length;
+    els.dsPageinfo.textContent = shown ? `${start + 1}–${start + shown}${data.count ? ` of ~${data.count.toLocaleString()}` : ''}` : '0 results';
+    els.dsPrev.disabled = dsState.page === 0;
+    els.dsNext.disabled = !data.has_more;
+    els.dsPager.hidden = false;
+  } catch (e) {
+    setToolStatus(els.dsStatus, String((e && e.message) || e), true);
+  }
+}
+
+function runDbSearch(initialQ) {
+  showView('dbsearch');
+  if (initialQ && els.dsQ) els.dsQ.value = initialQ;
+  dsState.page = 0;
+  fetchDbSearch();
 }
 
 const escapeHtml = (s) =>
@@ -1023,6 +1123,7 @@ function gateNavByPermissions(user) {
   if (els.navTrademark) els.navTrademark.hidden = !can('trademark');
   if (els.navAppraisal) els.navAppraisal.hidden = !can('appraisal');
   if (els.navNaming) els.navNaming.hidden = !can('naming');
+  if (els.navDbscreen) els.navDbscreen.hidden = !can('dbscreen');
   if (els.navDbsearch) els.navDbsearch.hidden = !can('dbsearch');
   // Lessons lives in the umbrella Admin module now; its tab stays hidden here
   // (the element is kept only so the /research/admin deep link still routes).
@@ -1642,6 +1743,7 @@ const VIEWS = {
   appraisal: { view: 'view-appraisal', nav: 'nav-appraisal' },
   naming: { view: 'view-naming', nav: 'nav-naming' },
   'naming-projects': { view: 'view-naming-projects', nav: 'nav-naming' },
+  dbscreen: { view: 'view-dbscreen', nav: 'nav-dbscreen' },
   dbsearch: { view: 'view-dbsearch', nav: 'nav-dbsearch' },
   admin: { view: 'view-admin', nav: 'nav-admin' },
 };
@@ -2791,13 +2893,47 @@ els.navResearch?.addEventListener('click', showEntry);
 els.homeLink?.addEventListener('click', (e) => { e.preventDefault(); closeNav(); showEntry(); });
 els.navTrademark?.addEventListener('click', () => { setToolUrl('trademark', ''); route(); });
 els.navAppraisal?.addEventListener('click', () => { setToolUrl('appraisal', ''); route(); });
+els.navDbscreen?.addEventListener('click', () => { setToolUrl('dbscreen', ''); route(); });
 els.navDbsearch?.addEventListener('click', () => { setToolUrl('dbsearch', ''); route(); });
 els.dbForm?.addEventListener('submit', (e) => {
   e.preventDefault();
   const d = (els.dbDomain.value || '').trim();
   if (!d) return;
-  setToolUrl('dbsearch', d);
-  runDbSearch(d);
+  setToolUrl('dbscreen', d);
+  runDbScreen(d);
+});
+
+// DB Search interactions
+els.dsSearch?.addEventListener('submit', (e) => { e.preventDefault(); dsState.page = 0; fetchDbSearch(); });
+els.dsApply?.addEventListener('click', () => { dsState.page = 0; fetchDbSearch(); });
+els.dsReset?.addEventListener('click', () => {
+  [els.dsQ, els.dsPriceMin, els.dsPriceMax, els.dsLenMin, els.dsLenMax, els.dsWordsMin, els.dsWordsMax,
+   els.dsSource, els.dsCategory, els.dsEmotion, els.dsOwner, els.dsKeyword].forEach((el) => { if (el) el.value = ''; });
+  if (els.dsSingle) els.dsSingle.value = '';
+  if (els.dsDict) els.dsDict.value = '';
+  if (els.dsNonum) els.dsNonum.checked = false;
+  if (els.dsFuzzy) els.dsFuzzy.checked = false;
+  dsState.activeTlds.clear();
+  if (els.dsTlds) els.dsTlds.querySelectorAll('button').forEach((b) => b.classList.remove('active'));
+  dsState.page = 0; fetchDbSearch();
+});
+els.dsTlds?.addEventListener('click', (e) => {
+  const b = e.target.closest('button[data-tld]'); if (!b) return;
+  const t = b.dataset.tld;
+  if (dsState.activeTlds.has(t)) { dsState.activeTlds.delete(t); b.classList.remove('active'); }
+  else { dsState.activeTlds.add(t); b.classList.add('active'); }
+});
+els.dsPrev?.addEventListener('click', () => { if (dsState.page > 0) { dsState.page -= 1; fetchDbSearch(); } });
+els.dsNext?.addEventListener('click', () => { dsState.page += 1; fetchDbSearch(); });
+els.dsTable?.querySelectorAll('th.dbs-sort').forEach((th) => {
+  th.addEventListener('click', () => {
+    const col = th.dataset.sort;
+    if (dsState.sort === col) dsState.dir = dsState.dir === 'asc' ? 'desc' : 'asc';
+    else { dsState.sort = col; dsState.dir = 'asc'; }
+    els.dsTable.querySelectorAll('th.dbs-sort').forEach((h) => h.classList.remove('sorted-asc', 'sorted-desc'));
+    th.classList.add(dsState.dir === 'asc' ? 'sorted-asc' : 'sorted-desc');
+    dsState.page = 0; fetchDbSearch();
+  });
 });
 els.navNaming?.addEventListener('click', () => {
   if (location.pathname !== '/research/naming') history.pushState(null, '', '/research/naming');

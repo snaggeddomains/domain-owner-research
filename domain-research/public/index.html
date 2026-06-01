@@ -88,9 +88,11 @@
         <button id="nav-trademark" class="nav-btn" type="button">Trademark</button>
         <button id="nav-appraisal" class="nav-btn" type="button">Appraisal</button>
         <button id="nav-naming" class="nav-btn" type="button">Naming Exercise</button>
-        <!-- Domain DB Search — looks a domain up in the Master List + Universe.
-             Gated by the `dbsearch` permission; shown by JS. -->
-        <button id="nav-dbsearch" class="nav-btn" type="button" hidden>Domain DB Search</button>
+        <!-- Domain DB Screen — looks a single domain up in the Master List + Universe.
+             Gated by the `dbscreen` permission; shown by JS. -->
+        <button id="nav-dbscreen" class="nav-btn" type="button" hidden>Domain DB Screen</button>
+        <!-- DB Search — filterable browse over the corpus. `dbsearch` permission. -->
+        <button id="nav-dbsearch" class="nav-btn" type="button" hidden>DB Search</button>
         <!-- Lessons (playbook curation) is admin-only and now lives in the
              umbrella Admin module; reachable directly at /research/admin. -->
         <button id="nav-admin" class="nav-btn nav-btn-admin" type="button" hidden style="display:none">Lessons</button>
@@ -238,19 +240,111 @@
           <div id="ap-recent" class="recent tool-recent" hidden></div>
         </section>
 
-        <!-- Domain DB Search -->
-        <section id="view-dbsearch" hidden>
+        <!-- Domain DB Screen (single-domain lookup) -->
+        <section id="view-dbscreen" hidden>
           <div class="hero tool-hero">
             <img class="hero-art" src="mascot-hero.png" alt="" />
-            <h1 class="hero-title">Domain <span class="accent">DB Search</span></h1>
-            <p class="hero-sub">Look a domain up in our Master Domain List and the name Universe. Shows everything we have on record.</p>
+            <h1 class="hero-title">Domain <span class="accent">DB Screen</span></h1>
+            <p class="hero-sub">Screen a single domain against our Master Domain List and the name Universe. Shows everything we have on record.</p>
             <form id="db-form" class="search hero-search" autocomplete="off">
               <input id="db-domain" type="text" placeholder="example.com" required />
-              <button id="db-go" type="submit">Search</button>
+              <button id="db-go" type="submit">Screen</button>
             </form>
           </div>
           <section id="db-status" class="status" hidden></section>
           <div id="db-result" class="dbsearch-result" hidden></div>
+        </section>
+
+        <!-- DB Search (filterable browse over the corpus) -->
+        <section id="view-dbsearch" hidden>
+          <div class="dbs-head">
+            <h1 class="hero-title dbs-title">DB <span class="accent">Search</span></h1>
+            <p class="hero-sub">Search and filter through the name universe.</p>
+          </div>
+          <form id="ds-search" class="search dbs-search" autocomplete="off">
+            <input id="ds-q" type="text" placeholder="Search domains…" />
+            <button id="ds-go" type="submit">Search</button>
+          </form>
+          <div class="dbs-layout">
+            <aside class="dbs-filters" id="ds-filters">
+              <div class="dbs-fgroup"><label>Price ($)</label>
+                <input id="ds-price-min" type="number" placeholder="Min" min="0" />
+                <input id="ds-price-max" type="number" placeholder="Max" min="0" />
+              </div>
+              <div class="dbs-fgroup"><label>TLD</label>
+                <div class="dbs-chips" id="ds-tlds">
+                  <button type="button" data-tld="com">.com</button>
+                  <button type="button" data-tld="net">.net</button>
+                  <button type="button" data-tld="ai">.ai</button>
+                  <button type="button" data-tld="co">.co</button>
+                  <button type="button" data-tld="org">.org</button>
+                  <button type="button" data-tld="xyz">.xyz</button>
+                  <button type="button" data-tld="io">.io</button>
+                </div>
+              </div>
+              <div class="dbs-fgroup"><label>Length (SLD)</label>
+                <input id="ds-len-min" type="number" placeholder="Min" min="1" />
+                <input id="ds-len-max" type="number" placeholder="Max" min="1" />
+              </div>
+              <div class="dbs-fgroup"><label>Single word</label>
+                <select id="ds-single"><option value="">Any</option><option value="yes">Yes</option><option value="no">No</option></select>
+              </div>
+              <div class="dbs-fgroup"><label>Dictionary word</label>
+                <select id="ds-dict"><option value="">Any</option><option value="yes">Yes</option><option value="no">No</option></select>
+              </div>
+              <div class="dbs-fgroup"><label>Words</label>
+                <input id="ds-words-min" type="number" placeholder="Min" min="1" />
+                <input id="ds-words-max" type="number" placeholder="Max" min="1" />
+              </div>
+              <div class="dbs-fgroup"><label>Options</label>
+                <label class="dbs-check"><input id="ds-nonum" type="checkbox" /> No numbers</label>
+                <label class="dbs-check"><input id="ds-fuzzy" type="checkbox" /> Fuzzy search</label>
+              </div>
+              <div class="dbs-fgroup"><label>Source</label>
+                <input id="ds-source" type="text" placeholder="e.g. afternic, atom" />
+              </div>
+              <div class="dbs-fgroup"><label>Category</label>
+                <input id="ds-category" type="text" placeholder="e.g. tech, finance" />
+                <span class="dbs-hint">enrichment in progress</span>
+              </div>
+              <div class="dbs-fgroup"><label>Emotions</label>
+                <input id="ds-emotion" type="text" placeholder="e.g. trust" />
+                <span class="dbs-hint">enrichment in progress</span>
+              </div>
+              <div class="dbs-fgroup"><label>Owner</label>
+                <input id="ds-owner" type="text" placeholder="Search by owner…" />
+              </div>
+              <div class="dbs-fgroup"><label>Keyword contains</label>
+                <input id="ds-keyword" type="text" placeholder="Contains…" />
+              </div>
+              <div class="dbs-factions">
+                <button id="ds-apply" type="button" class="btn-primary">Apply filters</button>
+                <button id="ds-reset" type="button">Reset</button>
+              </div>
+            </aside>
+            <div class="dbs-resultswrap">
+              <section id="ds-status" class="status" hidden></section>
+              <div class="dbs-tablewrap">
+                <table class="dbs-table" id="ds-table">
+                  <thead>
+                    <tr>
+                      <th class="dbs-sort" data-sort="domain">Domain</th>
+                      <th class="dbs-sort dbs-num" data-sort="price">Price</th>
+                      <th class="dbs-sort" data-sort="source">Source</th>
+                      <th>Owner</th>
+                      <th>Category</th>
+                    </tr>
+                  </thead>
+                  <tbody id="ds-tbody"></tbody>
+                </table>
+              </div>
+              <div class="dbs-pager" id="ds-pager" hidden>
+                <button id="ds-prev" type="button">‹ Prev</button>
+                <span id="ds-pageinfo" class="muted"></span>
+                <button id="ds-next" type="button">Next ›</button>
+              </div>
+            </div>
+          </div>
         </section>
 
         <!-- Naming exercise -->
