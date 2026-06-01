@@ -32,6 +32,9 @@ function ownerFor(sources) {
 const num = (v) => (v === undefined || v === '' || v === null || isNaN(Number(v)) ? null : Number(v));
 const str = (v) => (typeof v === 'string' && v.trim() ? v.trim() : null);
 const csv = (v) => (str(v) ? str(v).split(',').map((x) => x.trim()).filter(Boolean) : null);
+// Master stores emotions Capitalized ("Trust"); array operators are exact +
+// case-sensitive, so title-case the incoming filter to match.
+const titleCase = (s) => s.charAt(0).toUpperCase() + s.slice(1).toLowerCase();
 // We're standardizing TLDs to the bare form ("com") across both DBs, but legacy
 // rows may still be dotted (".com") until the one-time backfills run. Match BOTH
 // forms so the count is the true total of .com domains regardless of storage
@@ -96,7 +99,8 @@ function buildMaster(p, ascending, countMode) {
   // Master Domain List columns differ: domain (no sld), price, owner, source
   // (single text), number_of_words (numeric), category, tld, sld_length, and
   // is_single_word / dictionary_word are TEXT 'Y'/'N' (NOT booleans/ints — match
-  // the Admin/Supabase view exactly). keywords/emotions are TEXT (not arrays).
+  // the Admin/Supabase view exactly). keywords/emotions are text[] (migrated
+  // 2026-06; match with array operators, not ilike).
   let q = getMasterlistDb()
     .from(MASTER)
     .select('domain, price, owner, source, category, tld, sld_length, number_of_words', { count: countMode });
@@ -121,8 +125,11 @@ function buildMaster(p, ascending, countMode) {
   if (p.no_numbers === '1') q = q.not('domain', 'match', '[0-9]');
   const cats = csv(p.category); if (cats) q = q.in('category', cats);
   const src = str(p.source); if (src) q = q.ilike('source', '%' + src + '%');
-  const kw = str(p.keyword); if (kw) q = q.ilike('keywords', '%' + kw.toLowerCase() + '%');
-  const emo = str(p.emotion); if (emo) q = q.ilike('emotions', '%' + emo.toLowerCase() + '%');
+  // keywords/emotions are now text[] (migrated 2026-06). Match like the universe
+  // side: keyword = array contains the term OR the domain text contains it;
+  // emotion = overlaps (any-of), title-cased to match Master's Capitalized values.
+  const kw = str(p.keyword); if (kw) { const k = kw.toLowerCase(); q = q.or(`keywords.cs.{${k}},domain.ilike.%${k}%`); }
+  const emo = csv(p.emotion); if (emo) q = q.overlaps('emotions', emo.map(titleCase));
   const owner = str(p.owner); if (owner) q = q.ilike('owner', '%' + owner + '%');
   return q.order(MASTER_SORT[p.sort] || 'domain', { ascending, nullsFirst: false });
 }

@@ -60,7 +60,8 @@ Two domain corpora in **separate Supabase projects**; the search reads both.
   owner attributions only** (CSV/portfolio imports + real-owner rows + broader
   `snagged`). One row per `domain`, single `source` text + `owner`. Filters use
   `is_single_word` / `dictionary_word` (TEXT `'Y'`/`'N'`); `emotions`/`keywords` are
-  TEXT (aligning to `text[]` planned). 2026-06 cleanup removed ~3.75M marketplace
+  `text[]` (migrated 2026-06; emotions stored Capitalized, so the search
+  title-cases the emotion filter). 2026-06 cleanup removed ~3.75M marketplace
   placeholder dupes (backup `master_domain_list_backup`); ≈ 435K rows.
 
 **Boundary rule:** automated/SNAP + marketplace → `name_universe`; manual/curated
