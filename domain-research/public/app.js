@@ -2128,7 +2128,11 @@ function renderAppraisal(domain, a, meta) {
     });
   }
 }
-function finishAppraisal(domain, a) {
+function finishAppraisal(domain, a, def) {
+  // The dictionary definition rides on the response's TOP level (data.definition),
+  // but digAppraisal() returns a nested valuation object — so carry it across
+  // here, before render + caching, so it survives and re-opens from Recent show it.
+  if (def && a && typeof a === 'object' && !a.definition) a = { ...a, definition: def };
   setToolUrl('appraisal', domain);
   setToolStatus(els.apStatus, '');
   renderAppraisal(domain, a, { updatedAt: Date.now() });
@@ -2141,14 +2145,14 @@ async function pollAppraisal(domain, jobId) {
     setToolStatus(els.apStatus, `Appraising ${domain}… (${Math.round((Date.now() - started) / 1000)}s)`);
     await new Promise((r) => setTimeout(r, 3000));
     try {
-      const res = await fetch(`/research/api/lookup?source=appraise_lookup&job_id=${encodeURIComponent(jobId)}`);
+      const res = await fetch(`/research/api/lookup?source=appraise_lookup&job_id=${encodeURIComponent(jobId)}&domain=${encodeURIComponent(domain)}`);
       const data = await res.json();
       const st = (data && data.data) || {};
       const statusStr = String(st.status || st.state || '');
       const v = digAppraisal(st);
       const ready = (v && v !== st) || appraisalRange(v) || /complete|done|success|finished/i.test(statusStr);
       if (ready) {
-        finishAppraisal(domain, v);
+        finishAppraisal(domain, v, st.definition);
         return;
       }
       if (/fail|error|cancel/i.test(statusStr)) { setToolStatus(els.apStatus, `Appraisal ${statusStr}.`, true); return; }
@@ -2168,9 +2172,9 @@ async function runAppraisal(domainInput, opts) {
     const data = await res.json();
     if (!data.ok) throw new Error(data.error || `Failed (${res.status})`);
     const d = data.data || {};
-    if (d.appraisal) finishAppraisal(domain, digAppraisal(d.appraisal));
+    if (d.appraisal) finishAppraisal(domain, digAppraisal(d.appraisal), d.definition);
     else if (d.job_id) await pollAppraisal(domain, d.job_id);
-    else finishAppraisal(domain, digAppraisal(d));
+    else finishAppraisal(domain, digAppraisal(d), d.definition);
   } catch (e) {
     setToolStatus(els.apStatus, e.message || String(e), true);
   }

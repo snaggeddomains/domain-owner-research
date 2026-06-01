@@ -43,9 +43,15 @@ async function handleRunTool(req, res, source) {
   // ("a powerful action verb", "dictionary-brand"); showing the actual
   // dictionary entry next to that reasoning lets a buyer corroborate it.
   // Read-only, fail-open, single indexed lookup — never blocks the appraisal.
-  if (result.ok && source === 'appraise_lookup' && args.domain) {
+  // The async job-poll request carries job_id but not domain, so fall back to a
+  // domain on the result itself when args.domain is absent.
+  const apDomain = args.domain
+    || (result.data && (result.data.domain
+      || (result.data.appraisal && result.data.appraisal.domain)
+      || (result.data.valuation && result.data.valuation.domain)));
+  if (result.ok && source === 'appraise_lookup' && apDomain) {
     try {
-      const sld = sldOf(args.domain);
+      const sld = sldOf(apDomain);
       if (sld) {
         const def = await getDefinition(sld);
         // Skip the "missing" 404 sentinel so the UI doesn't render an empty
