@@ -533,13 +533,8 @@ button:disabled { opacity: .55; cursor: progress; }
 .user-row-error { color: var(--coral-deep); margin: 0; font-size: 13px; }
 .user-empty { color: var(--navy-2); }
 
-/* Slotted module sub-nav inside the shared top bar's mobile hamburger. These
-   live in the light DOM (styled here) but only render inside the component's
-   menu, which the component itself hides on desktop. */
-.m-nav { display: flex; flex-direction: column; gap: 6px; }
-.m-link { padding: 10px 13px; border-radius: 10px; font-weight: 600; font-size: 15px; color: var(--navy-2); text-decoration: none; }
-.m-link:hover { background: var(--cream); color: var(--navy); }
-.m-link.active { background: var(--navy); color: var(--cream-2); }
+/* The in-menu account block is mobile-only (see the max-width:760 query). */
+.nav-mobile-account { display: none; }
 
 @media (max-width: 760px) {
   #app { flex-direction: column; }
@@ -547,10 +542,13 @@ button:disabled { opacity: .55; cursor: progress; }
      full-width mobile sidebar consumes the flex row and the content collapses
      to zero width (blank page). */
   .app-body { flex-direction: column; }
-  /* On mobile the module sub-nav lives in the shared top bar's hamburger (the
-     slotted .m-nav), so the desktop sidebar is hidden and the content goes
-     full-width. */
-  .sidebar { display: none; }
+  /* The hamburger now lives in the top bar, so on mobile the sidebar collapses
+     to a zero-height positioning anchor for its nav dropdown — no separate bar. */
+  .sidebar {
+    flex: none; width: 100%; align-self: stretch; height: 0;
+    position: relative; z-index: 100;
+    padding: 0; border: 0; background: none;
+  }
   /* Move the account out of the (wrapping) top bar and into the hamburger menu;
      keep the hamburger itself in the top-right. Target the id so this beats the
      verbatim `.topbar__account { display:flex }` block defined later in the file
