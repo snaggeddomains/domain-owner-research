@@ -21,9 +21,10 @@
     <base href="/research/" />
     <link rel="icon" href="favicon-32.png" />
     <link rel="stylesheet" href="styles.css" />
-    <!-- Shared top bar (single source of truth, hosted by the umbrella; same
-         origin so the root-absolute URL resolves to app.snagged.com/brand/…). -->
-    <script src="/brand/topbar.js" defer></script>
+    <!-- Shared top bar. The component is the canonical copy in snagged-admin
+         (dashboard/public/brand/topbar.js), mirrored here so research serves it
+         from its OWN deploy (reliable — no cross-origin asset dependency). -->
+    <script src="topbar.js" defer></script>
   </head>
   <body>
     <div id="login" class="login" hidden>
@@ -64,7 +65,7 @@
            email/show-admin attributes after /api/me. The slotted nav below is
            the module sub-nav shown INSIDE the bar's hamburger on mobile; the
            desktop home for these is the sidebar further down. -->
-      <snagged-topbar id="topbar" current="research" show-research home-href="/" logout-href="/api/logout">
+      <snagged-topbar id="topbar" current="research" show-research home-href="/" logout-href="/api/logout" logo-src="logomark-round.svg">
         <nav slot="menu" class="m-nav" id="m-nav">
           <a href="#" class="m-link active" data-view="research">Domain Owner</a>
           <a href="#" class="m-link" data-view="trademark">Trademark</a>

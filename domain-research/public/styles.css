@@ -46,9 +46,6 @@
 
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
-/* Hide the shared top bar (and its slotted light-DOM children) until the
-   web component upgrades, so the raw mobile nav doesn't flash. */
-snagged-topbar:not(:defined) { display: none; }
 
 /* clip (not hidden) prevents horizontal overflow WITHOUT making html/body a
    scroll container — which would break the sticky mobile header. */
