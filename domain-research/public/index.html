@@ -80,28 +80,24 @@
              is always shown. -->
         <button id="nav-toggle" class="nav-toggle" type="button" aria-label="Menu" aria-expanded="false">&#9776;</button>
       </header>
-      <div class="app-body">
-      <aside class="sidebar">
-        <nav class="nav" id="nav">
-          <button id="nav-research" class="nav-btn active" type="button">Domain Owner</button>
-          <button id="nav-trademark" class="nav-btn" type="button">Trademark</button>
-          <button id="nav-appraisal" class="nav-btn" type="button">Appraisal</button>
-          <button id="nav-naming" class="nav-btn" type="button">Naming Exercise</button>
-          <div class="nav-account" id="nav-account" hidden>
-            <!-- Was "Admin" — now "Lessons" to avoid overlap with the umbrella's
-                 Admin. Same target (/research/admin) — this is the playbook-
-                 lessons curation view, scoped to the research app. -->
-            <button id="nav-admin" class="nav-btn nav-btn-admin" type="button" hidden>Lessons</button>
-            <label class="nav-account-toggle"><input type="checkbox" id="nav-notify-toggle" /> Email me when reports finish</label>
-            <!-- Mobile only: the account (email + Log out) lives in the hamburger
-                 menu; on desktop it stays in the top bar (.topbar__account). -->
-            <div class="nav-mobile-account">
-              <span id="nav-account-email" class="nav-account-email"></span>
-              <a href="/api/logout" class="nav-logout">Log out</a>
-            </div>
+      <!-- Module sub-nav as horizontal tabs (Admin-style). On mobile the
+           top-bar hamburger toggles this same nav into a dropdown. -->
+      <nav class="nav tabnav" id="nav">
+        <button id="nav-research" class="nav-btn active" type="button">Domain Owner</button>
+        <button id="nav-trademark" class="nav-btn" type="button">Trademark</button>
+        <button id="nav-appraisal" class="nav-btn" type="button">Appraisal</button>
+        <button id="nav-naming" class="nav-btn" type="button">Naming Exercise</button>
+        <!-- Was "Admin" — now "Lessons" (playbook curation); admin-only, shown by JS. -->
+        <button id="nav-admin" class="nav-btn nav-btn-admin" type="button" hidden>Lessons</button>
+        <div class="nav-account" id="nav-account" hidden>
+          <label class="nav-account-toggle"><input type="checkbox" id="nav-notify-toggle" /> Email me when reports finish</label>
+          <!-- Mobile only: account (email + Log out) in the dropdown; desktop keeps it in the top bar. -->
+          <div class="nav-mobile-account">
+            <span id="nav-account-email" class="nav-account-email"></span>
+            <a href="/api/logout" class="nav-logout">Log out</a>
           </div>
-        </nav>
-      </aside>
+        </div>
+      </nav>
 
       <div class="content">
       <div class="wrap">
@@ -304,7 +300,6 @@ The model parses it into structured filters (TLDs, length, budget, tone, etc.) a
           <p id="lesson-list-empty" class="user-empty" hidden>No lessons yet.</p>
           <p id="lesson-list-error" class="login-error" hidden></p>
         </section>
-      </div>
       </div>
       </div>
     </main>

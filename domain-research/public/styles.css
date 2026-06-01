@@ -712,3 +712,44 @@ body.modal-open { overflow: hidden; }
 @media (max-width: 560px) {
   #app { padding-left: 16px; padding-right: 16px; }
 }
+
+/* ─────────────────────────────────────────────────────────────────────────
+   Module sub-nav as horizontal TABS (replaces the old left sidebar). #app is a
+   column: top bar, #nav tabs, full-width content — matching the umbrella's
+   Admin layout. ID selectors so these win over the legacy .sidebar/.nav rules.
+   On mobile the top-bar hamburger toggles #nav into a dropdown.
+   ───────────────────────────────────────────────────────────────────────── */
+#nav.tabnav {
+  display: flex; flex-direction: row; align-items: center; flex-wrap: wrap; gap: 4px; flex: none;
+  border-right: 0; border-bottom: 1px solid var(--line); margin-bottom: 28px;
+  background: none; padding: 0; position: static; height: auto; min-height: 0;
+}
+#nav.tabnav .nav-btn {
+  flex: none; width: auto; text-align: center; cursor: pointer;
+  background: none; border: 0; border-radius: 0;
+  border-bottom: 2px solid transparent; margin-bottom: -1px;
+  padding: 10px 14px; font-size: 14px; font-weight: 600; color: var(--navy-2);
+}
+#nav.tabnav .nav-btn:hover { background: none; color: var(--navy); transform: none; box-shadow: none; }
+#nav.tabnav .nav-btn.active { background: none; color: var(--navy); border-bottom-color: var(--coral); }
+#nav.tabnav .nav-btn.nav-btn-admin { color: var(--teal-deep); border-color: transparent; }
+#nav.tabnav .nav-btn.nav-btn-admin.active { background: none; color: var(--teal-deep); border-bottom-color: var(--teal-deep); }
+/* Notify toggle pinned to the right of the tab row; account stays in the top bar on desktop. */
+#nav.tabnav .nav-account { margin: 0 0 0 auto; padding: 0; border: 0; flex-direction: row; align-items: center; gap: 12px; }
+#nav.tabnav .nav-mobile-account { display: none; }
+
+@media (max-width: 760px) {
+  /* Hamburger (top-right of the bar) toggles the tabs into a dropdown. */
+  #nav.tabnav {
+    display: none; flex-direction: column; align-items: stretch; gap: 6px;
+    border-bottom: 0; margin-bottom: 18px; padding: 10px;
+    background: var(--cream-2); border: 1.5px solid var(--line); border-radius: 12px;
+    box-shadow: var(--shadow-md);
+  }
+  #nav.tabnav.open { display: flex; }
+  #nav.tabnav .nav-btn { width: 100%; text-align: left; border-bottom: 0; margin-bottom: 0; border-radius: 8px; padding: 11px 12px; }
+  #nav.tabnav .nav-btn.active { background: var(--navy); color: var(--cream-2); border-bottom: 0; }
+  #nav.tabnav .nav-btn.nav-btn-admin.active { background: var(--teal-deep); color: var(--cream-2); }
+  #nav.tabnav .nav-account { margin: 6px 0 0; padding-top: 10px; border-top: 1.5px solid var(--line); flex-direction: column; align-items: stretch; gap: 8px; }
+  #nav.tabnav .nav-mobile-account { display: flex; flex-direction: column; gap: 8px; }
+}
