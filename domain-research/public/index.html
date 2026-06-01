@@ -88,8 +88,12 @@
         <button id="nav-trademark" class="nav-btn" type="button">Trademark</button>
         <button id="nav-appraisal" class="nav-btn" type="button">Appraisal</button>
         <button id="nav-naming" class="nav-btn" type="button">Naming Exercise</button>
-        <!-- Was "Admin" — now "Lessons" (playbook curation); admin-only, shown by JS. -->
-        <button id="nav-admin" class="nav-btn nav-btn-admin" type="button" hidden>Lessons</button>
+        <!-- Domain DB Search — looks a domain up in the Master List + Universe.
+             Gated by the `dbsearch` permission; shown by JS. -->
+        <button id="nav-dbsearch" class="nav-btn" type="button" hidden>Domain DB Search</button>
+        <!-- Lessons (playbook curation) is admin-only and now lives in the
+             umbrella Admin module; reachable directly at /research/admin. -->
+        <button id="nav-admin" class="nav-btn nav-btn-admin" type="button" hidden style="display:none">Lessons</button>
         <div class="nav-account" id="nav-account" hidden>
           <label class="nav-account-toggle"><input type="checkbox" id="nav-notify-toggle" /> Email me when reports finish</label>
           <!-- Mobile only: account (email + Log out) in the dropdown; desktop keeps it in the top bar. -->
@@ -232,6 +236,21 @@
           <section id="ap-status" class="status" hidden></section>
           <div id="ap-result" class="appraisal-result" hidden></div>
           <div id="ap-recent" class="recent tool-recent" hidden></div>
+        </section>
+
+        <!-- Domain DB Search -->
+        <section id="view-dbsearch" hidden>
+          <div class="hero tool-hero">
+            <img class="hero-art" src="mascot-hero.png" alt="" />
+            <h1 class="hero-title">Domain <span class="accent">DB Search</span></h1>
+            <p class="hero-sub">Look a domain up in our Master Domain List and the name Universe. Shows everything we have on record.</p>
+            <form id="db-form" class="search hero-search" autocomplete="off">
+              <input id="db-domain" type="text" placeholder="example.com" required />
+              <button id="db-go" type="submit">Search</button>
+            </form>
+          </div>
+          <section id="db-status" class="status" hidden></section>
+          <div id="db-result" class="dbsearch-result" hidden></div>
         </section>
 
         <!-- Naming exercise -->

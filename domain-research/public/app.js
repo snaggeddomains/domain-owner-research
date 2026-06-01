@@ -126,6 +126,12 @@ const els = {
   apStatus: $('ap-status'),
   apResult: $('ap-result'),
   apRecent: $('ap-recent'),
+  navDbsearch: $('nav-dbsearch'),
+  dbForm: $('db-form'),
+  dbDomain: $('db-domain'),
+  dbGo: $('db-go'),
+  dbStatus: $('db-status'),
+  dbResult: $('db-result'),
 };
 
 // Tool history is server-backed (Supabase) so the "recent 5" and deeplinks
@@ -282,12 +288,17 @@ function clearHash() {
 //   /research/appraisal           /research/appraisal/<domain>
 //   /research/naming              (no slug — brief lives in the textarea)
 function currentToolRoute() {
-  const m = location.pathname.match(/^\/research\/(trademark|appraisal|naming)(?:\/(.+?))?\/?$/);
+  let m = location.pathname.match(/^\/research\/(trademark|appraisal|naming|dbsearch|admin)(?:\/(.+?))?\/?$/);
+  // Domain DB Search also answers at the top-level vanity path
+  // app.snagged.com/dbsearch/<domain> (umbrella rewrites it to the SPA).
+  if (!m) m = location.pathname.match(/^\/(dbsearch)(?:\/(.+?))?\/?$/);
   if (!m) return null;
   return { tool: m[1], slug: m[2] ? decodeURIComponent(m[2]) : '' };
 }
 function setToolUrl(tool, slug) {
-  const path = slug ? `/research/${tool}/${encodeURIComponent(slug)}` : `/research/${tool}`;
+  // DB Search keeps the short /dbsearch/<domain> URL; other tools stay under /research/.
+  const base = tool === 'dbsearch' ? '/dbsearch' : `/research/${tool}`;
+  const path = slug ? `${base}/${encodeURIComponent(slug)}` : base;
   if (location.pathname !== path) history.pushState(null, '', path);
 }
 
@@ -325,12 +336,104 @@ function route() {
     else { els.apResult.hidden = true; els.apResult.innerHTML = ''; els.apDomain.value = ''; setToolStatus(els.apStatus, ''); }
     return;
   }
+  if (tr && tr.tool === 'dbsearch') {
+    showView('dbsearch');
+    // Accept either /dbsearch/<domain> (path) or /dbsearch?domain=<domain> (query).
+    const q = tr.slug || dbDomainFromQuery();
+    if (q) {
+      if (els.dbDomain) els.dbDomain.value = q;
+      if (!tr.slug) setToolUrl('dbsearch', q); // normalize ?domain= to /dbsearch/<domain>
+      runDbSearch(q);
+    } else {
+      if (els.dbDomain) els.dbDomain.value = '';
+      if (els.dbResult) els.dbResult.hidden = true;
+      setToolStatus(els.dbStatus, '');
+    }
+    return;
+  }
+  if (tr && tr.tool === 'admin') {
+    // Lessons (admin-only) — reached from the umbrella Admin module.
+    showView('admin');
+    return;
+  }
   const id = runIdFromHash();
   if (id) openProject(id);
   else showEntry();
 }
 function routeAfterAuth() {
   route();
+}
+
+// ── Domain DB Search ────────────────────────────────────────────────────────
+// Looks a domain up in the Master Domain List + name Universe and shows every
+// field we have. Permission-gated server-side (`dbsearch`).
+// Pull a domain out of the URL query for the DB-search deep link:
+//   /dbsearch?domain=bobby.com  (also ?d= / ?q=, or a bare ?bobby.com)
+function dbDomainFromQuery() {
+  const search = location.search || '';
+  if (!search) return '';
+  const params = new URLSearchParams(search);
+  const named = params.get('domain') || params.get('d') || params.get('q');
+  if (named) return named.trim().toLowerCase();
+  const bare = decodeURIComponent(search.replace(/^\?/, '')).trim().toLowerCase();
+  if (bare && !bare.includes('=') && /^[a-z0-9.-]+\.[a-z]{2,}$/.test(bare)) return bare;
+  return '';
+}
+
+const DBSEARCH_SKIP = new Set(['embedding']); // vector column — not human-readable
+function dbFmtVal(v) {
+  if (v == null || v === '') return '';
+  if (Array.isArray(v)) return v.length ? v.join(', ') : '';
+  if (typeof v === 'boolean') return v ? 'Yes' : 'No';
+  return String(v);
+}
+function dbHumanizeKey(k) {
+  return k.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+}
+function dbRenderKv(obj, order) {
+  const ordered = [...order, ...Object.keys(obj).filter((k) => !order.includes(k))];
+  const seen = new Set();
+  let rows = '';
+  for (const k of ordered) {
+    if (seen.has(k) || DBSEARCH_SKIP.has(k) || !(k in obj)) continue;
+    seen.add(k);
+    const val = dbFmtVal(obj[k]);
+    if (val === '') continue;
+    rows += `<div class="kv-row"><span class="kv-key">${escapeHtml(dbHumanizeKey(k))}</span><span class="kv-val">${escapeHtml(val)}</span></div>`;
+  }
+  return rows || '<p class="muted">No fields recorded.</p>';
+}
+function dbCard(title, subtitle, obj, order, err) {
+  let pill, body;
+  if (err) { pill = '<span class="pill pill-err">Error</span>'; body = `<p class="login-error">${escapeHtml(err)}</p>`; }
+  else if (obj) { pill = '<span class="pill pill-found">Found</span>'; body = `<div class="kv-grid">${dbRenderKv(obj, order)}</div>`; }
+  else { pill = '<span class="pill pill-miss">Not found</span>'; body = `<p class="muted">No record in ${escapeHtml(title)}.</p>`; }
+  return `<div class="dbsearch-card"><div class="dbsearch-card-head"><h2>${escapeHtml(title)}</h2>${pill}</div>` +
+    `${subtitle ? `<p class="muted dbsearch-card-sub">${escapeHtml(subtitle)}</p>` : ''}${body}</div>`;
+}
+function renderDbResult(data) {
+  const masterOrder = ['domain', 'owner', 'price', 'source', 'category', 'tld', 'is_single_word', 'dictionary_word', 'number_of_words', 'syllables', 'sld_length', 'root_words', 'keywords', 'emotions', 'created_at', 'updated_at'];
+  const uniOrder = ['domain', 'sld', 'tld', 'sources', 'best_price', 'best_price_source', 'source_tier', 'quality_score', 'deal_score', 'zipf_score', 'num_words', 'num_syllables', 'is_dictionary_word', 'sld_length', 'category', 'industries', 'keywords', 'emotions', 'first_seen', 'last_seen', 'updated_at'];
+  const errs = data.errors || {};
+  let html = `<div class="dbsearch-summary"><strong>${escapeHtml(data.domain)}</strong> — ${data.found ? 'found in our databases' : 'not found in either database'}</div>`;
+  html += dbCard('Master Domain List', 'Our curated / owned domains', data.master, masterOrder, errs.master);
+  html += dbCard('Name Universe', 'The broad market universe', data.universe, uniOrder, errs.universe);
+  els.dbResult.innerHTML = html;
+  els.dbResult.hidden = false;
+}
+async function runDbSearch(domain) {
+  showView('dbsearch');
+  setToolStatus(els.dbStatus, 'Searching…');
+  if (els.dbResult) els.dbResult.hidden = true;
+  try {
+    const res = await fetch(`/research/api/dbsearch?domain=${encodeURIComponent(domain)}`);
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) { setToolStatus(els.dbStatus, data.error || `Search failed (${res.status})`, true); return; }
+    setToolStatus(els.dbStatus, '');
+    renderDbResult(data);
+  } catch (e) {
+    setToolStatus(els.dbStatus, String((e && e.message) || e), true);
+  }
 }
 
 const escapeHtml = (s) =>
@@ -846,6 +949,9 @@ async function checkAuth() {
 function maybeAutoRunFromUrl() {
   const search = location.search || "";
   if (!search) return;
+  // Only auto-run a free report on the Domain Owner home — not when a ?domain=
+  // belongs to a tool route like /dbsearch?domain=… (that's handled in route()).
+  if (currentToolRoute()) return;
   let domain = "";
   const params = new URLSearchParams(search);
   const named = params.get("domain") || params.get("d") || params.get("q");
@@ -912,7 +1018,10 @@ function gateNavByPermissions(user) {
   if (els.navTrademark) els.navTrademark.hidden = !can('trademark');
   if (els.navAppraisal) els.navAppraisal.hidden = !can('appraisal');
   if (els.navNaming) els.navNaming.hidden = !can('naming');
-  if (els.navAdmin) els.navAdmin.hidden = !(user && user.is_admin);
+  if (els.navDbsearch) els.navDbsearch.hidden = !can('dbsearch');
+  // Lessons lives in the umbrella Admin module now; its tab stays hidden here
+  // (the element is kept only so the /research/admin deep link still routes).
+  if (els.navAdmin) els.navAdmin.hidden = true;
 }
 
 els.navAdmin?.addEventListener('click', () => { history.pushState(null, '', '/research/admin'); showView('admin'); closeNav(); });
@@ -1528,6 +1637,7 @@ const VIEWS = {
   appraisal: { view: 'view-appraisal', nav: 'nav-appraisal' },
   naming: { view: 'view-naming', nav: 'nav-naming' },
   'naming-projects': { view: 'view-naming-projects', nav: 'nav-naming' },
+  dbsearch: { view: 'view-dbsearch', nav: 'nav-dbsearch' },
   admin: { view: 'view-admin', nav: 'nav-admin' },
 };
 function showView(name) {
@@ -2676,6 +2786,14 @@ els.navResearch?.addEventListener('click', showEntry);
 els.homeLink?.addEventListener('click', (e) => { e.preventDefault(); closeNav(); showEntry(); });
 els.navTrademark?.addEventListener('click', () => { setToolUrl('trademark', ''); route(); });
 els.navAppraisal?.addEventListener('click', () => { setToolUrl('appraisal', ''); route(); });
+els.navDbsearch?.addEventListener('click', () => { setToolUrl('dbsearch', ''); route(); });
+els.dbForm?.addEventListener('submit', (e) => {
+  e.preventDefault();
+  const d = (els.dbDomain.value || '').trim();
+  if (!d) return;
+  setToolUrl('dbsearch', d);
+  runDbSearch(d);
+});
 els.navNaming?.addEventListener('click', () => {
   if (location.pathname !== '/research/naming') history.pushState(null, '', '/research/naming');
   showView('naming');

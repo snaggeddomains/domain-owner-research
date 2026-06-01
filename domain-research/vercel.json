@@ -31,6 +31,8 @@
     { "source": "/research/appraisal/:slug*", "destination": "/index.html" },
     { "source": "/research/naming", "destination": "/index.html" },
     { "source": "/research/naming/:slug*", "destination": "/index.html" },
+    { "source": "/research/dbsearch", "destination": "/index.html" },
+    { "source": "/research/dbsearch/:slug*", "destination": "/index.html" },
     { "source": "/research/api/:fn*", "destination": "/api/:fn*" },
     { "source": "/research/:path*", "destination": "/:path*" }
   ]
