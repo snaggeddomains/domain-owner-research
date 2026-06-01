@@ -92,26 +92,45 @@ async function handleResetRequest(req, res, body) {
   else if (!isEmailConfigured()) console.log('password-reset request: RESEND_API_KEY not set; skipping send');
   if (user && user.id && isEmailConfigured()) {
     try {
-      const token = signResetToken(user.id);
-      // The app is nested at app.snagged.com/research/* — reset links must
-      // include the /research path prefix to land on the SPA, since the
-      // root path now 301-redirects via vercel.json.
+      // New-user invites (sent by the admin "Add user" flow) get a 7-day window
+      // and invite-flavored copy; self-service resets keep the 1-hour default.
+      const invite = body.mode === 'invite';
+      const ttlSec = invite ? 60 * 60 * 24 * 7 : undefined;
+      const token = signResetToken(user.id, ttlSec);
+      // The app is nested at app.snagged.com/research/* — links must include the
+      // /research prefix to land on the SPA. Use the NO-trailing-slash form
+      // (/research?reset=...): /research/ falls through to "/", which
+      // vercel.json 301-redirects (dropping the query) and blanks the link.
       const base = (process.env.APP_URL || 'https://app.snagged.com/research').replace(/\/+$/, '');
-      const link = `${base}/?reset=${encodeURIComponent(token)}`;
-      console.log(`password-reset request: sending reset link to ${user.email}`);
-      await sendEmail({
-        to: user.email,
-        subject: 'Reset your Snagged Research password',
-        text:
-          `Someone (probably you) asked to reset the password for your Snagged Research account.\n\n` +
-          `Open this link to set a new password (expires in 1 hour):\n${link}\n\n` +
-          `If you didn't request this, you can ignore this email — your password is unchanged.`,
-        html:
-          `<p>Someone (probably you) asked to reset the password for your <strong>Snagged Research</strong> account.</p>` +
-          `<p><a href="${link}">Set a new password</a> (this link expires in 1 hour).</p>` +
-          `<p>If you didn't request this, you can ignore this email — your password is unchanged.</p>` +
-          `<p style="color:#666;font-size:12px">If the button doesn't work, paste this URL: ${link}</p>`,
-      });
+      const link = `${base}?reset=${encodeURIComponent(token)}`;
+      const email = invite
+        ? {
+            subject: "You've been invited to join Snagged Admin",
+            text:
+              `You've been invited to join Snagged Admin.\n\n` +
+              `Set your password to activate your account and get started (this link expires in 7 days):\n${link}\n\n` +
+              `If you weren't expecting this invitation, you can safely ignore this email.`,
+            html:
+              `<p>You've been invited to join <strong>Snagged Admin</strong>.</p>` +
+              `<p>Set your password to activate your account and get started:</p>` +
+              `<p><a href="${link}">Set your password</a> (this link expires in 7 days).</p>` +
+              `<p>If you weren't expecting this invitation, you can safely ignore this email.</p>` +
+              `<p style="color:#666;font-size:12px">If the button doesn't work, paste this URL: ${link}</p>`,
+          }
+        : {
+            subject: 'Reset your Snagged Research password',
+            text:
+              `Someone (probably you) asked to reset the password for your Snagged Research account.\n\n` +
+              `Open this link to set a new password (expires in 1 hour):\n${link}\n\n` +
+              `If you didn't request this, you can ignore this email — your password is unchanged.`,
+            html:
+              `<p>Someone (probably you) asked to reset the password for your <strong>Snagged Research</strong> account.</p>` +
+              `<p><a href="${link}">Set a new password</a> (this link expires in 1 hour).</p>` +
+              `<p>If you didn't request this, you can ignore this email — your password is unchanged.</p>` +
+              `<p style="color:#666;font-size:12px">If the button doesn't work, paste this URL: ${link}</p>`,
+          };
+      console.log(`${invite ? 'invite' : 'password-reset'} request: sending link to ${user.email}`);
+      await sendEmail({ to: user.email, ...email });
     } catch (err) {
       console.error('password-reset request send failed:', err && err.message);
     }

@@ -269,11 +269,13 @@ export async function ensureAdminSeed() {
 
 // ── Password-reset tokens (signed, short-lived) ────────────────────────────
 // Same HMAC scheme as the auth cookie; namespaced so an auth cookie can't be
-// passed off as a reset token or vice versa. 1-hour expiry by default.
+// passed off as a reset token or vice versa. 1-hour expiry for self-service
+// password resets; callers can pass a longer TTL (e.g. for new-user invites).
 const RESET_TTL_SEC = 60 * 60;
 
-export function signResetToken(userId) {
-  const payload = { p: 'reset', u: String(userId || ''), exp: Math.floor(Date.now() / 1000) + RESET_TTL_SEC };
+export function signResetToken(userId, ttlSec = RESET_TTL_SEC) {
+  const ttl = Number.isFinite(ttlSec) && ttlSec > 0 ? Math.floor(ttlSec) : RESET_TTL_SEC;
+  const payload = { p: 'reset', u: String(userId || ''), exp: Math.floor(Date.now() / 1000) + ttl };
   return sign(payload);
 }
 
