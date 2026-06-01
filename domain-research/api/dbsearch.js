@@ -105,6 +105,9 @@ function buildMaster(p, ascending, countMode) {
   if (p.dict_word === 'yes') q = q.eq('dictionary_word', 'Y'); else if (p.dict_word === 'no') q = q.eq('dictionary_word', 'N');
   const wmin = num(p.words_min); if (wmin != null) q = q.gte('number_of_words', wmin);
   const wmax = num(p.words_max); if (wmax != null) q = q.lte('number_of_words', wmax);
+  // Master has no `sld` column, so apply "no numbers" to `domain` (digits only
+  // appear in the SLD — the TLD is alphabetic).
+  if (p.no_numbers === '1') q = q.not('domain', 'match', '[0-9]');
   const cats = csv(p.category); if (cats) q = q.in('category', cats);
   const src = str(p.source); if (src) q = q.ilike('source', '%' + src + '%');
   const kw = str(p.keyword); if (kw) q = q.ilike('keywords', '%' + kw.toLowerCase() + '%');
