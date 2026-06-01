@@ -824,6 +824,7 @@ async function checkAuth() {
       if (els.navNotifyToggle) els.navNotifyToggle.checked = Boolean(u.email_notify_on_done);
       gateNavByPermissions(u);
       gateReportPhaseUI(u);
+      maybeAutoRunFromUrl();
     } else {
       if (els.topbarAccount) els.topbarAccount.hidden = true;
       if (els.topbarAdmin) els.topbarAdmin.hidden = true;
@@ -836,6 +837,34 @@ async function checkAuth() {
     if (els.topbarAdmin) els.topbarAdmin.hidden = true;
     if (els.navAccount) els.navAccount.hidden = true;
   }
+}
+
+// Free-report deep link: arriving at /research?example.com (or
+// ?domain=example.com / ?d=example.com) auto-fills the search box and kicks off
+// a FREE pre-flight report on load. Strips the query afterward so a refresh
+// doesn't re-run. Called from checkAuth once the user is signed in.
+function maybeAutoRunFromUrl() {
+  const search = location.search || "";
+  if (!search) return;
+  let domain = "";
+  const params = new URLSearchParams(search);
+  const named = params.get("domain") || params.get("d") || params.get("q");
+  if (named) {
+    domain = named.trim().toLowerCase();
+  } else {
+    // Bare form: ?example.com  (the whole query string is the domain).
+    const bare = decodeURIComponent(search.replace(/^\?/, "")).trim().toLowerCase();
+    if (bare && !bare.includes("=") && /^[a-z0-9.-]+\.[a-z]{2,}$/.test(bare)) domain = bare;
+  }
+  if (!domain) return;
+  // Drop the query so a manual refresh doesn't re-trigger the run.
+  history.replaceState(null, "", location.pathname);
+  if (!els.domain || !els.form) return;
+  if (typeof showEntry === "function") showEntry();   // ensure the Domain Owner view
+  if (els.deepToggle) els.deepToggle.checked = false;  // free pre-flight, not deep
+  els.domain.value = domain;
+  if (els.form.requestSubmit) els.form.requestSubmit();
+  else els.form.dispatchEvent(new Event("submit", { cancelable: true }));
 }
 
 // Sign-out lives on the umbrella now — the topbar's "Log out" is a plain
