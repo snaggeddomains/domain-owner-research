@@ -25,12 +25,17 @@ const WRITE_BATCH = 50;         // how many definitions to upsert in one round-t
 const MAX_SENSES = 2;           // cap on POS senses per word (verb + noun, etc.)
 const MAX_DEFS_PER_SENSE = 2;   // cap on definitions per POS sense
 
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
 function parseArgs(argv) {
-  const out = { limit: Infinity, concurrency: 6, posOnly: false };
+  // maxMinutes: stop gracefully before the runner's hard timeout so the job
+  // ends GREEN with partial progress (resumable) instead of being CANCELLED.
+  const out = { limit: Infinity, concurrency: 6, posOnly: false, maxMinutes: 50 };
   for (let i = 2; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--limit') out.limit = Math.max(1, parseInt(argv[++i], 10) || Infinity);
     else if (a === '--concurrency') out.concurrency = Math.max(1, Math.min(20, parseInt(argv[++i], 10) || 6));
+    else if (a === '--max-minutes') out.maxMinutes = Math.max(1, parseInt(argv[++i], 10) || 50);
     else if (a === '--pos-only') out.posOnly = true;
   }
   return out;
@@ -75,17 +80,24 @@ function shapeMissing() {
   return { missing: true, source: 'wiktionary', fetched_at: new Date().toISOString(), senses: [] };
 }
 
-async function fetchOne(word) {
+async function fetchOne(word, attempt = 0) {
   const url = `${API_BASE}/${encodeURIComponent(word)}`;
   try {
     const res = await fetch(url, { headers: { accept: 'application/json' } });
     if (res.status === 404) return shapeMissing();
-    if (!res.ok) return null; // transient error — leave row null so the next run retries
+    // Rate-limit / server error — back off and retry a couple times so a
+    // transient blip doesn't leave the row null (and re-scanned forever).
+    if (res.status === 429 || res.status >= 500) {
+      if (attempt < 2) { await sleep(500 * (attempt + 1)); return fetchOne(word, attempt + 1); }
+      return null;
+    }
+    if (!res.ok) return null;
     const body = await res.json();
     const shaped = shapeDefinition(body);
     return shaped || shapeMissing();
   } catch {
-    return null;
+    if (attempt < 2) { await sleep(500 * (attempt + 1)); return fetchOne(word, attempt + 1); }
+    return null; // transient error — leave row null so the next run retries
   }
 }
 
@@ -124,8 +136,14 @@ async function main() {
   let totalProcessed = 0;
   let totalHit = 0;
   let totalMissed = 0;
+  let zeroStreak = 0; // consecutive batches that wrote nothing (API failing)
+  const deadline = Date.now() + args.maxMinutes * 60_000;
 
   while (totalProcessed < args.limit) {
+    if (Date.now() > deadline) {
+      console.error(`\nStopping cleanly: hit the ${args.maxMinutes}-min time budget. Resumable — re-run to continue.`);
+      break;
+    }
     // Pull the next batch of words that haven't been processed yet. A "null
     // definition" means we haven't attempted this row — including 404 results
     // (which write the missing sentinel) means we won't re-fetch dead ends.
@@ -182,6 +200,22 @@ async function main() {
 
     totalProcessed += words.length;
     console.error(`  batch done: ${updates.length} upserted (${totalHit} with definitions, ${totalMissed} 404 sentinels) · totalProcessed=${totalProcessed}`);
+
+    // No-progress guard: when a batch returns candidates but writes nothing,
+    // every fetch failed transiently — those same rows stay null and come back
+    // on the next scan, so the loop would spin (and time out) making no headway.
+    // Back off; bail cleanly after a few in a row so the run ends GREEN, not
+    // cancelled. (A real "all done" exits earlier via the empty-candidates break.)
+    if (updates.length === 0) {
+      zeroStreak += 1;
+      if (zeroStreak >= 3) {
+        console.error('\nStopping cleanly: 3 batches in a row wrote nothing (dictionary API likely rate-limiting/erroring). Resumable — re-run later.');
+        break;
+      }
+      await sleep(2000 * zeroStreak);
+    } else {
+      zeroStreak = 0;
+    }
   }
 
   console.error(`\ndone. processed ${totalProcessed} words → ${totalHit} with definitions, ${totalMissed} confirmed-missing.`);

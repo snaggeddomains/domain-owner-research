@@ -23,6 +23,10 @@ on:
         description: "Only words with a POS tag in english_words (true/false)"
         required: false
         default: "false"
+      max_minutes:
+        description: "Stop cleanly after N minutes (default 50, before the 60-min runner timeout)"
+        required: false
+        default: "50"
 
 jobs:
   backfill:
@@ -50,5 +54,6 @@ jobs:
           ARGS=""
           if [ -n "${{ inputs.limit }}" ]; then ARGS="$ARGS --limit ${{ inputs.limit }}"; fi
           if [ -n "${{ inputs.concurrency }}" ]; then ARGS="$ARGS --concurrency ${{ inputs.concurrency }}"; fi
+          if [ -n "${{ inputs.max_minutes }}" ]; then ARGS="$ARGS --max-minutes ${{ inputs.max_minutes }}"; fi
           if [ "${{ inputs.pos_only }}" = "true" ]; then ARGS="$ARGS --pos-only"; fi
           node scripts/backfill-definitions.js $ARGS
