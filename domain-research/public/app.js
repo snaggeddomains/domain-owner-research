@@ -1854,6 +1854,27 @@ function renderAppraisal(domain, a, meta) {
   const analysis = pickr(a, ['marketAnalysis', 'market_analysis', 'analysis', 'notes', 'summary']);
   const cats = Array.isArray(a.applicableCategories) ? a.applicableCategories : (Array.isArray(a.categories) ? a.categories : []);
   const catStr = cats.map((c) => escapeHtml(resolve(c) || c)).filter(Boolean).join(', ');
+  // Dictionary definition — attached server-side by api/lookup.js when the
+  // SLD is a known English word with a backfilled entry in english_words.
+  // Lets a buyer corroborate the appraisal's word-meaning claims (the
+  // "premium action verb" angle) against the actual dictionary sense.
+  const def = a && typeof a.definition === 'object' && a.definition ? a.definition : null;
+  const defBlock = (() => {
+    if (!def || !Array.isArray(def.senses) || !def.senses.length) return '';
+    const phonetic = def.phonetic ? ` <span class="ap-phonetic">${escapeHtml(def.phonetic)}</span>` : '';
+    const senses = def.senses
+      .map((s) => {
+        const pos = s && s.pos ? `<span class="ap-pos">${escapeHtml(s.pos)}</span>` : '';
+        const defs = Array.isArray(s && s.defs) ? s.defs : [];
+        if (!defs.length) return '';
+        const list = defs.map((d) => `<li>${escapeHtml(String(d || ''))}</li>`).join('');
+        return `<div class="ap-sense">${pos}<ol>${list}</ol></div>`;
+      })
+      .filter(Boolean)
+      .join('');
+    if (!senses) return '';
+    return `<div class="ap-block ap-definition"><h3>Definition${phonetic}</h3>${senses}</div>`;
+  })();
   const raw = escapeHtml(JSON.stringify(a, null, 2).slice(0, 4000));
   // "Last appraised <ago> · Refresh" line — lets the user see freshness and
   // re-run a paid appraisal when the cached one is stale.
@@ -1866,6 +1887,7 @@ function renderAppraisal(domain, a, meta) {
     `<div class="tool-title">${escapeHtml(domain)}</div>` +
     metaRow +
     (rows || '<div class="muted">No value fields recognized — see the raw appraisal below.</div>') +
+    defBlock +
     (analysis ? `<div class="ap-block"><h3>Market analysis</h3><p>${escapeHtml(analysis)}</p></div>` : '') +
     block(a.strengths || a.pros, 'Why it scored well') +
     block(a.weaknesses || a.cons || a.knocks, 'Main knocks') +

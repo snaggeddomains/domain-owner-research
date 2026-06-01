@@ -753,3 +753,10 @@ body.modal-open { overflow: hidden; }
   #nav.tabnav .nav-account { margin: 6px 0 0; padding-top: 10px; border-top: 1.5px solid var(--line); flex-direction: column; align-items: stretch; gap: 8px; }
   #nav.tabnav .nav-mobile-account { display: flex; flex-direction: column; gap: 8px; }
 }
+
+/* Appraisal — Definition block (Free Dictionary API, attached by api/lookup) */
+.ap-definition .ap-phonetic { font-family: var(--system); font-weight: 600; font-size: 12px; color: var(--navy-3); text-transform: none; letter-spacing: 0; margin-left: 8px; }
+.ap-sense { margin: 4px 0 8px; }
+.ap-sense .ap-pos { display: inline-block; padding: 1px 8px; margin: 0 0 4px; font-size: .7rem; font-weight: 700; text-transform: lowercase; letter-spacing: .02em; background: rgba(47,163,107,.10); color: #1f7a4d; border: 1.5px solid rgba(47,163,107,.45); border-radius: 999px; }
+.ap-sense ol { margin: 4px 0 0; padding-left: 22px; color: var(--navy); font-size: .95rem; line-height: 1.5; }
+.ap-sense ol li { margin: 2px 0; }

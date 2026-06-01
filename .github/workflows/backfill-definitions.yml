@@ -1,0 +1,54 @@
+name: Backfill english_words definitions
+
+# Resumable backfill: fetches dictionary entries from the Free Dictionary API
+# (Wiktionary-derived, no key) and writes them into english_words.definition
+# as JSONB. Skips rows that already have a definition or a 404-sentinel, so
+# re-running picks up only the unfinished work.
+#
+# Click "Run workflow" in the Actions tab. The first full run is ~50K root
+# words at ~6 concurrent reqs/sec → ~15-25 min of clock time.
+
+on:
+  workflow_dispatch:
+    inputs:
+      limit:
+        description: "Cap total words this run (blank = all unfilled rows)"
+        required: false
+        default: ""
+      concurrency:
+        description: "Parallel API requests (default 6, max 20)"
+        required: false
+        default: "6"
+      pos_only:
+        description: "Only words with a POS tag in english_words (true/false)"
+        required: false
+        default: "false"
+
+jobs:
+  backfill:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    defaults:
+      run:
+        working-directory: domain-research
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          # Node 22 LTS — matches the other ops actions in this repo.
+          node-version: "22"
+
+      - name: Install deps
+        run: npm install --omit=dev
+
+      - name: Backfill definitions
+        env:
+          SUPABASE_NAMING_URL: ${{ secrets.SUPABASE_NAMING_URL }}
+          SUPABASE_NAMING_SERVICE_KEY: ${{ secrets.SUPABASE_NAMING_SERVICE_KEY }}
+        run: |
+          ARGS=""
+          if [ -n "${{ inputs.limit }}" ]; then ARGS="$ARGS --limit ${{ inputs.limit }}"; fi
+          if [ -n "${{ inputs.concurrency }}" ]; then ARGS="$ARGS --concurrency ${{ inputs.concurrency }}"; fi
+          if [ "${{ inputs.pos_only }}" = "true" ]; then ARGS="$ARGS --pos-only"; fi
+          node scripts/backfill-definitions.js $ARGS

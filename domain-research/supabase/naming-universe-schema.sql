@@ -24,3 +24,20 @@ create index if not exists idx_english_words_inflected
 alter table english_words enable row level security;
 -- Service-role queries bypass RLS; the runtime never reads this from the
 -- client. No public policies on purpose.
+
+-- ── Definitions for dictionary words (Free Dictionary API backfill) ────────
+-- Adds a JSONB column populated by scripts/backfill-definitions.js. Shape:
+--   {
+--     "phonetic": "/dɪˈskeɪl/",                        -- optional, IPA
+--     "senses": [
+--       { "pos": "verb", "defs": ["Remove scale (deposits ...) from."] },
+--       { "pos": "noun", "defs": ["..."] }
+--     ],
+--     "source":     "wiktionary",                       -- attribution
+--     "fetched_at": "2026-06-01T00:00:00Z"
+--   }
+-- Surfaced in the Appraisal tool's render so a buyer can confirm a "premium
+-- verb" / "evocative noun" claim against the actual dictionary meaning.
+alter table english_words add column if not exists definition jsonb;
+create index if not exists idx_english_words_definition_present
+  on english_words (word) where definition is not null;

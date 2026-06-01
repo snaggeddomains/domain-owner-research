@@ -13,6 +13,7 @@ import { isAuthed, currentUser, userCan, moduleForSource } from '../lib/auth.js'
 import { runTool } from '../lib/sources/index.js';
 import { normalizeDomain } from '../lib/util.js';
 import { saveToolLookup, listToolLookups, getToolLookup } from '../lib/db/tools.js';
+import { getDefinition, sldOf } from '../lib/db/dictionary.js';
 
 // Some tool-runs (e.g. registration_cluster, marketplace_check) need room.
 export const config = { maxDuration: 60 };
@@ -36,6 +37,29 @@ async function handleRunTool(req, res, source) {
   if (args.domain) args.domain = normalizeDomain(args.domain);
 
   const result = await runTool(source, args, process.env);
+
+  // Decorate successful appraisal responses with the SLD's dictionary entry
+  // when we have one. The Appraisal LLM reasons heavily about word meaning
+  // ("a powerful action verb", "dictionary-brand"); showing the actual
+  // dictionary entry next to that reasoning lets a buyer corroborate it.
+  // Read-only, fail-open, single indexed lookup — never blocks the appraisal.
+  if (result.ok && source === 'appraise_lookup' && args.domain) {
+    try {
+      const sld = sldOf(args.domain);
+      if (sld) {
+        const def = await getDefinition(sld);
+        // Skip the "missing" 404 sentinel so the UI doesn't render an empty
+        // section for words that aren't in the dictionary. Real definitions
+        // (senses array non-empty) ride along on the response.
+        if (def && Array.isArray(def.senses) && def.senses.length) {
+          result.data = { ...(result.data || {}), definition: def };
+        }
+      }
+    } catch {
+      /* dictionary lookup is decorative — never block the appraisal */
+    }
+  }
+
   res.status(result.ok ? 200 : 400).json({ source, ...result });
 }
 
