@@ -1,107 +1,190 @@
-// DB Search — filterable browse over the name Universe (name_universe).
-// Server-side filtering + pagination + sorting so the UI can page through the
-// (multi-million row) corpus. Gated by the `dbsearch` module permission.
+// DB Search — filterable browse across our two corpora:
+//   • name Universe   (name_universe, SUPABASE_NAMING_*)  — the broad market
+//   • Master Domain List (MASTERLIST_SUPABASE_*)          — curated/owned
+// `db` = both (default) | universe | master. The two tables are in different
+// Supabase projects with different schemas, so each is queried with its own
+// column mapping and the results are normalized to a common row shape.
 //
-// Many filters depend on enrichment columns (category, emotions, keywords) that
-// are still being backfilled — those simply match less until populated. The
-// always-available structural filters (tld, length, word counts, dictionary,
-// price, source) work today.
+// Pagination: single-DB modes page server-side via range(). "both" fetches a
+// capped window from each, merges + dedupes (a domain in both → owner/price
+// from the curated Master record), sorts, and slices the page — accurate for
+// the first pages, which is the common case. Gated by the `dbsearch` permission.
 
 import { currentUser, userCan } from '../lib/auth.js';
 import { getNamingDb, isNamingDbConfigured } from '../lib/db/supabase-naming.js';
+import { getMasterlistDb, isMasterlistDbConfigured } from '../lib/db/masterlist.js';
 
-const TABLE = 'name_universe';
+const UNIVERSE = 'name_universe';
+const MASTER = 'Master Domain List';
 const MAX_LIMIT = 100;
+const MERGE_CAP = 1000; // max rows to pull per source in "both" mode
 
-// Owned-feed → owner, mirrors lib/sources/universe_ownership.js.
 const OWNER_BY_SOURCE = {
   snagged_snap_sheet: 'Snagged',
   berserk_snap_sheet: 'Snagged',
   rob_purchases_sheet: 'Rob Schutz',
 };
 function ownerFor(sources) {
-  for (const s of Array.isArray(sources) ? sources : []) {
-    if (OWNER_BY_SOURCE[s]) return OWNER_BY_SOURCE[s];
-  }
+  for (const s of Array.isArray(sources) ? sources : []) if (OWNER_BY_SOURCE[s]) return OWNER_BY_SOURCE[s];
   return null;
 }
 
 const num = (v) => (v === undefined || v === '' || v === null || isNaN(Number(v)) ? null : Number(v));
 const str = (v) => (typeof v === 'string' && v.trim() ? v.trim() : null);
 const csv = (v) => (str(v) ? str(v).split(',').map((x) => x.trim()).filter(Boolean) : null);
+const bareTlds = (arr) => arr.map((t) => (t.startsWith('.') ? t.slice(1) : t));
+
+// Map a sort key to each table's column (they differ).
+const UNIVERSE_SORT = { domain: 'domain', price: 'best_price', source: 'best_price_source' };
+const MASTER_SORT = { domain: 'domain', price: 'price', source: 'source' };
+
+function buildUniverse(p, ascending) {
+  let q = getNamingDb()
+    .from(UNIVERSE)
+    .select('domain, sld, tld, sld_length, num_words, is_dictionary_word, best_price, best_price_source, sources, category, emotions, keywords', { count: 'estimated' });
+  const text = str(p.q);
+  if (text) q = q.ilike('sld', (p.fuzzy === '1' ? '%' : '') + text.toLowerCase() + '%');
+  const tlds = csv(p.tld); if (tlds) q = q.in('tld', bareTlds(tlds));
+  const pmin = num(p.price_min); if (pmin != null) q = q.gte('best_price', pmin);
+  const pmax = num(p.price_max); if (pmax != null) q = q.lte('best_price', pmax);
+  const le = num(p.len_exact);
+  if (le != null) q = q.eq('sld_length', le);
+  else { const a = num(p.len_min); if (a != null) q = q.gte('sld_length', a); const b = num(p.len_max); if (b != null) q = q.lte('sld_length', b); }
+  if (p.single_word === 'yes') q = q.eq('num_words', 1); else if (p.single_word === 'no') q = q.gt('num_words', 1);
+  if (p.dict_word === 'yes') q = q.eq('is_dictionary_word', true); else if (p.dict_word === 'no') q = q.eq('is_dictionary_word', false);
+  const wmin = num(p.words_min); if (wmin != null) q = q.gte('num_words', wmin);
+  const wmax = num(p.words_max); if (wmax != null) q = q.lte('num_words', wmax);
+  if (p.no_numbers === '1') q = q.not('sld', 'match', '[0-9]');
+  const sources = csv(p.source); if (sources) q = q.overlaps('sources', sources);
+  const cats = csv(p.category); if (cats) q = q.in('category', cats);
+  const emo = csv(p.emotion); if (emo) q = q.overlaps('emotions', emo);
+  const kw = str(p.keyword); if (kw) q = q.or(`keywords.cs.{${kw.toLowerCase()}},sld.ilike.%${kw.toLowerCase()}%`);
+  return q.order(UNIVERSE_SORT[p.sort] || 'domain', { ascending, nullsFirst: false });
+}
+
+function normUniverse(r) {
+  return {
+    domain: r.domain, best_price: r.best_price,
+    best_price_source: r.best_price_source || (Array.isArray(r.sources) && r.sources[0]) || null,
+    sources: r.sources || [], owner: ownerFor(r.sources), category: r.category || null, db: 'universe',
+  };
+}
+
+function buildMaster(p, ascending) {
+  // Master Domain List columns differ: domain (no sld), price, owner, source
+  // (single text), number_of_words, category, tld, sld_length, emotions/keywords
+  // are TEXT (not arrays). Apply the reliably-typed filters; skip the ones that
+  // don't map cleanly (e.g. array/regex ops) so a query never errors.
+  let q = getMasterlistDb()
+    .from(MASTER)
+    .select('domain, price, owner, source, category, tld, sld_length, number_of_words', { count: 'estimated' });
+  const text = str(p.q);
+  if (text) q = q.ilike('domain', '%' + text.toLowerCase() + '%');
+  const tlds = csv(p.tld); if (tlds) q = q.in('tld', bareTlds(tlds));
+  const pmin = num(p.price_min); if (pmin != null) q = q.gte('price', pmin);
+  const pmax = num(p.price_max); if (pmax != null) q = q.lte('price', pmax);
+  const le = num(p.len_exact);
+  if (le != null) q = q.eq('sld_length', le);
+  else { const a = num(p.len_min); if (a != null) q = q.gte('sld_length', a); const b = num(p.len_max); if (b != null) q = q.lte('sld_length', b); }
+  if (p.single_word === 'yes') q = q.eq('number_of_words', 1); else if (p.single_word === 'no') q = q.gt('number_of_words', 1);
+  const wmin = num(p.words_min); if (wmin != null) q = q.gte('number_of_words', wmin);
+  const wmax = num(p.words_max); if (wmax != null) q = q.lte('number_of_words', wmax);
+  const cats = csv(p.category); if (cats) q = q.in('category', cats);
+  const src = str(p.source); if (src) q = q.ilike('source', '%' + src + '%');
+  const kw = str(p.keyword); if (kw) q = q.ilike('keywords', '%' + kw.toLowerCase() + '%');
+  const emo = str(p.emotion); if (emo) q = q.ilike('emotions', '%' + emo.toLowerCase() + '%');
+  const owner = str(p.owner); if (owner) q = q.ilike('owner', '%' + owner + '%');
+  return q.order(MASTER_SORT[p.sort] || 'domain', { ascending, nullsFirst: false });
+}
+
+function normMaster(r) {
+  return {
+    domain: r.domain, best_price: r.price, best_price_source: r.source || null,
+    sources: r.source ? [r.source] : [], owner: r.owner || null, category: r.category || null, db: 'master',
+  };
+}
+
+function sortRows(rows, sort, ascending) {
+  const key = sort === 'price' ? 'best_price' : sort === 'source' ? 'best_price_source' : 'domain';
+  const dir = ascending ? 1 : -1;
+  return rows.sort((a, b) => {
+    const av = a[key], bv = b[key];
+    if (av == null && bv == null) return 0;
+    if (av == null) return 1; // nulls last
+    if (bv == null) return -1;
+    if (typeof av === 'number' && typeof bv === 'number') return (av - bv) * dir;
+    return String(av).localeCompare(String(bv)) * dir;
+  });
+}
 
 export default async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store');
   if (req.method !== 'GET') { res.status(405).json({ error: 'Use GET' }); return; }
-
   const user = await currentUser(req);
   if (!user) { res.status(401).json({ error: 'Not authenticated' }); return; }
   if (!userCan(user, 'dbsearch')) { res.status(403).json({ error: 'You don’t have access to DB Search.' }); return; }
-  if (!isNamingDbConfigured()) { res.status(500).json({ error: 'Naming universe not configured' }); return; }
 
   const p = req.query;
   const page = Math.max(0, num(p.page) || 0);
   const limit = Math.min(MAX_LIMIT, Math.max(1, num(p.limit) || 50));
-  const from = page * limit;
-
-  const sortCol = ({ domain: 'domain', price: 'best_price', source: 'best_price_source' })[p.sort] || 'domain';
   const ascending = (p.dir || 'asc') !== 'desc';
+  let db = (str(p.db) || 'both').toLowerCase();
+  if (!['both', 'universe', 'master'].includes(db)) db = 'both';
 
-  let q = getNamingDb()
-    .from(TABLE)
-    .select('domain, sld, tld, sld_length, num_words, num_syllables, is_dictionary_word, best_price, best_price_source, sources, source_tier, category, emotions, keywords', { count: 'estimated' });
-
-  // Free-text: match the SLD (fuzzy = contains anywhere; else prefix).
-  const text = str(p.q);
-  if (text) q = q.ilike('sld', (p.fuzzy === '1' ? '%' : '') + text.toLowerCase() + '%');
-
-  const tlds = csv(p.tld);
-  if (tlds) q = q.in('tld', tlds.map((t) => (t.startsWith('.') ? t.slice(1) : t)));
-
-  const priceMin = num(p.price_min); if (priceMin != null) q = q.gte('best_price', priceMin);
-  const priceMax = num(p.price_max); if (priceMax != null) q = q.lte('best_price', priceMax);
-
-  const lenExact = num(p.len_exact);
-  if (lenExact != null) q = q.eq('sld_length', lenExact);
-  else {
-    const lenMin = num(p.len_min); if (lenMin != null) q = q.gte('sld_length', lenMin);
-    const lenMax = num(p.len_max); if (lenMax != null) q = q.lte('sld_length', lenMax);
-  }
-
-  // Single word: yes → exactly 1 word; no → 2+.
-  if (p.single_word === 'yes') q = q.eq('num_words', 1);
-  else if (p.single_word === 'no') q = q.gt('num_words', 1);
-
-  if (p.dict_word === 'yes') q = q.eq('is_dictionary_word', true);
-  else if (p.dict_word === 'no') q = q.eq('is_dictionary_word', false);
-
-  const wordsMin = num(p.words_min); if (wordsMin != null) q = q.gte('num_words', wordsMin);
-  const wordsMax = num(p.words_max); if (wordsMax != null) q = q.lte('num_words', wordsMax);
-
-  // No numbers: SLD has no digit. PostgREST regex (~). Best-effort.
-  if (p.no_numbers === '1') q = q.not('sld', 'match', '[0-9]');
-
-  const sources = csv(p.source);
-  if (sources) q = q.overlaps('sources', sources);
-
-  const cats = csv(p.category);
-  if (cats) q = q.in('category', cats);
-
-  const emotions = csv(p.emotion);
-  if (emotions) q = q.overlaps('emotions', emotions);
-
-  // Keyword contains: try the enrichment keywords array; falls back to SLD.
-  const kw = str(p.keyword);
-  if (kw) q = q.or(`keywords.cs.{${kw.toLowerCase()}},sld.ilike.%${kw.toLowerCase()}%`);
-
-  q = q.order(sortCol, { ascending, nullsFirst: false }).range(from, from + limit - 1);
-
-  const { data, error, count } = await q;
-  if (error) { res.status(500).json({ error: error.message }); return; }
+  const wantUniverse = (db === 'both' || db === 'universe') && isNamingDbConfigured();
+  const wantMaster = (db === 'both' || db === 'master') && isMasterlistDbConfigured();
+  if (!wantUniverse && !wantMaster) { res.status(500).json({ error: 'No databases configured for the selected source.' }); return; }
 
   const ownerFilter = str(p.owner) ? str(p.owner).toLowerCase() : null;
-  let rows = (data || []).map((r) => ({ ...r, owner: ownerFor(r.sources) }));
-  if (ownerFilter) rows = rows.filter((r) => (r.owner || '').toLowerCase().includes(ownerFilter));
 
-  res.status(200).json({ rows, page, limit, count: count ?? null, has_more: (data || []).length === limit });
+  try {
+    // ── Single-DB modes: clean server-side pagination via range() ──
+    if (db === 'universe' || db === 'master') {
+      const start = page * limit;
+      const endIdx = start + limit - 1;
+      let rows;
+      let count = null;
+      if (db === 'universe') {
+        const { data, error, count: c } = await buildUniverse(p, ascending).range(start, endIdx);
+        if (error) throw error;
+        rows = (data || []).map(normUniverse); count = c ?? null;
+      } else {
+        const { data, error, count: c } = await buildMaster(p, ascending).range(start, endIdx);
+        if (error) throw error;
+        rows = (data || []).map(normMaster); count = c ?? null;
+      }
+      if (ownerFilter) rows = rows.filter((r) => (r.owner || '').toLowerCase().includes(ownerFilter));
+      res.status(200).json({ rows, page, limit, db, count, has_more: rows.length === limit });
+      return;
+    }
+
+    // ── Both: fetch a capped window from each, merge, dedupe, sort, slice ──
+    const end = Math.min((page + 1) * limit, MERGE_CAP);
+    const [uRes, mRes] = await Promise.all([
+      buildUniverse(p, ascending).range(0, end - 1).then((r) => r).catch((e) => ({ error: e })),
+      buildMaster(p, ascending).range(0, end - 1).then((r) => r).catch((e) => ({ error: e })),
+    ]);
+    const errors = {};
+    let merged = [];
+    if (uRes.error) errors.universe = uRes.error.message || String(uRes.error);
+    else merged = merged.concat((uRes.data || []).map(normUniverse));
+    if (mRes.error) errors.master = mRes.error.message || String(mRes.error);
+    else {
+      // Master takes precedence on overlap (curated owner/price/category).
+      const masterRows = (mRes.data || []).map(normMaster);
+      const masterDomains = new Set(masterRows.map((r) => (r.domain || '').toLowerCase()));
+      merged = merged.filter((r) => !masterDomains.has((r.domain || '').toLowerCase()));
+      // tag domains present in both
+      const uniDomains = new Set((uRes.data || []).map((r) => (r.domain || '').toLowerCase()));
+      for (const r of masterRows) if (uniDomains.has((r.domain || '').toLowerCase())) r.db = 'both';
+      merged = merged.concat(masterRows);
+    }
+    if (ownerFilter) merged = merged.filter((r) => (r.owner || '').toLowerCase().includes(ownerFilter));
+    merged = sortRows(merged, p.sort || 'domain', ascending);
+    const start = page * limit;
+    const rows = merged.slice(start, start + limit);
+    res.status(200).json({ rows, page, limit, db, count: null, has_more: merged.length > start + limit, errors });
+  } catch (e) {
+    res.status(500).json({ error: e.message || String(e) });
+  }
 }

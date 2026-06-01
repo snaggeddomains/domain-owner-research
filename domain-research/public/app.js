@@ -138,6 +138,7 @@ const els = {
   dsSource: $('ds-source'), dsCategory: $('ds-category'), dsEmotion: $('ds-emotion'),
   dsOwner: $('ds-owner'), dsKeyword: $('ds-keyword'),
   dsApply: $('ds-apply'), dsReset: $('ds-reset'),
+  dsDbToggle: $('ds-dbtoggle'),
   dsStatus: $('ds-status'), dsTbody: $('ds-tbody'),
   dsPager: $('ds-pager'), dsPrev: $('ds-prev'), dsNext: $('ds-next'), dsPageinfo: $('ds-pageinfo'),
   dsTable: $('ds-table'),
@@ -457,7 +458,7 @@ async function runDbScreen(domain) {
 
 // ── DB Search (filterable browse over name_universe) ────────────────────────
 const DS_LIMIT = 50;
-const dsState = { page: 0, sort: 'domain', dir: 'asc', activeTlds: new Set() };
+const dsState = { page: 0, sort: 'domain', dir: 'asc', activeTlds: new Set(), db: 'both' };
 
 function dsBuildParams() {
   const v = (el) => (el && el.value != null ? String(el.value).trim() : '');
@@ -479,6 +480,7 @@ function dsBuildParams() {
   if (v(els.dsEmotion)) p.set('emotion', v(els.dsEmotion));
   if (v(els.dsOwner)) p.set('owner', v(els.dsOwner));
   if (v(els.dsKeyword)) p.set('keyword', v(els.dsKeyword));
+  p.set('db', dsState.db);
   p.set('sort', dsState.sort);
   p.set('dir', dsState.dir);
   p.set('page', String(dsState.page));
@@ -499,10 +501,11 @@ function dsRenderRows(rows) {
   }
   els.dsTbody.innerHTML = rows.map((r) => {
     const src = (r.best_price_source || (Array.isArray(r.sources) && r.sources[0]) || '');
+    const curated = (r.db === 'master' || r.db === 'both') ? ' <span class="dbs-src dbs-curated">curated</span>' : '';
     return `<tr>` +
       `<td class="dbs-domain">${escapeHtml(r.domain || '')}</td>` +
       `<td class="dbs-num">${dsPrice(r.best_price)}</td>` +
-      `<td>${src ? `<span class="dbs-src">${escapeHtml(src)}</span>` : '<span class="muted">—</span>'}</td>` +
+      `<td>${src ? `<span class="dbs-src">${escapeHtml(src)}</span>` : '<span class="muted">—</span>'}${curated}</td>` +
       `<td>${r.owner ? escapeHtml(r.owner) : '<span class="muted">—</span>'}</td>` +
       `<td>${r.category ? escapeHtml(r.category) : '<span class="muted">—</span>'}</td>` +
       `</tr>`;
@@ -1756,6 +1759,10 @@ function showView(name) {
   }
   if (name === 'projects') loadProjects(els.projectsSearch.value.trim());
   if (name === 'admin') loadLessons();
+  // DB Search uses the full content width (left-aligned, flush right under the
+  // nav) instead of the narrow centered column the other views use.
+  const wrap = document.querySelector('.content > .wrap');
+  if (wrap) wrap.classList.toggle('wrap--wide', name === 'dbsearch');
 }
 
 // ── Standalone tools (Trademark, Appraisal) ─────────────────────────────────
@@ -2915,6 +2922,14 @@ els.dsReset?.addEventListener('click', () => {
   if (els.dsFuzzy) els.dsFuzzy.checked = false;
   dsState.activeTlds.clear();
   if (els.dsTlds) els.dsTlds.querySelectorAll('button').forEach((b) => b.classList.remove('active'));
+  dsState.db = 'both';
+  if (els.dsDbToggle) els.dsDbToggle.querySelectorAll('button').forEach((b) => b.classList.toggle('active', b.dataset.db === 'both'));
+  dsState.page = 0; fetchDbSearch();
+});
+els.dsDbToggle?.addEventListener('click', (e) => {
+  const b = e.target.closest('button[data-db]'); if (!b) return;
+  dsState.db = b.dataset.db;
+  els.dsDbToggle.querySelectorAll('button').forEach((x) => x.classList.toggle('active', x === b));
   dsState.page = 0; fetchDbSearch();
 });
 els.dsTlds?.addEventListener('click', (e) => {

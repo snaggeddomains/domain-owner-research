@@ -778,9 +778,18 @@ body.modal-open { overflow: hidden; }
 .kv-val { color: var(--navy); text-align: right; word-break: break-word; }
 
 /* DB Search — filterable browse */
-.dbs-head { margin-bottom: 10px; }
-.dbs-title { font-size: 1.8rem; margin: 0; }
-.dbs-search { max-width: 100%; margin: 0 0 16px; }
+/* Full-width, top-aligned layout: break out of the narrow centered .wrap so the
+   headline sits just under the nav and the table extends to the nav's right edge. */
+.wrap--wide { max-width: none !important; padding-top: 6px !important; }
+.dbs-head { margin-bottom: 10px; text-align: left; }
+.dbs-head .hero-sub { margin: 4px 0 0; text-align: left; max-width: none; font-size: 1rem; }
+.dbs-title { font-size: 1.6rem; margin: 0; }
+.dbs-search { max-width: 100%; margin: 0 0 12px; }
+.dbs-dbtoggle { display: inline-flex; gap: 0; margin: 0 0 16px; border: 1.5px solid #d9d2c2; border-radius: 999px; overflow: hidden; }
+.dbs-dbtoggle button { padding: 6px 16px; border: none; background: #fff; color: var(--navy); font-size: 13px; font-weight: 600; cursor: pointer; border-right: 1px solid #e3ddcf; }
+.dbs-dbtoggle button:last-child { border-right: none; }
+.dbs-dbtoggle button.active { background: var(--coral, #e08a6f); color: #fff; }
+.dbs-curated { background: rgba(47,163,107,.12) !important; color: #1f7a4d; margin-left: 6px; }
 .dbs-layout { display: flex; gap: 20px; align-items: flex-start; }
 .dbs-filters { flex: 0 0 240px; display: flex; flex-direction: column; gap: 14px; padding: 16px; border: 1px solid #e3ddcf; border-radius: 12px; background: var(--cream, #fbf7ee); }
 .dbs-fgroup { display: flex; flex-direction: column; gap: 6px; }
