@@ -32,9 +32,12 @@ function ownerFor(sources) {
 const num = (v) => (v === undefined || v === '' || v === null || isNaN(Number(v)) ? null : Number(v));
 const str = (v) => (typeof v === 'string' && v.trim() ? v.trim() : null);
 const csv = (v) => (str(v) ? str(v).split(',').map((x) => x.trim()).filter(Boolean) : null);
-// name_universe stores tld WITH a leading dot (".com"); the Master List may store
-// it either way. Match both forms so the TLD filter works across both DBs.
-const tldVariants = (arr) => arr.flatMap((t) => { const b = t.startsWith('.') ? t.slice(1) : t; return [b, '.' + b]; });
+// The two DBs store TLDs differently: name_universe uses a leading dot (".com"),
+// the Master List uses the bare form ("com"). Query each with ITS canonical form
+// so counts match the source exactly (matching both forms over-counts when a
+// table has stray rows in the other convention).
+const bareTlds = (arr) => arr.map((t) => (t.startsWith('.') ? t.slice(1) : t));
+const dotTlds = (arr) => bareTlds(arr).map((t) => '.' + t);
 
 // Any narrowing filter applied? When none are, an exact COUNT over the whole
 // corpus is wasteful — use the fast planner estimate. Once filtered, the set is
@@ -55,7 +58,7 @@ function buildUniverse(p, ascending, countMode) {
     .select('domain, sld, tld, sld_length, num_words, is_dictionary_word, best_price, best_price_source, sources, category, emotions, keywords', { count: countMode });
   const text = str(p.q);
   if (text) q = q.ilike('sld', (p.fuzzy === '1' ? '%' : '') + text.toLowerCase() + '%');
-  const tlds = csv(p.tld); if (tlds) q = q.in("tld", tldVariants(tlds));
+  const tlds = csv(p.tld); if (tlds) q = q.in("tld", dotTlds(tlds));
   const pmin = num(p.price_min); if (pmin != null) q = q.gte('best_price', pmin);
   const pmax = num(p.price_max); if (pmax != null) q = q.lte('best_price', pmax);
   const le = num(p.len_exact);
@@ -91,7 +94,7 @@ function buildMaster(p, ascending, countMode) {
     .select('domain, price, owner, source, category, tld, sld_length, number_of_words', { count: countMode });
   const text = str(p.q);
   if (text) q = q.ilike('domain', '%' + text.toLowerCase() + '%');
-  const tlds = csv(p.tld); if (tlds) q = q.in("tld", tldVariants(tlds));
+  const tlds = csv(p.tld); if (tlds) q = q.in("tld", bareTlds(tlds));
   const pmin = num(p.price_min); if (pmin != null) q = q.gte('price', pmin);
   const pmax = num(p.price_max); if (pmax != null) q = q.lte('price', pmax);
   const le = num(p.len_exact);
