@@ -542,13 +542,12 @@ button:disabled { opacity: .55; cursor: progress; }
      full-width mobile sidebar consumes the flex row and the content collapses
      to zero width (blank page). */
   .app-body { flex-direction: column; }
-  /* Mobile: brand + hamburger row, frozen to the top on scroll; the three
-     options drop down when toggled. */
+  /* The hamburger now lives in the top bar, so on mobile the sidebar collapses
+     to a zero-height positioning anchor for its nav dropdown — no separate bar. */
   .sidebar {
-    flex: none; width: 100%; align-self: stretch; height: auto;
-    position: sticky; top: 0; z-index: 100;
-    flex-direction: row; align-items: center; justify-content: flex-end;
-    gap: 12px; padding: 12px 16px; border-right: 0; border-bottom: 1.5px solid var(--line);
+    flex: none; width: 100%; align-self: stretch;
+    position: relative; z-index: 100;
+    padding: 0; border: 0; background: none;
   }
   /* Move the account out of the (wrapping) top bar and into the hamburger menu;
      keep the hamburger itself in the top-right. Target the id so this beats the
@@ -560,7 +559,9 @@ button:disabled { opacity: .55; cursor: progress; }
   .nav-logout { color: var(--teal-deep); font-weight: 700; font-size: 14px; text-decoration: none; }
   .wordmark { font-size: 19px; }
   .brand-mark { width: 30px; height: 30px; }
-  .nav-toggle { display: inline-flex; flex: none; width: 44px; height: 40px; padding: 0; font-size: 20px; }
+  /* Pinned to the top-right of the bar: the account is hidden on mobile, so the
+     hamburger is the only auto-margin element and gets pushed to the end. */
+  .nav-toggle { display: inline-flex; flex: none; width: 44px; height: 40px; padding: 0; font-size: 20px; margin-left: auto; }
   .nav { display: none; position: absolute; top: 100%; left: 0; right: 0; flex-direction: column; gap: 6px; padding: 12px 16px; background: var(--cream-2); border-bottom: 1.5px solid var(--line); box-shadow: var(--shadow-md); z-index: 50; }
   .nav.open { display: flex; }
   .nav-btn { width: 100%; }

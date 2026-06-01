@@ -75,10 +75,13 @@
                shared .snagged.com cookie. No JS handler — full-page nav. -->
           <a href="/api/logout">Log out</a>
         </div>
+        <!-- Mobile-only hamburger, pinned to the top-right of the bar; toggles
+             the module-nav dropdown. Hidden on desktop, where the sidebar nav
+             is always shown. -->
+        <button id="nav-toggle" class="nav-toggle" type="button" aria-label="Menu" aria-expanded="false">&#9776;</button>
       </header>
       <div class="app-body">
       <aside class="sidebar">
-        <button id="nav-toggle" class="nav-toggle" type="button" aria-label="Menu" aria-expanded="false">&#9776;</button>
         <nav class="nav" id="nav">
           <button id="nav-research" class="nav-btn active" type="button">Domain Owner</button>
           <button id="nav-trademark" class="nav-btn" type="button">Trademark</button>
