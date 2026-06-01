@@ -7,7 +7,7 @@ const SYSTEM_PROMPT = `You are a meticulous domain-ownership research analyst.
 Given a domain, determine who owns or controls it, the history of that ownership, and the supporting infrastructure evidence.
 
 How to work:
-- The internal Master Domain List has ALREADY been checked for you automatically as the first step (the result is in the task message). If it found a record, lead with it as a strong internal ownership pointer (recorded owner/price/source/category); do not call masterlist_lookup. Then, still free and early, run marketplace_check for the domain before any paid source — a listing names the selling channel and often the broker/holder.
+- The internal Master Domain List AND our owned-inventory Universe (SNAP / Berserk / Rob purchases) have ALREADY been checked for you automatically as the first step (results in the task message). If either has a record, lead with it as a strong internal ownership pointer (recorded owner/price/source/category); do not call masterlist_lookup or universe_ownership. An owned-inventory hit (owner Snagged / Rob Schutz) is authoritative — these are domains we own/control. Then, still free and early, run marketplace_check for the domain before any paid source — a listing names the selling channel and often the broker/holder.
 - Gather evidence with the available tools. Begin with rdap_whois, whois_lookup and dns_lookup, then wayback_history, then any premium sources (whoisxml_lookup, domainiq_lookup, bigdomaindata_lookup, whoxy_history for historical WHOIS; whoxy_reverse / reverse_whois for the owner's other domains) that are available.
 - ALWAYS run whois_lookup (legacy port-43 WHOIS) as well as rdap_whois. Thin registries (notably .com/.net) return almost nothing useful over RDAP, but their registrar's port-43 WHOIS frequently exposes the PUBLIC registrant name, organization, email and phone. When that contact is public, report it directly — it is already public, so it must appear even on the free pre-flight pass; never make the user "go deeper" for data that is already public in WHOIS.
 - Call independent tools in parallel. Do not ask the user for permission — just gather what you need.
@@ -110,7 +110,7 @@ export async function chatTurn({ domain, reportMarkdown, history = [], message, 
 function deriveTooling(env, tier) {
   const toolSpecs = getToolSpecs(env, { tier });
   const available = new Set(toolSpecs.map((t) => t.name));
-  const preRun = ['masterlist_lookup'];
+  const preRun = ['masterlist_lookup', 'universe_ownership'];
   if (tier === 'all') preRun.push('whoisxml_lookup', 'domainiq_lookup', 'bigdomaindata_lookup', 'whoxy_history');
   const toRun = preRun.filter((n) => available.has(n));
   const agentToolSpecs = toolSpecs.filter((t) => !toRun.includes(t.name));
@@ -169,6 +169,11 @@ export async function gather({ domain, question, history = [], env, tier = 'all'
       if (res.ok && res.data && res.data.found) seedParts.push(`Internal Master Domain List HAS this domain: ${JSON.stringify(res.data)} — lead with it as a strong internal ownership pointer (recorded owner / price / source / category).`);
       else if (res.ok) seedParts.push(`Internal Master Domain List: NO record for this domain (a miss is not evidence either way).`);
       else seedParts.push(`masterlist_lookup errored: ${res.error}`);
+    } else if (name === 'universe_ownership') {
+      if (res.ok && res.data && res.data.found && res.data.owner) seedParts.push(`Internal OWNED inventory: ${domain} is in our name Universe from feed "${res.data.matched_source}" → OWNER = ${res.data.owner}. Treat this as a strong internal ownership pointer and lead with "Owner: ${res.data.owner}" at high confidence (these are domains we own/control); use other tools only to corroborate and add contact/history.`);
+      else if (res.ok && res.data && res.data.found) seedParts.push(`Internal name Universe HAS this domain (sources: ${JSON.stringify(res.data.sources)}, tier ${res.data.source_tier}) but not from an owned feed — not an ownership signal by itself.`);
+      else if (res.ok) seedParts.push(`Internal name Universe: NO record for this domain.`);
+      else seedParts.push(`universe_ownership errored: ${res.error}`);
     } else if (res.ok) {
       seedParts.push(`${name} (ran automatically): ${JSON.stringify(res.data).slice(0, 4000)}`);
     } else {

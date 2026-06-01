@@ -6,6 +6,7 @@ import whoisxml from './whoisxml.js';
 import domainiq from './domainiq.js';
 import bigdomaindata from './bigdomaindata.js';
 import masterlist from './masterlist.js';
+import universeOwnership from './universe_ownership.js';
 import livesite from './livesite.js';
 import rocketreach from './rocketreach.js';
 import rocketreachLookup from './rocketreachlookup.js';
@@ -27,7 +28,7 @@ import appraise from './appraise.js';
 // To add a new data source: create a module exporting { name, description,
 // parameters, requiresKey?, run(args, { env }) } and register it here.
 const ALL = [
-  rdap, whois, dns, wayback, livesite, marketplace, cluster, masterlist, rocketreach, readurl, analytics,
+  rdap, whois, dns, wayback, livesite, marketplace, cluster, masterlist, universeOwnership, rocketreach, readurl, analytics,
   whoisxml, domainiq, bigdomaindata, reversewhois, reversens, reverseip, websearch, bravesearch, trademark, appraise,
   rocketreachLookup, whoxyHistory, whoxyReverse, identify,
 ];
@@ -61,6 +62,7 @@ const CATEGORY = {
   registration_cluster: 'Registration cluster',
   marketplace_check: 'Marketplace',
   masterlist_lookup: 'Internal list',
+  universe_ownership: 'Internal list',
   rocketreach_search: 'People & contacts',
   rocketreach_lookup: 'People & contacts',
   web_search: 'Web & social',
