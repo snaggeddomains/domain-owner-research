@@ -43,7 +43,7 @@ const MASTER_SORT = { domain: 'domain', price: 'price', source: 'source' };
 function buildUniverse(p, ascending) {
   let q = getNamingDb()
     .from(UNIVERSE)
-    .select('domain, sld, tld, sld_length, num_words, is_dictionary_word, best_price, best_price_source, sources, category, emotions, keywords', { count: 'estimated' });
+    .select('domain, sld, tld, sld_length, num_words, is_dictionary_word, best_price, best_price_source, sources, category, emotions, keywords', { count: 'exact' });
   const text = str(p.q);
   if (text) q = q.ilike('sld', (p.fuzzy === '1' ? '%' : '') + text.toLowerCase() + '%');
   const tlds = csv(p.tld); if (tlds) q = q.in("tld", tldVariants(tlds));
@@ -74,12 +74,12 @@ function normUniverse(r) {
 
 function buildMaster(p, ascending) {
   // Master Domain List columns differ: domain (no sld), price, owner, source
-  // (single text), number_of_words, category, tld, sld_length, emotions/keywords
-  // are TEXT (not arrays). Apply the reliably-typed filters; skip the ones that
-  // don't map cleanly (e.g. array/regex ops) so a query never errors.
+  // (single text), number_of_words (numeric), category, tld, sld_length, and
+  // is_single_word / dictionary_word are TEXT 'Y'/'N' (NOT booleans/ints — match
+  // the Admin/Supabase view exactly). keywords/emotions are TEXT (not arrays).
   let q = getMasterlistDb()
     .from(MASTER)
-    .select('domain, price, owner, source, category, tld, sld_length, number_of_words', { count: 'estimated' });
+    .select('domain, price, owner, source, category, tld, sld_length, number_of_words', { count: 'exact' });
   const text = str(p.q);
   if (text) q = q.ilike('domain', '%' + text.toLowerCase() + '%');
   const tlds = csv(p.tld); if (tlds) q = q.in("tld", tldVariants(tlds));
@@ -88,7 +88,8 @@ function buildMaster(p, ascending) {
   const le = num(p.len_exact);
   if (le != null) q = q.eq('sld_length', le);
   else { const a = num(p.len_min); if (a != null) q = q.gte('sld_length', a); const b = num(p.len_max); if (b != null) q = q.lte('sld_length', b); }
-  if (p.single_word === 'yes') q = q.eq('number_of_words', 1); else if (p.single_word === 'no') q = q.gt('number_of_words', 1);
+  if (p.single_word === 'yes') q = q.eq('is_single_word', 'Y'); else if (p.single_word === 'no') q = q.eq('is_single_word', 'N');
+  if (p.dict_word === 'yes') q = q.eq('dictionary_word', 'Y'); else if (p.dict_word === 'no') q = q.eq('dictionary_word', 'N');
   const wmin = num(p.words_min); if (wmin != null) q = q.gte('number_of_words', wmin);
   const wmax = num(p.words_max); if (wmax != null) q = q.lte('number_of_words', wmax);
   const cats = csv(p.category); if (cats) q = q.in('category', cats);

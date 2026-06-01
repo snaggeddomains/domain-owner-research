@@ -36,3 +36,56 @@ export function sldOf(domain) {
   const sld = dot > 0 ? d.slice(0, dot) : d;
   return /^[a-z]+$/.test(sld) ? sld : null;
 }
+
+// ── Live fallback ───────────────────────────────────────────────────────────
+// The backfill only fills definitions for words that already EXIST in
+// english_words; it doesn't add new words. So a perfectly common word (donkey,
+// descale) may simply have no row — and the Definition block stays empty. Fall
+// back to the same free dictionary API the backfill uses, shaped identically,
+// so any real word resolves. Fail-open + decorative, never blocks the appraisal.
+const DICT_API = 'https://api.dictionaryapi.dev/api/v2/entries/en';
+const MAX_SENSES = 2;
+const MAX_DEFS_PER_SENSE = 2;
+
+function shapeLive(apiResponse) {
+  if (!Array.isArray(apiResponse) || !apiResponse.length) return null;
+  const first = apiResponse[0] || {};
+  const phonetic =
+    (typeof first.phonetic === 'string' && first.phonetic) ||
+    (Array.isArray(first.phonetics) && (first.phonetics.find((p) => p && p.text) || {}).text) ||
+    null;
+  const meanings = Array.isArray(first.meanings) ? first.meanings : [];
+  const senses = [];
+  for (const m of meanings) {
+    if (!m || !Array.isArray(m.definitions) || !m.definitions.length) continue;
+    const defs = m.definitions
+      .map((d) => (d && typeof d.definition === 'string' ? d.definition.trim() : ''))
+      .filter(Boolean)
+      .slice(0, MAX_DEFS_PER_SENSE);
+    if (!defs.length) continue;
+    senses.push({ pos: String(m.partOfSpeech || '').trim() || null, defs });
+    if (senses.length >= MAX_SENSES) break;
+  }
+  if (!senses.length) return null;
+  return { phonetic, senses, source: 'wiktionary', fetched_at: new Date().toISOString() };
+}
+
+export async function fetchLiveDefinition(word) {
+  const w = String(word || '').toLowerCase().trim();
+  if (!w || !/^[a-z]+$/.test(w)) return null;
+  try {
+    const res = await fetch(`${DICT_API}/${encodeURIComponent(w)}`, { headers: { accept: 'application/json' } });
+    if (!res.ok) return null;
+    return shapeLive(await res.json());
+  } catch {
+    return null;
+  }
+}
+
+// DB-first, live fallback: prefer the backfilled english_words row; if it has no
+// usable entry, fetch live. Returns a definition object or null (fail-open).
+export async function getDefinitionWithFallback(word) {
+  const db = await getDefinition(word);
+  if (db && Array.isArray(db.senses) && db.senses.length) return db;
+  return fetchLiveDefinition(word);
+}

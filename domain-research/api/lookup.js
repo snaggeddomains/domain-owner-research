@@ -13,7 +13,7 @@ import { isAuthed, currentUser, userCan, moduleForSource } from '../lib/auth.js'
 import { runTool } from '../lib/sources/index.js';
 import { normalizeDomain } from '../lib/util.js';
 import { saveToolLookup, listToolLookups, getToolLookup } from '../lib/db/tools.js';
-import { getDefinition, sldOf } from '../lib/db/dictionary.js';
+import { getDefinitionWithFallback, sldOf } from '../lib/db/dictionary.js';
 
 // Some tool-runs (e.g. registration_cluster, marketplace_check) need room.
 export const config = { maxDuration: 60 };
@@ -53,7 +53,7 @@ async function handleRunTool(req, res, source) {
     try {
       const sld = sldOf(apDomain);
       if (sld) {
-        const def = await getDefinition(sld);
+        const def = await getDefinitionWithFallback(sld);
         // Skip the "missing" 404 sentinel so the UI doesn't render an empty
         // section for words that aren't in the dictionary. Real definitions
         // (senses array non-empty) ride along on the response.
