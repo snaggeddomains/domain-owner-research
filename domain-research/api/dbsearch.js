@@ -59,7 +59,14 @@ function buildUniverse(p, ascending, countMode) {
     .select('domain, sld, tld, sld_length, num_words, is_dictionary_word, best_price, best_price_source, sources, category, emotions, keywords', { count: countMode });
   const text = str(p.q);
   if (text) q = q.ilike('sld', (p.fuzzy === '1' ? '%' : '') + text.toLowerCase() + '%');
-  const tlds = csv(p.tld); if (tlds) q = q.in("tld", tldVariants(tlds));
+  const tlds = csv(p.tld);
+  if (tlds) {
+    q = q.in("tld", tldVariants(tlds));
+    // A TLD chip means a clean registrable domain (sld.tld). Exclude multi-label
+    // hosts like ab.co.com / liven.it.com — their real suffix is co.com/it.com,
+    // not com, but a mis-extracted tld column can tag them 'com'.
+    q = q.not('domain', 'like', '%.%.%');
+  }
   const pmin = num(p.price_min); if (pmin != null) q = q.gte('best_price', pmin);
   const pmax = num(p.price_max); if (pmax != null) q = q.lte('best_price', pmax);
   const le = num(p.len_exact);
@@ -95,7 +102,11 @@ function buildMaster(p, ascending, countMode) {
     .select('domain, price, owner, source, category, tld, sld_length, number_of_words', { count: countMode });
   const text = str(p.q);
   if (text) q = q.ilike('domain', '%' + text.toLowerCase() + '%');
-  const tlds = csv(p.tld); if (tlds) q = q.in("tld", tldVariants(tlds));
+  const tlds = csv(p.tld);
+  if (tlds) {
+    q = q.in("tld", tldVariants(tlds));
+    q = q.not('domain', 'like', '%.%.%'); // clean sld.tld only — exclude ab.co.com etc.
+  }
   const pmin = num(p.price_min); if (pmin != null) q = q.gte('price', pmin);
   const pmax = num(p.price_max); if (pmax != null) q = q.lte('price', pmax);
   const le = num(p.len_exact);
