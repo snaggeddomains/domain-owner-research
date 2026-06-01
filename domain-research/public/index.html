@@ -90,6 +90,12 @@
                  lessons curation view, scoped to the research app. -->
             <button id="nav-admin" class="nav-btn nav-btn-admin" type="button" hidden>Lessons</button>
             <label class="nav-account-toggle"><input type="checkbox" id="nav-notify-toggle" /> Email me when reports finish</label>
+            <!-- Mobile only: the account (email + Log out) lives in the hamburger
+                 menu; on desktop it stays in the top bar (.topbar__account). -->
+            <div class="nav-mobile-account">
+              <span id="nav-account-email" class="nav-account-email"></span>
+              <a href="/api/logout" class="nav-logout">Log out</a>
+            </div>
           </div>
         </nav>
       </aside>
@@ -286,35 +292,10 @@ The model parses it into structured filters (TLDs, length, budget, tone, etc.) a
           </section>
         </section>
 
-        <!-- Admin tool -->
+        <!-- Lessons (playbook curation). User/permission administration lives
+             solely in the umbrella Admin module now (app.snagged.com/admin). -->
         <section id="view-admin" hidden>
-          <h1 class="page-title">Admin <span class="accent">— Users</span></h1>
-          <p class="sub">Add users, set per-module permissions, and grant admin access.</p>
-
-          <form id="user-add-form" class="user-add" autocomplete="off">
-            <h2 class="user-add-title">Add a user</h2>
-            <div class="user-add-row">
-              <input id="user-add-email" type="email" placeholder="user@example.com" autocomplete="off" required />
-              <input id="user-add-password" type="password" placeholder="Password (blank = send invite email)" autocomplete="new-password" />
-            </div>
-            <div class="user-add-row user-add-perms">
-              <label><input type="checkbox" id="user-add-domain_owner" checked /> Domain Owner</label>
-              <label class="sub-perm"><input type="checkbox" id="user-add-report_shallow" checked /> &nbsp;&nbsp;↳ Free reports</label>
-              <label class="sub-perm"><input type="checkbox" id="user-add-report_deep" checked /> &nbsp;&nbsp;↳ Deep research reports</label>
-              <label><input type="checkbox" id="user-add-trademark" checked /> Trademark</label>
-              <label><input type="checkbox" id="user-add-appraisal" checked /> Appraisal</label>
-              <label><input type="checkbox" id="user-add-naming" /> Naming</label>
-              <label><input type="checkbox" id="user-add-admin" /> Admin</label>
-              <label><input type="checkbox" id="user-add-notify" /> Email when reports finish</label>
-            </div>
-            <button type="submit">Add user</button>
-            <p id="user-add-error" class="login-error" hidden></p>
-          </form>
-
-          <div id="user-list" class="user-list" hidden></div>
-          <p id="user-list-error" class="login-error" hidden></p>
-
-          <h2 class="admin-section-title">Playbook lessons</h2>
+          <h1 class="page-title">Playbook <span class="accent">Lessons</span></h1>
           <p class="sub">Pending lessons distilled from refine-chat refinements. Approve to inject them into every future research run.</p>
           <div id="lesson-list" class="lesson-list" hidden></div>
           <p id="lesson-list-empty" class="user-empty" hidden>No lessons yet.</p>
