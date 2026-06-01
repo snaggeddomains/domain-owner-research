@@ -58,7 +58,20 @@ function buildUniverse(p, ascending, countMode) {
     .from(UNIVERSE)
     .select('domain, sld, tld, sld_length, num_words, is_dictionary_word, best_price, best_price_source, sources, category, emotions, keywords', { count: countMode });
   const text = str(p.q);
-  if (text) q = q.ilike('sld', (p.fuzzy === '1' ? '%' : '') + text.toLowerCase() + '%');
+  if (text) {
+    const t = text.toLowerCase();
+    // Stored SLDs don't include the TLD. If the user pasted a full domain
+    // (e.g. "crowdova.com"), an SLD-prefix match would never hit. Detect a
+    // dot and match the `domain` column directly in that case, keeping the
+    // SLD branch as a fallback for any odd input shape. Bare keywords
+    // (no dot) stay on the existing SLD-prefix path so browse semantics
+    // ("show me everything starting with pulse") are unchanged.
+    if (t.includes('.')) {
+      q = q.or(`domain.ilike.${t},sld.ilike.${(p.fuzzy === '1' ? '%' : '') + t + '%'}`);
+    } else {
+      q = q.ilike('sld', (p.fuzzy === '1' ? '%' : '') + t + '%');
+    }
+  }
   const tlds = csv(p.tld);
   if (tlds) {
     q = q.in("tld", tldVariants(tlds));
