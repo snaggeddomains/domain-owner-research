@@ -55,13 +55,16 @@ export default async function handler(req, res) {
     out.errors.master = 'Master Domain List not configured';
   }
 
-  // name_universe — exact (case-insensitive) domain match, all columns.
+  // name_universe — exact domain match, all columns. Domains are stored
+  // canonically lowercase (and `domain` is normalizeDomain()'d lowercase), so an
+  // `.eq` hits the unique b-tree index. `.ilike` would force a seq scan over
+  // millions of rows → statement timeout, so don't use it here.
   if (isNamingDbConfigured()) {
     try {
       const { data, error } = await getNamingDb()
         .from(UNIVERSE_TABLE)
         .select('*')
-        .ilike('domain', domain)
+        .eq('domain', domain)
         .limit(1);
       if (error) out.errors.universe = error.message;
       else out.universe = (data && data[0]) || null;
