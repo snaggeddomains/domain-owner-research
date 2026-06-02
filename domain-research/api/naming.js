@@ -137,15 +137,46 @@ function classifyClues(clues, status) {
   return 'unclear';
 }
 
+// Render a page through scrape.do (residential IP + JS render) to get past a
+// Cloudflare/WAF 403 or a JS-only shell. Same provider the marketplace check
+// uses. Returns rendered HTML or null when unavailable.
+async function scrapeRender(domain) {
+  const key = process.env.SCRAPE_DO_API_KEY;
+  if (!key) return null;
+  try {
+    const api = `https://api.scrape.do/?token=${encodeURIComponent(key)}`
+      + `&render=true&super=true&customWait=3500&url=${encodeURIComponent(`https://${domain}/`)}`;
+    const r = await fetchText(api, {}, 20000);
+    if (r.status === 200 && r.body && r.body.length > 500) return r.body;
+  } catch { /* render unavailable */ }
+  return null;
+}
+
 async function verifyDomain(domain) {
   const d = String(domain || '').toLowerCase().trim();
   if (!d) return 'unclear';
+  let status = 0;
+  let firstCall = 'unclear';
   try {
     const r = await fetchText(`https://${d}/`, {}, 6000);
-    return classifyClues(extractClues(r.body || ''), r.status);
+    status = r.status;
+    firstCall = classifyClues(extractClues(r.body || ''), r.status);
   } catch {
-    return 'unclear'; // unreachable / blocked → don't hide
+    firstCall = 'unclear'; // unreachable
   }
+  // The plain fetch is inconclusive when the site blocks the crawler (401/403/
+  // 429) or returns a JS shell (→ 'unclear'). Escalate THOSE through scrape.do
+  // to read the real page and confirm (a Cloudflare-fronted for-sale lander
+  // would then classify 'for_sale' and stay; a real company → 'in_use').
+  const blocked = status === 401 || status === 403 || status === 429;
+  if (blocked || firstCall === 'unclear') {
+    const html = await scrapeRender(d);
+    if (html) {
+      const confirmed = classifyClues(extractClues(html), 200);
+      if (confirmed !== 'unclear') return confirmed;
+    }
+  }
+  return firstCall; // heuristic call stands (403 → in_use) when no render available
 }
 
 async function handleVerify(body, res, user) {
