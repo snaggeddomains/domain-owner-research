@@ -2714,12 +2714,17 @@ function renderNamingTable(rows /* , bucketLabel */) {
     const domain = r.landing_url
       ? `<a class="naming-card-domain" href="${escapeHtml(r.landing_url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(r.domain)}</a>`
       : `<span class="naming-card-domain">${escapeHtml(r.domain)}</span>`;
+    // Corpus badge: M = Master Domain List, U = name_universe. Lets you see at a
+    // glance that both corpora feed the results.
+    const origin = r.origin === 'M' ? 'M' : 'U';
+    const originBadge = `<span class="naming-card-origin origin-${origin.toLowerCase()}" title="${origin === 'M' ? 'Master Domain List' : 'Name universe'}">${origin}</span>`;
     return (
       `<div class="naming-card">` +
         `<div class="naming-card-main">` +
           `<div class="naming-card-id">` +
             domain +
             `<div class="naming-card-meta">` +
+              originBadge +
               `<span class="naming-card-forsale">For sale</span>` +
               `<span class="naming-card-source">${source}</span>` +
             `</div>` +

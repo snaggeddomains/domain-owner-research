@@ -315,6 +315,9 @@ a.naming-card-domain:hover { color: var(--coral-deep); text-decoration: underlin
 .naming-card-meta { display: flex; align-items: center; gap: 10px; margin-top: 5px; flex-wrap: wrap; }
 .naming-card-forsale { font-size: .68rem; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: #1f7a4d; background: rgba(47,163,107,.12); border: 1px solid rgba(47,163,107,.35); border-radius: 999px; padding: 1px 8px; }
 .naming-card-source { font-size: .82rem; color: var(--navy-3); }
+.naming-card-origin { font-size: .66rem; font-weight: 800; line-height: 1; width: 16px; height: 16px; display: inline-flex; align-items: center; justify-content: center; border-radius: 4px; }
+.naming-card-origin.origin-m { color: #6b3fa0; background: rgba(107,63,160,.12); border: 1px solid rgba(107,63,160,.4); }
+.naming-card-origin.origin-u { color: #1f5fa8; background: rgba(31,95,168,.12); border: 1px solid rgba(31,95,168,.4); }
 .naming-card-kw { margin-top: 8px; display: flex; flex-wrap: wrap; gap: 0; opacity: .85; }
 .naming-card-buy { flex: 0 0 auto; display: flex; flex-direction: column; align-items: flex-end; gap: 10px; text-align: right; }
 .naming-card-price { font-size: 1.15rem; font-weight: 800; color: var(--navy); white-space: nowrap; }

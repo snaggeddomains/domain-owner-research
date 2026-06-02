@@ -304,6 +304,7 @@ function normalizeMasterRow(r) {
     keywords: Array.isArray(r.keywords) ? r.keywords : [],
     industries: Array.isArray(r.industries) ? r.industries : [],
     emotions: Array.isArray(r.emotions) ? r.emotions : [],
+    _origin: 'master', // corpus tag → "M" badge in the UI (universe rows have none)
   };
 }
 
@@ -419,6 +420,8 @@ function shapeRow(r, keywords, filters) {
     landing_url: deriveLandingUrl(r),
     matched_keywords,
     relevance: matched_semantic.length * 2 + matched_sld.length + boost,
+    // Which corpus this came from — "M" = Master Domain List, "U" = name_universe.
+    origin: r._origin === 'master' ? 'M' : 'U',
   };
 }
 
