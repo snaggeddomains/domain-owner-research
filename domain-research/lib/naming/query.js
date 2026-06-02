@@ -92,9 +92,21 @@ export async function searchUniverse(filters) {
   }
 
   const [uRes, mRes] = await Promise.all([
-    resolveCorpus(universeTasks, 'name_universe', true),
-    resolveCorpus(masterTasks, 'Master Domain List', false),
+    resolveCorpus(universeTasks, 'name_universe'),
+    resolveCorpus(masterTasks, 'Master Domain List'),
   ]);
+
+  // Per-pass fault tolerance. A single slow pass — e.g. a broad keyword/industry
+  // GIN overlap whose ORDER BY quality_score over a huge match set blows the
+  // statement timeout — must NOT fail the whole search; we use whatever passes
+  // returned (the priced + general passes are cheap and almost always succeed).
+  // Only hard-fail when EVERY attempted pass across BOTH corpora errored (a real
+  // outage), so a genuine problem still surfaces instead of silent emptiness.
+  if (uRes.ok === 0 && mRes.ok === 0 && (uRes.errors.length || mRes.errors.length)) {
+    throw new Error(`name_universe query failed: ${uRes.errors[0] || mRes.errors[0]}`);
+  }
+  const U = uRes.rows;
+  const MM = mRes.rows;
 
   // Build priority-tiered, corpus-interleaved row lists. Within each tier the
   // two corpora alternate so both are represented under the per-bucket cap; tiers
@@ -102,11 +114,11 @@ export async function searchUniverse(filters) {
   // universe shape on the way in. The merge loop below consumes {data} objects.
   const M = (rows) => (rows || []).map(normalizeMasterRow);
   const responses = [
-    { data: interleave(uRes.pricedKeywords, M(mRes.pricedKeywords)) },
-    { data: interleave(uRes.pricedIndustries, M(mRes.pricedIndustries)) },
-    { data: interleave(uRes.keywords, M(mRes.keywords)) },
-    { data: interleave(uRes.industries, M(mRes.industries)) },
-    { data: interleave(uRes.general, M(mRes.general)) },
+    { data: interleave(U.pricedKeywords, M(MM.pricedKeywords)) },
+    { data: interleave(U.pricedIndustries, M(MM.pricedIndustries)) },
+    { data: interleave(U.keywords, M(MM.keywords)) },
+    { data: interleave(U.industries, M(MM.industries)) },
+    { data: interleave(U.general, M(MM.general)) },
   ];
   // Connotation criterion (UI multi-select) applied in-memory — see buildQuery
   // note. Drop enriched rows whose tone is excluded; unenriched (null) rows pass.
@@ -311,26 +323,33 @@ function buildMasterQuery(db, filters, keywords, matchMode, opts = {}) {
   return q.then((r) => r);
 }
 
-// Await a corpus's three passes ({keywords, industries, general}, each a
-// thenable or null) into {keywords, industries, general} data arrays. Universe
-// errors throw (the search depends on it); Master errors are logged and treated
-// as empty so naming degrades gracefully to universe-only.
-async function resolveCorpus(tasks, label, throwOnError) {
+// Await a corpus's passes (each a thenable or null) into a per-pass row dict,
+// plus { errors, attempted, ok } so the caller can decide. NO pass error is
+// fatal here — a single slow/timed-out pass is logged and skipped so the rest of
+// the search still returns; the caller hard-fails only if EVERY attempted pass
+// errored. This is what keeps a broad keyword-overlap timeout from nuking an
+// otherwise-good result set.
+async function resolveCorpus(tasks, label) {
   const keys = Object.keys(tasks);
-  const out = {};
-  for (const k of keys) out[k] = [];
-  const results = await Promise.all(keys.map((k) => (tasks[k] ? tasks[k] : Promise.resolve(null))));
+  const rows = {};
+  for (const k of keys) rows[k] = [];
+  const errors = [];
+  let attempted = 0;
+  let ok = 0;
+  const settled = await Promise.all(keys.map((k) => (tasks[k] ? tasks[k] : Promise.resolve(null))));
   keys.forEach((k, i) => {
-    const r = results[i];
-    if (!r) return;
+    const r = settled[i];
+    if (!r) return; // pass not scheduled for this brief
+    attempted += 1;
     if (r.error) {
-      if (throwOnError) throw new Error(`${label} query failed: ${r.error.message}`);
+      errors.push(r.error.message || String(r.error));
       console.error(`${label} ${k} pass failed (continuing without it):`, r.error.message);
       return;
     }
-    out[k] = r.data || [];
+    rows[k] = r.data || [];
+    ok += 1;
   });
-  return out;
+  return { rows, errors, attempted, ok };
 }
 
 // Round-robin merge two row arrays so both corpora are represented within a
