@@ -3110,12 +3110,16 @@ els.navToggle?.addEventListener('click', () => {
 });
 els.nav?.addEventListener('click', (e) => { if (e.target.closest('.nav-btn')) closeNav(); });
 
-els.navResearch?.addEventListener('click', showEntry);
+// The nav tabs are real <a href> links. Let the browser handle new-tab gestures
+// (⌘/ctrl/shift/alt-click, or any non-left button) natively; only hijack a plain
+// left-click for in-page SPA nav.
+const newTabClick = (e) => e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0;
+els.navResearch?.addEventListener('click', (e) => { if (newTabClick(e)) return; e.preventDefault(); showEntry(); });
 els.homeLink?.addEventListener('click', (e) => { e.preventDefault(); closeNav(); showEntry(); });
-els.navTrademark?.addEventListener('click', () => { setToolUrl('trademark', ''); route(); });
-els.navAppraisal?.addEventListener('click', () => { setToolUrl('appraisal', ''); route(); });
-els.navDbscreen?.addEventListener('click', () => { setToolUrl('dbscreen', ''); route(); });
-els.navDbsearch?.addEventListener('click', () => { setToolUrl('dbsearch', ''); route(); });
+els.navTrademark?.addEventListener('click', (e) => { if (newTabClick(e)) return; e.preventDefault(); setToolUrl('trademark', ''); route(); });
+els.navAppraisal?.addEventListener('click', (e) => { if (newTabClick(e)) return; e.preventDefault(); setToolUrl('appraisal', ''); route(); });
+els.navDbscreen?.addEventListener('click', (e) => { if (newTabClick(e)) return; e.preventDefault(); setToolUrl('dbscreen', ''); route(); });
+els.navDbsearch?.addEventListener('click', (e) => { if (newTabClick(e)) return; e.preventDefault(); setToolUrl('dbsearch', ''); route(); });
 els.dbForm?.addEventListener('submit', (e) => {
   e.preventDefault();
   const d = (els.dbDomain.value || '').trim();
@@ -3165,7 +3169,9 @@ els.dsTable?.querySelectorAll('th.dbs-sort').forEach((th) => {
     dsState.page = 0; fetchDbSearch();
   });
 });
-els.navNaming?.addEventListener('click', () => {
+els.navNaming?.addEventListener('click', (e) => {
+  if (newTabClick(e)) return; // let ⌘/ctrl/middle-click open a new tab
+  e.preventDefault();
   if (location.pathname !== '/research/naming') history.pushState(null, '', '/research/naming');
   showView('naming');
   resetNamingView();

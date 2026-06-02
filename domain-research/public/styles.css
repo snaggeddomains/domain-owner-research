@@ -184,7 +184,13 @@ a.wordmark:hover { text-decoration: none; opacity: .9; }
   box-shadow: none; /* nav buttons are flat, not sticker-style */
   cursor: pointer;
   transition: background .18s ease, border-color .18s ease;
+  /* nav tabs are <a> links now (open-in-new-tab); keep them looking like buttons */
+  display: block;
+  text-decoration: none;
+  box-sizing: border-box;
 }
+.nav-btn, .nav-btn:hover, .nav-btn:visited, .nav-btn:focus { color: var(--navy); }
+.nav-btn.active, .nav-btn.active:hover { color: var(--cream-2); }
 .nav-btn:hover { background: rgba(37,66,84,.06); transform: none; box-shadow: none; }
 .nav-btn:active { transform: none; box-shadow: none; }
 .nav-btn.active { background: var(--navy); color: var(--cream-2); border-color: var(--navy); }

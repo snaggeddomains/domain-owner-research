@@ -20,7 +20,7 @@
          the app is served from /research/* (app.snagged.com/research/*). -->
     <base href="/research/" />
     <link rel="icon" href="favicon-32.png" />
-    <link rel="stylesheet" href="styles.css?v=20260602b" />
+    <link rel="stylesheet" href="styles.css?v=20260602c" />
     <!-- Layout: horizontal tab nav (Admin-style), no sidebar. -->
   </head>
   <body>
@@ -84,15 +84,18 @@
       <!-- Module sub-nav as horizontal tabs (Admin-style). On mobile the
            top-bar hamburger toggles this same nav into a dropdown. -->
       <nav class="nav tabnav" id="nav">
-        <button id="nav-research" class="nav-btn active" type="button">Domain Owner</button>
-        <button id="nav-trademark" class="nav-btn" type="button">Trademark</button>
-        <button id="nav-appraisal" class="nav-btn" type="button">Appraisal</button>
-        <button id="nav-naming" class="nav-btn" type="button">Naming Exercise</button>
+        <!-- Real <a href> so ⌘/ctrl/middle-click opens the tool in a new tab;
+             plain clicks are intercepted in app.js for in-page SPA nav. Hrefs use
+             /research/<tool> (vercel.json rewrites them to the SPA on full load). -->
+        <a id="nav-research" class="nav-btn active" href="/research">Domain Owner</a>
+        <a id="nav-trademark" class="nav-btn" href="/research/trademark">Trademark</a>
+        <a id="nav-appraisal" class="nav-btn" href="/research/appraisal">Appraisal</a>
+        <a id="nav-naming" class="nav-btn" href="/research/naming">Naming Exercise</a>
         <!-- Domain DB Screen — looks a single domain up in the Master List + Universe.
              Gated by the `dbscreen` permission; shown by JS. -->
-        <button id="nav-dbscreen" class="nav-btn" type="button" hidden>Domain DB Screen</button>
+        <a id="nav-dbscreen" class="nav-btn" href="/research/dbscreen" hidden>Domain DB Screen</a>
         <!-- DB Search — filterable browse over the corpus. `dbsearch` permission. -->
-        <button id="nav-dbsearch" class="nav-btn" type="button" hidden>Domain Name Search</button>
+        <a id="nav-dbsearch" class="nav-btn" href="/research/dbsearch" hidden>Domain Name Search</a>
         <!-- Lessons (playbook curation) is admin-only and now lives in the
              umbrella Admin module; reachable directly at /research/admin. -->
         <button id="nav-admin" class="nav-btn nav-btn-admin" type="button" hidden style="display:none">Lessons</button>
@@ -513,6 +516,6 @@ The model parses it into structured filters (TLDs, length, budget, tone, etc.) a
     </div>
 
     <!-- Bump ?v= on any public/app.js or styles.css change to bust caches. -->
-    <script src="app.js?v=20260602b"></script>
+    <script src="app.js?v=20260602c"></script>
   </body>
 </html>
