@@ -64,13 +64,14 @@ function buildUniverse(p, ascending, countMode) {
   if (text) {
     const t = text.toLowerCase();
     // Stored SLDs don't include the TLD. If the user pasted a full domain
-    // (e.g. "crowdova.com"), an SLD-prefix match would never hit. Detect a
-    // dot and match the `domain` column directly in that case, keeping the
-    // SLD branch as a fallback for any odd input shape. Bare keywords
-    // (no dot) stay on the existing SLD-prefix path so browse semantics
-    // ("show me everything starting with pulse") are unchanged.
+    // (e.g. "crowdova.com"), match the `domain` column directly — exact-
+    // match, the same behavior the DB Screen has. Bare keywords (no dot)
+    // stay on the SLD-prefix browse path so "show me everything starting
+    // with pulse" is unchanged. Done as a separate ilike() (not an .or())
+    // because PostgREST's OR-filter parser splits each condition on `.`
+    // and dotted values silently lose their TLD half.
     if (t.includes('.')) {
-      q = q.or(`domain.ilike.${t},sld.ilike.${(p.fuzzy === '1' ? '%' : '') + t + '%'}`);
+      q = q.ilike('domain', t);
     } else {
       q = q.ilike('sld', (p.fuzzy === '1' ? '%' : '') + t + '%');
     }
@@ -119,7 +120,12 @@ function buildMaster(p, ascending, countMode) {
     .from(MASTER)
     .select('domain, price, owner, source, category, tld, sld_length, number_of_words', { count: countMode });
   const text = str(p.q);
-  if (text) q = q.ilike('domain', '%' + text.toLowerCase() + '%');
+  if (text) {
+    const t = text.toLowerCase();
+    // Match Universe's behavior: dotted input → exact-domain lookup (the
+    // same semantics the DB Screen offers); bare keyword → substring browse.
+    q = t.includes('.') ? q.ilike('domain', t) : q.ilike('domain', '%' + t + '%');
+  }
   const tlds = csv(p.tld);
   if (tlds) {
     q = q.in("tld", tldVariants(tlds));
