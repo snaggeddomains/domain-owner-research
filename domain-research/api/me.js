@@ -1,6 +1,6 @@
 import { currentUser, gateEnabled, ensureAdminSeed, clearAuthCookie, hashPassword, verifyPassword } from '../lib/auth.js';
 import { getUser, updateUser } from '../lib/db/users.js';
-import { listNotifications, countUnread, markRead } from '../lib/db/notifications.js';
+import { createNotification, listNotifications, countUnread, markRead } from '../lib/db/notifications.js';
 
 // Shared shape for the signed-in user across GET/PATCH responses.
 function publicUser(u) {
@@ -41,6 +41,26 @@ export default async function handler(req, res) {
       return;
     }
     const body = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : req.body || {};
+
+    // Create a notification for the current user — used by client-completed
+    // tools (appraisal/trademark) that have no server-side "done" event.
+    if (body.create_notification && typeof body.create_notification === 'object') {
+      const n = body.create_notification;
+      if (!n.title) { res.status(400).json({ error: 'Notification needs a title.' }); return; }
+      try {
+        await createNotification({
+          user_id: user.id,
+          kind: String(n.kind || 'task').slice(0, 40),
+          title: String(n.title).slice(0, 200),
+          body: n.body ? String(n.body).slice(0, 400) : null,
+          link: n.link ? String(n.link).slice(0, 500) : null,
+        });
+        res.status(200).json({ ok: true, unread: await countUnread(user.id) });
+      } catch (e) {
+        res.status(200).json({ ok: false, warning: String(e.message || e) });
+      }
+      return;
+    }
 
     // Mark notification(s) read — a distinct action; returns the new unread count.
     if (body.mark_notifications_read !== undefined) {

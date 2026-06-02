@@ -1413,6 +1413,23 @@ function startNotifPolling() {
   loadNotifications();
   notifPollTimer = setInterval(loadNotifications, 60000);
 }
+// True when the given view isn't the one on screen — used to only ding the bell
+// for a client-completed tool (appraisal/trademark) when you've navigated away.
+function viewHidden(name) {
+  const v = VIEWS[name] && document.getElementById(VIEWS[name].view);
+  return !v || v.hidden;
+}
+// Create a notification for the current user (client-completed tools), then
+// refresh the bell count. Fire-and-forget; failures are non-fatal.
+function pushNotification({ kind, title, body, link }) {
+  fetch('/research/api/me', {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ create_notification: { kind, title, body, link } }),
+  }).then((r) => r.json()).then((d) => {
+    if (d && d.unread !== undefined) renderNotifCount(Number(d.unread) || 0);
+  }).catch(() => {});
+}
 // Navigate an in-app notification link. Report links are hash routes (#/r/<slug>)
 // → put them on the Domain Owner path and route() opens the report (no reload).
 function openNotifLink(link) {
@@ -2336,6 +2353,14 @@ async function runTrademark(input) {
     showTrademarks(q, items, isAi);
     saveRecent('tm', q, { items, isAi });
     refreshToolRecent(els.tmRecent, 'tm');
+    // If you navigated away while the USPTO search ran, ding the bell.
+    if (viewHidden('trademark')) {
+      pushNotification({
+        kind: 'trademark',
+        title: `Trademark search ready — ${q}`,
+        link: `/research/trademark/${encodeURIComponent(q)}`,
+      });
+    }
   } catch (e) {
     setToolStatus(els.tmStatus, e.message || String(e), true);
   }
@@ -2446,11 +2471,20 @@ function finishAppraisal(domain, a, def) {
   // but digAppraisal() returns a nested valuation object — so carry it across
   // here, before render + caching, so it survives and re-opens from Recent show it.
   if (def && a && typeof a === 'object' && !a.definition) a = { ...a, definition: def };
+  const wasAway = viewHidden('appraisal'); // capture before setToolUrl/render
   setToolUrl('appraisal', domain);
   setToolStatus(els.apStatus, '');
   renderAppraisal(domain, a, { updatedAt: Date.now() });
   saveRecent('ap', domain, a);
   refreshToolRecent(els.apRecent, 'ap');
+  // Ding the bell only if you'd navigated away while it ran in the background.
+  if (wasAway) {
+    pushNotification({
+      kind: 'appraisal',
+      title: `Appraisal ready — ${domain}`,
+      link: `/research/appraisal/${encodeURIComponent(domain)}`,
+    });
+  }
 }
 async function pollAppraisal(domain, jobId) {
   const started = Date.now();
