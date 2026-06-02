@@ -607,8 +607,6 @@ a.naming-card-domain:hover { color: var(--coral-deep); text-decoration: underlin
      stays a single tidy row (bell + hamburger) rather than wrapping. */
   #topbar-account { display: flex; }
   #profile-btn { display: none; }
-  /* Keep the dropdowns on-screen on narrow viewports. */
-  .notif-menu, .profile-menu { max-width: calc(100vw - 24px); }
   .nav-mobile-account { display: flex; flex-direction: column; gap: 10px; margin-top: 4px; padding-top: 12px; border-top: 1.5px solid var(--line); }
   .nav-account-email { color: var(--navy-2); font-size: 14px; overflow-wrap: anywhere; }
   .nav-logout { color: var(--teal-deep); font-weight: 700; font-size: 14px; text-decoration: none; }
@@ -1013,4 +1011,14 @@ body.modal-open { overflow: hidden; }
 @media (max-width: 760px) {
   .dbs-layout { flex-direction: column; }
   .dbs-filters { flex-basis: auto; width: 100%; }
+}
+
+/* Mobile: dock the notifications dropdown as a right-anchored sheet so it never
+   runs off the left edge (the bar's bell sits mid-row). Placed after the base
+   .notif-menu/.profile-menu rules so this wins at equal specificity. */
+@media (max-width: 760px) {
+  .notif-menu, .profile-menu {
+    position: fixed; top: 58px; right: 8px; left: auto;
+    width: min(340px, calc(100vw - 16px)); max-width: none;
+  }
 }
