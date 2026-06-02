@@ -261,6 +261,24 @@ create table if not exists domain_research_users (
   updated_at            timestamptz
 );
 create unique index if not exists idx_dr_users_email_lower on domain_research_users (lower(email));
+-- Self-serve profile name fields (2026-06).
+alter table domain_research_users add column if not exists first_name text;
+alter table domain_research_users add column if not exists last_name text;
+
+-- In-app notifications (the bell). One row per completed task; the bell shows
+-- the unread count + a recent list that deep-links into the app (2026-06).
+create table if not exists domain_research_notifications (
+  id          uuid primary key default gen_random_uuid(),
+  user_id     uuid not null references domain_research_users(id) on delete cascade,
+  kind        text not null default 'report',
+  title       text not null,
+  body        text,
+  link        text,
+  read_at     timestamptz,
+  created_at  timestamptz not null default now()
+);
+create index if not exists idx_dr_notif_user on domain_research_notifications (user_id, created_at desc);
+create index if not exists idx_dr_notif_unread on domain_research_notifications (user_id) where read_at is null;
 
 -- Tie each run back to the user that triggered it (for per-user history + email notifications).
 alter table domain_research_runs

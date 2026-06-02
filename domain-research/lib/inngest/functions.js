@@ -3,9 +3,10 @@ import { gather, critique, chatTurn } from '../agent.js';
 import { setRunStatus, saveRunReport, failRun, getRun } from '../db/runs.js';
 import { getChat, updateTurn } from '../db/chat.js';
 import { getUser } from '../db/users.js';
+import { createNotification } from '../db/notifications.js';
 import { loadLessonsAddendum, bumpAppliedCounts } from '../db/lessons.js';
 import { sendEmail, isEmailConfigured } from '../email.js';
-import { reportUrl } from '../reportUrl.js';
+import { reportUrl, reportHash } from '../reportUrl.js';
 import { summarizeReport } from '../reportSummary.js';
 
 // Format the refine-chat history as a single corrections block the agent can
@@ -134,6 +135,24 @@ async function notifyOwnerIfWanted(runId) {
   return { sent: true, phase, found: Boolean(summary && summary.found) };
 }
 
+// In-app notification (the bell) when a report finishes — created for the run's
+// user regardless of the email opt-in, since the bell is the in-platform
+// alternative to the email. Deep-links to the report via its hash route.
+async function createReportNotification(runId) {
+  const run = await getRun(runId);
+  if (!run || !run.user_id) return { created: false, reason: 'no user' };
+  const phase = (run.report && run.report.phase) || 'shallow';
+  const link = reportHash({ domain: run.domain, runId: run.id, createdAt: run.created_at });
+  await createNotification({
+    user_id: run.user_id,
+    kind: 'domain_owner',
+    title: `Ownership report ready — ${run.domain}`,
+    body: phase === 'deep' ? 'Deep research finished.' : 'Free pre-flight finished.',
+    link,
+  });
+  return { created: true };
+}
+
 // Cost-gated pipeline. The default ('shallow') pass uses only FREE sources and
 // still runs the LLM to write a narrative — but spends NO paid-API credits. A
 // deliberate 'deep' pass (triggered by the user's "go deeper") opens the paid
@@ -251,6 +270,12 @@ export const runResearch = inngest.createFunction(
       await step.run('notify-owner', () => notifyOwnerIfWanted(runId).catch((err) => {
         console.error('notify-owner failed:', err && err.message);
         return { sent: false, reason: 'send failed' };
+      }));
+      // In-app bell notification — durable, non-blocking (table may not exist
+      // pre-migration; swallow so save-report still completes).
+      await step.run('notify-in-app', () => createReportNotification(runId).catch((err) => {
+        console.error('notify-in-app failed:', err && err.message);
+        return { created: false };
       }));
       // Bump applied_count on the lessons that rode along on this run —
       // fire-and-forget, drift in the counter is acceptable.

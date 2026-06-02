@@ -28,6 +28,13 @@ const els = {
   profilePwConfirm: $('profile-pw-confirm'),
   profilePwSave: $('profile-pw-save'),
   profilePwStatus: $('profile-pw-status'),
+  // Notifications bell
+  notifBtn: $('notif-btn'),
+  notifCount: $('notif-count'),
+  notifMenu: $('notif-menu'),
+  notifList: $('notif-list'),
+  notifEmpty: $('notif-empty'),
+  notifMarkAll: $('notif-mark-all'),
   loginForm: $('login-form'),
   email: $('email'),
   password: $('password'),
@@ -1146,6 +1153,7 @@ async function checkAuth() {
       if (els.topbarAdmin) els.topbarAdmin.hidden = !u.is_admin;
       if (els.navAccount) els.navAccount.hidden = false;
       renderProfile(u);
+      startNotifPolling();
       gateNavByPermissions(u);
       gateReportPhaseUI(u);
       maybeAutoRunFromUrl();
@@ -1296,10 +1304,15 @@ async function patchMe(body) {
   if (!res.ok) throw new Error(data.error || 'Update failed.');
   return data.user;
 }
-els.profileBtn?.addEventListener('click', (e) => { e.stopPropagation(); setProfileMenu(els.profileMenu.hidden); });
+els.profileBtn?.addEventListener('click', (e) => {
+  e.stopPropagation();
+  const open = els.profileMenu.hidden;
+  if (typeof setNotifMenu === 'function') setNotifMenu(false);
+  setProfileMenu(open);
+});
 els.profileMenu?.addEventListener('click', (e) => e.stopPropagation());
-document.addEventListener('click', () => setProfileMenu(false));
-document.addEventListener('keydown', (e) => { if (e.key === 'Escape') setProfileMenu(false); });
+document.addEventListener('click', () => { setProfileMenu(false); if (typeof setNotifMenu === 'function') setNotifMenu(false); });
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { setProfileMenu(false); if (typeof setNotifMenu === 'function') setNotifMenu(false); } });
 
 els.profileSave?.addEventListener('click', async () => {
   els.profileSave.disabled = true;
@@ -1330,6 +1343,100 @@ els.profilePwSave?.addEventListener('click', async () => {
   } catch (err) {
     flashStatus(els.profilePwStatus, err.message || 'Failed', false);
   } finally { els.profilePwSave.disabled = false; }
+});
+
+// ── Notifications bell ──────────────────────────────────────────────────────
+// Polls the unread count + recent items; clicking an item deep-links in-app
+// (report hash route) and marks it read. The bell is the in-platform mirror of
+// the report-done email — see lib/inngest/functions.js#createReportNotification.
+let notifPollTimer = null;
+function relTime(ts) {
+  const d = ts ? Date.parse(ts) : NaN;
+  if (!Number.isFinite(d)) return '';
+  const s = Math.max(0, Math.floor((Date.now() - d) / 1000));
+  if (s < 60) return 'just now';
+  if (s < 3600) return `${Math.floor(s / 60)}m ago`;
+  if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
+  if (s < 604800) return `${Math.floor(s / 86400)}d ago`;
+  return new Date(d).toLocaleDateString();
+}
+function setNotifMenu(open) {
+  if (!els.notifMenu || !els.notifBtn) return;
+  els.notifMenu.hidden = !open;
+  els.notifBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+}
+function renderNotifCount(unread) {
+  if (!els.notifCount) return;
+  if (unread > 0) { els.notifCount.textContent = unread > 99 ? '99+' : String(unread); els.notifCount.hidden = false; }
+  else els.notifCount.hidden = true;
+}
+function renderNotifList(items) {
+  if (!els.notifList) return;
+  if (els.notifEmpty) els.notifEmpty.hidden = items.length > 0;
+  els.notifList.innerHTML = items.map((n) => {
+    const unread = !n.read_at;
+    return `<li><button class="notif-item${unread ? ' unread' : ''}" type="button" data-id="${escapeHtml(n.id)}" data-link="${escapeHtml(n.link || '')}">`
+      + `<div class="notif-item-title">${escapeHtml(n.title || '')}</div>`
+      + (n.body ? `<div class="notif-item-body">${escapeHtml(n.body)}</div>` : '')
+      + `<div class="notif-item-when">${escapeHtml(relTime(n.created_at))}</div>`
+      + `</button></li>`;
+  }).join('');
+}
+async function loadNotifications() {
+  if (!els.notifBtn) return;
+  try {
+    const res = await fetch('/research/api/me?notifications=1');
+    if (!res.ok) return;
+    const data = await res.json().catch(() => ({}));
+    renderNotifCount(Number(data.unread) || 0);
+    renderNotifList(Array.isArray(data.items) ? data.items : []);
+  } catch { /* transient — keep last state */ }
+}
+function startNotifPolling() {
+  if (notifPollTimer) return;
+  loadNotifications();
+  notifPollTimer = setInterval(loadNotifications, 60000);
+}
+// Navigate an in-app notification link. Report links are hash routes (#/r/<slug>)
+// → put them on the Domain Owner path and route() opens the report (no reload).
+function openNotifLink(link) {
+  if (!link) return;
+  if (link.startsWith('#')) { history.pushState(null, '', '/research' + link); route(); }
+  else { history.pushState(null, '', link); route(); }
+}
+async function markNotificationsRead(ids) {
+  try {
+    const res = await fetch('/research/api/me', {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ mark_notifications_read: ids || true }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (data && data.unread !== undefined) renderNotifCount(Number(data.unread) || 0);
+  } catch { /* non-fatal */ }
+}
+els.notifBtn?.addEventListener('click', (e) => {
+  e.stopPropagation();
+  const open = els.notifMenu.hidden;
+  setProfileMenu(false);
+  setNotifMenu(open);
+  if (open) loadNotifications();
+});
+els.notifMenu?.addEventListener('click', (e) => {
+  e.stopPropagation();
+  const item = e.target.closest('.notif-item');
+  if (!item) return;
+  if (item.classList.contains('unread') && item.dataset.id) {
+    item.classList.remove('unread');
+    markNotificationsRead([item.dataset.id]);
+  }
+  setNotifMenu(false);
+  openNotifLink(item.dataset.link);
+});
+els.notifMarkAll?.addEventListener('click', (e) => {
+  e.stopPropagation();
+  els.notifList?.querySelectorAll('.notif-item.unread').forEach((el) => el.classList.remove('unread'));
+  markNotificationsRead(null); // null = all
 });
 
 // (The "Email me when reports finish" toggle moved into the profile menu;

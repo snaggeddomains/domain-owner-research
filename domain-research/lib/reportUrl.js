@@ -22,3 +22,9 @@ export function reportUrl({ domain, runId, createdAt }) {
   const base = (process.env.APP_URL || 'https://app.snagged.com/research').replace(/\/+$/, '');
   return `${base}/#/r/${buildSlug({ domain, runId, createdAt })}`;
 }
+
+// Just the in-app hash fragment ("#/r/<slug>") for in-app notification links —
+// the frontend prepends the /research path and routes without a full reload.
+export function reportHash({ domain, runId, createdAt }) {
+  return `#/r/${buildSlug({ domain, runId, createdAt })}`;
+}

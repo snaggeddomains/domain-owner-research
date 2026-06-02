@@ -1,5 +1,6 @@
 import { currentUser, gateEnabled, ensureAdminSeed, clearAuthCookie, hashPassword, verifyPassword } from '../lib/auth.js';
 import { getUser, updateUser } from '../lib/db/users.js';
+import { listNotifications, countUnread, markRead } from '../lib/db/notifications.js';
 
 // Shared shape for the signed-in user across GET/PATCH responses.
 function publicUser(u) {
@@ -40,6 +41,19 @@ export default async function handler(req, res) {
       return;
     }
     const body = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : req.body || {};
+
+    // Mark notification(s) read — a distinct action; returns the new unread count.
+    if (body.mark_notifications_read !== undefined) {
+      try {
+        const ids = Array.isArray(body.mark_notifications_read) ? body.mark_notifications_read : null;
+        await markRead(user.id, ids);
+        res.status(200).json({ ok: true, unread: await countUnread(user.id) });
+      } catch (e) {
+        res.status(200).json({ ok: false, unread: 0, warning: String(e.message || e) });
+      }
+      return;
+    }
+
     const patch = {};
     if (body.email_notify_on_done !== undefined) patch.email_notify_on_done = Boolean(body.email_notify_on_done);
     if (body.first_name !== undefined) patch.first_name = String(body.first_name || '').slice(0, 80);
@@ -67,6 +81,20 @@ export default async function handler(req, res) {
     }
     const updated = await updateUser(user.id, patch);
     res.status(200).json({ ok: true, user: publicUser(updated) });
+    return;
+  }
+
+  // GET /api/me?notifications=1 — the bell's data, kept separate from the auth
+  // check so a pre-migration missing table can never break sign-in / load.
+  if (req.query && req.query.notifications !== undefined) {
+    const u = await currentUser(req);
+    if (!u || !u.id) { res.status(401).json({ error: 'Not authenticated' }); return; }
+    try {
+      const [items, unread] = await Promise.all([listNotifications(u.id, 20), countUnread(u.id)]);
+      res.status(200).json({ items, unread });
+    } catch (e) {
+      res.status(200).json({ items: [], unread: 0, warning: String(e.message || e) });
+    }
     return;
   }
 
