@@ -2752,33 +2752,17 @@ function resetNamingView() {
 // research view's Recent block, but ALWAYS visible (with an explicit empty
 // or error state) so the user can tell whether they've got past runs to
 // revisit, vs the block silently failing to render.
+// Recent naming runs are now just a single link to the full, searchable list
+// (keeps the brief form uncluttered). We only show the link when runs exist.
 async function loadNamingRecent() {
   if (!els.namingRecent) return;
-  els.namingRecent.hidden = false;
-  if (els.namingRecentList) els.namingRecentList.innerHTML = '<li class="recent-empty">Loading…</li>';
-  if (els.namingShowAll) els.namingShowAll.hidden = true;
   try {
     const res = await fetch('/research/api/naming?list=1');
     const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data.error || `Couldn't load recent runs (${res.status})`);
-    const runs = (data.runs || []).slice(0, 5);
-    if (!runs.length) {
-      if (els.namingRecentList) els.namingRecentList.innerHTML = '<li class="recent-empty">No past naming runs yet. Run your first brief above.</li>';
-      if (els.namingShowAll) els.namingShowAll.hidden = true;
-      return;
-    }
-    els.namingRecentList.innerHTML = runs.map((r) => {
-      const when = r.created_at ? new Date(r.created_at).toLocaleString() : '';
-      const snippet = String(r.brief || '').replace(/\s+/g, ' ').slice(0, 90);
-      return `<li class="recent-run" data-id="${escapeHtml(r.id)}"><span class="recent-domain">${escapeHtml(snippet || '(empty brief)')}</span><span class="recent-when">${escapeHtml(when)}</span></li>`;
-    }).join('');
-    if (els.namingShowAll) els.namingShowAll.hidden = false;
-  } catch (e) {
-    console.error('loadNamingRecent failed:', e);
-    if (els.namingRecentList) {
-      els.namingRecentList.innerHTML = `<li class="recent-empty recent-err">⚠️ ${escapeHtml(String(e.message || e))}</li>`;
-    }
-    if (els.namingShowAll) els.namingShowAll.hidden = true;
+    const has = res.ok && Array.isArray(data.runs) && data.runs.length > 0;
+    els.namingRecent.hidden = !has;
+  } catch {
+    els.namingRecent.hidden = true;
   }
 }
 
@@ -2798,7 +2782,12 @@ async function loadNamingProjects(q = '') {
     els.namingProjectsList.innerHTML = runs.map((r) => {
       const when = r.created_at ? new Date(r.created_at).toLocaleString() : '';
       const snippet = String(r.brief || '').replace(/\s+/g, ' ').slice(0, 160);
-      return `<li class="recent-run" data-id="${escapeHtml(r.id)}"><span class="recent-domain">${escapeHtml(snippet || '(empty brief)')}</span><span class="recent-when">${escapeHtml(when)}</span></li>`;
+      const label = r.title ? r.title : (snippet || '(empty brief)');
+      return `<li class="recent-run" data-id="${escapeHtml(r.id)}">` +
+        `<span class="recent-domain">${escapeHtml(label)}</span>` +
+        `<span class="recent-when">${escapeHtml(when)}</span>` +
+        `<button class="naming-rename" type="button" data-id="${escapeHtml(r.id)}" data-title="${escapeHtml(r.title || '')}" title="Rename">✎ Rename</button>` +
+        `</li>`;
     }).join('');
   } catch (e) {
     els.namingProjectsList.innerHTML = `<li class="muted">${escapeHtml(String(e.message || e))}</li>`;
@@ -3075,8 +3064,29 @@ els.namingShowAll?.addEventListener('click', (e) => {
   loadNamingProjects('');
 });
 
-// Past Naming Runs list — same click pattern as Recent.
-els.namingProjectsList?.addEventListener('click', (e) => {
+// Past Naming Runs list — same click pattern as Recent, plus inline rename.
+els.namingProjectsList?.addEventListener('click', async (e) => {
+  const renameBtn = e.target.closest('.naming-rename');
+  if (renameBtn) {
+    e.stopPropagation();
+    const id = renameBtn.dataset.id;
+    const current = renameBtn.dataset.title || '';
+    const next = window.prompt('Project name (leave blank to clear):', current);
+    if (next === null) return; // cancelled
+    try {
+      const res = await fetch('/research/api/naming', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ action: 'rename', id, title: next }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || `Rename failed (${res.status})`);
+      loadNamingProjects(els.namingProjectsSearch ? els.namingProjectsSearch.value : '');
+    } catch (err) {
+      alert(String(err.message || err));
+    }
+    return;
+  }
   const li = e.target.closest('.recent-run');
   if (!li) return;
   const id = li.dataset.id;

@@ -19,16 +19,28 @@ export async function saveNamingRun({ user_id, brief, filters, buyReady, stretch
 // q searches the brief text. user_id is optional — admins see all runs, every
 // other user is scoped to their own (handled in the API layer).
 export async function listNamingRuns({ user_id = null, q = '', limit = 100 } = {}) {
-  let query = getDb()
-    .from(T)
-    .select('id,brief,filters,created_at,user_id')
-    .order('created_at', { ascending: false })
-    .limit(limit);
-  if (user_id) query = query.eq('user_id', user_id);
-  if (q) query = query.ilike('brief', `%${String(q).replace(/[%_]/g, '')}%`);
-  const { data, error } = await query;
+  const build = (cols) => {
+    let query = getDb().from(T).select(cols).order('created_at', { ascending: false }).limit(limit);
+    if (user_id) query = query.eq('user_id', user_id);
+    if (q) query = query.ilike('brief', `%${String(q).replace(/[%_]/g, '')}%`);
+    return query;
+  };
+  // `title` is a newer column; fall back if the migration hasn't been run yet.
+  let { data, error } = await build('id,title,brief,filters,created_at,user_id');
+  if (error && /title/i.test(error.message || '')) {
+    ({ data, error } = await build('id,brief,filters,created_at,user_id'));
+  }
   if (error) throw new Error(`listNamingRuns: ${error.message}`);
   return data || [];
+}
+
+// Set (or clear) a user-friendly project name on a run. Empty clears it (the UI
+// then falls back to the brief snippet).
+export async function renameNamingRun(id, title) {
+  const t = String(title || '').replace(/\s+/g, ' ').trim().slice(0, 120) || null;
+  const { data, error } = await getDb().from(T).update({ title: t }).eq('id', id).select('id,title').single();
+  if (error) throw new Error(`renameNamingRun: ${error.message}`);
+  return data;
 }
 
 export async function getNamingRun(id) {

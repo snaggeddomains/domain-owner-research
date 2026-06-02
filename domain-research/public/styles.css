@@ -820,6 +820,9 @@ body.modal-open { overflow: hidden; }
 .naming-connotation { display: inline-flex; align-items: center; gap: 8px; }
 .naming-con-cap { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--navy-3); }
 .naming-connotation .dbs-multi { min-width: 150px; }
+/* Inline rename button on past naming runs */
+.naming-rename { margin-left: auto; flex: none; background: none; border: 1px solid #d9d2c2; border-radius: 6px; padding: 3px 9px; font-size: 12px; color: var(--navy-3); cursor: pointer; }
+.naming-rename:hover { background: var(--cream-2, #fbf7ee); color: var(--navy); }
 .dbs-factions { display: flex; gap: 8px; margin-top: 4px; }
 .dbs-factions .btn-primary { background: var(--coral, #e08a6f); color: #fff; border: none; }
 .dbs-resultswrap { flex: 1 1 auto; min-width: 0; }

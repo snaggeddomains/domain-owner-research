@@ -3,7 +3,7 @@ import { isNamingDbConfigured } from '../lib/db/supabase-naming.js';
 import { parseBrief } from '../lib/naming/brief.js';
 import { searchUniverse } from '../lib/naming/query.js';
 import { runNamingChatTurn } from '../lib/naming/chat.js';
-import { saveNamingRun, listNamingRuns, getNamingRun } from '../lib/db/naming-runs.js';
+import { saveNamingRun, listNamingRuns, getNamingRun, renameNamingRun } from '../lib/db/naming-runs.js';
 import { listNamingChat, addNamingChatMessage } from '../lib/db/naming-chat.js';
 
 export const config = { maxDuration: 30 };
@@ -86,7 +86,26 @@ export default async function handler(req, res) {
   if (action === 'search') return handleSearch(body, res, user);
   if (action === 'export') return handleExport(body, res);
   if (action === 'chat') return handleChat(body, res, user);
+  if (action === 'rename') return handleRename(body, res, user);
   res.status(400).json({ error: `Unknown action: ${action}` });
+}
+
+// Set a custom project name on a run (owner or admin only). Empty title clears.
+async function handleRename(body, res, user) {
+  const id = typeof body.id === 'string' ? body.id : '';
+  if (!id) { res.status(400).json({ error: 'id is required' }); return; }
+  const run = await getNamingRun(id);
+  if (!run) { res.status(404).json({ error: 'Run not found' }); return; }
+  if (user && !user.is_admin && run.user_id && run.user_id !== user.id) {
+    res.status(403).json({ error: 'Not your run' });
+    return;
+  }
+  try {
+    const updated = await renameNamingRun(id, body.title);
+    res.status(200).json({ ok: true, run: updated });
+  } catch (e) {
+    res.status(500).json({ error: String(e.message || e) });
+  }
 }
 
 async function handleChat(body, res, user) {
