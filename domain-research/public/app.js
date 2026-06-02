@@ -273,9 +273,19 @@ function clearTimers() {
 }
 
 function fmtElapsed(ms) {
-  const s = Math.floor(ms / 1000);
-  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+  const s = Math.max(0, Math.floor(ms / 1000));
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = s % 60;
+  // Show hours once we cross 60 min so a stuck run reads "16:53:21", not "1013:37".
+  if (h > 0) return `${h}:${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
+  return `${m}:${String(sec).padStart(2, '0')}`;
 }
+
+// A real run (even deep, paid) finishes in a few minutes. If the live clock blows
+// past this, the backend job almost certainly died without writing a terminal
+// status — stop the spinner and tell the user rather than ticking forever.
+const STALL_MS = 15 * 60 * 1000;
 
 // Deeplink helpers — reports live at a readable slug ending in the run id:
 //   #/r/<sld>-<tld>-<DD>-<MM>-<YYYY>-<runId>
@@ -1464,6 +1474,14 @@ function startPolling(runId, label) {
         setStatus(r.error || 'The run failed.', true);
         if (els.runControls) els.runControls.hidden = true;
         els.go.disabled = false;
+      } else if (Date.now() - startedAt > STALL_MS) {
+        // Going far longer than any real run — treat as stalled. Stop the
+        // spinner/clock and surface it; leave any already-rendered report in
+        // place. A refresh re-checks in case it did finish in the background.
+        clearTimers();
+        if (els.runControls) els.runControls.hidden = true;
+        els.go.disabled = false;
+        setStatus(`This run has been going ${fmtElapsed(Date.now() - startedAt)} — far longer than the usual few minutes, so it likely stalled. Re-run it, or refresh to check whether it finished.`, true);
       } else {
         stage = r.stage || r.status; // rendered by the clock tick
       }
