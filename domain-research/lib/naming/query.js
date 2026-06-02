@@ -27,11 +27,16 @@ export async function searchUniverse(filters) {
   // nothing and brings real relevance until Phase 2 enrichment lands.
   const kw = sanitizeKeywords(filters.semantic_keywords);
   // Passes in priority order (merged first-wins): enriched keywords[] overlap
-  // (true semantic), enriched industries[] overlap, then SLD-substring fallback
-  // for not-yet-enriched rows, then the general top-of-universe pass.
+  // (true semantic) > enriched industries[] overlap > the general top-of-universe
+  // pass. All three are index-bound (GIN on keywords/industries; quality_score /
+  // tld b-tree on the general pass), so every brief stays fast.
+  //
+  // The old SLD-substring fallback (sld ILIKE %term%) was removed: with no
+  // narrowing structural filter it scanned the whole .com tail and blew the
+  // statement timeout. Theme coverage now comes from enrichment, which keeps
+  // growing — reintroduce substring later only via a bounded/indexed path.
   const tasks = [buildQuery(db, filters, null, null)];
   if (kw.length) {
-    tasks.unshift(buildQuery(db, filters, kw, 'sld'));
     tasks.unshift(buildQuery(db, filters, kw, 'industries'));
     tasks.unshift(buildQuery(db, filters, kw, 'keywords'));
   }
@@ -121,7 +126,11 @@ function tldVariants(tlds) {
 }
 
 function buildQuery(db, filters, keywords, matchMode) {
-  let q = db.from('name_universe').select(SELECT_COLS).in('tld', tldVariants(filters.tlds));
+  let q = db.from('name_universe').select(SELECT_COLS);
+  // Empty TLD set = no TLD constraint (all TLDs) — brief stayed silent and the
+  // UI dropdown is at "All". Otherwise restrict to the chosen TLDs (bare+dotted).
+  const tv = Array.isArray(filters.tlds) && filters.tlds.length ? tldVariants(filters.tlds) : [];
+  if (tv.length) q = q.in('tld', tv);
   if (filters.sld_length_min != null) q = q.gte('sld_length', filters.sld_length_min);
   if (filters.sld_length_max != null) q = q.lte('sld_length', filters.sld_length_max);
   if (filters.num_words != null) q = q.eq('num_words', filters.num_words);

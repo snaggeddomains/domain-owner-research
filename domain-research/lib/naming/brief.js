@@ -25,7 +25,7 @@ const CONNOTATION_SET = new Set(CONNOTATIONS);
 const SYSTEM = `You are parsing a domain-naming brief into a JSON filter object. The downstream system queries a Postgres table of domain marketplace candidates. Return ONLY valid JSON matching this schema:
 
 {
-  "tlds": [".com"],
+  "tlds": [],
   "sld_length_min": null,
   "sld_length_max": null,
   "num_words": null,
@@ -44,7 +44,7 @@ const SYSTEM = `You are parsing a domain-naming brief into a JSON filter object.
 CORE PRINCIPLE — DEFAULT BROAD. Every numeric/categorical filter above defaults to null (no constraint). Set a filter ONLY when the brief EXPLICITLY specifies it. Unrequested filters silently shrink the result set; when in doubt, return too many names, not too few. Length, price, quality floor, num_words, dictionary-only, connotation, and category are all OFF unless the brief asks for them.
 
 Rules:
-- Always include at least ".com" in tlds.
+- tlds: include ONLY the TLDs the brief explicitly names (e.g. ".com only" → [".com"]; ".io or .ai" → [".io",".ai"]). If the brief says nothing about TLD, return [] (empty = no TLD constraint; the UI defaults to All).
 - num_words: 1 ONLY if the brief explicitly says "one word", "single word", or "1-word only". 2 ONLY if it explicitly says "two-word only" or "exactly two words". For "one or two words", "1-2 words", "1 or 2", or anything ambiguous, return null (no constraint).
 - min_quality_score: default NULL (no floor) — results are already ordered best-first, so a floor only trims names. quality_score is WORD-FREQUENCY-derived, so it rewards COMMON words and penalizes rare/literary ones; NEVER raise it for "premium"/"luxury"/"literary"/"evocative" (those want uncommon words). Set a floor ONLY if the brief explicitly wants common, instantly-familiar, everyday words — and even then keep it ≤ 2.5.
 - include_stretch: default true. Set false ONLY if the brief explicitly says to show just priced / buy-ready / immediately-purchasable names. Premium, luxury, aspirational, and one-word-dictionary briefs MUST keep it true — their best candidates are usually UNPRICED north-star options that live in the Stretch bucket; disabling stretch hides them and returns nothing.
@@ -87,8 +87,9 @@ export async function parseBrief(brief, env) {
 // §2.3 — TLDs non-empty, sld lengths in [2,14], price positive or null, etc.
 export function validateFilters(raw) {
   const f = raw && typeof raw === 'object' ? raw : {};
+  // Only the TLDs the brief explicitly named; empty = no TLD constraint (all).
+  // The UI dropdown defaults to All and can narrow; do NOT force .com here.
   let tlds = Array.isArray(f.tlds) ? f.tlds.filter((t) => typeof t === 'string' && t.startsWith('.')) : [];
-  if (!tlds.length) tlds = ['.com'];
   tlds = [...new Set(tlds.map((t) => t.toLowerCase()))].slice(0, 8);
 
   const clampLen = (v) => {

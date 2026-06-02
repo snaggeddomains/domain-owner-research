@@ -2514,6 +2514,18 @@ function initNamingMulti(prefix, set, options, opts = {}) {
     summary();
   });
   summary();
+  // Programmatically set the selection (used to sync TLDs to the parsed brief).
+  function setValues(values) {
+    const vals = new Set(values || []);
+    set.clear();
+    list.querySelectorAll('input[type="checkbox"]').forEach((cb) => {
+      const on = vals.has(cb.value);
+      cb.checked = on;
+      if (on) set.add(cb.value);
+    });
+    summary();
+  }
+  return { setValues };
 }
 
 // Connotation: default all 5 (= "Any", no constraint). A selected subset is
@@ -2529,15 +2541,19 @@ const NM_EXCLUDE_OPTS = [
   { value: 'ing', label: '-ing' },
   { value: 'ly', label: '-ly' },
 ];
-// TLDs: default just 'com'. Sent bare as tlds:[...]; overrides the brief's TLDs.
-const namingTldSet = new Set(['com']);
+// TLDs: default ALL checked. We only send a tlds override when the user narrows
+// to a proper subset; otherwise the brief decides (a brief-specified TLD wins;
+// a silent brief = all TLDs). After each search we sync the dropdown to the
+// brief's effective TLDs so it reflects what was actually used.
 const NM_TLD_OPTS = ['com', 'net', 'org', 'io', 'ai', 'co', 'app', 'dev', 'xyz']
   .map((t) => ({ value: t, label: '.' + t }));
+const namingTldSet = new Set(NM_TLD_OPTS.map((o) => o.value));
+let namingTldCtl = null;
 function initNamingFilters() {
   const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
   initNamingMulti('con', namingConSet, DS_CONNOTATIONS.map((c) => ({ value: c, label: cap(c) })), { allLabel: 'Any' });
   initNamingMulti('exc', namingExcludeSet, NM_EXCLUDE_OPTS, { noneLabel: 'None' });
-  initNamingMulti('tld', namingTldSet, NM_TLD_OPTS, {});
+  namingTldCtl = initNamingMulti('tld', namingTldSet, NM_TLD_OPTS, { allLabel: 'All' });
 }
 initNamingFilters();
 
@@ -2566,7 +2582,9 @@ async function runNaming() {
         title: (els.namingTitle && els.namingTitle.value.trim()) || null,
         connotation: [...namingConSet],
         exclude: [...namingExcludeSet],
-        tlds: [...namingTldSet],
+        // Send a TLD override ONLY when narrowed to a proper subset; all/none =
+        // let the brief decide (specified TLD wins; silent = all TLDs).
+        tlds: (namingTldSet.size === 0 || namingTldSet.size >= NM_TLD_OPTS.length) ? null : [...namingTldSet],
         price_min: numOrNull(els.namingPriceMin && els.namingPriceMin.value),
         price_max: numOrNull(els.namingPriceMax && els.namingPriceMax.value),
       }),
@@ -2575,6 +2593,12 @@ async function runNaming() {
     if (!res.ok) throw new Error(data.error || `Search failed (${res.status})`);
     namingLastResults = data;
     renderNamingResults(data);
+    // Reflect the brief's effective TLDs in the dropdown (empty = all checked).
+    if (namingTldCtl && data.filters) {
+      const t = (Array.isArray(data.filters.tlds) ? data.filters.tlds : [])
+        .map((x) => String(x).replace(/^\./, '').toLowerCase());
+      namingTldCtl.setValues(t.length ? t : NM_TLD_OPTS.map((o) => o.value));
+    }
     if (els.namingFiltersPanel) els.namingFiltersPanel.hidden = false; // filters appear after a run
     setNamingStatus('');
     // Deep-link to the saved run so refresh / share works, and refresh the
