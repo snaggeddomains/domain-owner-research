@@ -151,8 +151,12 @@ export function validateFilters(raw) {
   // Default NULL (no floor) — "default broad": a floor only trims names, and the
   // results are already ordered best-first. Only honor a floor the parser set
   // from an explicit brief signal; cap it at 3.0 so it can never be over-tight.
+  // Strictly > 0: a floor of 0 is a no-op as a threshold but, applied as SQL
+  // `quality_score >= 0`, it silently EXCLUDES null-quality rows (coined /
+  // brandable names — prime buy-ready inventory). Treat 0 (or negative) as
+  // "no floor" so those names aren't dropped.
   const mqsRaw = Number(f.min_quality_score);
-  let min_quality_score = Number.isFinite(mqsRaw) && mqsRaw >= 0 ? mqsRaw : null;
+  let min_quality_score = Number.isFinite(mqsRaw) && mqsRaw > 0 ? mqsRaw : null;
   if (min_quality_score != null && min_quality_score > 3.0) min_quality_score = 3.0;
 
   const semantic_keywords = Array.isArray(f.semantic_keywords)

@@ -48,8 +48,19 @@ export async function searchUniverse(filters) {
   // We keep universe and master passes in the SAME priority tier so the merge
   // can interleave them (round-robin) and Master — every row of which is for
   // sale — is never crowded out by the universe's far larger row count.
-  const universeTasks = { keywords: null, industries: null, general: buildQuery(db, filters, null, null) };
+  // pricedKeywords/pricedIndustries are buy-ready-focused passes: same GIN
+  // keyword/industry overlap, but restricted to priced rows (best_price > 0,
+  // within cap). They guarantee priced candidates reach the merge so the
+  // Buy-ready bucket isn't crowded out by unpriced premium names that outrank
+  // them on quality_score (the cause of the "only 2 buy-ready" starvation).
+  const universeTasks = {
+    pricedKeywords: null, pricedIndustries: null,
+    keywords: null, industries: null,
+    general: buildQuery(db, filters, null, null),
+  };
   if (kw.length) {
+    universeTasks.pricedKeywords = buildQuery(db, filters, kw, 'keywords', { pricedOnly: true });
+    universeTasks.pricedIndustries = buildQuery(db, filters, kw, 'industries', { pricedOnly: true });
     universeTasks.keywords = buildQuery(db, filters, kw, 'keywords');
     universeTasks.industries = buildQuery(db, filters, kw, 'industries');
   }
@@ -57,11 +68,16 @@ export async function searchUniverse(filters) {
   // Master is a separate project; include it when configured. Failures are
   // non-fatal (log + continue with universe) so naming never breaks if Master
   // is briefly unreachable or a column is missing — but normally it's in.
-  const masterTasks = { keywords: null, industries: null, general: null };
+  const masterTasks = {
+    pricedKeywords: null, pricedIndustries: null,
+    keywords: null, industries: null, general: null,
+  };
   if (isMasterlistDbConfigured()) {
     const mdb = getMasterlistDb();
     masterTasks.general = buildMasterQuery(mdb, filters, null, null);
     if (kw.length) {
+      masterTasks.pricedKeywords = buildMasterQuery(mdb, filters, kw, 'keywords', { pricedOnly: true });
+      masterTasks.pricedIndustries = buildMasterQuery(mdb, filters, kw, 'industries', { pricedOnly: true });
       masterTasks.keywords = buildMasterQuery(mdb, filters, kw, 'keywords');
       masterTasks.industries = buildMasterQuery(mdb, filters, kw, 'industries');
     }
@@ -76,10 +92,13 @@ export async function searchUniverse(filters) {
   // two corpora alternate so both are represented under the ROW_LIMIT cap; tiers
   // concatenate in semantic-priority order. Master rows are normalized to the
   // universe shape on the way in. The merge loop below consumes {data} objects.
+  const M = (rows) => (rows || []).map(normalizeMasterRow);
   const responses = [
-    { data: interleave(uRes.keywords, (mRes.keywords || []).map(normalizeMasterRow)) },
-    { data: interleave(uRes.industries, (mRes.industries || []).map(normalizeMasterRow)) },
-    { data: interleave(uRes.general, (mRes.general || []).map(normalizeMasterRow)) },
+    { data: interleave(uRes.pricedKeywords, M(mRes.pricedKeywords)) },
+    { data: interleave(uRes.pricedIndustries, M(mRes.pricedIndustries)) },
+    { data: interleave(uRes.keywords, M(mRes.keywords)) },
+    { data: interleave(uRes.industries, M(mRes.industries)) },
+    { data: interleave(uRes.general, M(mRes.general)) },
   ];
   // Connotation criterion (UI multi-select) applied in-memory — see buildQuery
   // note. Drop enriched rows whose tone is excluded; unenriched (null) rows pass.
@@ -103,19 +122,35 @@ export async function searchUniverse(filters) {
     const s = String(row.sld || '').toLowerCase();
     return !excludeForms.some((f) => formTests[f](s));
   };
+  // Two budgets so the buckets fill independently: priced (Buy-ready candidates)
+  // and the rest (Stretch). A single shared cap let unpriced premium names —
+  // which dominate the quality_score ordering — consume the whole window and
+  // starve Buy-ready. Mirror splitAndShape's notion of "priced & in range".
+  const cap = filters.max_price;
+  const floor = filters.min_price;
+  const isPricedInRange = (row) => {
+    const bp = row.best_price != null && Number(row.best_price) > 0 ? Number(row.best_price) : null;
+    if (bp == null) return false;
+    if (floor != null && bp < floor) return false;
+    if (cap != null && bp > cap) return false;
+    return true;
+  };
   const seen = new Set();
-  const merged = [];
+  const priced = [];
+  const other = [];
   for (const r of responses) {
     for (const row of r.data || []) {
       if (seen.has(row.domain)) continue;
       if (!conOk(row)) continue;
       if (!formOk(row)) continue;
+      const bucket = isPricedInRange(row) ? priced : other;
+      if (bucket.length >= ROW_LIMIT) continue;
       seen.add(row.domain);
-      merged.push(row);
-      if (merged.length >= ROW_LIMIT) break;
+      bucket.push(row);
     }
-    if (merged.length >= ROW_LIMIT) break;
+    if (priced.length >= ROW_LIMIT && other.length >= ROW_LIMIT) break;
   }
+  const merged = [...priced, ...other];
   // Post-filter: drop SLDs the english_words dictionary flags as inflected
   // (is_root=false) when the chat / brief asked to exclude them. Unknown
   // words pass through — keeps coined/technical names like saas.com.
@@ -162,7 +197,8 @@ function tldVariants(tlds) {
   return [...out];
 }
 
-function buildQuery(db, filters, keywords, matchMode) {
+function buildQuery(db, filters, keywords, matchMode, opts = {}) {
+  const pricedOnly = !!opts.pricedOnly;
   let q = db.from('name_universe').select(SELECT_COLS);
   // Empty TLD set = no TLD constraint (all TLDs) — brief stayed silent and the
   // UI dropdown is at "All". Otherwise restrict to the chosen TLDs (bare+dotted).
@@ -173,11 +209,21 @@ function buildQuery(db, filters, keywords, matchMode) {
   if (filters.num_words != null) q = q.eq('num_words', filters.num_words);
   if (filters.dictionary_word_only) q = q.eq('is_dictionary_word', true);
   if (filters.min_quality_score != null) q = q.gte('quality_score', filters.min_quality_score);
-  // Per spec §3.2: rows with NULL price still pass the cap and fall into
-  // Stretch with "TBD" pricing. Same rule applies to min_price — unpriced
-  // rows pass through so they can surface as north-star options.
-  if (filters.max_price != null) q = q.or(`best_price.lte.${filters.max_price},best_price.is.null`);
-  if (filters.min_price != null) q = q.or(`best_price.gte.${filters.min_price},best_price.is.null`);
+  if (pricedOnly) {
+    // Buy-ready pass: ONLY genuinely-priced rows (best_price > 0). Without this,
+    // the candidate window — ordered by quality_score — fills with unpriced
+    // premium names, starving the Buy-ready bucket. Pairs with a GIN keyword/
+    // industry overlap so the price filter rides a small, indexed result set.
+    q = q.gt('best_price', 0);
+    if (filters.max_price != null) q = q.lte('best_price', filters.max_price);
+    if (filters.min_price != null) q = q.gte('best_price', filters.min_price);
+  } else {
+    // Per spec §3.2: rows with NULL price still pass the cap and fall into
+    // Stretch with "TBD" pricing. Same rule applies to min_price — unpriced
+    // rows pass through so they can surface as north-star options.
+    if (filters.max_price != null) q = q.or(`best_price.lte.${filters.max_price},best_price.is.null`);
+    if (filters.min_price != null) q = q.or(`best_price.gte.${filters.min_price},best_price.is.null`);
+  }
   // NOTE: connotation is NOT filtered here. A SQL `connotation IN (...) OR IS
   // NULL` matches nearly every row (most are unenriched/NULL), so it adds no
   // selectivity and defeats the (tld, quality_score) index → statement timeout.
@@ -217,7 +263,8 @@ function buildQuery(db, filters, keywords, matchMode) {
 // filters the brief sets (length, word count, dictionary, TLD, price, keyword
 // overlap) and order by price desc so premium listings lead within a tier
 // (relevance re-sorts later anyway; Master has no quality_score).
-function buildMasterQuery(db, filters, keywords, matchMode) {
+function buildMasterQuery(db, filters, keywords, matchMode, opts = {}) {
+  const pricedOnly = !!opts.pricedOnly;
   let q = db.from('Master Domain List').select(MASTER_SELECT_COLS);
   const tv = Array.isArray(filters.tlds) && filters.tlds.length ? tldVariants(filters.tlds) : [];
   if (tv.length) {
@@ -230,8 +277,14 @@ function buildMasterQuery(db, filters, keywords, matchMode) {
   if (filters.dictionary_word_only) q = q.eq('dictionary_word', 'Y');
   // Master has no quality_score column, so min_quality_score can't apply here —
   // including these rows unfiltered errs toward "more names" per product intent.
-  if (filters.max_price != null) q = q.or(`price.lte.${filters.max_price},price.is.null`);
-  if (filters.min_price != null) q = q.or(`price.gte.${filters.min_price},price.is.null`);
+  if (pricedOnly) {
+    q = q.gt('price', 0);
+    if (filters.max_price != null) q = q.lte('price', filters.max_price);
+    if (filters.min_price != null) q = q.gte('price', filters.min_price);
+  } else {
+    if (filters.max_price != null) q = q.or(`price.lte.${filters.max_price},price.is.null`);
+    if (filters.min_price != null) q = q.or(`price.gte.${filters.min_price},price.is.null`);
+  }
   if (Array.isArray(filters.exclude_domains) && filters.exclude_domains.length) {
     q = q.not('domain', 'in', `(${filters.exclude_domains.join(',')})`);
   }
@@ -255,8 +308,9 @@ function buildMasterQuery(db, filters, keywords, matchMode) {
 // errors throw (the search depends on it); Master errors are logged and treated
 // as empty so naming degrades gracefully to universe-only.
 async function resolveCorpus(tasks, label, throwOnError) {
-  const keys = ['keywords', 'industries', 'general'];
-  const out = { keywords: [], industries: [], general: [] };
+  const keys = Object.keys(tasks);
+  const out = {};
+  for (const k of keys) out[k] = [];
   const results = await Promise.all(keys.map((k) => (tasks[k] ? tasks[k] : Promise.resolve(null))));
   keys.forEach((k, i) => {
     const r = results[i];
