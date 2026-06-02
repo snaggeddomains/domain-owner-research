@@ -39,11 +39,17 @@ export async function searchUniverse(filters) {
   for (const r of responses) {
     if (r.error) throw new Error(`name_universe query failed: ${r.error.message}`);
   }
+  // Connotation criterion (UI multi-select) applied in-memory — see buildQuery
+  // note. Drop enriched rows whose tone is excluded; unenriched (null) rows pass.
+  const allowCon = Array.isArray(filters.connotation) && filters.connotation.length
+    ? new Set(filters.connotation) : null;
+  const conOk = (row) => !allowCon || !row.connotation || allowCon.has(String(row.connotation));
   const seen = new Set();
   const merged = [];
   for (const r of responses) {
     for (const row of r.data || []) {
       if (seen.has(row.domain)) continue;
+      if (!conOk(row)) continue;
       seen.add(row.domain);
       merged.push(row);
       if (merged.length >= ROW_LIMIT) break;
@@ -108,13 +114,10 @@ function buildQuery(db, filters, keywords, matchMode) {
   // rows pass through so they can surface as north-star options.
   if (filters.max_price != null) q = q.or(`best_price.lte.${filters.max_price},best_price.is.null`);
   if (filters.min_price != null) q = q.or(`best_price.gte.${filters.min_price},best_price.is.null`);
-  // Connotation criteria (UI multi-select). Keep enriched rows whose connotation
-  // is in the chosen set, AND keep still-unenriched rows (NULL) so the filter
-  // doesn't wipe the not-yet-enriched majority. "Any" arrives as null (no clause).
-  if (Array.isArray(filters.connotation) && filters.connotation.length) {
-    const list = filters.connotation.map((c) => `"${c}"`).join(',');
-    q = q.or(`connotation.in.(${list}),connotation.is.null`);
-  }
+  // NOTE: connotation is NOT filtered here. A SQL `connotation IN (...) OR IS
+  // NULL` matches nearly every row (most are unenriched/NULL), so it adds no
+  // selectivity and defeats the (tld, quality_score) index → statement timeout.
+  // The connotation criterion is applied in-memory in searchUniverse() instead.
   // Precise per-domain blocklist. validateFilters() already restricted these
   // to [a-z0-9.-] so the comma-joined PostgREST list is safe.
   if (Array.isArray(filters.exclude_domains) && filters.exclude_domains.length) {
