@@ -123,6 +123,9 @@ const els = {
   namingRecent: $('naming-recent'),
   namingRecentList: $('naming-recent-list'),
   namingShowAll: $('naming-show-all'),
+  namingRecentFive: $('naming-recent-five'),
+  namingRecentFiveList: $('naming-recent-five-list'),
+  namingRecentFiveAll: $('naming-recent-five-all'),
   namingProjectsSearch: $('naming-projects-search'),
   namingProjectsList: $('naming-projects-list'),
   namingScopeToggle: $('naming-scope-toggle'),
@@ -2984,14 +2987,29 @@ function resetNamingView() {
 // Recent naming runs are now just a single link to the full, searchable list
 // (keeps the brief form uncluttered). We only show the link when runs exist.
 async function loadNamingRecent() {
-  if (!els.namingRecent) return;
+  if (!els.namingRecent && !els.namingRecentFive) return;
   try {
     const res = await fetch('/research/api/naming?list=1');
     const data = await res.json().catch(() => ({}));
-    const has = res.ok && Array.isArray(data.runs) && data.runs.length > 0;
-    els.namingRecent.hidden = !has;
+    const runs = res.ok && Array.isArray(data.runs) ? data.runs : [];
+    const has = runs.length > 0;
+    if (els.namingRecent) els.namingRecent.hidden = !has;       // footer link
+    if (els.namingRecentFive) {                                  // last-5 under the brief
+      els.namingRecentFive.hidden = !has;
+      if (els.namingRecentFiveList) {
+        els.namingRecentFiveList.innerHTML = runs.slice(0, 5).map((r) => {
+          const when = r.created_at ? new Date(r.created_at).toLocaleString() : '';
+          const snippet = String(r.brief || '').replace(/\s+/g, ' ').slice(0, 80);
+          const label = r.title ? r.title : (snippet || '(empty brief)');
+          return `<li class="recent-run" data-id="${escapeHtml(r.id)}">`
+            + `<span class="recent-domain">${escapeHtml(label)}</span>`
+            + `<span class="recent-when">${escapeHtml(when)}</span></li>`;
+        }).join('');
+      }
+    }
   } catch {
-    els.namingRecent.hidden = true;
+    if (els.namingRecent) els.namingRecent.hidden = true;
+    if (els.namingRecentFive) els.namingRecentFive.hidden = true;
   }
 }
 
@@ -3299,6 +3317,21 @@ els.namingRecentList?.addEventListener('click', (e) => {
 
 // "Show all past naming runs →" link.
 els.namingShowAll?.addEventListener('click', (e) => {
+  e.preventDefault();
+  history.pushState(null, '', '/research/naming/all');
+  showView('naming-projects');
+  loadNamingProjects('');
+});
+
+// Last-5 list under the brief: open a run on click; "View all" → full list.
+els.namingRecentFiveList?.addEventListener('click', (e) => {
+  const li = e.target.closest('.recent-run');
+  if (!li || !li.dataset.id) return;
+  history.pushState(null, '', `/research/naming/${encodeURIComponent(li.dataset.id)}`);
+  showView('naming');
+  openNamingRun(li.dataset.id);
+});
+els.namingRecentFiveAll?.addEventListener('click', (e) => {
   e.preventDefault();
   history.pushState(null, '', '/research/naming/all');
   showView('naming-projects');

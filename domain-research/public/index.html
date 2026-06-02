@@ -20,7 +20,7 @@
          the app is served from /research/* (app.snagged.com/research/*). -->
     <base href="/research/" />
     <link rel="icon" href="favicon-32.png" />
-    <link rel="stylesheet" href="styles.css?v=20260602g" />
+    <link rel="stylesheet" href="styles.css?v=20260602h" />
     <!-- Layout: horizontal tab nav (Admin-style), no sidebar. -->
   </head>
   <body>
@@ -440,6 +440,14 @@ The model parses it into structured filters (TLDs, length, budget, tone, etc.) a
             </div>
             <p id="naming-error" class="login-error" hidden></p>
 
+            <!-- Last 5 naming runs, under the brief. "View all" sits below the
+                 five; the full searchable list also lives in the footer link. -->
+            <div id="naming-recent-five" class="naming-recent-five" hidden>
+              <div class="naming-recent-five-head">Recent naming exercises</div>
+              <ul id="naming-recent-five-list" class="naming-recent-five-list"></ul>
+              <a id="naming-recent-five-all" class="show-all" href="#">View all naming exercises &rarr;</a>
+            </div>
+
             <div class="naming-filters-panel" id="naming-filters-panel" hidden>
               <h3 class="naming-filters-heading">Filters</h3>
               <div class="naming-filters-grid">
@@ -571,6 +579,6 @@ The model parses it into structured filters (TLDs, length, budget, tone, etc.) a
     </div>
 
     <!-- Bump ?v= on any public/app.js or styles.css change to bust caches. -->
-    <script src="app.js?v=20260602g"></script>
+    <script src="app.js?v=20260602h"></script>
   </body>
 </html>

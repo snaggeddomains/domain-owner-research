@@ -919,6 +919,10 @@ body.modal-open { overflow: hidden; }
 .naming-apply:hover { filter: brightness(1.12); }
 .naming-filters-hint { font-size: 12.5px; color: var(--navy-3); }
 .naming-recent-foot { margin-top: 40px; padding-top: 20px; border-top: 1px solid var(--line); text-align: center; }
+/* Last-5 recent naming runs under the brief */
+.naming-recent-five { margin-top: 22px; padding-top: 18px; border-top: 1px solid var(--line); }
+.naming-recent-five-head { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--navy-3); margin-bottom: 8px; }
+.naming-recent-five-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
 /* Inline rename button on past naming runs */
 .naming-rename { flex: none; background: none; border: 1px solid #d9d2c2; border-radius: 6px; padding: 3px 9px; font-size: 12px; color: var(--navy-3); cursor: pointer; }
 .naming-rename:hover { background: var(--cream-2, #fbf7ee); color: var(--navy); }
