@@ -98,6 +98,7 @@ const els = {
   namingStretchTable: $('naming-stretch-table'),
   namingExportSheet: $('naming-export-sheet'),
   namingExportCsv: $('naming-export-csv'),
+  namingExportDownload: $('naming-export-download'),
   namingRecent: $('naming-recent'),
   namingRecentList: $('naming-recent-list'),
   namingShowAll: $('naming-show-all'),
@@ -2507,11 +2508,21 @@ function initNamingMulti(prefix, set, options, opts = {}) {
     label.textContent = [...set].map(labelOf).join(', ');
   };
   list.innerHTML = norm.map((o) =>
-    `<label class="dbs-multi-opt"><input type="checkbox" value="${escapeHtml(o.value)}"${set.has(o.value) ? ' checked' : ''}/> ${escapeHtml(o.label)}</label>`).join('');
+    `<label class="dbs-multi-opt"><input type="checkbox" value="${escapeHtml(o.value)}"${set.has(o.value) ? ' checked' : ''}/>`
+    + `<span class="dbs-multi-optlabel">${escapeHtml(o.label)}</span>`
+    + `<button type="button" class="dbs-multi-only" data-value="${escapeHtml(o.value)}" tabindex="-1" title="Select only ${escapeHtml(o.label)}">only</button></label>`).join('');
   list.addEventListener('change', (e) => {
     const cb = e.target.closest('input[type="checkbox"]'); if (!cb) return;
     if (cb.checked) set.add(cb.value); else set.delete(cb.value);
     summary();
+  });
+  // "only" shortcut: select just this one value (clears the rest). preventDefault
+  // stops the surrounding <label> from also toggling its checkbox on the click.
+  list.addEventListener('click', (e) => {
+    const only = e.target.closest('.dbs-multi-only'); if (!only) return;
+    e.preventDefault();
+    e.stopPropagation();
+    setValues([only.dataset.value]);
   });
   summary();
   // Programmatically set the selection (used to sync TLDs to the parsed brief).
@@ -2786,17 +2797,30 @@ async function copyNamingCsv() {
     setNamingStatus('CSV copied to clipboard.');
     setTimeout(() => setNamingStatus(''), 2000);
   } catch {
-    // Fallback for browsers without clipboard API — download as a file.
-    const blob = new Blob([csv], { type: 'text/csv' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'naming-exercise.csv';
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    downloadNamingCsv(); // no clipboard API — fall back to a file download
   }
+}
+
+// Download the current results as a .csv file — the simple, no-Google export.
+// Filename uses the project title when set (slugified), else a dated default.
+function downloadNamingCsv() {
+  if (!namingLastResults) return;
+  const csv = namingResultsToCsv(namingLastResults);
+  const title = (els.namingTitle && els.namingTitle.value.trim()) || '';
+  const slug = (title || 'naming-exercise')
+    .toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60) || 'naming-exercise';
+  const stamp = new Date().toISOString().slice(0, 10);
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `${slug}-${stamp}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  setNamingStatus('CSV downloaded.');
+  setTimeout(() => setNamingStatus(''), 2000);
 }
 
 async function exportNamingSheet() {
@@ -3294,6 +3318,7 @@ els.namingInput?.addEventListener('keydown', (e) => {
   if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.preventDefault(); runNaming(); }
 });
 els.namingExportCsv?.addEventListener('click', copyNamingCsv);
+els.namingExportDownload?.addEventListener('click', downloadNamingCsv);
 els.namingExportSheet?.addEventListener('click', exportNamingSheet);
 
 // Save-as-lesson click delegation on the refine-chat thread.

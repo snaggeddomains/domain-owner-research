@@ -843,6 +843,10 @@ body.modal-open { overflow: hidden; }
 .dbs-multi-list { max-height: 210px; overflow-y: auto; padding: 3px 0; }
 .dbs-multi-opt { display: flex; align-items: center; gap: 7px; padding: 4px 10px; font-size: 13px; color: var(--navy); cursor: pointer; text-transform: none; letter-spacing: 0; font-weight: 400; }
 .dbs-multi-opt:hover { background: var(--cream-2, #fbf7ee); }
+.dbs-multi-optlabel { flex: 1 1 auto; }
+.dbs-multi-only { flex: 0 0 auto; opacity: 0; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--blush, #d2725f); background: transparent; border: 1px solid currentColor; border-radius: 999px; padding: 1px 7px; cursor: pointer; transition: opacity .1s; }
+.dbs-multi-opt:hover .dbs-multi-only { opacity: .85; }
+.dbs-multi-only:hover, .dbs-multi-only:focus { opacity: 1; background: var(--blush, #d2725f); color: #fff; outline: none; }
 .dbs-multi-empty { padding: 8px 10px; font-size: 12px; color: var(--navy-3); }
 /* Naming exercise connotation control (reuses .dbs-multi) */
 .naming-connotation { display: inline-flex; align-items: center; gap: 8px; }
