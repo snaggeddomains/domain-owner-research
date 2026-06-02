@@ -753,7 +753,9 @@ body.modal-open { overflow: hidden; }
 .profile-save-btn:disabled { opacity:.6; cursor:default; }
 .profile-status { font-size:12px; color:#1f7a4d; }
 .profile-status.is-err { color:#c0392b; }
-.profile-toggle { display:flex; align-items:center; gap:8px; font-size:13px; color:var(--navy); cursor:pointer; }
+.profile-toggle { display:flex; align-items:center; gap:7px; font-size:13px; color:var(--navy); cursor:pointer; }
+.profile-toggle + .profile-toggle { margin-top:7px; }
+.profile-toggle-ico { color:var(--navy-3); flex:0 0 auto; }
 .profile-pw > summary { font-size:12px; font-weight:700; color:var(--navy-2); cursor:pointer; list-style:none; }
 .profile-pw > summary::-webkit-details-marker { display:none; }
 .profile-pw[open] > summary { margin-bottom:4px; }

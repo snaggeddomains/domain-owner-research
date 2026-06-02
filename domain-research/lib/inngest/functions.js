@@ -141,6 +141,8 @@ async function notifyOwnerIfWanted(runId) {
 async function createReportNotification(runId) {
   const run = await getRun(runId);
   if (!run || !run.user_id) return { created: false, reason: 'no user' };
+  const u = await getUser(run.user_id);
+  if (u && u.notify_in_app === false) return { created: false, reason: 'bell disabled' };
   const phase = (run.report && run.report.phase) || 'shallow';
   const link = reportHash({ domain: run.domain, runId: run.id, createdAt: run.created_at });
   await createNotification({

@@ -23,7 +23,8 @@ const els = {
   profileSave: $('profile-save'),
   profileNameEdit: $('profile-name-edit'),
   profileSaveStatus: $('profile-save-status'),
-  profileNotify: $('profile-notify'),
+  profileNotifyEmail: $('profile-notify-email'),
+  profileNotifyBell: $('profile-notify-bell'),
   profilePwCurrent: $('profile-pw-current'),
   profilePwNew: $('profile-pw-new'),
   profilePwConfirm: $('profile-pw-confirm'),
@@ -1280,7 +1281,8 @@ function renderProfile(u) {
   if (els.profileRole) els.profileRole.textContent = u.is_admin ? 'Admin' : 'Member';
   if (els.profileFirst) els.profileFirst.value = u.first_name || '';
   if (els.profileLast) els.profileLast.value = u.last_name || '';
-  if (els.profileNotify) els.profileNotify.checked = Boolean(u.email_notify_on_done);
+  if (els.profileNotifyEmail) els.profileNotifyEmail.checked = Boolean(u.email_notify_on_done);
+  if (els.profileNotifyBell) els.profileNotifyBell.checked = u.notify_in_app !== false;
   if (els.profileBtn) els.profileBtn.title = u.email;
   // Once a full name is set, lock the fields (grayed) + show a small "Edit"
   // link instead of the Save button. Incomplete → stay editable.
@@ -1341,9 +1343,14 @@ els.profileNameEdit?.addEventListener('click', (e) => {
   els.profileFirst?.focus();
 });
 
-els.profileNotify?.addEventListener('change', async (e) => {
+els.profileNotifyEmail?.addEventListener('change', async (e) => {
   const want = e.target.checked;
   try { currentUser = await patchMe({ email_notify_on_done: want }); }
+  catch { e.target.checked = !want; }
+});
+els.profileNotifyBell?.addEventListener('change', async (e) => {
+  const want = e.target.checked;
+  try { currentUser = await patchMe({ notify_in_app: want }); }
   catch { e.target.checked = !want; }
 });
 
@@ -1422,6 +1429,7 @@ function viewHidden(name) {
 // Create a notification for the current user (client-completed tools), then
 // refresh the bell count. Fire-and-forget; failures are non-fatal.
 function pushNotification({ kind, title, body, link }) {
+  if (currentUser && currentUser.notify_in_app === false) return; // bell disabled
   fetch('/research/api/me', {
     method: 'PATCH',
     headers: { 'content-type': 'application/json' },

@@ -12,6 +12,7 @@ function publicUser(u) {
     is_admin: Boolean(u.is_admin),
     permissions: u.permissions || {},
     email_notify_on_done: Boolean(u.email_notify_on_done),
+    notify_in_app: u.notify_in_app !== false, // default ON when column/value absent
     created_at: u.created_at || null,
   };
 }
@@ -76,6 +77,7 @@ export default async function handler(req, res) {
 
     const patch = {};
     if (body.email_notify_on_done !== undefined) patch.email_notify_on_done = Boolean(body.email_notify_on_done);
+    if (body.notify_in_app !== undefined) patch.notify_in_app = Boolean(body.notify_in_app);
     if (body.first_name !== undefined) patch.first_name = String(body.first_name || '').slice(0, 80);
     if (body.last_name !== undefined) patch.last_name = String(body.last_name || '').slice(0, 80);
 

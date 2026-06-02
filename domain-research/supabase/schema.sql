@@ -264,6 +264,8 @@ create unique index if not exists idx_dr_users_email_lower on domain_research_us
 -- Self-serve profile name fields (2026-06).
 alter table domain_research_users add column if not exists first_name text;
 alter table domain_research_users add column if not exists last_name text;
+-- Per-channel report-ready notification prefs (email already existed; bell 2026-06).
+alter table domain_research_users add column if not exists notify_in_app boolean not null default true;
 
 -- In-app notifications (the bell). One row per completed task; the bell shows
 -- the unread count + a recent list that deep-links into the app (2026-06).
