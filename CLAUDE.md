@@ -105,3 +105,23 @@ timeout (the search just falls back to universe-only until they exist).
 **Screen** (single-domain lookup, gated by `dbscreen`). Owner of owned-feed domains
 is derived in `lib/sources/universe_ownership.js` (snagged/berserk → Snagged,
 rob_purchases → Rob Schutz). TLD filters require a single-dot domain.
+
+---
+
+## Session handoff — 2026-06-02 (lessons notifications + permissions)
+
+- **Lesson submitted → notify curators.** `api/lessons.js` `notifyAdminsOfLesson`
+  fires on a `pending` create — bell (`createNotification`, kind `'lesson'`,
+  link `/research/admin`) + email to each admin (when RESEND set). Best-effort;
+  skips the submitter. The admin chrome (snagged-admin) grew a matching bell +
+  profile avatar reading the same `domain_research_notifications` table.
+- **Lesson curation is now permission-gated, not strict admin.** GET/PATCH/DELETE
+  in `api/lessons.js` use `requirePermission(req, res, 'admin.lessons.approve')`
+  (admins still auto-pass via `userCan`); self-approve on create uses the same
+  check. Granted per-user in the snagged-admin Users editor (catalog key
+  `admin.lessons.approve`, stored flat in the `permissions` JSONB).
+- **Read-only DB role** `claude_ro` (SELECT-only + BYPASSRLS) exists in this
+  project for lookups; connection string is the `RESEARCH_PG_RO_URL` env var in
+  the Claude Code web environment (helper: snagged-admin `scripts/db.py`).
+- **Security:** Supabase flagged Master/naming for `rls_disabled_in_public` —
+  enable RLS with no policies (service key bypasses); main research already has it.
