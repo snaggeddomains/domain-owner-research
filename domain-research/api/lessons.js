@@ -4,8 +4,53 @@ import { createLesson, listLessons, updateLesson, deleteLesson } from '../lib/db
 import { distillLesson } from '../lib/llm/distill.js';
 import { getRun } from '../lib/db/runs.js';
 import { getChat } from '../lib/db/chat.js';
+import { listUsers } from '../lib/db/users.js';
+import { createNotification } from '../lib/db/notifications.js';
+import { sendEmail, isEmailConfigured } from '../lib/email.js';
 
 export const config = { maxDuration: 30 };
+
+// Notify curators (admins) when a lesson is submitted for review — bell + email,
+// the same two channels as a finished report. Best-effort: a notify failure must
+// never fail the submission. Skips the submitter (no self-notify). The Lessons
+// curation view lives at /research/admin.
+async function notifyAdminsOfLesson(lesson, submitter) {
+  try {
+    const users = await listUsers();
+    const admins = (users || []).filter(
+      (u) => u && u.is_admin && (!submitter || u.id !== submitter.id),
+    );
+    if (!admins.length) return;
+    const who = (submitter && submitter.email) || 'someone';
+    const title = `New lesson submitted — ${lesson.title || 'untitled'}`;
+    const link = '/research/admin';
+    const emailOn = isEmailConfigured();
+    await Promise.allSettled(
+      admins.flatMap((a) => {
+        const jobs = [
+          createNotification({ user_id: a.id, kind: 'lesson', title, body: `Submitted by ${who} — review in Lessons.`, link }),
+        ];
+        if (emailOn) {
+          jobs.push(sendEmail({
+            to: a.email,
+            subject: title,
+            text: `${who} submitted a new playbook lesson for review:\n\n"${lesson.title || 'untitled'}"\n\nReview it in the Lessons curation view: https://research.snagged.com/research/admin`,
+            html: `<p><strong>${esc(who)}</strong> submitted a new playbook lesson for review:</p>`
+              + `<p style="font-size:15px;font-weight:600;margin:12px 0">${esc(lesson.title || 'untitled')}</p>`
+              + `<p><a href="https://research.snagged.com/research/admin" style="display:inline-block;padding:10px 16px;background:#e48069;color:#fff;text-decoration:none;border-radius:8px;font-weight:700">Review in Lessons</a></p>`,
+          }));
+        }
+        return jobs;
+      }),
+    );
+  } catch (e) {
+    console.error('notifyAdminsOfLesson failed:', e && e.message);
+  }
+}
+
+function esc(s) {
+  return String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+}
 
 // Playbook-lessons endpoint. Action-multiplexed to stay under the function
 // cap. Four flows:
@@ -140,6 +185,8 @@ async function handleCreate(req, res, body) {
       created_by: user && user.id ? user.id : null,
       status,
     });
+    // A real submission (pending review) pings the curators — bell + email.
+    if (status === 'pending') await notifyAdminsOfLesson(lesson, user);
     res.status(201).json({ lesson });
   } catch (e) {
     res.status(400).json({ error: String(e.message || e) });
