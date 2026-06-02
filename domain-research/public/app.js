@@ -135,6 +135,7 @@ const els = {
   dsWordsMin: $('ds-words-min'), dsWordsMax: $('ds-words-max'),
   dsNonum: $('ds-nonum'), dsFuzzy: $('ds-fuzzy'),
   dsSource: $('ds-source'), dsCategory: $('ds-category'), dsEmotion: $('ds-emotion'),
+  dsConnotation: $('ds-connotation'),
   dsOwner: $('ds-owner'), dsKeyword: $('ds-keyword'),
   dsApply: $('ds-apply'), dsReset: $('ds-reset'),
   dsDbToggle: $('ds-dbtoggle'), dsCount: $('ds-count'),
@@ -477,6 +478,7 @@ function dsBuildParams() {
   if (v(els.dsSource)) p.set('source', v(els.dsSource));
   if (v(els.dsCategory)) p.set('category', v(els.dsCategory));
   if (v(els.dsEmotion)) p.set('emotion', v(els.dsEmotion));
+  if (v(els.dsConnotation)) p.set('connotation', v(els.dsConnotation));
   if (v(els.dsOwner)) p.set('owner', v(els.dsOwner));
   if (v(els.dsKeyword)) p.set('keyword', v(els.dsKeyword));
   p.set('db', dsState.db);
@@ -2911,7 +2913,7 @@ els.dsSearch?.addEventListener('submit', (e) => { e.preventDefault(); dsState.pa
 els.dsApply?.addEventListener('click', () => { dsState.page = 0; fetchDbSearch(); });
 els.dsReset?.addEventListener('click', () => {
   [els.dsQ, els.dsPriceMin, els.dsPriceMax, els.dsLenMin, els.dsLenMax, els.dsWordsMin, els.dsWordsMax,
-   els.dsSource, els.dsCategory, els.dsEmotion, els.dsOwner, els.dsKeyword].forEach((el) => { if (el) el.value = ''; });
+   els.dsSource, els.dsCategory, els.dsEmotion, els.dsConnotation, els.dsOwner, els.dsKeyword].forEach((el) => { if (el) el.value = ''; });
   if (els.dsSingle) els.dsSingle.value = '';
   if (els.dsDict) els.dsDict.value = '';
   if (els.dsNonum) els.dsNonum.checked = false;
