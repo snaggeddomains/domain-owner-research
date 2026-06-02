@@ -68,7 +68,8 @@ User: "why is health.com not here?"
 
 export async function runNamingChatTurn({ run, history, message, env }) {
   if (!env.ANTHROPIC_API_KEY) throw new Error('ANTHROPIC_API_KEY is not set');
-  const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY });
+  // maxRetries bumped so a transient 503/overloaded doesn't kill a refine turn.
+  const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY, maxRetries: 5 });
   const model = env.ANTHROPIC_NAMING_CHAT_MODEL || env.ANTHROPIC_NAMING_MODEL || 'claude-haiku-4-5-20251001';
 
   const context = buildContext(run);

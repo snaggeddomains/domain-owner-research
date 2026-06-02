@@ -57,16 +57,52 @@ Rules:
 - connotation: set ONLY if the brief explicitly states a desired emotional tone (e.g. "warm", "trustworthy", "playful", "bold"); then return the allowed grades from [${CONNOTATIONS.join(', ')}] (warm/positive → ["positive", "somewhat positive", "neutral"]). Otherwise null. Users can also set this directly via the on-screen control, so default null unless the brief is explicit about tone.
 - Output JSON only — no prose, no code fences.`;
 
+// Retry transient Anthropic failures (503 overloaded_error, 429 rate limit,
+// 500/502/529, network blips) with exponential backoff + jitter. A single 503
+// on the brief-parse call otherwise hard-fails the whole search ("Couldn't
+// parse your brief: 503 ...overloaded..."), which is exactly the kind of
+// momentary platform hiccup a couple of retries ride through.
+async function callWithRetry(fn, { tries = 5, baseMs = 600 } = {}) {
+  let lastErr;
+  for (let attempt = 0; attempt < tries; attempt++) {
+    try {
+      return await fn();
+    } catch (e) {
+      lastErr = e;
+      const status = e && (e.status ?? e.statusCode);
+      const msg = String((e && e.message) || e);
+      const transient = [408, 409, 425, 429, 500, 502, 503, 504, 529].includes(status)
+        || /overloaded|temporarily unavailable|rate.?limit|timed?.?out|ECONNRESET|ETIMEDOUT|EAI_AGAIN|fetch failed/i.test(msg);
+      if (!transient || attempt === tries - 1) break;
+      const delay = baseMs * 2 ** attempt + Math.floor(Math.random() * 250);
+      await new Promise((r) => setTimeout(r, delay));
+    }
+  }
+  throw lastErr;
+}
+
 export async function parseBrief(brief, env) {
   if (!env.ANTHROPIC_API_KEY) throw new Error('ANTHROPIC_API_KEY is not set');
-  const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY });
+  // maxRetries:0 — we own the retry loop below (callWithRetry) so backoff timing
+  // is explicit and covers overloaded_error, which the SDK doesn't always retry.
+  const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY, maxRetries: 0 });
   const model = env.ANTHROPIC_NAMING_MODEL || 'claude-haiku-4-5-20251001';
-  const response = await client.messages.create({
-    model,
-    max_tokens: 512,
-    system: SYSTEM,
-    messages: [{ role: 'user', content: String(brief).slice(0, 4000) }],
-  });
+  let response;
+  try {
+    response = await callWithRetry(() => client.messages.create({
+      model,
+      max_tokens: 512,
+      system: SYSTEM,
+      messages: [{ role: 'user', content: String(brief).slice(0, 4000) }],
+    }));
+  } catch (e) {
+    const status = e && (e.status ?? e.statusCode);
+    const msg = String((e && e.message) || e);
+    if ([429, 500, 502, 503, 504, 529].includes(status) || /overloaded|temporarily unavailable/i.test(msg)) {
+      throw new Error('The naming model is briefly overloaded (Anthropic). Click Find Names again in a few seconds.');
+    }
+    throw e;
+  }
   const text = response.content
     .filter((b) => b.type === 'text')
     .map((b) => b.text)
