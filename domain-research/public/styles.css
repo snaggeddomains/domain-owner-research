@@ -943,6 +943,12 @@ body.modal-open { overflow: hidden; }
 /* Naming Filters panel — three .dbs-multi dropdowns under the Find Names row */
 .naming-filters-panel { max-width: none; margin: 18px 0 0; }
 .naming-filters-heading { font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--navy-2); margin: 0 0 10px; }
+.naming-filters-toggle { font: inherit; color: inherit; text-transform: inherit; letter-spacing: inherit; background: none; border: 0; padding: 0; cursor: pointer; display: inline-flex; align-items: center; gap: 7px; }
+.naming-filters-toggle .nf-arrow { font-size: 12px; transition: transform .15s ease; }
+.naming-filters-toggle[aria-expanded="false"] .nf-arrow { transform: rotate(-90deg); }
+.naming-filters-panel.is-collapsed .naming-filters-grid,
+.naming-filters-panel.is-collapsed .naming-filters-actions { display: none; }
+.naming-filters.nf-collapsed { display: none !important; }
 /* Tidy fixed grid: row 1 = the three dropdowns, row 2 = the three min/max
    ranges (price / letters / syllables). Left-aligned, capped column width so
    the controls stay compact instead of stretching across the full-width page. */

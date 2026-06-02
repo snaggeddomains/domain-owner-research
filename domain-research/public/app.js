@@ -114,6 +114,7 @@ const els = {
   namingNew: $('naming-new'),
   namingApply: $('naming-apply'),
   namingFiltersPanel: $('naming-filters-panel'),
+  namingFiltersToggle: $('naming-filters-toggle'),
   namingPriceMin: $('nm-price-min'),
   namingPriceMax: $('nm-price-max'),
   namingLenMin: $('nm-len-min'),
@@ -3728,6 +3729,15 @@ els.tmForm?.addEventListener('submit', (e) => { e.preventDefault(); const q = el
 els.apForm?.addEventListener('submit', (e) => { e.preventDefault(); const v = els.apDomain.value.trim(); if (v) runAppraisal(v); });
 els.namingGo?.addEventListener('click', runNaming);
 els.namingApply?.addEventListener('click', runNaming);
+
+// Collapse/expand the whole Filters block — the grid + Apply row + the parsed-
+// filters chips — leaving just the "▾ Filters" handle, to keep results clean.
+els.namingFiltersToggle?.addEventListener('click', () => {
+  const collapsed = !(els.namingFiltersPanel && els.namingFiltersPanel.classList.contains('is-collapsed'));
+  if (els.namingFiltersPanel) els.namingFiltersPanel.classList.toggle('is-collapsed', collapsed);
+  if (els.namingFilters) els.namingFilters.classList.toggle('nf-collapsed', collapsed);
+  els.namingFiltersToggle.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+});
 // Start a fresh project: clears the brief/title/results so the next Find Names
 // inserts a new run instead of updating the current one.
 els.namingNew?.addEventListener('click', () => {

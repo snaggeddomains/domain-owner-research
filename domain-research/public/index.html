@@ -20,7 +20,7 @@
          the app is served from /research/* (app.snagged.com/research/*). -->
     <base href="/research/" />
     <link rel="icon" href="favicon-32.png" />
-    <link rel="stylesheet" href="styles.css?v=20260602o" />
+    <link rel="stylesheet" href="styles.css?v=20260602p" />
     <!-- Layout: horizontal tab nav (Admin-style), no sidebar. -->
   </head>
   <body>
@@ -469,7 +469,7 @@ The model parses it into structured filters (TLDs, length, budget, tone, etc.) a
             </div>
 
             <div class="naming-filters-panel" id="naming-filters-panel" hidden>
-              <h3 class="naming-filters-heading">Filters</h3>
+              <h3 class="naming-filters-heading"><button id="naming-filters-toggle" class="naming-filters-toggle" type="button" aria-expanded="true" title="Collapse / expand filters"><span class="nf-arrow" aria-hidden="true">▾</span> Filters</button></h3>
               <div class="naming-filters-grid">
                 <div class="naming-filter">
                   <span class="naming-con-cap">Exclude word-forms</span>
@@ -599,6 +599,6 @@ The model parses it into structured filters (TLDs, length, budget, tone, etc.) a
     </div>
 
     <!-- Bump ?v= on any public/app.js or styles.css change to bust caches. -->
-    <script src="app.js?v=20260602o"></script>
+    <script src="app.js?v=20260602p"></script>
   </body>
 </html>
