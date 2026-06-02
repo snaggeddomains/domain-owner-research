@@ -20,7 +20,7 @@
          the app is served from /research/* (app.snagged.com/research/*). -->
     <base href="/research/" />
     <link rel="icon" href="favicon-32.png" />
-    <link rel="stylesheet" href="styles.css?v=20260602p" />
+    <link rel="stylesheet" href="styles.css?v=20260602q" />
     <!-- Layout: horizontal tab nav (Admin-style), no sidebar. -->
   </head>
   <body>
@@ -304,8 +304,8 @@
             </form>
           </div>
           <section id="ap-status" class="status" hidden></section>
-          <div id="ap-result" class="appraisal-result" hidden></div>
           <div id="ap-namebio" class="namebio-callout" hidden></div>
+          <div id="ap-result" class="appraisal-result" hidden></div>
           <div id="ap-recent" class="recent tool-recent" hidden></div>
         </section>
 
@@ -460,13 +460,6 @@ The model parses it into structured filters (TLDs, length, budget, tone, etc.) a
             </div>
             <p id="naming-error" class="login-error" hidden></p>
 
-            <!-- Last 5 naming runs, under the brief. "View all" sits below the
-                 five; the full searchable list also lives in the footer link. -->
-            <div id="naming-recent-five" class="naming-recent-five" hidden>
-              <div class="naming-recent-five-head">Recent naming exercises</div>
-              <ul id="naming-recent-five-list" class="naming-recent-five-list"></ul>
-              <a id="naming-recent-five-all" class="show-all" href="#">View all naming exercises &rarr;</a>
-            </div>
 
             <div class="naming-filters-panel" id="naming-filters-panel" hidden>
               <h3 class="naming-filters-heading"><button id="naming-filters-toggle" class="naming-filters-toggle" type="button" aria-expanded="true" title="Collapse / expand filters"><span class="nf-arrow" aria-hidden="true">▾</span> Filters</button></h3>
@@ -555,8 +548,13 @@ The model parses it into structured filters (TLDs, length, budget, tone, etc.) a
             <p id="naming-chat-error" class="login-error" hidden></p>
           </section>
 
-          <div id="naming-recent" class="recent naming-recent-foot" hidden>
-            <a id="naming-show-all" class="show-all" href="#">Recent naming exercises &rarr;</a>
+          <!-- Recent runs live at the very bottom: on the entry screen (filters/
+               results hidden) this sits right under the brief; after a run it
+               naturally falls below the results. -->
+          <div id="naming-recent-five" class="naming-recent-five" hidden>
+            <div class="naming-recent-five-head">Recent naming exercises</div>
+            <ul id="naming-recent-five-list" class="naming-recent-five-list"></ul>
+            <a id="naming-recent-five-all" class="show-all" href="#">View all naming exercises &rarr;</a>
           </div>
         </section>
 
@@ -599,6 +597,6 @@ The model parses it into structured filters (TLDs, length, budget, tone, etc.) a
     </div>
 
     <!-- Bump ?v= on any public/app.js or styles.css change to bust caches. -->
-    <script src="app.js?v=20260602p"></script>
+    <script src="app.js?v=20260602q"></script>
   </body>
 </html>
