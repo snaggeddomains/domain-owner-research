@@ -67,6 +67,14 @@ Two domain corpora in **separate Supabase projects**; the search reads both.
 **Boundary rule:** automated/SNAP + marketplace → `name_universe`; manual/curated
 owner attributions → Master. BrandBucket → `name_universe`.
 
+**Naming exercise enrichment (2026-06):** `lib/naming/query.js` matches a brief's
+`semantic_keywords` against each candidate's enriched `keywords[]` / `industries[]`
+arrays FIRST (true semantic match), then falls back to SLD-substring for
+not-yet-enriched rows — three priority-merged passes + a general pass. Semantic
+matches score 2× substring in relevance. Needs GIN indexes for speed:
+`create index if not exists idx_universe_keywords_gin on name_universe using gin (keywords);`
+(same for `industries`, `emotions`).
+
 **Search endpoints:** `api/dbsearch.js` = Domain **Name** Search (filterable browse,
 `db=both|universe|master`, gated by `dbsearch`); `api/dbscreen.js` = Domain DB
 **Screen** (single-domain lookup, gated by `dbscreen`). Owner of owned-feed domains

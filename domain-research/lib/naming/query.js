@@ -3,19 +3,19 @@ import { getNamingDb } from '../db/supabase-naming.js';
 // Run the parsed filters against name_universe (spec §3) and split the
 // results into Buy-ready vs Stretch (§3.4).
 //
-// v1 scope note: this query hits name_universe only and skips the
-// master_domain_list LEFT JOIN that §3.2/§3.3 describes. The join is needed
-// for keyword-based semantic filtering; for v1 we accept semantic_keywords
-// (and surface them back in the parsed-filters bar) but don't apply them as
-// a WHERE clause — most rows aren't in master_domain_list anyway, and §3.3
-// itself flags the join as "best-effort, approximate" pending Phase 2's
-// enrichment of name_universe.keywords. Folding the JOIN in is a small
-// follow-up once the enriched column exists.
+// Hybrid keyword matching (2026-06): we now use the LLM enrichment on
+// name_universe. A brief's semantic_keywords are matched against the enriched
+// keywords[] / industries[] arrays FIRST (true semantic match — surfaces names
+// that are *about* a theme even when the word isn't in the domain), and fall
+// back to SLD substring matching for rows that aren't enriched yet. The three
+// passes are merged by priority (semantic keyword > semantic industry >
+// substring) and deduped, so coverage degrades gracefully as enrichment grows.
 const ROW_LIMIT = 100;
 
 const SELECT_COLS =
   'domain, sld, tld, sld_length, num_words, num_syllables, is_dictionary_word, ' +
-  'best_price, best_price_source, sources, quality_score, deal_score, source_tier';
+  'best_price, best_price_source, sources, quality_score, deal_score, source_tier, ' +
+  'category, connotation, keywords, industries';
 
 export async function searchUniverse(filters) {
   const db = getNamingDb();
@@ -26,8 +26,15 @@ export async function searchUniverse(filters) {
   // approximate (false positives on `med` → `media.com` etc.) but it costs
   // nothing and brings real relevance until Phase 2 enrichment lands.
   const kw = sanitizeKeywords(filters.semantic_keywords);
-  const tasks = [buildQuery(db, filters, null)];
-  if (kw.length) tasks.unshift(buildQuery(db, filters, kw));
+  // Passes in priority order (merged first-wins): enriched keywords[] overlap
+  // (true semantic), enriched industries[] overlap, then SLD-substring fallback
+  // for not-yet-enriched rows, then the general top-of-universe pass.
+  const tasks = [buildQuery(db, filters, null, null)];
+  if (kw.length) {
+    tasks.unshift(buildQuery(db, filters, kw, 'sld'));
+    tasks.unshift(buildQuery(db, filters, kw, 'industries'));
+    tasks.unshift(buildQuery(db, filters, kw, 'keywords'));
+  }
   const responses = await Promise.all(tasks);
   for (const r of responses) {
     if (r.error) throw new Error(`name_universe query failed: ${r.error.message}`);
@@ -77,7 +84,7 @@ async function dropInflected(db, rows) {
   }
 }
 
-function buildQuery(db, filters, keywords) {
+function buildQuery(db, filters, keywords, matchMode) {
   let q = db.from('name_universe').select(SELECT_COLS).in('tld', filters.tlds);
   if (filters.sld_length_min != null) q = q.gte('sld_length', filters.sld_length_min);
   if (filters.sld_length_max != null) q = q.lte('sld_length', filters.sld_length_max);
@@ -94,10 +101,17 @@ function buildQuery(db, filters, keywords) {
   if (Array.isArray(filters.exclude_domains) && filters.exclude_domains.length) {
     q = q.not('domain', 'in', `(${filters.exclude_domains.join(',')})`);
   }
-  // Keyword pass: restrict the SLD to substring matches against any keyword.
-  if (keywords && keywords.length) {
-    const orClause = keywords.map((k) => `sld.ilike.%${k}%`).join(',');
-    q = q.or(orClause);
+  // Keyword pass. `matchMode` picks the matching strategy:
+  //   'keywords'   → enriched keywords[] overlaps any brief term (semantic)
+  //   'industries' → enriched industries[] overlaps any brief term (semantic)
+  //   'sld'        → SLD contains any brief term (substring fallback)
+  // overlaps() is a single-column filter so the array literal is built safely
+  // by the client (no .or() comma-splitting pitfall); the substring pass keeps
+  // the per-keyword .or() since its conditions carry no array literals.
+  if (keywords && keywords.length && matchMode) {
+    if (matchMode === 'keywords') q = q.overlaps('keywords', keywords);
+    else if (matchMode === 'industries') q = q.overlaps('industries', keywords);
+    else if (matchMode === 'sld') q = q.or(keywords.map((k) => `sld.ilike.%${k}%`).join(','));
   }
   // Ranking per the 2026-05-30 decision recorded in §3.2: quality dominates,
   // tier breaks ties at similar quality, deal_score breaks ties below that.
@@ -175,13 +189,23 @@ function shapeRow(r, keywords) {
   const rawPrice = r.best_price == null ? null : Number(r.best_price);
   const best_price = rawPrice != null && rawPrice > 0 ? rawPrice : null;
   const sld = String(r.sld || '').toLowerCase();
-  // Relevance = which of the brief's semantic_keywords appear as substrings
-  // in the SLD. Replaces the old quality_score / bucket columns in the UI
-  // because users found those abstract; matched keywords are concrete and
-  // explain WHY this candidate surfaced for the brief.
-  const matched_keywords = Array.isArray(keywords) && sld
-    ? [...new Set(keywords.filter((k) => k && sld.includes(String(k).toLowerCase())))]
-    : [];
+  // Relevance explains WHY this candidate surfaced. Hybrid:
+  //   semantic — a brief term appears in the row's enriched keywords[]/
+  //              industries[] (the name is *about* the theme), OR
+  //   substring — a brief term appears literally in the SLD (fallback).
+  // Semantic matches count double so on-theme enriched names outrank
+  // coincidental substring hits.
+  const briefKw = [...new Set(
+    (Array.isArray(keywords) ? keywords : []).map((k) => String(k || '').toLowerCase()).filter(Boolean),
+  )];
+  const enrichSet = new Set(
+    [...(Array.isArray(r.keywords) ? r.keywords : []), ...(Array.isArray(r.industries) ? r.industries : [])]
+      .map((x) => String(x || '').toLowerCase()).filter(Boolean),
+  );
+  const matched_semantic = briefKw.filter((k) => enrichSet.has(k));
+  const semSet = new Set(matched_semantic);
+  const matched_sld = briefKw.filter((k) => sld && sld.includes(k) && !semSet.has(k));
+  const matched_keywords = [...matched_semantic, ...matched_sld];
   return {
     domain: r.domain,
     sld: r.sld,
@@ -194,11 +218,15 @@ function shapeRow(r, keywords) {
     source_tier: r.source_tier == null ? null : Number(r.source_tier),
     num_words: r.num_words,
     num_syllables: r.num_syllables,
+    category: r.category || null,
+    connotation: r.connotation || null,
+    keywords: Array.isArray(r.keywords) ? r.keywords : [],
+    industries: Array.isArray(r.industries) ? r.industries : [],
     source_label: deriveSourceLabel(r),
     status: 'For Sale',
     landing_url: deriveLandingUrl(r),
     matched_keywords,
-    relevance: matched_keywords.length,
+    relevance: matched_semantic.length * 2 + matched_sld.length,
   };
 }
 
