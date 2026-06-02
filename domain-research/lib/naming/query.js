@@ -30,7 +30,7 @@ const SELECT_COLS =
 // keywords/emotions/industries text[] (enriched 2026-06), connotation TEXT.
 const MASTER_SELECT_COLS =
   'domain, price, owner, source, category, tld, sld_length, number_of_words, ' +
-  'is_single_word, dictionary_word, connotation, keywords, industries, emotions';
+  'is_single_word, dictionary_word, connotation, keywords, industries, emotions, quality_score';
 
 export async function searchUniverse(filters) {
   const db = getNamingDb();
@@ -239,7 +239,14 @@ function buildMasterQuery(db, filters, keywords, matchMode) {
     if (matchMode === 'keywords') q = q.overlaps('keywords', keywords);
     else if (matchMode === 'industries') q = q.overlaps('industries', keywords);
   }
-  q = q.order('price', { ascending: false, nullsFirst: false }).limit(ROW_LIMIT);
+  // Rank by quality_score desc (same signal Universe uses), price as the
+  // tiebreaker. Master's quality_score is backfilled with the identical
+  // wordfreq×tld formula; index idx_master_quality keeps this ordered scan fast.
+  // (Pre-backfill, quality_score is NULL → those rows sort last by price.)
+  q = q
+    .order('quality_score', { ascending: false, nullsFirst: false })
+    .order('price', { ascending: false, nullsFirst: false })
+    .limit(ROW_LIMIT);
   return q.then((r) => r);
 }
 
@@ -296,7 +303,7 @@ function normalizeMasterRow(r) {
     best_price: r.price != null ? Number(r.price) : null,
     best_price_source: r.source || null,
     sources: r.source ? [r.source] : [],
-    quality_score: null,
+    quality_score: r.quality_score != null ? Number(r.quality_score) : null,
     deal_score: null,
     source_tier: null,
     category: r.category || null,
