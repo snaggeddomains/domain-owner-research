@@ -20,7 +20,7 @@
          the app is served from /research/* (app.snagged.com/research/*). -->
     <base href="/research/" />
     <link rel="icon" href="favicon-32.png" />
-    <link rel="stylesheet" href="styles.css?v=20260602i" />
+    <link rel="stylesheet" href="styles.css?v=20260602j" />
     <!-- Layout: horizontal tab nav (Admin-style), no sidebar. -->
   </head>
   <body>
@@ -103,6 +103,7 @@
               </div>
               <div class="profile-actions">
                 <button id="profile-save" type="button" class="profile-save-btn">Save</button>
+                <a id="profile-name-edit" class="profile-edit-link" href="#" hidden>Edit</a>
                 <span id="profile-save-status" class="profile-status" hidden></span>
               </div>
             </div>
@@ -589,6 +590,6 @@ The model parses it into structured filters (TLDs, length, budget, tone, etc.) a
     </div>
 
     <!-- Bump ?v= on any public/app.js or styles.css change to bust caches. -->
-    <script src="app.js?v=20260602i"></script>
+    <script src="app.js?v=20260602j"></script>
   </body>
 </html>

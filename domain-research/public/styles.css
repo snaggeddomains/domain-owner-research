@@ -742,6 +742,9 @@ body.modal-open { overflow: hidden; }
   border:1px solid var(--line); border-radius:8px; background:var(--cream); color:var(--navy);
 }
 .profile-actions { display:flex; align-items:center; gap:10px; }
+.profile-menu input:disabled { background:var(--cream-2); color:var(--navy-3); cursor:default; opacity:.75; }
+.profile-edit-link { color:var(--teal-deep); font-weight:700; font-size:12px; text-decoration:none; cursor:pointer; }
+.profile-edit-link:hover { text-decoration:underline; }
 .profile-save-btn {
   padding:7px 14px; border-radius:8px; border:0; cursor:pointer;
   background:var(--navy); color:var(--cream-2); font-weight:700; font-size:13px; font-family:var(--body);

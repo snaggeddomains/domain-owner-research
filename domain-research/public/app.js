@@ -21,6 +21,7 @@ const els = {
   profileFirst: $('profile-first'),
   profileLast: $('profile-last'),
   profileSave: $('profile-save'),
+  profileNameEdit: $('profile-name-edit'),
   profileSaveStatus: $('profile-save-status'),
   profileNotify: $('profile-notify'),
   profilePwCurrent: $('profile-pw-current'),
@@ -1281,6 +1282,15 @@ function renderProfile(u) {
   if (els.profileLast) els.profileLast.value = u.last_name || '';
   if (els.profileNotify) els.profileNotify.checked = Boolean(u.email_notify_on_done);
   if (els.profileBtn) els.profileBtn.title = u.email;
+  // Once a full name is set, lock the fields (grayed) + show a small "Edit"
+  // link instead of the Save button. Incomplete → stay editable.
+  setNameEditing(!(u.first_name && u.last_name));
+}
+function setNameEditing(editing) {
+  if (els.profileFirst) els.profileFirst.disabled = !editing;
+  if (els.profileLast) els.profileLast.disabled = !editing;
+  if (els.profileSave) els.profileSave.hidden = !editing;
+  if (els.profileNameEdit) els.profileNameEdit.hidden = editing;
 }
 function setProfileMenu(open) {
   if (!els.profileMenu || !els.profileBtn) return;
@@ -1323,6 +1333,12 @@ els.profileSave?.addEventListener('click', async () => {
   } catch (err) {
     flashStatus(els.profileSaveStatus, err.message || 'Failed', false);
   } finally { els.profileSave.disabled = false; }
+});
+
+els.profileNameEdit?.addEventListener('click', (e) => {
+  e.preventDefault();
+  setNameEditing(true);
+  els.profileFirst?.focus();
 });
 
 els.profileNotify?.addEventListener('change', async (e) => {
