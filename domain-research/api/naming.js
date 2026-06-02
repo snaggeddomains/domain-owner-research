@@ -6,6 +6,7 @@ import { runNamingChatTurn } from '../lib/naming/chat.js';
 import { saveNamingRun, updateNamingRun, listNamingRuns, getNamingRun, renameNamingRun, setNamingRunStar } from '../lib/db/naming-runs.js';
 import { listNamingChat, addNamingChatMessage } from '../lib/db/naming-chat.js';
 import { fetchText, extractClues } from '../lib/util.js';
+import { getFreshLiveChecks, saveLiveChecks } from '../lib/db/livechecks.js';
 
 export const config = { maxDuration: 30 };
 
@@ -121,12 +122,16 @@ async function handleStar(body, res, user) {
 function classifyClues(clues, status) {
   const p = (clues && clues.parking) || {};
   if (Array.isArray(p.for_sale_signals) && p.for_sale_signals.length) return 'for_sale';
+  // A server that refuses the crawler (Cloudflare/WAF 401/403/429) is an active,
+  // protected site — parking/for-sale landers don't block bots, they want to be
+  // seen. serb.com (pharma) 403s us; treat that as in-use. (404/5xx stay unclear.)
+  if (status === 401 || status === 403 || status === 429) return 'in_use';
   const ai = clues.analytics_ids || {};
   const hasBiz = (clues.social_links || []).length > 0 || (clues.emails || []).length > 0
     || (ai.ga || []).length > 0 || (ai.gtm || []).length > 0 || (ai.meta_pixel || []).length > 0;
   const realContent = (clues.text_excerpt || '').length > 300 && Boolean(clues.title);
   // Confident active company: reachable, substantial content AND real business
-  // signals (analytics/social/emails), and no for-sale text. Only this hides.
+  // signals (analytics/social/emails), and no for-sale text.
   if (status >= 200 && status < 400 && realContent && hasBiz) return 'in_use';
   if (p.likely_parked) return 'parked';
   return 'unclear';
@@ -148,8 +153,12 @@ async function handleVerify(body, res, user) {
     ? [...new Set(body.domains.map((d) => String(d || '').toLowerCase().trim()).filter(Boolean))].slice(0, 12)
     : [];
   if (!domains.length) { res.status(200).json({ statuses: {} }); return; }
-  const pairs = await Promise.all(domains.map(async (d) => [d, await verifyDomain(d)]));
-  res.status(200).json({ statuses: Object.fromEntries(pairs) });
+  // 24h cache first — only live-fetch the misses, then persist the new results.
+  const cached = await getFreshLiveChecks(domains);
+  const misses = domains.filter((d) => !(d in cached));
+  const fresh = await Promise.all(misses.map(async (d) => [d, await verifyDomain(d)]));
+  if (fresh.length) await saveLiveChecks(fresh.map(([domain, status]) => ({ domain, status })));
+  res.status(200).json({ statuses: { ...cached, ...Object.fromEntries(fresh) } });
 }
 
 // Set a custom project name on a run (owner or admin only). Empty title clears.

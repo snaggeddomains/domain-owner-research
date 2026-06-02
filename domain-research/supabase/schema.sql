@@ -282,6 +282,13 @@ create table if not exists domain_research_notifications (
 create index if not exists idx_dr_notif_user on domain_research_notifications (user_id, created_at desc);
 create index if not exists idx_dr_notif_unread on domain_research_notifications (user_id) where read_at is null;
 
+-- 24h cache of the naming "is it actually for sale?" live classification (2026-06).
+create table if not exists domain_research_live_checks (
+  domain      text primary key,
+  status      text not null,
+  checked_at  timestamptz not null default now()
+);
+
 -- Tie each run back to the user that triggered it (for per-user history + email notifications).
 alter table domain_research_runs
   add column if not exists user_id uuid references domain_research_users(id) on delete set null;
