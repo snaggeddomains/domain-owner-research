@@ -84,8 +84,20 @@ async function dropInflected(db, rows) {
   }
 }
 
+// name_universe.tld is stored BARE ("com") after the 2026-06 standardization,
+// but briefs/UI express TLDs dotted (".com"). Match BOTH forms so the filter
+// works regardless of storage convention (mirrors dbsearch's tldVariants).
+function tldVariants(tlds) {
+  const out = new Set();
+  for (const t of tlds || ['.com']) {
+    const bare = String(t).replace(/^\./, '').toLowerCase();
+    if (bare) { out.add(bare); out.add('.' + bare); }
+  }
+  return [...out];
+}
+
 function buildQuery(db, filters, keywords, matchMode) {
-  let q = db.from('name_universe').select(SELECT_COLS).in('tld', filters.tlds);
+  let q = db.from('name_universe').select(SELECT_COLS).in('tld', tldVariants(filters.tlds));
   if (filters.sld_length_min != null) q = q.gte('sld_length', filters.sld_length_min);
   if (filters.sld_length_max != null) q = q.lte('sld_length', filters.sld_length_max);
   if (filters.num_words != null) q = q.eq('num_words', filters.num_words);
