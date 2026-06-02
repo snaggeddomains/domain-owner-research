@@ -82,6 +82,9 @@ const els = {
   navNaming: $('nav-naming'),
   namingInput: $('naming-input'),
   namingGo: $('naming-go'),
+  namingApply: $('naming-apply'),
+  namingPriceMin: $('nm-price-min'),
+  namingPriceMax: $('nm-price-max'),
   namingStatus: $('naming-status'),
   namingError: $('naming-error'),
   namingFilters: $('naming-filters'),
@@ -2534,6 +2537,13 @@ function initNamingFilters() {
 }
 initNamingFilters();
 
+// Parse a price input → finite number or null (empty / invalid = no bound).
+function numOrNull(v) {
+  if (v == null || String(v).trim() === '') return null;
+  const n = Number(String(v).replace(/[^0-9.]/g, ''));
+  return Number.isFinite(n) && n >= 0 ? n : null;
+}
+
 async function runNaming() {
   const brief = (els.namingInput?.value || '').trim();
   if (!brief) return;
@@ -2550,6 +2560,8 @@ async function runNaming() {
         connotation: [...namingConSet],
         exclude: [...namingExcludeSet],
         tlds: [...namingTldSet],
+        price_min: numOrNull(els.namingPriceMin && els.namingPriceMin.value),
+        price_max: numOrNull(els.namingPriceMax && els.namingPriceMax.value),
       }),
     });
     const data = await res.json().catch(() => ({}));
@@ -3175,6 +3187,10 @@ els.reportMeta?.addEventListener('click', (e) => {
 els.tmForm?.addEventListener('submit', (e) => { e.preventDefault(); const q = els.tmQuery.value.trim(); if (q) runTrademark(q); });
 els.apForm?.addEventListener('submit', (e) => { e.preventDefault(); const v = els.apDomain.value.trim(); if (v) runAppraisal(v); });
 els.namingGo?.addEventListener('click', runNaming);
+els.namingApply?.addEventListener('click', runNaming);
+[els.namingPriceMin, els.namingPriceMax].forEach((el) => el?.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') { e.preventDefault(); runNaming(); }
+}));
 els.namingInput?.addEventListener('keydown', (e) => {
   // ⌘/Ctrl + Enter submits the brief — same affordance as the Refine chat.
   if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.preventDefault(); runNaming(); }

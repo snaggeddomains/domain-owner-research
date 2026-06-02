@@ -224,6 +224,11 @@ async function handleSearch(body, res, user) {
     const VALID_FORMS = ['plural', 'past', 'ing', 'ly'];
     filters.exclude_forms = [...new Set(body.exclude.map((f) => String(f || '').toLowerCase()).filter((f) => VALID_FORMS.includes(f)))];
   }
+  // Price bounds from the UI inputs override the brief per-bound when provided
+  // (a finite number); a bound sent as null leaves the brief's value for it.
+  const uiNum = (v) => (typeof v === 'number' && isFinite(v) && v >= 0 ? v : null);
+  if (body.price_min !== undefined && uiNum(body.price_min) != null) filters.min_price = uiNum(body.price_min);
+  if (body.price_max !== undefined && uiNum(body.price_max) != null) filters.max_price = uiNum(body.price_max);
   let results;
   try {
     results = await searchUniverse(filters);

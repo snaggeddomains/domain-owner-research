@@ -276,9 +276,8 @@ button:disabled { opacity: .55; cursor: progress; }
 .show-all:hover { text-decoration: underline; }
 .tool-history-search { width: 100%; margin: 0 0 10px; }
 
-/* Naming exercise — uses the full content width (wrap--wide); the brief box
-   stays a touch narrower for comfortable typing, results/filters go full. */
-.naming-form { max-width: 1100px; margin: 0 auto; }
+/* Naming exercise — every block uses the full content width (wrap--wide). */
+.naming-form { max-width: none; margin: 0; }
 .naming-input { width: 100%; min-height: 220px; resize: vertical; padding: 16px 18px; font-family: var(--system); font-size: 1rem; line-height: 1.5; color: var(--navy); background: var(--cream-2); border: 2px solid var(--line); border-radius: var(--radius-sm); box-shadow: var(--shadow-sm); }
 .naming-input::placeholder { color: var(--navy-3); }
 .naming-actions { display: flex; align-items: center; gap: 14px; margin-top: 14px; flex-wrap: wrap; }
@@ -844,9 +843,16 @@ body.modal-open { overflow: hidden; }
 /* Naming Filters panel — three .dbs-multi dropdowns under the Find Names row */
 .naming-filters-panel { max-width: none; margin: 18px 0 0; }
 .naming-filters-heading { font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--navy-2); margin: 0 0 10px; }
-.naming-filters-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 260px)); gap: 14px; justify-content: start; }
+.naming-filters-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 240px)); gap: 16px; justify-content: start; }
 .naming-filter { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
 .naming-filter .dbs-multi { min-width: 0; }
+.naming-price-row { display: flex; gap: 8px; }
+.naming-price-input { width: 100%; min-width: 0; padding: 7px 10px; border: 1px solid #d9d2c2; border-radius: 8px; font-size: 14px; background: #fff; color: var(--navy); }
+.naming-filters-actions { display: flex; align-items: center; gap: 12px; margin-top: 16px; flex-wrap: wrap; }
+.naming-apply { background: var(--navy, #2d3a4a); color: #fff; border: none; border-radius: 999px; padding: 9px 22px; font-size: 14px; font-weight: 700; cursor: pointer; }
+.naming-apply:hover { filter: brightness(1.12); }
+.naming-filters-hint { font-size: 12.5px; color: var(--navy-3); }
+.naming-recent-foot { margin-top: 40px; padding-top: 20px; border-top: 1px solid var(--line); text-align: center; }
 /* Inline rename button on past naming runs */
 .naming-rename { margin-left: auto; flex: none; background: none; border: 1px solid #d9d2c2; border-radius: 6px; padding: 3px 9px; font-size: 12px; color: var(--navy-3); cursor: pointer; }
 .naming-rename:hover { background: var(--cream-2, #fbf7ee); color: var(--navy); }

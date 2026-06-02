@@ -412,11 +412,18 @@ The model parses it into structured filters (TLDs, length, budget, tone, etc.) a
                     <div class="dbs-multi-list" id="nm-con-list"></div>
                   </details>
                 </div>
+                <div class="naming-filter">
+                  <span class="naming-con-cap">Price ($)</span>
+                  <div class="naming-price-row">
+                    <input id="nm-price-min" class="naming-price-input" type="number" min="0" placeholder="Min" />
+                    <input id="nm-price-max" class="naming-price-input" type="number" min="0" placeholder="Max" />
+                  </div>
+                </div>
               </div>
-            </div>
-
-            <div id="naming-recent" class="recent" hidden>
-              <a id="naming-show-all" class="show-all" href="#">Recent naming exercises &rarr;</a>
+              <div class="naming-filters-actions">
+                <button id="naming-apply" type="button" class="naming-apply">Apply Filters</button>
+                <span class="naming-filters-hint">Updates the results with your filters above.</span>
+              </div>
             </div>
           </div>
 
@@ -452,6 +459,10 @@ The model parses it into structured filters (TLDs, length, budget, tone, etc.) a
             </form>
             <p id="naming-chat-error" class="login-error" hidden></p>
           </section>
+
+          <div id="naming-recent" class="recent naming-recent-foot" hidden>
+            <a id="naming-show-all" class="show-all" href="#">Recent naming exercises &rarr;</a>
+          </div>
         </section>
 
         <!-- Lessons (playbook curation). User/permission administration lives
