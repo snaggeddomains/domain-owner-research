@@ -134,9 +134,7 @@ const els = {
   dsSingle: $('ds-single'), dsDict: $('ds-dict'),
   dsWordsMin: $('ds-words-min'), dsWordsMax: $('ds-words-max'),
   dsNonum: $('ds-nonum'), dsFuzzy: $('ds-fuzzy'),
-  dsSource: $('ds-source'), dsCategory: $('ds-category'), dsEmotion: $('ds-emotion'),
-  dsConnotation: $('ds-connotation'),
-  dsOwner: $('ds-owner'), dsKeyword: $('ds-keyword'),
+  dsSource: $('ds-source'), dsOwner: $('ds-owner'), dsKeyword: $('ds-keyword'),
   dsApply: $('ds-apply'), dsReset: $('ds-reset'),
   dsDbToggle: $('ds-dbtoggle'), dsCount: $('ds-count'),
   dsStatus: $('ds-status'), dsTbody: $('ds-tbody'),
@@ -458,7 +456,79 @@ async function runDbScreen(domain) {
 
 // ── DB Search (filterable browse over name_universe) ────────────────────────
 const DS_LIMIT = 50;
-const dsState = { page: 0, sort: 'domain', dir: 'asc', activeTlds: new Set(), db: 'both' };
+const dsState = {
+  page: 0, sort: 'domain', dir: 'asc', activeTlds: new Set(), db: 'both',
+  category: new Set(), connotation: new Set(), industry: new Set(), emotion: new Set(),
+};
+
+// Controlled option lists (mirror tools/enrich.py). Industries/emotions are
+// free-form and loaded from /api/dbsearch-facets at runtime.
+const DS_CATEGORIES = [
+  'Technology & Software', 'Internet & Web', 'AI & Data', 'Finance & Fintech',
+  'Crypto & Web3', 'E-Commerce & Retail', 'Business & Professional',
+  'Marketing & Advertising', 'Media & Publishing', 'Entertainment & Gaming',
+  'Social & Community', 'Education & Learning', 'Health & Wellness',
+  'Medical & Biotech', 'Food & Drink', 'Travel & Hospitality',
+  'Real Estate & Property', 'Home & Living', 'Fashion & Beauty',
+  'Sports & Fitness', 'Automotive & Transport', 'Energy & Environment',
+  'Legal & Government', 'Nonprofit & Causes', 'Family & Parenting',
+  'Arts & Design', 'Science & Research', 'Pets & Animals',
+  'Dating & Relationships', 'Lifestyle', 'General & Other',
+];
+const DS_CONNOTATIONS = ['positive', 'somewhat positive', 'neutral', 'somewhat negative', 'negative'];
+
+// A collapsible checkbox dropdown backed by a Set in dsState[key]. Selections
+// apply on the existing "Apply filters" button (no live re-query).
+function dsMultiSelect(key, prefix, withFilter) {
+  const $id = (s) => document.getElementById(s);
+  const list = $id(`ds-${prefix}-list`), count = $id(`ds-${prefix}-count`),
+        label = $id(`ds-${prefix}-label`), filter = withFilter ? $id(`ds-${prefix}-filter`) : null;
+  const set = dsState[key];
+  let allOpts = [];
+  const summary = () => {
+    const n = set.size;
+    count.textContent = n ? String(n) : '';
+    label.textContent = n === 0 ? 'Any' : (n === 1 ? [...set][0] : `${n} selected`);
+  };
+  const render = (opts) => {
+    list.innerHTML = opts.length
+      ? opts.map((o) => `<label class="dbs-multi-opt"><input type="checkbox" value="${escapeHtml(o)}"${set.has(o) ? ' checked' : ''}/> ${escapeHtml(o)}</label>`).join('')
+      : '<div class="dbs-multi-empty">No options yet.</div>';
+  };
+  list.addEventListener('change', (e) => {
+    const cb = e.target.closest('input[type="checkbox"]'); if (!cb) return;
+    if (cb.checked) set.add(cb.value); else set.delete(cb.value);
+    summary();
+  });
+  if (filter) filter.addEventListener('input', () => {
+    const t = filter.value.trim().toLowerCase();
+    render(t ? allOpts.filter((o) => o.toLowerCase().includes(t)) : allOpts);
+  });
+  return {
+    setOptions(opts) { allOpts = opts || []; render(allOpts); summary(); },
+    clear() { set.clear(); if (filter) filter.value = ''; render(allOpts); summary(); },
+  };
+}
+
+const dsMulti = {};
+async function dsEnsureFilters() {
+  if (dsMulti._init) return;
+  dsMulti._init = true;
+  dsMulti.category = dsMultiSelect('category', 'category', false);
+  dsMulti.connotation = dsMultiSelect('connotation', 'connotation', false);
+  dsMulti.industry = dsMultiSelect('industry', 'industry', true);
+  dsMulti.emotion = dsMultiSelect('emotion', 'emotion', true);
+  dsMulti.category.setOptions(DS_CATEGORIES);
+  dsMulti.connotation.setOptions(DS_CONNOTATIONS);
+  try {
+    const res = await fetch('/research/api/dbsearch-facets');
+    if (res.ok) {
+      const d = await res.json();
+      if (Array.isArray(d.industries)) dsMulti.industry.setOptions(d.industries);
+      if (Array.isArray(d.emotions)) dsMulti.emotion.setOptions(d.emotions);
+    }
+  } catch { /* leave industries/emotions empty if facets unavailable */ }
+}
 
 function dsBuildParams() {
   const v = (el) => (el && el.value != null ? String(el.value).trim() : '');
@@ -476,9 +546,10 @@ function dsBuildParams() {
   if (els.dsNonum && els.dsNonum.checked) p.set('no_numbers', '1');
   if (els.dsFuzzy && els.dsFuzzy.checked) p.set('fuzzy', '1');
   if (v(els.dsSource)) p.set('source', v(els.dsSource));
-  if (v(els.dsCategory)) p.set('category', v(els.dsCategory));
-  if (v(els.dsEmotion)) p.set('emotion', v(els.dsEmotion));
-  if (v(els.dsConnotation)) p.set('connotation', v(els.dsConnotation));
+  if (dsState.category.size) p.set('category', [...dsState.category].join(','));
+  if (dsState.industry.size) p.set('industry', [...dsState.industry].join(','));
+  if (dsState.emotion.size) p.set('emotion', [...dsState.emotion].join(','));
+  if (dsState.connotation.size) p.set('connotation', [...dsState.connotation].join(','));
   if (v(els.dsOwner)) p.set('owner', v(els.dsOwner));
   if (v(els.dsKeyword)) p.set('keyword', v(els.dsKeyword));
   p.set('db', dsState.db);
@@ -512,6 +583,7 @@ function dsRenderRows(rows) {
 }
 
 async function fetchDbSearch() {
+  dsEnsureFilters(); // build the multi-select dropdowns + load facets (once)
   setToolStatus(els.dsStatus, 'Searching…');
   els.dsPager.hidden = true;
   try {
@@ -2913,11 +2985,12 @@ els.dsSearch?.addEventListener('submit', (e) => { e.preventDefault(); dsState.pa
 els.dsApply?.addEventListener('click', () => { dsState.page = 0; fetchDbSearch(); });
 els.dsReset?.addEventListener('click', () => {
   [els.dsQ, els.dsPriceMin, els.dsPriceMax, els.dsLenMin, els.dsLenMax, els.dsWordsMin, els.dsWordsMax,
-   els.dsSource, els.dsCategory, els.dsEmotion, els.dsConnotation, els.dsOwner, els.dsKeyword].forEach((el) => { if (el) el.value = ''; });
+   els.dsSource, els.dsOwner, els.dsKeyword].forEach((el) => { if (el) el.value = ''; });
   if (els.dsSingle) els.dsSingle.value = '';
   if (els.dsDict) els.dsDict.value = '';
   if (els.dsNonum) els.dsNonum.checked = false;
   if (els.dsFuzzy) els.dsFuzzy.checked = false;
+  ['category', 'connotation', 'industry', 'emotion'].forEach((k) => dsMulti[k] && dsMulti[k].clear());
   dsState.activeTlds.clear();
   if (els.dsTlds) els.dsTlds.querySelectorAll('button').forEach((b) => b.classList.remove('active'));
   dsState.db = 'both';

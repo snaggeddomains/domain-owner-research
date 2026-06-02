@@ -311,25 +311,30 @@
                 <input id="ds-source" type="text" placeholder="e.g. afternic, atom" />
               </div>
               <div class="dbs-fgroup"><label>Category</label>
-                <input id="ds-category" type="text" placeholder="e.g. tech, finance" />
-                <span class="dbs-hint">enrichment in progress</span>
+                <details class="dbs-multi" id="ds-category-wrap">
+                  <summary><span class="dbs-multi-label" id="ds-category-label">Any</span><span class="dbs-multi-count" id="ds-category-count"></span></summary>
+                  <div class="dbs-multi-list" id="ds-category-list"></div>
+                </details>
+              </div>
+              <div class="dbs-fgroup"><label>Industries</label>
+                <details class="dbs-multi" id="ds-industry-wrap">
+                  <summary><span class="dbs-multi-label" id="ds-industry-label">Any</span><span class="dbs-multi-count" id="ds-industry-count"></span></summary>
+                  <input type="text" class="dbs-multi-filter" id="ds-industry-filter" placeholder="Filter industries…" />
+                  <div class="dbs-multi-list" id="ds-industry-list"></div>
+                </details>
               </div>
               <div class="dbs-fgroup"><label>Emotions</label>
-                <input id="ds-emotion" type="text" placeholder="e.g. trust" />
-                <span class="dbs-hint">enrichment in progress</span>
+                <details class="dbs-multi" id="ds-emotion-wrap">
+                  <summary><span class="dbs-multi-label" id="ds-emotion-label">Any</span><span class="dbs-multi-count" id="ds-emotion-count"></span></summary>
+                  <input type="text" class="dbs-multi-filter" id="ds-emotion-filter" placeholder="Filter emotions…" />
+                  <div class="dbs-multi-list" id="ds-emotion-list"></div>
+                </details>
               </div>
               <div class="dbs-fgroup"><label>Connotation</label>
-                <select id="ds-connotation">
-                  <option value="">Any</option>
-                  <option value="positive">Positive</option>
-                  <option value="somewhat positive">Somewhat positive</option>
-                  <option value="neutral">Neutral</option>
-                  <option value="somewhat negative">Somewhat negative</option>
-                  <option value="negative">Negative</option>
-                  <option value="positive,somewhat positive">Positive-leaning</option>
-                  <option value="positive,somewhat positive,neutral">Exclude negative</option>
-                </select>
-                <span class="dbs-hint">enrichment in progress</span>
+                <details class="dbs-multi" id="ds-connotation-wrap">
+                  <summary><span class="dbs-multi-label" id="ds-connotation-label">Any</span><span class="dbs-multi-count" id="ds-connotation-count"></span></summary>
+                  <div class="dbs-multi-list" id="ds-connotation-list"></div>
+                </details>
               </div>
               <div class="dbs-fgroup"><label>Owner</label>
                 <input id="ds-owner" type="text" placeholder="Search by owner…" />

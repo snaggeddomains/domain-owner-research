@@ -47,7 +47,7 @@ const tldVariants = (arr) => bareTlds(arr).flatMap((t) => [t, '.' + t]);
 // corpus is wasteful — use the fast planner estimate. Once filtered, the set is
 // small enough that an exact count is cheap AND the accuracy matters.
 const FILTER_KEYS = ['q', 'price_min', 'price_max', 'tld', 'len_exact', 'len_min', 'len_max',
-  'single_word', 'dict_word', 'words_min', 'words_max', 'no_numbers', 'source', 'category', 'emotion', 'connotation', 'owner', 'keyword'];
+  'single_word', 'dict_word', 'words_min', 'words_max', 'no_numbers', 'source', 'category', 'emotion', 'connotation', 'industry', 'owner', 'keyword'];
 function hasActiveFilters(p) {
   return FILTER_KEYS.some((k) => str(p[k]));
 }
@@ -98,6 +98,7 @@ function buildUniverse(p, ascending, countMode) {
   const cats = csv(p.category); if (cats) q = q.in('category', cats);
   const emo = csv(p.emotion); if (emo) q = q.overlaps('emotions', emo);
   const con = csv(p.connotation); if (con) q = q.in('connotation', con);
+  const ind = csv(p.industry); if (ind) q = q.overlaps('industries', ind);
   const kw = str(p.keyword); if (kw) q = q.or(`keywords.cs.{${kw.toLowerCase()}},sld.ilike.%${kw.toLowerCase()}%`);
   return q.order(UNIVERSE_SORT[p.sort] || 'domain', { ascending, nullsFirst: false });
 }
@@ -151,6 +152,7 @@ function buildMaster(p, ascending, countMode) {
   const kw = str(p.keyword); if (kw) { const k = kw.toLowerCase(); q = q.or(`keywords.cs.{${k}},domain.ilike.%${k}%`); }
   const emo = csv(p.emotion); if (emo) q = q.overlaps('emotions', emo.map(titleCase));
   const con = csv(p.connotation); if (con) q = q.in('connotation', con);
+  const ind = csv(p.industry); if (ind) q = q.overlaps('industries', ind);
   const owner = str(p.owner); if (owner) q = q.ilike('owner', '%' + owner + '%');
   return q.order(MASTER_SORT[p.sort] || 'domain', { ascending, nullsFirst: false });
 }
