@@ -26,33 +26,35 @@ const SYSTEM = `You are parsing a domain-naming brief into a JSON filter object.
 
 {
   "tlds": [".com"],
-  "sld_length_min": 4,
-  "sld_length_max": 10,
-  "num_words": 1,
-  "dictionary_word_only": true,
+  "sld_length_min": null,
+  "sld_length_max": null,
+  "num_words": null,
+  "dictionary_word_only": false,
   "min_price": null,
-  "max_price": 5000,
-  "min_quality_score": 2.5,
-  "semantic_keywords": ["tech", "B2B", "saas"],
-  "category": "Travel & Hospitality",
-  "connotation": ["positive", "somewhat positive", "neutral"],
+  "max_price": null,
+  "min_quality_score": null,
+  "semantic_keywords": ["..."],
+  "category": null,
+  "connotation": null,
   "exclude_domains": [],
   "exclude_inflected": false,
   "include_stretch": true
 }
 
+CORE PRINCIPLE — DEFAULT BROAD. Every numeric/categorical filter above defaults to null (no constraint). Set a filter ONLY when the brief EXPLICITLY specifies it. Unrequested filters silently shrink the result set; when in doubt, return too many names, not too few. Length, price, quality floor, num_words, dictionary-only, connotation, and category are all OFF unless the brief asks for them.
+
 Rules:
 - Always include at least ".com" in tlds.
 - num_words: 1 ONLY if the brief explicitly says "one word", "single word", or "1-word only". 2 ONLY if it explicitly says "two-word only" or "exactly two words". For "one or two words", "1-2 words", "1 or 2", or anything ambiguous, return null (no constraint).
-- min_quality_score: default 2.5. quality_score is WORD-FREQUENCY-derived, so it rewards COMMON words and penalizes rare/literary/distinctive ones. Do NOT raise it for "premium", "luxury", "elevated", "literary", "evocative", or "distinctive" briefs — those want UNCOMMON words, so a high floor excludes exactly the right candidates. For evocative/literary/luxury briefs set min_quality_score to 2.0 or LOWER (1.0 is fine). Only raise above 2.5 if the brief explicitly wants common, instantly-familiar, everyday words.
+- min_quality_score: default NULL (no floor) — results are already ordered best-first, so a floor only trims names. quality_score is WORD-FREQUENCY-derived, so it rewards COMMON words and penalizes rare/literary ones; NEVER raise it for "premium"/"luxury"/"literary"/"evocative" (those want uncommon words). Set a floor ONLY if the brief explicitly wants common, instantly-familiar, everyday words — and even then keep it ≤ 2.5.
 - include_stretch: default true. Set false ONLY if the brief explicitly says to show just priced / buy-ready / immediately-purchasable names. Premium, luxury, aspirational, and one-word-dictionary briefs MUST keep it true — their best candidates are usually UNPRICED north-star options that live in the Stretch bucket; disabling stretch hides them and returns nothing.
 - sld_length_min / sld_length_max: leave BOTH null unless the brief explicitly constrains length ("short", "≤ 7 letters", "punchy"). A great single word can be 3-14 letters (almanac, sanctuary, chronicle, ensemble), so do NOT impose a tight max just because it's one word.
 - dictionary_word_only + num_words=1 together imply a very tight filter — only set both when the brief explicitly asks for a single common-English word.
 - If they say "easy to spell" without specifying word count, set dictionary_word_only: true but leave num_words: null.
 - Price: set min_price / max_price ONLY from an explicit number in the brief. If the brief gives a RANGE ("$50K to $150K"), put the low end in min_price and the high end in max_price. If it gives only an upper bound ("under $5K"), set max_price only. If the brief gives NO number — including vague words like "premium", "high-end", or "luxury" — leave BOTH null (no cap): every priced name then qualifies and unpriced names fall to Stretch. Do NOT invent a ceiling from "premium".
 - semantic_keywords: ENUMERATE 25-50 semantically-related terms — synonyms, adjacent concepts, sub-domains of the industry, tone-evocative roots — NOT just the literal nouns from the brief. The downstream filter matches these against each candidate's enriched keyword/industry tags AND the domain text, so on-theme terms surface names that are *about* the theme even when the word isn't in the domain. Breadth helps. For "health care startup," return roughly: health, care, medical, wellness, healthcare, clinic, therapy, patient, doctor, hospital, pharma, biotech, dental, hospice, cure, heal, vital, body, mind, fit, life, well, wellbeing, recovery, surgical, nurse, remedy, healing, holistic, fitness, organic. Aim for breadth, not exact synonyms. Lowercase, short, [a-z0-9] only. Skip generic words like "startup", "company", "brand".
-- category: the SINGLE best-fit brand category, copied VERBATIM from this list (or null if genuinely unclear): ${CATEGORIES.join(', ')}. This ranks on-category enriched names higher — pick the closest even if imperfect.
-- connotation: the desired brand TONE as an array of allowed grades from [${CONNOTATIONS.join(', ')}]. A premium / warm / aspirational / trustworthy brand → ["positive", "somewhat positive", "neutral"] (i.e. exclude negative). A bold/edgy brand might allow all. null if the brief gives no tone signal. Off-tone enriched names get down-ranked, so this matters for warmth/premium briefs.
+- category: set ONLY if the brief clearly names an industry/theme; then copy the SINGLE best-fit label VERBATIM from this list, else null: ${CATEGORIES.join(', ')}. It only ranks on-category enriched names higher (a soft boost), so null is fine when unsure.
+- connotation: set ONLY if the brief explicitly states a desired emotional tone (e.g. "warm", "trustworthy", "playful", "bold"); then return the allowed grades from [${CONNOTATIONS.join(', ')}] (warm/positive → ["positive", "somewhat positive", "neutral"]). Otherwise null. Users can also set this directly via the on-screen control, so default null unless the brief is explicit about tone.
 - Output JSON only — no prose, no code fences.`;
 
 export async function parseBrief(brief, env) {
@@ -109,13 +111,12 @@ export function validateFilters(raw) {
   // Guard against a parser that flipped the bounds — keep them ordered.
   if (min_price != null && max_price != null && max_price < min_price) max_price = null;
 
+  // Default NULL (no floor) — "default broad": a floor only trims names, and the
+  // results are already ordered best-first. Only honor a floor the parser set
+  // from an explicit brief signal; cap it at 3.0 so it can never be over-tight.
   const mqsRaw = Number(f.min_quality_score);
-  // §2.3 default is 2.5; cap at 3.0 since two-word names — which often have
-  // lower zipf-derived quality scores — get effectively excluded above that.
-  // The Haiku parser sometimes bumps this aggressively for "premium" briefs;
-  // the cap keeps the result set populated even when the brief reads strict.
-  let min_quality_score = Number.isFinite(mqsRaw) && mqsRaw >= 0 ? mqsRaw : 2.5;
-  if (min_quality_score > 3.0) min_quality_score = 3.0;
+  let min_quality_score = Number.isFinite(mqsRaw) && mqsRaw >= 0 ? mqsRaw : null;
+  if (min_quality_score != null && min_quality_score > 3.0) min_quality_score = 3.0;
 
   const semantic_keywords = Array.isArray(f.semantic_keywords)
     ? f.semantic_keywords.filter((k) => typeof k === 'string' && k.trim()).map((k) => k.trim().toLowerCase()).slice(0, 50)
