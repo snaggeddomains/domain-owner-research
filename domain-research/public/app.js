@@ -1862,11 +1862,10 @@ function showView(name) {
   }
   if (name === 'projects') loadProjects(els.projectsSearch.value.trim());
   if (name === 'admin') loadLessons();
-  // Data-dense tools use the full content width instead of the narrow centered
-  // column the reading-oriented views (research reports) keep.
-  const WIDE_VIEWS = new Set(['dbsearch', 'dbscreen', 'naming', 'naming-projects']);
+  // All modules use the full content width on desktop (matching the Naming
+  // Exercise) so the space isn't wasted by a narrow centered column.
   const wrap = document.querySelector('.content > .wrap');
-  if (wrap) wrap.classList.toggle('wrap--wide', WIDE_VIEWS.has(name));
+  if (wrap) wrap.classList.add('wrap--wide');
 }
 
 // ── Standalone tools (Trademark, Appraisal) ─────────────────────────────────
