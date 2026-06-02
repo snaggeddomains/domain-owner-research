@@ -2844,6 +2844,7 @@ async function runNaming() {
       namingTldCtl.setValues(t.length ? t : NM_TLD_OPTS.map((o) => o.value));
     }
     if (els.namingFiltersPanel) els.namingFiltersPanel.hidden = false; // filters appear after a run
+    if (els.namingRecentFive) els.namingRecentFive.hidden = true; // collapse the top list once results show; "View all" lives in the footer
     setNamingStatus('');
     // Deep-link to the saved run so refresh / share works, and refresh the
     // Recent strip below the form. Skip the URL update if the save failed.
@@ -3089,6 +3090,7 @@ function resetNamingView() {
   if (els.namingInput) els.namingInput.value = '';
   if (els.namingTitle) els.namingTitle.value = '';
   if (els.namingFiltersPanel) els.namingFiltersPanel.hidden = true; // filters hide until a run
+  loadNamingRecent(); // back on the entry → re-show the last-5 block under the brief
   if (els.namingFilters) { els.namingFilters.hidden = true; els.namingFilters.innerHTML = ''; }
   if (els.namingResults) els.namingResults.hidden = true;
   if (els.namingBuyReadyTable) els.namingBuyReadyTable.innerHTML = '';
@@ -3189,6 +3191,7 @@ async function openNamingRun(id) {
     namingLastResults = { run_id: r.id, filters: r.filters, buyReady: buy, stretch };
     renderNamingResults({ filters: r.filters, buyReady: buy, stretch });
     if (els.namingFiltersPanel) els.namingFiltersPanel.hidden = false; // opened run → filters visible
+    if (els.namingRecentFive) els.namingRecentFive.hidden = true; // collapse the top list; "View all" lives in the footer
     setNamingStatus('');
     // Pull chat history and replay the latest refinement (if any).
     await loadNamingChat(r.id);

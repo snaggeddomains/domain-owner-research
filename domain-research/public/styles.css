@@ -925,10 +925,15 @@ body.modal-open { overflow: hidden; }
 /* Naming Filters panel — three .dbs-multi dropdowns under the Find Names row */
 .naming-filters-panel { max-width: none; margin: 18px 0 0; }
 .naming-filters-heading { font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--navy-2); margin: 0 0 10px; }
-.naming-filters-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 240px)); gap: 16px; justify-content: start; }
-.naming-filter { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+/* Tidy fixed grid: row 1 = the three dropdowns, row 2 = the three min/max
+   ranges (price / letters / syllables). Left-aligned, capped column width so
+   the controls stay compact instead of stretching across the full-width page. */
+.naming-filters-grid { display: grid; grid-template-columns: repeat(3, minmax(190px, 260px)); gap: 16px 22px; justify-content: start; align-items: start; }
+.naming-filter { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
 .naming-filter .dbs-multi { min-width: 0; }
-.naming-filter--price { grid-column: span 2; }
+.naming-filter--price { grid-column: auto; }
+@media (max-width: 760px) { .naming-filters-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 460px) { .naming-filters-grid { grid-template-columns: 1fr; } }
 .naming-price-row { display: flex; gap: 8px; }
 /* Match the .dbs-multi dropdown fields exactly (height/border/radius/bg). */
 .naming-price-input { width: 100%; min-width: 0; box-sizing: border-box; height: 38px; padding: 7px 10px; border: 1px solid #d9d2c2; border-radius: 8px; font-size: 14px; line-height: 22px; background: #fff; color: var(--navy); }
