@@ -602,10 +602,11 @@ a.naming-card-domain:hover { color: var(--coral-deep); text-decoration: underlin
      keep the hamburger itself in the top-right. Target the id so this beats the
      verbatim `.topbar__account { display:flex }` block defined later in the file
      (equal specificity would otherwise let the later rule win). */
-  /* Surface the bell + profile chip on mobile too (next to the hamburger),
-     instead of burying account in the menu. The top bar flex-wraps, so on a
-     narrow phone the account drops to a second row rather than overflowing. */
+  /* Surface the notifications bell on mobile (next to the hamburger). The
+     profile chip is consolidated into the hamburger menu instead, so the bar
+     stays a single tidy row (bell + hamburger) rather than wrapping. */
   #topbar-account { display: flex; }
+  #profile-btn { display: none; }
   /* Keep the dropdowns on-screen on narrow viewports. */
   .notif-menu, .profile-menu { max-width: calc(100vw - 24px); }
   .nav-mobile-account { display: flex; flex-direction: column; gap: 10px; margin-top: 4px; padding-top: 12px; border-top: 1.5px solid var(--line); }
