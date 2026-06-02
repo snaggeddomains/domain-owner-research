@@ -1,4 +1,4 @@
-import { isAuthed, currentUser, requireAdmin } from '../lib/auth.js';
+import { isAuthed, currentUser, requirePermission, userCan } from '../lib/auth.js';
 import { isDbConfigured } from '../lib/db/supabase.js';
 import { createLesson, listLessons, updateLesson, deleteLesson } from '../lib/db/lessons.js';
 import { distillLesson } from '../lib/llm/distill.js';
@@ -92,7 +92,7 @@ async function route(req, res) {
   const method = req.method;
 
   if (method === 'GET') {
-    const admin = await requireAdmin(req, res);
+    const admin = await requirePermission(req, res, 'admin.lessons.approve');
     if (!admin) return;
     const status = typeof req.query.status === 'string' ? req.query.status : 'all';
     const lessons = await listLessons({ status });
@@ -110,7 +110,7 @@ async function route(req, res) {
   }
 
   if (method === 'PATCH') {
-    const admin = await requireAdmin(req, res);
+    const admin = await requirePermission(req, res, 'admin.lessons.approve');
     if (!admin) return;
     const body = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : req.body || {};
     if (!body.id) { res.status(400).json({ error: 'id required' }); return; }
@@ -120,7 +120,7 @@ async function route(req, res) {
   }
 
   if (method === 'DELETE') {
-    const admin = await requireAdmin(req, res);
+    const admin = await requirePermission(req, res, 'admin.lessons.approve');
     if (!admin) return;
     const id = req.query.id || (req.body && req.body.id);
     if (!id) { res.status(400).json({ error: 'id required' }); return; }
@@ -173,8 +173,10 @@ async function handleDistill(req, res, body) {
 
 async function handleCreate(req, res, body) {
   const user = await currentUser(req);
-  // Non-admin users can only create as 'pending' — they cannot self-approve.
-  const status = user && user.is_admin && body.status === 'approved' ? 'approved' : 'pending';
+  // Only curators (admins or `admin.lessons.approve`) can self-approve on create;
+  // everyone else submits as 'pending' for review.
+  const canApprove = Boolean(user && userCan(user, 'admin.lessons.approve'));
+  const status = canApprove && body.status === 'approved' ? 'approved' : 'pending';
   try {
     const lesson = await createLesson({
       title: body.title,
