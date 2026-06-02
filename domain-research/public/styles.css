@@ -846,16 +846,32 @@ body.modal-open { overflow: hidden; }
 .naming-filters-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 240px)); gap: 16px; justify-content: start; }
 .naming-filter { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
 .naming-filter .dbs-multi { min-width: 0; }
+.naming-filter--price { grid-column: span 2; }
 .naming-price-row { display: flex; gap: 8px; }
-.naming-price-input { width: 100%; min-width: 0; padding: 7px 10px; border: 1px solid #d9d2c2; border-radius: 8px; font-size: 14px; background: #fff; color: var(--navy); }
+/* Match the .dbs-multi dropdown fields exactly (height/border/radius/bg). */
+.naming-price-input { width: 100%; min-width: 0; box-sizing: border-box; height: 38px; padding: 7px 10px; border: 1px solid #d9d2c2; border-radius: 8px; font-size: 14px; line-height: 22px; background: #fff; color: var(--navy); }
+.naming-price-input::placeholder { color: var(--navy-3); }
+.naming-price-input:focus { outline: none; border-color: var(--coral, #e08a6f); }
 .naming-filters-actions { display: flex; align-items: center; gap: 12px; margin-top: 16px; flex-wrap: wrap; }
 .naming-apply { background: var(--navy, #2d3a4a); color: #fff; border: none; border-radius: 999px; padding: 9px 22px; font-size: 14px; font-weight: 700; cursor: pointer; }
 .naming-apply:hover { filter: brightness(1.12); }
 .naming-filters-hint { font-size: 12.5px; color: var(--navy-3); }
 .naming-recent-foot { margin-top: 40px; padding-top: 20px; border-top: 1px solid var(--line); text-align: center; }
 /* Inline rename button on past naming runs */
-.naming-rename { margin-left: auto; flex: none; background: none; border: 1px solid #d9d2c2; border-radius: 6px; padding: 3px 9px; font-size: 12px; color: var(--navy-3); cursor: pointer; }
+.naming-rename { flex: none; background: none; border: 1px solid #d9d2c2; border-radius: 6px; padding: 3px 9px; font-size: 12px; color: var(--navy-3); cursor: pointer; }
 .naming-rename:hover { background: var(--cream-2, #fbf7ee); color: var(--navy); }
+/* Star / favorite toggle on past naming runs */
+.naming-star { flex: none; background: none; border: none; padding: 0 6px 0 0; font-size: 18px; line-height: 1; color: var(--navy-3); cursor: pointer; }
+.naming-star.on { color: #e0a93f; }
+.naming-star:hover { color: #e0a93f; }
+.recent-run .naming-rename { margin-left: auto; }
+/* Past Naming Runs controls: search + All/Starred toggle */
+.naming-projects-controls { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
+.naming-projects-controls .projects-search { margin: 0; flex: 1 1 280px; }
+.naming-scope-toggle { display: inline-flex; border: 1.5px solid #d9d2c2; border-radius: 999px; overflow: hidden; flex: none; }
+.naming-scope-btn { padding: 7px 16px; border: none; background: #fff; font-size: 13.5px; font-weight: 600; color: var(--navy); cursor: pointer; }
+.naming-scope-btn + .naming-scope-btn { border-left: 1px solid #e3ddcf; }
+.naming-scope-btn.active { background: var(--coral, #e08a6f); color: #fff; }
 .dbs-factions { display: flex; gap: 8px; margin-top: 4px; }
 .dbs-factions .btn-primary { background: var(--coral, #e08a6f); color: #fff; border: none; }
 .dbs-resultswrap { flex: 1 1 auto; min-width: 0; }

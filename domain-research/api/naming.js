@@ -3,7 +3,7 @@ import { isNamingDbConfigured } from '../lib/db/supabase-naming.js';
 import { parseBrief } from '../lib/naming/brief.js';
 import { searchUniverse } from '../lib/naming/query.js';
 import { runNamingChatTurn } from '../lib/naming/chat.js';
-import { saveNamingRun, listNamingRuns, getNamingRun, renameNamingRun } from '../lib/db/naming-runs.js';
+import { saveNamingRun, listNamingRuns, getNamingRun, renameNamingRun, setNamingRunStar } from '../lib/db/naming-runs.js';
 import { listNamingChat, addNamingChatMessage } from '../lib/db/naming-chat.js';
 
 export const config = { maxDuration: 30 };
@@ -42,8 +42,9 @@ export default async function handler(req, res) {
       const q = typeof req.query.q === 'string' ? req.query.q.slice(0, 200) : '';
       // Scope to the user's own runs; admins see everything.
       const scope = user && user.is_admin ? null : (user && user.id ? user.id : null);
+      const starred_only = req.query.starred === '1' || req.query.starred === 'true';
       try {
-        const runs = await listNamingRuns({ user_id: scope, q, limit: 100 });
+        const runs = await listNamingRuns({ user_id: scope, q, limit: 100, starred_only });
         res.status(200).json({ runs });
       } catch (e) {
         const msg = String(e.message || e);
@@ -87,7 +88,26 @@ export default async function handler(req, res) {
   if (action === 'export') return handleExport(body, res);
   if (action === 'chat') return handleChat(body, res, user);
   if (action === 'rename') return handleRename(body, res, user);
+  if (action === 'star') return handleStar(body, res, user);
   res.status(400).json({ error: `Unknown action: ${action}` });
+}
+
+// Star/unstar a run (owner or admin only).
+async function handleStar(body, res, user) {
+  const id = typeof body.id === 'string' ? body.id : '';
+  if (!id) { res.status(400).json({ error: 'id is required' }); return; }
+  const run = await getNamingRun(id);
+  if (!run) { res.status(404).json({ error: 'Run not found' }); return; }
+  if (user && !user.is_admin && run.user_id && run.user_id !== user.id) {
+    res.status(403).json({ error: 'Not your run' });
+    return;
+  }
+  try {
+    const updated = await setNamingRunStar(id, Boolean(body.starred));
+    res.status(200).json({ ok: true, run: updated });
+  } catch (e) {
+    res.status(500).json({ error: String(e.message || e) });
+  }
 }
 
 // Set a custom project name on a run (owner or admin only). Empty title clears.

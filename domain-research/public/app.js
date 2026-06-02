@@ -100,6 +100,7 @@ const els = {
   namingShowAll: $('naming-show-all'),
   namingProjectsSearch: $('naming-projects-search'),
   namingProjectsList: $('naming-projects-list'),
+  namingScopeToggle: $('naming-scope-toggle'),
   namingChat: $('naming-chat'),
   namingChatThread: $('naming-chat-thread'),
   namingChatForm: $('naming-chat-form'),
@@ -2825,23 +2826,27 @@ async function loadNamingRecent() {
 }
 
 // Past Naming Runs view — searchable list, mirrors loadProjects().
+let namingScope = 'all'; // 'all' | 'starred'
 async function loadNamingProjects(q = '') {
   if (!els.namingProjectsList) return;
   els.namingProjectsList.innerHTML = '<li class="muted">Loading…</li>';
   try {
-    const res = await fetch(`/research/api/naming?list=1&q=${encodeURIComponent(q)}`);
+    const starredParam = namingScope === 'starred' ? '&starred=1' : '';
+    const res = await fetch(`/research/api/naming?list=1&q=${encodeURIComponent(q)}${starredParam}`);
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || `Failed (${res.status})`);
     const runs = data.runs || [];
     if (!runs.length) {
-      els.namingProjectsList.innerHTML = '<li class="muted">No naming runs yet.</li>';
+      els.namingProjectsList.innerHTML = `<li class="muted">${namingScope === 'starred' ? 'No starred runs yet — tap ☆ on a run to favorite it.' : 'No naming runs yet.'}</li>`;
       return;
     }
     els.namingProjectsList.innerHTML = runs.map((r) => {
       const when = r.created_at ? new Date(r.created_at).toLocaleString() : '';
       const snippet = String(r.brief || '').replace(/\s+/g, ' ').slice(0, 160);
       const label = r.title ? r.title : (snippet || '(empty brief)');
+      const on = !!r.starred;
       return `<li class="recent-run" data-id="${escapeHtml(r.id)}">` +
+        `<button class="naming-star${on ? ' on' : ''}" type="button" data-id="${escapeHtml(r.id)}" data-starred="${on ? '1' : '0'}" title="${on ? 'Unstar' : 'Star'}" aria-label="${on ? 'Unstar' : 'Star'}">${on ? '★' : '☆'}</button>` +
         `<span class="recent-domain">${escapeHtml(label)}</span>` +
         `<span class="recent-when">${escapeHtml(when)}</span>` +
         `<button class="naming-rename" type="button" data-id="${escapeHtml(r.id)}" data-title="${escapeHtml(r.title || '')}" title="Rename">✎ Rename</button>` +
@@ -3122,8 +3127,37 @@ els.namingShowAll?.addEventListener('click', (e) => {
   loadNamingProjects('');
 });
 
-// Past Naming Runs list — same click pattern as Recent, plus inline rename.
+// Past Naming Runs list — open on click; inline star + rename.
 els.namingProjectsList?.addEventListener('click', async (e) => {
+  const starBtn = e.target.closest('.naming-star');
+  if (starBtn) {
+    e.stopPropagation();
+    const id = starBtn.dataset.id;
+    const starred = starBtn.dataset.starred !== '1'; // toggle
+    // optimistic UI
+    starBtn.textContent = starred ? '★' : '☆';
+    starBtn.dataset.starred = starred ? '1' : '0';
+    starBtn.classList.toggle('on', starred);
+    try {
+      const res = await fetch('/research/api/naming', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ action: 'star', id, starred }),
+      });
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || `Star failed (${res.status})`);
+      // In the Starred view, unstarring should drop the row.
+      if (namingScope === 'starred' && !starred) {
+        loadNamingProjects(els.namingProjectsSearch ? els.namingProjectsSearch.value : '');
+      }
+    } catch (err) {
+      // revert optimistic change
+      starBtn.textContent = starred ? '☆' : '★';
+      starBtn.dataset.starred = starred ? '0' : '1';
+      starBtn.classList.toggle('on', !starred);
+      alert(String(err.message || err));
+    }
+    return;
+  }
   const renameBtn = e.target.closest('.naming-rename');
   if (renameBtn) {
     e.stopPropagation();
@@ -3152,6 +3186,15 @@ els.namingProjectsList?.addEventListener('click', async (e) => {
   history.pushState(null, '', `/research/naming/${encodeURIComponent(id)}`);
   showView('naming');
   openNamingRun(id);
+});
+
+// All vs ★ Starred scope toggle on the Past Naming Runs view.
+els.namingScopeToggle?.addEventListener('click', (e) => {
+  const btn = e.target.closest('.naming-scope-btn');
+  if (!btn) return;
+  namingScope = btn.dataset.scope === 'starred' ? 'starred' : 'all';
+  els.namingScopeToggle.querySelectorAll('.naming-scope-btn').forEach((b) => b.classList.toggle('active', b === btn));
+  loadNamingProjects(els.namingProjectsSearch ? els.namingProjectsSearch.value.trim() : '');
 });
 
 // Debounced search box on the Past Naming Runs view.
@@ -3188,9 +3231,16 @@ els.tmForm?.addEventListener('submit', (e) => { e.preventDefault(); const q = el
 els.apForm?.addEventListener('submit', (e) => { e.preventDefault(); const v = els.apDomain.value.trim(); if (v) runAppraisal(v); });
 els.namingGo?.addEventListener('click', runNaming);
 els.namingApply?.addEventListener('click', runNaming);
-[els.namingPriceMin, els.namingPriceMax].forEach((el) => el?.addEventListener('keydown', (e) => {
-  if (e.key === 'Enter') { e.preventDefault(); runNaming(); }
-}));
+// Live-format price inputs as "$1,234,567"; Enter applies.
+function formatPriceField(el) {
+  const digits = String(el.value).replace(/[^0-9]/g, '');
+  el.value = digits ? '$' + Number(digits).toLocaleString('en-US') : '';
+}
+[els.namingPriceMin, els.namingPriceMax].forEach((el) => {
+  if (!el) return;
+  el.addEventListener('input', () => formatPriceField(el));
+  el.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); runNaming(); } });
+});
 els.namingInput?.addEventListener('keydown', (e) => {
   // ⌘/Ctrl + Enter submits the brief — same affordance as the Refine chat.
   if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.preventDefault(); runNaming(); }

@@ -203,7 +203,13 @@
         <section id="view-naming-projects" hidden>
           <h1 class="page-title">Past <span class="accent">Naming Runs</span></h1>
           <p class="sub">Open a saved brief to revisit its results and edit the brief to re-run.</p>
-          <input id="naming-projects-search" class="projects-search" type="text" placeholder="Search by brief text…" autocomplete="off" />
+          <div class="naming-projects-controls">
+            <input id="naming-projects-search" class="projects-search" type="text" placeholder="Search by brief text…" autocomplete="off" />
+            <div class="naming-scope-toggle" id="naming-scope-toggle" role="tablist">
+              <button type="button" class="naming-scope-btn active" data-scope="all">All</button>
+              <button type="button" class="naming-scope-btn" data-scope="starred">★ Starred</button>
+            </div>
+          </div>
           <ul id="naming-projects-list" class="projects-list"></ul>
         </section>
 
@@ -412,11 +418,11 @@ The model parses it into structured filters (TLDs, length, budget, tone, etc.) a
                     <div class="dbs-multi-list" id="nm-con-list"></div>
                   </details>
                 </div>
-                <div class="naming-filter">
+                <div class="naming-filter naming-filter--price">
                   <span class="naming-con-cap">Price ($)</span>
                   <div class="naming-price-row">
-                    <input id="nm-price-min" class="naming-price-input" type="number" min="0" placeholder="Min" />
-                    <input id="nm-price-max" class="naming-price-input" type="number" min="0" placeholder="Max" />
+                    <input id="nm-price-min" class="naming-price-input" type="text" inputmode="numeric" autocomplete="off" placeholder="Min" />
+                    <input id="nm-price-max" class="naming-price-input" type="text" inputmode="numeric" autocomplete="off" placeholder="Max" />
                   </div>
                 </div>
               </div>
