@@ -1,11 +1,11 @@
 import { getDb } from './supabase.js';
 
-// 24h cache of the naming "is it actually for sale?" live classification, keyed
+// 72h cache of the naming "is it actually for sale?" live classification, keyed
 // by domain, so repeated searches don't re-fetch the same landing pages.
 // All reads/writes are guarded — a missing table (pre-migration) degrades to
 // "no cache" rather than breaking verification.
 const T = 'domain_research_live_checks';
-const TTL_MS = 24 * 60 * 60 * 1000;
+const TTL_MS = 72 * 60 * 60 * 1000; // 72h — for-sale vs in-use rarely flips that fast
 
 // Return { domain: status } for rows checked within the TTL.
 export async function getFreshLiveChecks(domains) {

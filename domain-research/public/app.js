@@ -60,6 +60,8 @@ const els = {
   runControls: $('run-controls'),
   cancelRun: $('cancel-run'),
   marketStrip: $('market-strip'),
+  namebioStrip: $('namebio-strip'),
+  apNamebio: $('ap-namebio'),
   report: $('report'),
   reportDomain: $('report-domain'),
   reportConfidence: $('report-confidence'),
@@ -1891,10 +1893,53 @@ async function streamMarketStrip(domain) {
   renderMarketStrip(domain, channels, Date.now());
 }
 
+// ── NameBio previous-sales call-out ─────────────────────────────────────────
+// Shown in the Domain Owner report + the Appraisal result when NameBio has sale
+// records for the exact domain. Cache-first (kind 'nb') so re-opening a report
+// doesn't re-spend a NameBio credit; only the first view of a domain costs one.
+async function loadNameBio(domain, el) {
+  if (!el || !domain) return;
+  el.hidden = true; el.innerHTML = ''; el.dataset.domain = domain;
+  let data = null;
+  try {
+    const c = await fetch(`/research/api/lookup?kind=nb&query=${encodeURIComponent(domain)}`);
+    const cj = await c.json().catch(() => ({}));
+    if (cj && cj.found && cj.data) data = cj.data;
+  } catch { /* cache miss / offline */ }
+  if (!data) {
+    try {
+      const r = await fetch(`/research/api/lookup?source=namebio_sales&domain=${encodeURIComponent(domain)}`);
+      const rj = await r.json().catch(() => ({}));
+      if (rj && rj.ok && rj.data) {
+        data = rj.data;
+        fetch('/research/api/lookup', {
+          method: 'POST', headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ kind: 'nb', query: domain, data }),
+        }).catch(() => {});
+      }
+    } catch { /* leave empty */ }
+  }
+  if (el.dataset.domain !== domain) return; // a newer domain superseded this one
+  renderNameBio(el, data);
+}
+function renderNameBio(el, data) {
+  const sales = data && Array.isArray(data.sales) ? data.sales : [];
+  if (!sales.length) { el.hidden = true; el.innerHTML = ''; return; }
+  const fmt = (n) => '$' + Number(n).toLocaleString();
+  const rows = sales.slice(0, 10).map((s) =>
+    `<li><span class="nb-price">${fmt(s.price)}</span>`
+    + `<span class="nb-date">${escapeHtml(s.date || '')}</span>`
+    + `<span class="nb-venue">${escapeHtml(s.venue || '')}</span></li>`).join('');
+  el.innerHTML = `<div class="nb-head"><span class="nb-badge">NameBio</span> Previous sales (${sales.length})</div>`
+    + `<ul class="nb-list">${rows}</ul>`;
+  el.hidden = false;
+}
+
 async function runMarketStrip(domain, { force = false } = {}) {
   if (!els.marketStrip || !domain) return;
   els.marketStrip.hidden = false;
   els.marketStrip.dataset.domain = domain;
+  loadNameBio(domain, els.namebioStrip); // NameBio sales history (cached)
   // Cheap first paint so the quick-open links are usable instantly.
   marketPaint(domain, '<span class="ms-checking">Checking marketplaces…</span>', '');
   try {
@@ -2465,6 +2510,7 @@ function renderAppraisal(domain, a, meta) {
     block(a.weaknesses || a.cons || a.knocks, 'Main knocks') +
     (catStr ? `<div class="ap-field"><span>Categories</span> ${catStr}</div>` : '') +
     `<details class="src-detail"><summary>full appraisal</summary><pre>${raw}</pre></details>`;
+  loadNameBio(domain, els.apNamebio); // NameBio previous-sales call-out (cached)
   // Wire the Refresh button (re-renders happen each time, so re-bind every render).
   const refreshBtn = els.apResult.querySelector('button.ap-refresh');
   if (refreshBtn) {

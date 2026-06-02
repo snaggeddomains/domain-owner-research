@@ -20,14 +20,18 @@ export const config = { maxDuration: 60 };
 
 // tm = trademark, ap = appraisal, mk = marketplace "for sale" strip (cached so
 // re-opening a report doesn't re-spend Scrape.do credits on every view).
-const KINDS = new Set(['tm', 'ap', 'mk']);
-const KIND_MODULE = { tm: 'trademark', ap: 'appraisal', mk: 'domain_owner' };
+const KINDS = new Set(['tm', 'ap', 'mk', 'nb']);
+const KIND_MODULE = { tm: 'trademark', ap: 'appraisal', mk: 'domain_owner', nb: 'domain_owner' };
+
+// Sources shown in BOTH the Domain Owner and Appraisal reports — any signed-in
+// user may run them regardless of which single module they're permitted.
+const OPEN_SOURCES = new Set(['namebio_sales']);
 
 async function handleRunTool(req, res, source) {
   // Gate by the module the source belongs to (trademark_search → trademark,
-  // appraise_lookup → appraisal, others → domain_owner).
+  // appraise_lookup → appraisal, others → domain_owner) — except OPEN_SOURCES.
   const user = await currentUser(req);
-  if (user && !userCan(user, moduleForSource(source))) {
+  if (!OPEN_SOURCES.has(source) && user && !userCan(user, moduleForSource(source))) {
     res.status(403).json({ error: `You don't have access to the ${moduleForSource(source)} module` });
     return;
   }
