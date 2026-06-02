@@ -17,7 +17,15 @@ import { getMasterlistDb, isMasterlistDbConfigured } from '../db/masterlist.js';
 // priority tier (semantic keyword > semantic industry > general top), and within
 // each tier the two corpora are interleaved round-robin so Master is never
 // starved by the universe's larger row count, then deduped by domain.
-const ROW_LIMIT = 100;
+// PASS_LIMIT caps each SQL pass; BUCKET_LIMIT caps the Buy-ready and Stretch
+// buckets independently. Both are high enough to "show them all" for a realistic
+// filtered brief — the user narrows with the on-screen filters rather than us
+// truncating at 100. They're a safety ceiling (payload size / browser render /
+// statement-timeout headroom), not a product limit; raise if briefs legitimately
+// exceed them. Sorting the top-N by quality_score costs the same regardless of N
+// (the match set is sorted either way), so a larger N adds no query-timeout risk.
+const PASS_LIMIT = 500;
+const BUCKET_LIMIT = 500;
 
 const SELECT_COLS =
   'domain, sld, tld, sld_length, num_words, num_syllables, is_dictionary_word, ' +
@@ -89,7 +97,7 @@ export async function searchUniverse(filters) {
   ]);
 
   // Build priority-tiered, corpus-interleaved row lists. Within each tier the
-  // two corpora alternate so both are represented under the ROW_LIMIT cap; tiers
+  // two corpora alternate so both are represented under the per-bucket cap; tiers
   // concatenate in semantic-priority order. Master rows are normalized to the
   // universe shape on the way in. The merge loop below consumes {data} objects.
   const M = (rows) => (rows || []).map(normalizeMasterRow);
@@ -144,11 +152,11 @@ export async function searchUniverse(filters) {
       if (!conOk(row)) continue;
       if (!formOk(row)) continue;
       const bucket = isPricedInRange(row) ? priced : other;
-      if (bucket.length >= ROW_LIMIT) continue;
+      if (bucket.length >= BUCKET_LIMIT) continue;
       seen.add(row.domain);
       bucket.push(row);
     }
-    if (priced.length >= ROW_LIMIT && other.length >= ROW_LIMIT) break;
+    if (priced.length >= BUCKET_LIMIT && other.length >= BUCKET_LIMIT) break;
   }
   const merged = [...priced, ...other];
   // Post-filter: drop SLDs the english_words dictionary flags as inflected
@@ -254,7 +262,7 @@ function buildQuery(db, filters, keywords, matchMode, opts = {}) {
     .order('quality_score', { ascending: false, nullsFirst: false })
     .order('source_tier', { ascending: true })
     .order('deal_score', { ascending: false, nullsFirst: false })
-    .limit(ROW_LIMIT);
+    .limit(PASS_LIMIT);
   return q.then((r) => r); // resolve to {data, error}
 }
 
@@ -299,7 +307,7 @@ function buildMasterQuery(db, filters, keywords, matchMode, opts = {}) {
   q = q
     .order('quality_score', { ascending: false, nullsFirst: false })
     .order('price', { ascending: false, nullsFirst: false })
-    .limit(ROW_LIMIT);
+    .limit(PASS_LIMIT);
   return q.then((r) => r);
 }
 
