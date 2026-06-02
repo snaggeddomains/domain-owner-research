@@ -609,12 +609,19 @@ function deriveLandingUrl(r) {
   // wins. Only when NONE of the sources is a mapped marketplace do we fall back
   // to https://<domain> (Efty Partner, portfolio rows, Rob's purchases, etc.,
   // which generally resolve to a seller-branded lander, so still useful).
-  const candidates = [r.best_price_source, ...(Array.isArray(r.sources) ? r.sources : [])];
-  for (const c of candidates) {
-    const raw = String(c || '').toLowerCase().trim();
-    if (!raw) continue;
-    const builder = MARKETPLACE_LANDING_URL[raw];
-    if (builder) return builder(r.domain);
+  const candidates = [r.best_price_source, ...(Array.isArray(r.sources) ? r.sources : [])]
+    .map((c) => String(c || '').toLowerCase().trim()).filter(Boolean);
+  // Exact source-key match first.
+  for (const raw of candidates) {
+    if (MARKETPLACE_LANDING_URL[raw]) return MARKETPLACE_LANDING_URL[raw](r.domain);
+  }
+  // Then the leading token — feed keys are often suffixed (sedo_expired_auctions,
+  // afternic_daily, atom_wholesale). This routes those to the marketplace LISTING
+  // page (the clear for-sale view) instead of the bare domain, which may now
+  // resolve to an active site (stale listing). Snagged/efty keep exact-match above.
+  for (const raw of candidates) {
+    const base = raw.split('_')[0];
+    if (base !== raw && MARKETPLACE_LANDING_URL[base]) return MARKETPLACE_LANDING_URL[base](r.domain);
   }
   return `https://${r.domain}`;
 }
