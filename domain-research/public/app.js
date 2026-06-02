@@ -2931,6 +2931,78 @@ function renderNamingResults(data) {
     if (els.namingStretchTable) els.namingStretchTable.innerHTML = renderNamingTable(stretch, 'Stretch');
   }
   if (els.namingResults) els.namingResults.hidden = false;
+  verifyNamingResults(buy, stretch); // live "is it actually for sale?" pass (Sedo/Snagged)
+}
+
+// Sedo + direct-Snagged listings go stale — a domain listed months ago may now
+// resolve to an active company site (not really gettable). Live-classify those
+// rows and flag/hide the confident "in use" ones. Marketplace deep-links
+// (Afternic/Atom/BrandBucket) are trusted and skipped. Verified in batches of
+// 12 (server cap) so no single request is slow; results badge in progressively.
+function namingNeedsVerify(r) {
+  const lbl = String(r.source_label || '');
+  const srcs = Array.isArray(r.sources) ? r.sources : [];
+  return /sedo|snagged/i.test(lbl) || srcs.some((s) => /^(sedo|snagged)/i.test(String(s)));
+}
+async function verifyNamingResults(buy, stretch) {
+  const seen = new Set();
+  const domains = [];
+  for (const r of [...(buy || []), ...(stretch || [])]) {
+    if (!r || !r.domain || seen.has(r.domain)) continue;
+    if (!namingNeedsVerify(r)) continue;
+    seen.add(r.domain);
+    domains.push(r.domain);
+    if (domains.length >= 48) break; // bound the live-fetch work
+  }
+  if (!domains.length) return;
+  const myRun = currentNamingRunId; // bail if the user starts a new search mid-verify
+  for (let i = 0; i < domains.length; i += 12) {
+    const chunk = domains.slice(i, i + 12);
+    try {
+      const res = await fetch('/research/api/naming', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ action: 'verify', domains: chunk }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (currentNamingRunId !== myRun) return;
+      applyLiveStatuses(data.statuses || {});
+    } catch { /* leave those rows unflagged */ }
+  }
+  updateInUseControl();
+}
+function applyLiveStatuses(statuses) {
+  for (const [domain, status] of Object.entries(statuses)) {
+    if (status !== 'in_use') continue;
+    document.querySelectorAll(`.naming-card[data-domain="${(window.CSS && CSS.escape) ? CSS.escape(domain) : domain}"]`).forEach((card) => {
+      if (card.querySelector('.naming-card-inuse')) return;
+      card.classList.add('is-inuse');
+      if (namingHideInUse) card.classList.add('is-hidden');
+      const meta = card.querySelector('.naming-card-meta');
+      if (meta) meta.insertAdjacentHTML('afterbegin', '<span class="naming-card-inuse" title="The domain resolves to an active site — likely not actually for sale">In use</span>');
+    });
+  }
+}
+let namingHideInUse = true;
+function updateInUseControl() {
+  const n = document.querySelectorAll('.naming-card.is-inuse').length;
+  let bar = document.getElementById('naming-inuse-bar');
+  if (!n) { if (bar) bar.remove(); return; }
+  if (!bar) {
+    bar = document.createElement('div');
+    bar.id = 'naming-inuse-bar';
+    bar.className = 'naming-inuse-bar';
+    const results = document.getElementById('naming-results');
+    if (results) results.insertBefore(bar, results.firstChild);
+  }
+  bar.innerHTML = `<span>${n} result${n === 1 ? '' : 's'} look in-use (live site, likely not for sale).</span>`
+    + `<button type="button" id="naming-inuse-toggle">${namingHideInUse ? 'Show them' : 'Hide them'}</button>`;
+  const btn = document.getElementById('naming-inuse-toggle');
+  if (btn) btn.onclick = () => {
+    namingHideInUse = !namingHideInUse;
+    document.querySelectorAll('.naming-card.is-inuse').forEach((c) => c.classList.toggle('is-hidden', namingHideInUse));
+    updateInUseControl();
+  };
 }
 
 function renderNamingNoMatchHint(f) {
@@ -3006,7 +3078,7 @@ function renderNamingTable(rows /* , bucketLabel */) {
     const origin = r.origin === 'M' ? 'M' : 'U';
     const originBadge = `<span class="naming-card-origin origin-${origin.toLowerCase()}" title="${origin === 'M' ? 'Master Domain List' : 'Name universe'}">${origin}</span>`;
     return (
-      `<div class="naming-card">` +
+      `<div class="naming-card" data-domain="${escapeHtml(r.domain)}">` +
         `<div class="naming-card-main">` +
           `<div class="naming-card-id">` +
             domain +

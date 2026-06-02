@@ -5,6 +5,7 @@ import { searchUniverse } from '../lib/naming/query.js';
 import { runNamingChatTurn } from '../lib/naming/chat.js';
 import { saveNamingRun, updateNamingRun, listNamingRuns, getNamingRun, renameNamingRun, setNamingRunStar } from '../lib/db/naming-runs.js';
 import { listNamingChat, addNamingChatMessage } from '../lib/db/naming-chat.js';
+import { fetchText, extractClues } from '../lib/util.js';
 
 export const config = { maxDuration: 30 };
 
@@ -89,6 +90,7 @@ export default async function handler(req, res) {
   if (action === 'chat') return handleChat(body, res, user);
   if (action === 'rename') return handleRename(body, res, user);
   if (action === 'star') return handleStar(body, res, user);
+  if (action === 'verify') return handleVerify(body, res, user);
   res.status(400).json({ error: `Unknown action: ${action}` });
 }
 
@@ -108,6 +110,46 @@ async function handleStar(body, res, user) {
   } catch (e) {
     res.status(500).json({ error: String(e.message || e) });
   }
+}
+
+// Live "is this actually for sale?" check. Sedo / direct-Snagged listings go
+// stale: a domain listed months ago may now resolve to an active company site
+// (e.g. serb.com → a pharma co), so it's not really gettable. We fetch the
+// domain's live page and classify. Conservative on 'in_use' (only a confident
+// active-company signal), since that's the one the UI hides — we never want to
+// hide a genuinely for-sale name.
+function classifyClues(clues, status) {
+  const p = (clues && clues.parking) || {};
+  if (Array.isArray(p.for_sale_signals) && p.for_sale_signals.length) return 'for_sale';
+  const ai = clues.analytics_ids || {};
+  const hasBiz = (clues.social_links || []).length > 0 || (clues.emails || []).length > 0
+    || (ai.ga || []).length > 0 || (ai.gtm || []).length > 0 || (ai.meta_pixel || []).length > 0;
+  const realContent = (clues.text_excerpt || '').length > 300 && Boolean(clues.title);
+  // Confident active company: reachable, substantial content AND real business
+  // signals (analytics/social/emails), and no for-sale text. Only this hides.
+  if (status >= 200 && status < 400 && realContent && hasBiz) return 'in_use';
+  if (p.likely_parked) return 'parked';
+  return 'unclear';
+}
+
+async function verifyDomain(domain) {
+  const d = String(domain || '').toLowerCase().trim();
+  if (!d) return 'unclear';
+  try {
+    const r = await fetchText(`https://${d}/`, {}, 6000);
+    return classifyClues(extractClues(r.body || ''), r.status);
+  } catch {
+    return 'unclear'; // unreachable / blocked → don't hide
+  }
+}
+
+async function handleVerify(body, res, user) {
+  const domains = Array.isArray(body.domains)
+    ? [...new Set(body.domains.map((d) => String(d || '').toLowerCase().trim()).filter(Boolean))].slice(0, 12)
+    : [];
+  if (!domains.length) { res.status(200).json({ statuses: {} }); return; }
+  const pairs = await Promise.all(domains.map(async (d) => [d, await verifyDomain(d)]));
+  res.status(200).json({ statuses: Object.fromEntries(pairs) });
 }
 
 // Set a custom project name on a run (owner or admin only). Empty title clears.
