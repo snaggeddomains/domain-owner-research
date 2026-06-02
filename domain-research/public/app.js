@@ -2809,8 +2809,9 @@ async function exportNamingSheet() {
     if (!res.ok) throw new Error(data.error || `Export failed (${res.status})`);
     if (data.url) {
       window.open(data.url, '_blank', 'noopener,noreferrer');
+      if (data.warning && els.namingError) { els.namingError.textContent = data.warning; els.namingError.hidden = false; }
       setNamingStatus('Sheet opened in new tab.');
-      setTimeout(() => setNamingStatus(''), 2000);
+      setTimeout(() => setNamingStatus(''), 2500);
     } else {
       setNamingStatus('');
     }

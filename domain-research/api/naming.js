@@ -85,7 +85,7 @@ export default async function handler(req, res) {
   const action = String(body.action || 'search');
 
   if (action === 'search') return handleSearch(body, res, user);
-  if (action === 'export') return handleExport(body, res);
+  if (action === 'export') return handleExport(body, res, user);
   if (action === 'chat') return handleChat(body, res, user);
   if (action === 'rename') return handleRename(body, res, user);
   if (action === 'star') return handleStar(body, res, user);
@@ -295,7 +295,7 @@ async function handleSearch(body, res, user) {
 // service account (GOOGLE_SERVICE_ACCOUNT_JSON); the sheet is shared
 // anyone-with-link (reader) so the requester can open it. Columns mirror the
 // CSV export. Requires the Sheets + Drive APIs enabled on the service account.
-async function handleExport(body, res) {
+async function handleExport(body, res, user) {
   if (!process.env.GOOGLE_SERVICE_ACCOUNT_JSON) {
     res.status(501).json({
       error: 'Google Sheets export is not configured on this deployment — set GOOGLE_SERVICE_ACCOUNT_JSON. Use "Copy as CSV" meanwhile.',
@@ -342,20 +342,21 @@ async function handleExport(body, res) {
     const sheets = sheetsApi({ version: 'v4', auth: authClient });
     const drive = driveApi({ version: 'v3', auth: authClient });
 
-    const created = await sheets.spreadsheets.create({
-      requestBody: {
-        properties: { title },
-        sheets: [{ properties: { title: 'Results' } }],
-      },
-    });
+    let created;
+    try {
+      created = await sheets.spreadsheets.create({
+        requestBody: { properties: { title }, sheets: [{ properties: { title: 'Results' } }] },
+      });
+    } catch (e) {
+      res.status(500).json({ error: `Couldn't create the sheet (service account / Sheets API): ${e.message || e}` });
+      return;
+    }
     const spreadsheetId = created.data.spreadsheetId;
+    const url = created.data.spreadsheetUrl || `https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit`;
+
     await sheets.spreadsheets.values.update({
-      spreadsheetId,
-      range: 'Results!A1',
-      valueInputOption: 'RAW',
-      requestBody: { values },
+      spreadsheetId, range: 'Results!A1', valueInputOption: 'RAW', requestBody: { values },
     });
-    // Bold the header row.
     await sheets.spreadsheets.batchUpdate({
       spreadsheetId,
       requestBody: {
@@ -368,9 +369,32 @@ async function handleExport(body, res) {
         }],
       },
     });
-    await drive.permissions.create({ fileId: spreadsheetId, requestBody: { role: 'reader', type: 'anyone' } });
-    const url = created.data.spreadsheetUrl || `https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit`;
-    res.status(200).json({ url, count: rows.length });
+
+    // Share so the requester can open it. Prefer a direct share to their email
+    // (works within the Workspace even when public/"anyone" link-sharing is
+    // blocked by org policy); fall back to anyone-with-link. Non-fatal: if both
+    // are denied we still return the URL and flag it so the SA owner can grant
+    // access, rather than failing the whole export.
+    let shareWarning = null;
+    const email = user && user.email ? String(user.email) : '';
+    try {
+      if (email) {
+        await drive.permissions.create({
+          fileId: spreadsheetId,
+          sendNotificationEmail: false,
+          requestBody: { role: 'writer', type: 'user', emailAddress: email },
+        });
+      } else {
+        await drive.permissions.create({ fileId: spreadsheetId, requestBody: { role: 'reader', type: 'anyone' } });
+      }
+    } catch (e1) {
+      try {
+        await drive.permissions.create({ fileId: spreadsheetId, requestBody: { role: 'reader', type: 'anyone' } });
+      } catch (e2) {
+        shareWarning = `Sheet created but couldn't be shared automatically (${e1.message || e1}). Ask an admin to grant access, or relax Drive sharing policy.`;
+      }
+    }
+    res.status(200).json({ url, count: rows.length, ...(shareWarning ? { warning: shareWarning } : {}) });
   } catch (e) {
     res.status(500).json({ error: `Sheets export failed: ${e.message || e}` });
   }
