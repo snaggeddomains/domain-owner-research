@@ -249,6 +249,13 @@ async function handleSearch(body, res, user) {
   const uiNum = (v) => (typeof v === 'number' && isFinite(v) && v >= 0 ? v : null);
   if (body.price_min !== undefined && uiNum(body.price_min) != null) filters.min_price = uiNum(body.price_min);
   if (body.price_max !== undefined && uiNum(body.price_max) != null) filters.max_price = uiNum(body.price_max);
+  // SLD letter-count + syllable-count bounds from the UI (override the brief
+  // per-bound when a finite number is provided). Rounded to whole numbers.
+  const uiInt = (v) => { const n = uiNum(v); return n == null ? null : Math.round(n); };
+  if (body.len_min !== undefined && uiInt(body.len_min) != null) filters.sld_length_min = uiInt(body.len_min);
+  if (body.len_max !== undefined && uiInt(body.len_max) != null) filters.sld_length_max = uiInt(body.len_max);
+  if (body.syllables_min !== undefined && uiInt(body.syllables_min) != null) filters.syllables_min = uiInt(body.syllables_min);
+  if (body.syllables_max !== undefined && uiInt(body.syllables_max) != null) filters.syllables_max = uiInt(body.syllables_max);
   let results;
   try {
     results = await searchUniverse(filters);

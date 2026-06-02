@@ -142,6 +142,20 @@ export async function searchUniverse(filters) {
     const s = String(row.sld || '').toLowerCase();
     return !excludeForms.some((f) => formTests[f](s));
   };
+  // Syllable bounds applied in-memory so they cover Master too (which has no
+  // num_syllables column — normalizeMasterRow computes it). Universe rows are
+  // also SQL-filtered in buildQuery; this is the catch-all. A row with no
+  // syllable count is only dropped when a bound is actually set.
+  const sylMin = filters.syllables_min;
+  const sylMax = filters.syllables_max;
+  const sylOk = (row) => {
+    if (sylMin == null && sylMax == null) return true;
+    const n = row.num_syllables;
+    if (n == null) return false;
+    if (sylMin != null && n < sylMin) return false;
+    if (sylMax != null && n > sylMax) return false;
+    return true;
+  };
   // Two budgets so the buckets fill independently: priced (Buy-ready candidates)
   // and the rest (Stretch). A single shared cap let unpriced premium names —
   // which dominate the quality_score ordering — consume the whole window and
@@ -163,6 +177,7 @@ export async function searchUniverse(filters) {
       if (seen.has(row.domain)) continue;
       if (!conOk(row)) continue;
       if (!formOk(row)) continue;
+      if (!sylOk(row)) continue;
       const bucket = isPricedInRange(row) ? priced : other;
       if (bucket.length >= BUCKET_LIMIT) continue;
       seen.add(row.domain);
@@ -226,6 +241,8 @@ function buildQuery(db, filters, keywords, matchMode, opts = {}) {
   if (tv.length) q = q.in('tld', tv);
   if (filters.sld_length_min != null) q = q.gte('sld_length', filters.sld_length_min);
   if (filters.sld_length_max != null) q = q.lte('sld_length', filters.sld_length_max);
+  if (filters.syllables_min != null) q = q.gte('num_syllables', filters.syllables_min);
+  if (filters.syllables_max != null) q = q.lte('num_syllables', filters.syllables_max);
   if (filters.num_words != null) q = q.eq('num_words', filters.num_words);
   if (filters.dictionary_word_only) q = q.eq('is_dictionary_word', true);
   if (filters.min_quality_score != null) q = q.gte('quality_score', filters.min_quality_score);
@@ -366,6 +383,23 @@ function interleave(a, b) {
   return out;
 }
 
+// Vowel-group syllable estimate — mirrors the pipeline's Python count_syllables
+// (filters/universe.py) so Master rows (no num_syllables column) can be filtered
+// on the same basis as Universe rows that carry the ingest-computed value.
+function countSyllables(sld) {
+  const s = String(sld || '').toLowerCase();
+  if (!s) return 0;
+  let count = 0;
+  let prevVowel = false;
+  for (const c of s) {
+    const isV = 'aeiouy'.includes(c);
+    if (isV && !prevVowel) count += 1;
+    prevVowel = isV;
+  }
+  if (s.endsWith('e') && count > 1 && !/(le|ee|ye)$/.test(s)) count -= 1;
+  return Math.max(1, count);
+}
+
 // Project a Master Domain List row into the universe row shape the rest of the
 // pipeline (conOk/formOk filters, shapeRow, splitAndShape) expects. Master has
 // no `sld` column, so derive it from the domain; no quality_score/deal_score, so
@@ -379,7 +413,7 @@ function normalizeMasterRow(r) {
     tld: r.tld || (domain.includes('.') ? domain.slice(domain.indexOf('.') + 1) : null),
     sld_length: r.sld_length != null ? Number(r.sld_length) : sld.length,
     num_words: r.number_of_words != null ? Number(r.number_of_words) : null,
-    num_syllables: null,
+    num_syllables: countSyllables(sld),
     is_dictionary_word: r.dictionary_word === 'Y',
     best_price: r.price != null ? Number(r.price) : null,
     best_price_source: r.source || null,

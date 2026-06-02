@@ -105,6 +105,10 @@ const els = {
   namingFiltersPanel: $('naming-filters-panel'),
   namingPriceMin: $('nm-price-min'),
   namingPriceMax: $('nm-price-max'),
+  namingLenMin: $('nm-len-min'),
+  namingLenMax: $('nm-len-max'),
+  namingSylMin: $('nm-syl-min'),
+  namingSylMax: $('nm-syl-max'),
   namingStatus: $('naming-status'),
   namingError: $('naming-error'),
   namingFilters: $('naming-filters'),
@@ -2697,6 +2701,10 @@ async function runNaming() {
         tlds: (namingTldSet.size === 0 || namingTldSet.size >= NM_TLD_OPTS.length) ? null : [...namingTldSet],
         price_min: numOrNull(els.namingPriceMin && els.namingPriceMin.value),
         price_max: numOrNull(els.namingPriceMax && els.namingPriceMax.value),
+        len_min: numOrNull(els.namingLenMin && els.namingLenMin.value),
+        len_max: numOrNull(els.namingLenMax && els.namingLenMax.value),
+        syllables_min: numOrNull(els.namingSylMin && els.namingSylMin.value),
+        syllables_max: numOrNull(els.namingSylMax && els.namingSylMax.value),
       }),
     });
     const data = await res.json().catch(() => ({}));

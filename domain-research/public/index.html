@@ -20,7 +20,7 @@
          the app is served from /research/* (app.snagged.com/research/*). -->
     <base href="/research/" />
     <link rel="icon" href="favicon-32.png" />
-    <link rel="stylesheet" href="styles.css?v=20260602f" />
+    <link rel="stylesheet" href="styles.css?v=20260602g" />
     <!-- Layout: horizontal tab nav (Admin-style), no sidebar. -->
   </head>
   <body>
@@ -471,6 +471,20 @@ The model parses it into structured filters (TLDs, length, budget, tone, etc.) a
                     <input id="nm-price-max" class="naming-price-input" type="text" inputmode="numeric" autocomplete="off" placeholder="Max" />
                   </div>
                 </div>
+                <div class="naming-filter naming-filter--price">
+                  <span class="naming-con-cap">Letters (SLD)</span>
+                  <div class="naming-price-row">
+                    <input id="nm-len-min" class="naming-price-input" type="text" inputmode="numeric" autocomplete="off" placeholder="Min" />
+                    <input id="nm-len-max" class="naming-price-input" type="text" inputmode="numeric" autocomplete="off" placeholder="Max" />
+                  </div>
+                </div>
+                <div class="naming-filter naming-filter--price">
+                  <span class="naming-con-cap">Syllables</span>
+                  <div class="naming-price-row">
+                    <input id="nm-syl-min" class="naming-price-input" type="text" inputmode="numeric" autocomplete="off" placeholder="Min" />
+                    <input id="nm-syl-max" class="naming-price-input" type="text" inputmode="numeric" autocomplete="off" placeholder="Max" />
+                  </div>
+                </div>
               </div>
               <div class="naming-filters-actions">
                 <button id="naming-apply" type="button" class="naming-apply">Apply Filters</button>
@@ -557,6 +571,6 @@ The model parses it into structured filters (TLDs, length, budget, tone, etc.) a
     </div>
 
     <!-- Bump ?v= on any public/app.js or styles.css change to bust caches. -->
-    <script src="app.js?v=20260602f"></script>
+    <script src="app.js?v=20260602g"></script>
   </body>
 </html>
