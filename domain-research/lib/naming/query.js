@@ -44,12 +44,30 @@ export async function searchUniverse(filters) {
   const allowCon = Array.isArray(filters.connotation) && filters.connotation.length
     ? new Set(filters.connotation) : null;
   const conOk = (row) => !allowCon || !row.connotation || allowCon.has(String(row.connotation));
+  // Word-form exclusions (UI multi-select) applied in-memory for the same
+  // reason connotation is: a SQL regex/LIKE on the SLD over millions of rows
+  // blows the (tld, quality_score) index → statement timeout. Heuristics on the
+  // lowercased SLD; a row is dropped if its SLD matches ANY selected form.
+  const formTests = {
+    plural: (s) => /s$/.test(s) && !/(ss|us|is|as|os)$/.test(s),
+    past:   (s) => /ed$/.test(s),
+    ing:    (s) => /ing$/.test(s),
+    ly:     (s) => /ly$/.test(s),
+  };
+  const excludeForms = Array.isArray(filters.exclude_forms)
+    ? filters.exclude_forms.filter((f) => formTests[f]) : [];
+  const formOk = (row) => {
+    if (!excludeForms.length) return true;
+    const s = String(row.sld || '').toLowerCase();
+    return !excludeForms.some((f) => formTests[f](s));
+  };
   const seen = new Set();
   const merged = [];
   for (const r of responses) {
     for (const row of r.data || []) {
       if (seen.has(row.domain)) continue;
       if (!conOk(row)) continue;
+      if (!formOk(row)) continue;
       seen.add(row.domain);
       merged.push(row);
       if (merged.length >= ROW_LIMIT) break;
@@ -293,6 +311,11 @@ const MARKETPLACE_LANDING_URL = {
   atom_daily:      (d) => `https://atom.com/name/${d}`,
   sedo:            (d) => `https://sedo.com/search/details/?domain=${d}&language=us`,
   dan:             (d) => `https://dan.com/buy-domain/${d}`,
+  // Efty seller storefronts route their buy flow through the domain itself
+  // (efty.com/<domain> 301s to the seller's lander), so the deep link is stable.
+  efty:            (d) => `https://efty.com/${d}`,
+  brandbucket:     (d) => `https://www.brandbucket.com/names/${String(d).split('.')[0]}`,
+  squadhelp:       (d) => `https://www.squadhelp.com/name/${String(d).split('.')[0]}`,
   spaceship:       (d) => `https://www.spaceship.com/domain/${d}/`,
   namecheap:       (d) => `https://www.namecheap.com/domains/registration/results/?domain=${d}`,
   namecheap_bin:   (d) => `https://www.namecheap.com/domains/registration/results/?domain=${d}`,
@@ -307,12 +330,18 @@ const MARKETPLACE_LANDING_URL = {
 
 function deriveLandingUrl(r) {
   if (!r.domain) return null;
-  // Best-price source decides which marketplace URL to use — that's where the
-  // priced listing actually lives. If the source isn't mapped (Efty Partner,
-  // Braden Pollack Portfolio, Rob's purchases, etc.) we fall back to the
-  // domain itself — usually a seller-branded lander, so still useful.
-  const raw = String(r.best_price_source || (Array.isArray(r.sources) ? r.sources[0] : '') || '').toLowerCase().trim();
-  const builder = MARKETPLACE_LANDING_URL[raw];
-  if (builder) return builder(r.domain);
+  // Prefer a marketplace PURCHASE url over the domain's own (usually parked)
+  // lander. Check best_price_source first — that's where the priced listing
+  // actually lives — then every entry in sources[]; first known marketplace
+  // wins. Only when NONE of the sources is a mapped marketplace do we fall back
+  // to https://<domain> (Efty Partner, portfolio rows, Rob's purchases, etc.,
+  // which generally resolve to a seller-branded lander, so still useful).
+  const candidates = [r.best_price_source, ...(Array.isArray(r.sources) ? r.sources : [])];
+  for (const c of candidates) {
+    const raw = String(c || '').toLowerCase().trim();
+    if (!raw) continue;
+    const builder = MARKETPLACE_LANDING_URL[raw];
+    if (builder) return builder(r.domain);
+  }
   return `https://${r.domain}`;
 }

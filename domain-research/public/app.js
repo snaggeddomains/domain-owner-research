@@ -2473,32 +2473,65 @@ async function patchLesson(id, patch, rowEl) {
 // Buy-ready vs Stretch buckets. Implementation spec §1-5.
 let namingLastResults = null; // cached for CSV/Sheet export of the current view
 
-// Connotation multi-select on the naming screen. Default = all 5 (= "Any", no
-// constraint). A selected subset is sent with the search and becomes a results
-// criterion (enriched off-tone names drop out; still-unenriched rows pass).
-const namingConSet = new Set(DS_CONNOTATIONS);
-function initNamingConnotation() {
-  const list = document.getElementById('nm-con-list');
-  const label = document.getElementById('nm-con-label');
-  const count = document.getElementById('nm-con-count');
+// Filters panel multi-selects on the naming screen (reuse the .dbs-multi
+// collapsible-checkbox pattern). Each is backed by a Set that persists as
+// "memory" across searches — runNaming() reads them but never clears them.
+//
+// initNamingMulti(prefix, set, options, opts) wires one dropdown to its Set.
+//   options : [{ value, label }] (or bare strings) — the checkbox rows.
+//   opts.allLabel  : summary text when 0 OR all options are selected (the
+//                    "unconstrained" state, e.g. "Any" for connotation).
+//   opts.noneLabel : summary text when nothing is selected (e.g. "None" for
+//                    word-form exclusions, where empty = exclude nothing).
+function initNamingMulti(prefix, set, options, opts = {}) {
+  const list = document.getElementById(`nm-${prefix}-list`);
+  const label = document.getElementById(`nm-${prefix}-label`);
+  const count = document.getElementById(`nm-${prefix}-count`);
   if (!list || list._init) return;
   list._init = true;
-  const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
+  const norm = options.map((o) => (typeof o === 'string' ? { value: o, label: o } : o));
+  const labelOf = (v) => (norm.find((o) => o.value === v) || { label: v }).label;
   const summary = () => {
-    const any = namingConSet.size === 0 || namingConSet.size >= DS_CONNOTATIONS.length;
-    count.textContent = any ? '' : String(namingConSet.size);
-    label.textContent = any ? 'Any' : [...namingConSet].map(cap).join(', ');
+    const all = opts.allLabel != null && (set.size === 0 || set.size >= norm.length);
+    if (all) { count.textContent = ''; label.textContent = opts.allLabel; return; }
+    if (set.size === 0) { count.textContent = ''; label.textContent = opts.noneLabel || 'Any'; return; }
+    count.textContent = String(set.size);
+    label.textContent = [...set].map(labelOf).join(', ');
   };
-  list.innerHTML = DS_CONNOTATIONS.map((c) =>
-    `<label class="dbs-multi-opt"><input type="checkbox" value="${c}" checked/> ${cap(c)}</label>`).join('');
+  list.innerHTML = norm.map((o) =>
+    `<label class="dbs-multi-opt"><input type="checkbox" value="${escapeHtml(o.value)}"${set.has(o.value) ? ' checked' : ''}/> ${escapeHtml(o.label)}</label>`).join('');
   list.addEventListener('change', (e) => {
     const cb = e.target.closest('input[type="checkbox"]'); if (!cb) return;
-    if (cb.checked) namingConSet.add(cb.value); else namingConSet.delete(cb.value);
+    if (cb.checked) set.add(cb.value); else set.delete(cb.value);
     summary();
   });
   summary();
 }
-initNamingConnotation();
+
+// Connotation: default all 5 (= "Any", no constraint). A selected subset is
+// sent and becomes a results criterion (off-tone enriched rows drop; unenriched
+// rows pass). Keeps the nm-con-* ids and namingConSet state.
+const namingConSet = new Set(DS_CONNOTATIONS);
+// Word-form exclusions: default NONE selected (exclude nothing). Selecting a
+// form EXCLUDES those names. Stable keys sent as exclude:[...].
+const namingExcludeSet = new Set();
+const NM_EXCLUDE_OPTS = [
+  { value: 'plural', label: 'Plurals' },
+  { value: 'past', label: 'Past tense' },
+  { value: 'ing', label: '-ing' },
+  { value: 'ly', label: '-ly' },
+];
+// TLDs: default just 'com'. Sent bare as tlds:[...]; overrides the brief's TLDs.
+const namingTldSet = new Set(['com']);
+const NM_TLD_OPTS = ['com', 'net', 'org', 'io', 'ai', 'co', 'app', 'dev', 'xyz']
+  .map((t) => ({ value: t, label: '.' + t }));
+function initNamingFilters() {
+  const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
+  initNamingMulti('con', namingConSet, DS_CONNOTATIONS.map((c) => ({ value: c, label: cap(c) })), { allLabel: 'Any' });
+  initNamingMulti('exc', namingExcludeSet, NM_EXCLUDE_OPTS, { noneLabel: 'None' });
+  initNamingMulti('tld', namingTldSet, NM_TLD_OPTS, {});
+}
+initNamingFilters();
 
 async function runNaming() {
   const brief = (els.namingInput?.value || '').trim();
@@ -2510,7 +2543,13 @@ async function runNaming() {
     const res = await fetch('/research/api/naming', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ action: 'search', brief, connotation: [...namingConSet] }),
+      body: JSON.stringify({
+        action: 'search',
+        brief,
+        connotation: [...namingConSet],
+        exclude: [...namingExcludeSet],
+        tlds: [...namingTldSet],
+      }),
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.error || `Search failed (${res.status})`);
@@ -2606,44 +2645,50 @@ function renderNamingFilters(f) {
   els.namingFilters.hidden = false;
 }
 
-// 6-column table — Relevance (matched semantic keywords) replaces the old
-// Score / Bucket / Why-it-works / Notes columns which users found abstract.
-// Bucket is implicit in the section header.
+// Scannable row-card list (2026-06 redesign). Domain + price are the visual
+// anchors; source is a muted line under the domain (every row is "For sale",
+// so the old Status column is dropped). Matched-keyword chips stay as a muted
+// secondary "why it surfaced" row. "Visit" is an arrow button that opens the
+// marketplace PURCHASE url in a new tab. Same shape for Buy-ready and Stretch.
 function renderNamingTable(rows /* , bucketLabel */) {
   if (!rows.length) {
     return `<p class="naming-empty">No matches for this brief.</p>`;
   }
-  const head =
-    '<thead><tr>' +
-      '<th>Domain</th>' +
-      '<th>Price</th>' +
-      '<th>Source</th>' +
-      '<th>Status</th>' +
-      '<th>Relevance</th>' +
-      '<th>Link</th>' +
-    '</tr></thead>';
-  const body = rows.map((r) => {
+  const cards = rows.map((r) => {
     const price = r.best_price == null ? 'TBD' : `$${Number(r.best_price).toLocaleString()}`;
-    const statusClass = statusToClass(r.status);
-    const link = r.landing_url
-      ? `<a href="${escapeHtml(r.landing_url)}" target="_blank" rel="noopener noreferrer">visit</a>`
-      : '—';
+    const priceClass = r.best_price == null ? 'naming-card-price is-tbd' : 'naming-card-price';
+    const source = r.source_label ? escapeHtml(r.source_label) : '—';
     const matched = Array.isArray(r.matched_keywords) ? r.matched_keywords : [];
-    const relevance = matched.length
-      ? matched.map((k) => `<span class="naming-kw-chip">${escapeHtml(k)}</span>`).join('')
-      : `<span class="naming-kw-none">—</span>`;
+    const chips = matched.length
+      ? `<div class="naming-card-kw">${matched.map((k) => `<span class="naming-kw-chip">${escapeHtml(k)}</span>`).join('')}</div>`
+      : '';
+    const visit = r.landing_url
+      ? `<a class="naming-card-visit" href="${escapeHtml(r.landing_url)}" target="_blank" rel="noopener noreferrer" title="Open purchase page">Visit <span aria-hidden="true">&rarr;</span></a>`
+      : `<span class="naming-card-visit is-disabled" aria-hidden="true">—</span>`;
+    // The domain itself also links to the buy page so the name is clickable.
+    const domain = r.landing_url
+      ? `<a class="naming-card-domain" href="${escapeHtml(r.landing_url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(r.domain)}</a>`
+      : `<span class="naming-card-domain">${escapeHtml(r.domain)}</span>`;
     return (
-      `<tr>` +
-        `<td class="naming-domain">${escapeHtml(r.domain)}</td>` +
-        `<td>${escapeHtml(price)}</td>` +
-        `<td>${escapeHtml(r.source_label || '—')}</td>` +
-        `<td><span class="naming-status-pill ${statusClass}">${escapeHtml(r.status || '—')}</span></td>` +
-        `<td class="naming-relevance">${relevance}</td>` +
-        `<td>${link}</td>` +
-      `</tr>`
+      `<div class="naming-card">` +
+        `<div class="naming-card-main">` +
+          `<div class="naming-card-id">` +
+            domain +
+            `<div class="naming-card-meta">` +
+              `<span class="naming-card-forsale">For sale</span>` +
+              `<span class="naming-card-source">${source}</span>` +
+            `</div>` +
+            chips +
+          `</div>` +
+          `<div class="naming-card-buy">` +
+            `<div class="${priceClass}">${escapeHtml(price)}</div>` +
+            visit +
+          `</div>` +
+        `</div>` +
+      `</div>`
     );
   }).join('');
-  return `<table class="naming-table">${head}<tbody>${body}</tbody></table>`;
+  return `<div class="naming-cards">${cards}</div>`;
 }
 
 function statusToClass(status) {

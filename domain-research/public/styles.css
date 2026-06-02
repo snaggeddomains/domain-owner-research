@@ -294,11 +294,30 @@ button:disabled { opacity: .55; cursor: progress; }
 .naming-export { display: flex; gap: 8px; }
 .naming-export-btn { background: var(--cream-2); color: var(--navy); border: 2px solid var(--line); border-radius: var(--radius-sm); padding: 6px 12px; font-size: .9rem; cursor: pointer; }
 .naming-export-btn:hover { background: var(--cream); }
-.naming-table-wrap { overflow-x: auto; border: 2px solid var(--line); border-radius: var(--radius-sm); background: var(--cream-2); box-shadow: var(--shadow-sm); }
-.naming-table { width: 100%; border-collapse: collapse; font-size: .92rem; color: var(--navy); }
-.naming-table th, .naming-table td { padding: 10px 12px; text-align: left; border-bottom: 1px solid var(--line); vertical-align: middle; }
-.naming-table thead th { background: var(--cream); color: var(--navy-2); font-weight: 600; font-size: .82rem; text-transform: uppercase; letter-spacing: .03em; }
-.naming-table tbody tr:last-child td { border-bottom: none; }
+.naming-table-wrap { border: 2px solid var(--line); border-radius: var(--radius-sm); background: var(--cream-2); box-shadow: var(--shadow-sm); overflow: hidden; }
+
+/* Row-card results (2026-06 readability redesign). Domain + price are the
+   anchors; source/relevance are muted secondary lines; "Visit" is a clear
+   button to the marketplace purchase page. Buy-ready and Stretch share this. */
+.naming-cards { display: flex; flex-direction: column; }
+.naming-card { padding: 16px 18px; border-bottom: 1px solid var(--line); }
+.naming-card:last-child { border-bottom: none; }
+.naming-card:hover { background: var(--cream); }
+.naming-card-main { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; }
+.naming-card-id { min-width: 0; flex: 1 1 auto; }
+.naming-card-domain { display: inline-block; font-family: var(--mono, ui-monospace, SFMono-Regular, Menlo, monospace); font-size: 1.25rem; font-weight: 700; color: var(--navy); text-decoration: none; letter-spacing: -.01em; word-break: break-all; }
+a.naming-card-domain:hover { color: var(--coral-deep); text-decoration: underline; }
+.naming-card-meta { display: flex; align-items: center; gap: 10px; margin-top: 5px; flex-wrap: wrap; }
+.naming-card-forsale { font-size: .68rem; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: #1f7a4d; background: rgba(47,163,107,.12); border: 1px solid rgba(47,163,107,.35); border-radius: 999px; padding: 1px 8px; }
+.naming-card-source { font-size: .82rem; color: var(--navy-3); }
+.naming-card-kw { margin-top: 8px; display: flex; flex-wrap: wrap; gap: 0; opacity: .85; }
+.naming-card-buy { flex: 0 0 auto; display: flex; flex-direction: column; align-items: flex-end; gap: 10px; text-align: right; }
+.naming-card-price { font-size: 1.15rem; font-weight: 800; color: var(--navy); white-space: nowrap; }
+.naming-card-price.is-tbd { font-size: 1rem; font-weight: 700; color: var(--navy-3); }
+.naming-card-visit { display: inline-flex; align-items: center; gap: 6px; font-size: .85rem; font-weight: 700; color: var(--cream-2); background: var(--coral); border: 1.5px solid var(--coral-deep); border-radius: 999px; padding: 5px 14px; text-decoration: none; white-space: nowrap; transition: background .12s ease; }
+.naming-card-visit:hover { background: var(--coral-deep); }
+.naming-card-visit.is-disabled { background: transparent; color: var(--navy-3); border-color: var(--line); cursor: default; }
+
 .naming-domain { font-family: var(--mono, ui-monospace, SFMono-Regular, Menlo, monospace); font-weight: 600; }
 .naming-why { color: var(--navy-3); }
 .naming-notes { min-width: 140px; color: var(--navy); }
@@ -655,9 +674,10 @@ body.modal-open { overflow: hidden; }
 .chat-regen-status { font-size: .85rem; color: var(--navy-2); }
 .chat-regen-status.chat-regen-err { color: var(--coral-deep); }
 
-/* Relevance column on the naming table — matched semantic keywords as chips */
+/* Matched semantic keywords as chips — kept green (the "why it surfaced"
+   signal) but muted/secondary so they don't compete with the domain anchor. */
 .naming-relevance { line-height: 1.7; }
-.naming-kw-chip { display: inline-block; padding: 2px 9px; margin: 1px 4px 1px 0; font-size: .72rem; font-weight: 700; text-transform: lowercase; letter-spacing: .02em; background: rgba(47,163,107,.10); color: #1f7a4d; border: 1.5px solid rgba(47,163,107,.45); border-radius: 999px; }
+.naming-kw-chip { display: inline-block; padding: 1px 8px; margin: 2px 5px 2px 0; font-size: .68rem; font-weight: 600; text-transform: lowercase; letter-spacing: .02em; background: rgba(47,163,107,.08); color: #2f7a52; border: 1px solid rgba(47,163,107,.3); border-radius: 999px; }
 .naming-kw-none { color: var(--navy-3); font-size: .85rem; }
 
 /* Recent strip states (loading / empty / error) — applies to all tools */
@@ -820,6 +840,12 @@ body.modal-open { overflow: hidden; }
 .naming-connotation { display: inline-flex; align-items: center; gap: 8px; }
 .naming-con-cap { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--navy-3); }
 .naming-connotation .dbs-multi { min-width: 150px; }
+/* Naming Filters panel — three .dbs-multi dropdowns under the Find Names row */
+.naming-filters-panel { max-width: 640px; margin: 18px auto 0; }
+.naming-filters-heading { font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--navy-2); margin: 0 0 10px; }
+.naming-filters-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 14px; }
+.naming-filter { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+.naming-filter .dbs-multi { min-width: 0; }
 /* Inline rename button on past naming runs */
 .naming-rename { margin-left: auto; flex: none; background: none; border: 1px solid #d9d2c2; border-radius: 6px; padding: 3px 9px; font-size: 12px; color: var(--navy-3); cursor: pointer; }
 .naming-rename:hover { background: var(--cream-2, #fbf7ee); color: var(--navy); }

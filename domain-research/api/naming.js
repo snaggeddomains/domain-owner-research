@@ -212,6 +212,18 @@ async function handleSearch(body, res, user) {
     const picked = [...new Set(body.connotation.map((c) => String(c || '').toLowerCase()).filter((c) => VALID.includes(c)))];
     filters.connotation = picked.length === 0 || picked.length >= VALID.length ? null : picked;
   }
+  // TLD multi-select from the UI is authoritative when present — it overrides
+  // whatever TLDs the brief inferred. Sent bare ('com'); normalize defensively.
+  if (Array.isArray(body.tlds) && body.tlds.length) {
+    const tlds = body.tlds.map((t) => String(t).replace(/^\./, '').toLowerCase()).filter(Boolean);
+    if (tlds.length) filters.tlds = [...new Set(tlds)];
+  }
+  // Word-form exclusions from the UI (default none). Sanitize to the 4 known
+  // keys; applied in-memory in searchUniverse() to avoid SQL statement timeouts.
+  if (Array.isArray(body.exclude)) {
+    const VALID_FORMS = ['plural', 'past', 'ing', 'ly'];
+    filters.exclude_forms = [...new Set(body.exclude.map((f) => String(f || '').toLowerCase()).filter((f) => VALID_FORMS.includes(f)))];
+  }
   let results;
   try {
     results = await searchUniverse(filters);
