@@ -9,8 +9,25 @@ const els = {
   // signed-in email. Log out is a plain <a href="/api/logout"> — no JS handler.
   topbarAdmin: $('topbar-admin'),
   topbarAccount: $('topbar-account'),
-  topbarAccountEmail: $('topbar-account-email'),
   navAccountEmail: $('nav-account-email'),
+  // Profile menu (avatar dropdown) — name, email-on-done toggle, change password.
+  profileBtn: $('profile-btn'),
+  profileMenu: $('profile-menu'),
+  profileInitial: $('profile-initial'),
+  profileInitialLg: $('profile-initial-lg'),
+  profileNameDisplay: $('profile-name-display'),
+  profileEmail: $('profile-email'),
+  profileRole: $('profile-role'),
+  profileFirst: $('profile-first'),
+  profileLast: $('profile-last'),
+  profileSave: $('profile-save'),
+  profileSaveStatus: $('profile-save-status'),
+  profileNotify: $('profile-notify'),
+  profilePwCurrent: $('profile-pw-current'),
+  profilePwNew: $('profile-pw-new'),
+  profilePwConfirm: $('profile-pw-confirm'),
+  profilePwSave: $('profile-pw-save'),
+  profilePwStatus: $('profile-pw-status'),
   loginForm: $('login-form'),
   email: $('email'),
   password: $('password'),
@@ -1117,12 +1134,11 @@ async function checkAuth() {
     const u = data.user;
     if (!locked && u && u.email) {
       currentUser = u;
-      if (els.topbarAccountEmail) els.topbarAccountEmail.textContent = u.email;
       if (els.navAccountEmail) els.navAccountEmail.textContent = u.email;
       if (els.topbarAccount) els.topbarAccount.hidden = false;
       if (els.topbarAdmin) els.topbarAdmin.hidden = !u.is_admin;
       if (els.navAccount) els.navAccount.hidden = false;
-      if (els.navNotifyToggle) els.navNotifyToggle.checked = Boolean(u.email_notify_on_done);
+      renderProfile(u);
       gateNavByPermissions(u);
       gateReportPhaseUI(u);
       maybeAutoRunFromUrl();
@@ -1230,21 +1246,87 @@ function gateNavByPermissions(user) {
 
 els.navAdmin?.addEventListener('click', () => { history.pushState(null, '', '/research/admin'); showView('admin'); closeNav(); });
 
-// Self-serve toggle for "Email me when reports finish". PATCH /api/me;
-// optimistic UI — if the patch fails, revert the checkbox.
-els.navNotifyToggle?.addEventListener('change', async (e) => {
-  const want = e.target.checked;
+// ── Profile menu (avatar dropdown) ──────────────────────────────────────────
+// Avatar shows the first letter of the first name (or email). The dropdown
+// carries name fields, the email-on-done toggle, and a change-password form.
+function profileInitialOf(u) {
+  const src = (u && (u.first_name || u.email)) || '?';
+  return String(src).trim().charAt(0).toUpperCase() || '?';
+}
+function renderProfile(u) {
+  if (!u) return;
+  const initial = profileInitialOf(u);
+  if (els.profileInitial) els.profileInitial.textContent = initial;
+  if (els.profileInitialLg) els.profileInitialLg.textContent = initial;
+  const name = [u.first_name, u.last_name].filter(Boolean).join(' ').trim();
+  if (els.profileNameDisplay) els.profileNameDisplay.textContent = name || u.email;
+  if (els.profileEmail) els.profileEmail.textContent = u.email;
+  if (els.profileRole) els.profileRole.textContent = u.is_admin ? 'Admin' : 'Member';
+  if (els.profileFirst) els.profileFirst.value = u.first_name || '';
+  if (els.profileLast) els.profileLast.value = u.last_name || '';
+  if (els.profileNotify) els.profileNotify.checked = Boolean(u.email_notify_on_done);
+  if (els.profileBtn) els.profileBtn.title = u.email;
+}
+function setProfileMenu(open) {
+  if (!els.profileMenu || !els.profileBtn) return;
+  els.profileMenu.hidden = !open;
+  els.profileBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+}
+function flashStatus(el, msg, ok = true) {
+  if (!el) return;
+  el.textContent = msg;
+  el.hidden = false;
+  el.classList.toggle('is-err', !ok);
+  setTimeout(() => { el.hidden = true; }, 2600);
+}
+async function patchMe(body) {
+  const res = await fetch('/research/api/me', {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || 'Update failed.');
+  return data.user;
+}
+els.profileBtn?.addEventListener('click', (e) => { e.stopPropagation(); setProfileMenu(els.profileMenu.hidden); });
+els.profileMenu?.addEventListener('click', (e) => e.stopPropagation());
+document.addEventListener('click', () => setProfileMenu(false));
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') setProfileMenu(false); });
+
+els.profileSave?.addEventListener('click', async () => {
+  els.profileSave.disabled = true;
   try {
-    const res = await fetch('/research/api/me', {
-      method: 'PATCH',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ email_notify_on_done: want }),
-    });
-    if (!res.ok) throw new Error('patch failed');
-  } catch {
-    if (els.navNotifyToggle) els.navNotifyToggle.checked = !want;
-  }
+    const u = await patchMe({ first_name: els.profileFirst.value, last_name: els.profileLast.value });
+    currentUser = u; renderProfile(u);
+    flashStatus(els.profileSaveStatus, 'Saved');
+  } catch (err) {
+    flashStatus(els.profileSaveStatus, err.message || 'Failed', false);
+  } finally { els.profileSave.disabled = false; }
 });
+
+els.profileNotify?.addEventListener('change', async (e) => {
+  const want = e.target.checked;
+  try { currentUser = await patchMe({ email_notify_on_done: want }); }
+  catch { e.target.checked = !want; }
+});
+
+els.profilePwSave?.addEventListener('click', async () => {
+  const cur = els.profilePwCurrent.value, nw = els.profilePwNew.value, cf = els.profilePwConfirm.value;
+  if (nw.length < 8) { flashStatus(els.profilePwStatus, 'At least 8 characters', false); return; }
+  if (nw !== cf) { flashStatus(els.profilePwStatus, 'Passwords don’t match', false); return; }
+  els.profilePwSave.disabled = true;
+  try {
+    await patchMe({ current_password: cur, new_password: nw });
+    els.profilePwCurrent.value = els.profilePwNew.value = els.profilePwConfirm.value = '';
+    flashStatus(els.profilePwStatus, 'Password updated');
+  } catch (err) {
+    flashStatus(els.profilePwStatus, err.message || 'Failed', false);
+  } finally { els.profilePwSave.disabled = false; }
+});
+
+// (The "Email me when reports finish" toggle moved into the profile menu;
+// its handler lives with the other profile handlers above.)
 
 els.loginForm?.addEventListener('submit', async (e) => {
   e.preventDefault();

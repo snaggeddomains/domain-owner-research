@@ -61,6 +61,9 @@ export async function updateUser(id, patch) {
   if (patch.is_admin !== undefined) allowed.is_admin = Boolean(patch.is_admin);
   if (patch.permissions !== undefined) allowed.permissions = patch.permissions;
   if (patch.email_notify_on_done !== undefined) allowed.email_notify_on_done = Boolean(patch.email_notify_on_done);
+  // Self-serve profile name fields (trimmed; empty string clears to null).
+  if (patch.first_name !== undefined) allowed.first_name = String(patch.first_name || '').trim() || null;
+  if (patch.last_name !== undefined) allowed.last_name = String(patch.last_name || '').trim() || null;
   allowed.updated_at = new Date().toISOString();
   const { data, error } = await getDb().from(USERS).update(allowed).eq('id', id).select('*').single();
   if (error) throw new Error(`updateUser: ${error.message}`);

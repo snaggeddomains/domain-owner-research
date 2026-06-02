@@ -20,7 +20,7 @@
          the app is served from /research/* (app.snagged.com/research/*). -->
     <base href="/research/" />
     <link rel="icon" href="favicon-32.png" />
-    <link rel="stylesheet" href="styles.css?v=20260602e" />
+    <link rel="stylesheet" href="styles.css?v=20260602f" />
     <!-- Layout: horizontal tab nav (Admin-style), no sidebar. -->
   </head>
   <body>
@@ -71,10 +71,51 @@
           <a href="/admin" id="topbar-admin" hidden>Admin</a>
         </nav>
         <div class="topbar__account" id="topbar-account" hidden>
-          <span id="topbar-account-email"></span>
-          <!-- Plain anchor to the umbrella's logout route which clears the
-               shared .snagged.com cookie. No JS handler — full-page nav. -->
-          <a href="/api/logout">Log out</a>
+          <!-- Avatar = first letter of the email; click toggles the profile menu. -->
+          <button id="profile-btn" class="profile-avatar" type="button" aria-haspopup="true" aria-expanded="false" title="Account">
+            <span id="profile-initial">?</span>
+          </button>
+          <div id="profile-menu" class="profile-menu" hidden>
+            <div class="profile-head">
+              <span class="profile-avatar profile-avatar--lg" aria-hidden="true"><span id="profile-initial-lg">?</span></span>
+              <div class="profile-id">
+                <div id="profile-name-display" class="profile-name-display"></div>
+                <div id="profile-email" class="profile-email"></div>
+                <div id="profile-role" class="profile-role"></div>
+              </div>
+            </div>
+
+            <div class="profile-section">
+              <div class="profile-section-title">Name</div>
+              <div class="profile-row">
+                <input id="profile-first" type="text" placeholder="First name" autocomplete="given-name" />
+                <input id="profile-last" type="text" placeholder="Last name" autocomplete="family-name" />
+              </div>
+              <div class="profile-actions">
+                <button id="profile-save" type="button" class="profile-save-btn">Save</button>
+                <span id="profile-save-status" class="profile-status" hidden></span>
+              </div>
+            </div>
+
+            <div class="profile-section">
+              <label class="profile-toggle"><input type="checkbox" id="profile-notify" /> Email me when reports finish</label>
+            </div>
+
+            <details class="profile-section profile-pw">
+              <summary>Change password</summary>
+              <input id="profile-pw-current" type="password" placeholder="Current password" autocomplete="current-password" />
+              <input id="profile-pw-new" type="password" placeholder="New password (8+ characters)" autocomplete="new-password" minlength="8" />
+              <input id="profile-pw-confirm" type="password" placeholder="Confirm new password" autocomplete="new-password" minlength="8" />
+              <div class="profile-actions">
+                <button id="profile-pw-save" type="button" class="profile-save-btn">Update password</button>
+                <span id="profile-pw-status" class="profile-status" hidden></span>
+              </div>
+            </details>
+
+            <!-- Plain anchor to the umbrella's logout route which clears the
+                 shared .snagged.com cookie. No JS handler — full-page nav. -->
+            <a href="/api/logout" class="profile-logout">Log out</a>
+          </div>
         </div>
         <!-- Mobile-only hamburger, pinned to the top-right of the bar; toggles
              the module-nav dropdown. Hidden on desktop, where the sidebar nav
@@ -99,9 +140,9 @@
         <!-- Lessons (playbook curation) is admin-only and now lives in the
              umbrella Admin module; reachable directly at /research/admin. -->
         <button id="nav-admin" class="nav-btn nav-btn-admin" type="button" hidden style="display:none">Lessons</button>
+        <!-- "Email me when reports finish" moved into the profile menu (avatar,
+             top-right). Mobile keeps email + Log out here in the dropdown nav. -->
         <div class="nav-account" id="nav-account" hidden>
-          <label class="nav-account-toggle"><input type="checkbox" id="nav-notify-toggle" /> Email me when reports finish</label>
-          <!-- Mobile only: account (email + Log out) in the dropdown; desktop keeps it in the top bar. -->
           <div class="nav-mobile-account">
             <span id="nav-account-email" class="nav-account-email"></span>
             <a href="/api/logout" class="nav-logout">Log out</a>
@@ -516,6 +557,6 @@ The model parses it into structured filters (TLDs, length, budget, tone, etc.) a
     </div>
 
     <!-- Bump ?v= on any public/app.js or styles.css change to bust caches. -->
-    <script src="app.js?v=20260602e"></script>
+    <script src="app.js?v=20260602f"></script>
   </body>
 </html>

@@ -708,8 +708,53 @@ body.modal-open { overflow: hidden; }
 .topbar__nav a { padding:6px 13px; border-radius:999px; font-size:14px; font-weight:600; color:var(--navy-2); text-decoration:none; }
 .topbar__nav a:hover { background:var(--cream-2); color:var(--navy); }
 .topbar__nav a.active { background:var(--navy); color:var(--cream-2); }
-.topbar__account { margin-left:auto; display:flex; align-items:center; gap:14px; font-size:14px; }
+.topbar__account { margin-left:auto; display:flex; align-items:center; gap:14px; font-size:14px; position:relative; }
 .topbar__account a { color:var(--teal-deep); font-weight:700; text-decoration:none; }
+
+/* Avatar button (first letter of email) + profile dropdown */
+.profile-avatar {
+  width:34px; height:34px; border-radius:50%; border:0; cursor:pointer;
+  background:var(--teal-deep, #1f5f6b); color:#fff;
+  font-family:var(--body); font-weight:800; font-size:15px; line-height:1;
+  display:inline-flex; align-items:center; justify-content:center; padding:0;
+  transition:filter .15s ease, box-shadow .15s ease;
+}
+.profile-avatar:hover { filter:brightness(1.08); box-shadow:0 0 0 3px rgba(31,95,107,.18); }
+.profile-avatar--lg { width:44px; height:44px; font-size:19px; cursor:default; flex:0 0 auto; }
+
+.profile-menu {
+  position:absolute; top:calc(100% + 10px); right:0; z-index:60; width:300px;
+  background:#fff; border:1px solid var(--line); border-radius:14px;
+  box-shadow:var(--shadow-md, 0 12px 32px rgba(20,40,55,.16)); padding:14px;
+  display:flex; flex-direction:column; gap:12px; text-align:left;
+}
+.profile-head { display:flex; align-items:center; gap:12px; padding-bottom:10px; border-bottom:1px solid var(--line); }
+.profile-id { min-width:0; }
+.profile-name-display { font-weight:800; color:var(--navy); font-size:15px; overflow-wrap:anywhere; }
+.profile-email { font-size:12.5px; color:var(--navy-3); overflow-wrap:anywhere; }
+.profile-role { margin-top:3px; display:inline-block; font-size:10.5px; font-weight:700; text-transform:uppercase; letter-spacing:.05em; color:var(--teal-deep); background:rgba(31,95,107,.1); border-radius:999px; padding:1px 8px; }
+.profile-section { display:flex; flex-direction:column; gap:8px; }
+.profile-section-title { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.05em; color:var(--navy-3); }
+.profile-row { display:flex; gap:8px; }
+.profile-row input { flex:1 1 0; min-width:0; }
+.profile-menu input[type="text"], .profile-menu input[type="password"] {
+  width:100%; box-sizing:border-box; padding:8px 10px; font-size:13px; font-family:var(--body);
+  border:1px solid var(--line); border-radius:8px; background:var(--cream); color:var(--navy);
+}
+.profile-actions { display:flex; align-items:center; gap:10px; }
+.profile-save-btn {
+  padding:7px 14px; border-radius:8px; border:0; cursor:pointer;
+  background:var(--navy); color:var(--cream-2); font-weight:700; font-size:13px; font-family:var(--body);
+}
+.profile-save-btn:hover { background:#2d4f64; }
+.profile-save-btn:disabled { opacity:.6; cursor:default; }
+.profile-status { font-size:12px; color:#1f7a4d; }
+.profile-status.is-err { color:#c0392b; }
+.profile-toggle { display:flex; align-items:center; gap:8px; font-size:13px; color:var(--navy); cursor:pointer; }
+.profile-pw > summary { font-size:12px; font-weight:700; color:var(--navy-2); cursor:pointer; list-style:none; }
+.profile-pw > summary::-webkit-details-marker { display:none; }
+.profile-pw[open] > summary { margin-bottom:4px; }
+.profile-logout { align-self:flex-start; color:var(--teal-deep); font-weight:700; font-size:13px; text-decoration:none; padding-top:6px; border-top:1px solid var(--line); width:100%; }
 
 /* ── Topbar integration glue (NOT part of the umbrella spec — local) ──────
    Just enough to slot the umbrella's topbar above the existing sidebar +
@@ -722,7 +767,6 @@ body.modal-open { overflow: hidden; }
 .app-body { display: flex; align-items: stretch; flex: 1 1 auto; min-width: 0; }
 .topbar { flex-wrap: wrap; row-gap: 10px; }
 .topbar__brand { color: var(--navy); font-family: var(--body); font-weight: 800; }
-.topbar__account span { color: var(--navy-2); overflow-wrap: anywhere; }
 /* Match the umbrella's topbar logomark exactly: dashboard.css sizes
    `.wordmark .brand-mark` at 44px and snagged-brand.css sets the wordmark gap
    to 11px. Research's local `.brand-mark` is 34px/10px (for the login + sidebar
