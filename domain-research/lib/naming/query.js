@@ -66,11 +66,18 @@ export async function searchUniverse(filters) {
     keywords: null, industries: null,
     general: buildQuery(db, filters, null, null),
   };
+  // The non-priced keyword/industry passes have no price filter to narrow them,
+  // so a 50-term GIN overlap can match a huge set and the post-GIN ORDER BY
+  // quality_score sort blows the statement timeout on heavy briefs. Cap THOSE
+  // passes to the strongest terms (parser lists them best-first); the priced
+  // passes + the general pass keep the full set, and relevance scoring still
+  // uses every keyword. See the idx_universe_quality recommendation in CLAUDE.md.
+  const kwBroad = kw.slice(0, 24);
   if (kw.length) {
     universeTasks.pricedKeywords = buildQuery(db, filters, kw, 'keywords', { pricedOnly: true });
     universeTasks.pricedIndustries = buildQuery(db, filters, kw, 'industries', { pricedOnly: true });
-    universeTasks.keywords = buildQuery(db, filters, kw, 'keywords');
-    universeTasks.industries = buildQuery(db, filters, kw, 'industries');
+    universeTasks.keywords = buildQuery(db, filters, kwBroad, 'keywords');
+    universeTasks.industries = buildQuery(db, filters, kwBroad, 'industries');
   }
 
   // Master is a separate project; include it when configured. Failures are
@@ -86,8 +93,8 @@ export async function searchUniverse(filters) {
     if (kw.length) {
       masterTasks.pricedKeywords = buildMasterQuery(mdb, filters, kw, 'keywords', { pricedOnly: true });
       masterTasks.pricedIndustries = buildMasterQuery(mdb, filters, kw, 'industries', { pricedOnly: true });
-      masterTasks.keywords = buildMasterQuery(mdb, filters, kw, 'keywords');
-      masterTasks.industries = buildMasterQuery(mdb, filters, kw, 'industries');
+      masterTasks.keywords = buildMasterQuery(mdb, filters, kwBroad, 'keywords');
+      masterTasks.industries = buildMasterQuery(mdb, filters, kwBroad, 'industries');
     }
   }
 

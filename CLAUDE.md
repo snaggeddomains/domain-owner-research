@@ -75,6 +75,14 @@ matches score 2× substring in relevance. Needs GIN indexes for speed:
 `create index if not exists idx_universe_keywords_gin on name_universe using gin (keywords);`
 (same for `industries`, `emotions`).
 
+**Heavy-brief timeout (2026-06):** the non-priced keyword/industry passes have no
+price filter, so a 50-term GIN overlap matches a huge set and the post-GIN
+`ORDER BY quality_score` sort can hit the statement timeout. Per-pass fault
+tolerance means a timed-out pass is dropped (the search still returns), and the
+broad passes are now capped to the top 24 brief terms (`kwBroad`). Durable fix —
+let the planner do an ordered top-N scan + overlap recheck instead of a full
+sort: `create index if not exists idx_universe_quality on name_universe (quality_score desc nulls last);`
+
 **Naming exercise = BOTH corpora (2026-06):** `lib/naming/query.js` now queries
 `name_universe` AND the Master Domain List together — every Master row is for
 sale, so Master is always in the candidate pool. Each corpus runs the same three
