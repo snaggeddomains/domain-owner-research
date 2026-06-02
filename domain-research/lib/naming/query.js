@@ -1,15 +1,22 @@
 import { getNamingDb } from '../db/supabase-naming.js';
+import { getMasterlistDb, isMasterlistDbConfigured } from '../db/masterlist.js';
 
-// Run the parsed filters against name_universe (spec §3) and split the
-// results into Buy-ready vs Stretch (§3.4).
+// Run the parsed filters against BOTH corpora (spec §3) and split the results
+// into Buy-ready vs Stretch (§3.4):
+//   • name_universe        (SUPABASE_NAMING_*)  — the broad automated market
+//   • Master Domain List   (MASTERLIST_*)       — curated/owned, ALL for-sale
+// Everything in Master is for sale, so it's always included in the naming pool
+// (2026-06). The two tables live in different Supabase projects with different
+// schemas, so each is queried with its own column mapping and Master rows are
+// normalized to the universe row shape before merging.
 //
-// Hybrid keyword matching (2026-06): we now use the LLM enrichment on
-// name_universe. A brief's semantic_keywords are matched against the enriched
-// keywords[] / industries[] arrays FIRST (true semantic match — surfaces names
-// that are *about* a theme even when the word isn't in the domain), and fall
-// back to SLD substring matching for rows that aren't enriched yet. The three
-// passes are merged by priority (semantic keyword > semantic industry >
-// substring) and deduped, so coverage degrades gracefully as enrichment grows.
+// Hybrid keyword matching (2026-06): we use the LLM enrichment on both corpora.
+// A brief's semantic_keywords are matched against the enriched keywords[] /
+// industries[] arrays FIRST (true semantic match — surfaces names that are
+// *about* a theme even when the word isn't in the domain). Passes are merged by
+// priority tier (semantic keyword > semantic industry > general top), and within
+// each tier the two corpora are interleaved round-robin so Master is never
+// starved by the universe's larger row count, then deduped by domain.
 const ROW_LIMIT = 100;
 
 const SELECT_COLS =
@@ -17,33 +24,63 @@ const SELECT_COLS =
   'best_price, best_price_source, sources, quality_score, deal_score, source_tier, ' +
   'category, connotation, keywords, industries';
 
+// Master Domain List columns differ (see api/dbsearch.js buildMaster): domain
+// (no sld), price, owner, source (single text), category, tld, sld_length,
+// number_of_words, is_single_word / dictionary_word ('Y'/'N' TEXT), and
+// keywords/emotions/industries text[] (enriched 2026-06), connotation TEXT.
+const MASTER_SELECT_COLS =
+  'domain, price, owner, source, category, tld, sld_length, number_of_words, ' +
+  'is_single_word, dictionary_word, connotation, keywords, industries, emotions';
+
 export async function searchUniverse(filters) {
   const db = getNamingDb();
-  // Two queries when the brief carries semantic_keywords:
-  //   A) hard filters + SLD ILIKE any keyword     → relevance-ranked top
-  //   B) hard filters only                        → universe-top
-  // Merge A first, then B, dedup by domain. The substring approach is
-  // approximate (false positives on `med` → `media.com` etc.) but it costs
-  // nothing and brings real relevance until Phase 2 enrichment lands.
   const kw = sanitizeKeywords(filters.semantic_keywords);
-  // Passes in priority order (merged first-wins): enriched keywords[] overlap
-  // (true semantic) > enriched industries[] overlap > the general top-of-universe
-  // pass. All three are index-bound (GIN on keywords/industries; quality_score /
-  // tld b-tree on the general pass), so every brief stays fast.
+  // Each corpus runs its passes in priority order: enriched keywords[] overlap
+  // (true semantic) > enriched industries[] overlap > the general top pass. All
+  // are index-bound (GIN on keywords/industries; quality_score/tld or price
+  // b-tree on the general pass), so every brief stays fast.
   //
   // The old SLD-substring fallback (sld ILIKE %term%) was removed: with no
   // narrowing structural filter it scanned the whole .com tail and blew the
   // statement timeout. Theme coverage now comes from enrichment, which keeps
   // growing — reintroduce substring later only via a bounded/indexed path.
-  const tasks = [buildQuery(db, filters, null, null)];
+  //
+  // We keep universe and master passes in the SAME priority tier so the merge
+  // can interleave them (round-robin) and Master — every row of which is for
+  // sale — is never crowded out by the universe's far larger row count.
+  const universeTasks = { keywords: null, industries: null, general: buildQuery(db, filters, null, null) };
   if (kw.length) {
-    tasks.unshift(buildQuery(db, filters, kw, 'industries'));
-    tasks.unshift(buildQuery(db, filters, kw, 'keywords'));
+    universeTasks.keywords = buildQuery(db, filters, kw, 'keywords');
+    universeTasks.industries = buildQuery(db, filters, kw, 'industries');
   }
-  const responses = await Promise.all(tasks);
-  for (const r of responses) {
-    if (r.error) throw new Error(`name_universe query failed: ${r.error.message}`);
+
+  // Master is a separate project; include it when configured. Failures are
+  // non-fatal (log + continue with universe) so naming never breaks if Master
+  // is briefly unreachable or a column is missing — but normally it's in.
+  const masterTasks = { keywords: null, industries: null, general: null };
+  if (isMasterlistDbConfigured()) {
+    const mdb = getMasterlistDb();
+    masterTasks.general = buildMasterQuery(mdb, filters, null, null);
+    if (kw.length) {
+      masterTasks.keywords = buildMasterQuery(mdb, filters, kw, 'keywords');
+      masterTasks.industries = buildMasterQuery(mdb, filters, kw, 'industries');
+    }
   }
+
+  const [uRes, mRes] = await Promise.all([
+    resolveCorpus(universeTasks, 'name_universe', true),
+    resolveCorpus(masterTasks, 'Master Domain List', false),
+  ]);
+
+  // Build priority-tiered, corpus-interleaved row lists. Within each tier the
+  // two corpora alternate so both are represented under the ROW_LIMIT cap; tiers
+  // concatenate in semantic-priority order. Master rows are normalized to the
+  // universe shape on the way in. The merge loop below consumes {data} objects.
+  const responses = [
+    { data: interleave(uRes.keywords, (mRes.keywords || []).map(normalizeMasterRow)) },
+    { data: interleave(uRes.industries, (mRes.industries || []).map(normalizeMasterRow)) },
+    { data: interleave(uRes.general, (mRes.general || []).map(normalizeMasterRow)) },
+  ];
   // Connotation criterion (UI multi-select) applied in-memory — see buildQuery
   // note. Drop enriched rows whose tone is excluded; unenriched (null) rows pass.
   const allowCon = Array.isArray(filters.connotation) && filters.connotation.length
@@ -173,6 +210,101 @@ function buildQuery(db, filters, keywords, matchMode) {
     .order('deal_score', { ascending: false, nullsFirst: false })
     .limit(ROW_LIMIT);
   return q.then((r) => r); // resolve to {data, error}
+}
+
+// Master Domain List pass — mirrors buildQuery with Master's column names. Every
+// Master row is for sale, so it's always eligible; we apply the same structural
+// filters the brief sets (length, word count, dictionary, TLD, price, keyword
+// overlap) and order by price desc so premium listings lead within a tier
+// (relevance re-sorts later anyway; Master has no quality_score).
+function buildMasterQuery(db, filters, keywords, matchMode) {
+  let q = db.from('Master Domain List').select(MASTER_SELECT_COLS);
+  const tv = Array.isArray(filters.tlds) && filters.tlds.length ? tldVariants(filters.tlds) : [];
+  if (tv.length) {
+    q = q.in('tld', tv);
+    q = q.not('domain', 'like', '%.%.%'); // clean sld.tld only (exclude ab.co.com)
+  }
+  if (filters.sld_length_min != null) q = q.gte('sld_length', filters.sld_length_min);
+  if (filters.sld_length_max != null) q = q.lte('sld_length', filters.sld_length_max);
+  if (filters.num_words != null) q = q.eq('number_of_words', filters.num_words);
+  if (filters.dictionary_word_only) q = q.eq('dictionary_word', 'Y');
+  // Master has no quality_score column, so min_quality_score can't apply here —
+  // including these rows unfiltered errs toward "more names" per product intent.
+  if (filters.max_price != null) q = q.or(`price.lte.${filters.max_price},price.is.null`);
+  if (filters.min_price != null) q = q.or(`price.gte.${filters.min_price},price.is.null`);
+  if (Array.isArray(filters.exclude_domains) && filters.exclude_domains.length) {
+    q = q.not('domain', 'in', `(${filters.exclude_domains.join(',')})`);
+  }
+  if (keywords && keywords.length && matchMode) {
+    if (matchMode === 'keywords') q = q.overlaps('keywords', keywords);
+    else if (matchMode === 'industries') q = q.overlaps('industries', keywords);
+  }
+  q = q.order('price', { ascending: false, nullsFirst: false }).limit(ROW_LIMIT);
+  return q.then((r) => r);
+}
+
+// Await a corpus's three passes ({keywords, industries, general}, each a
+// thenable or null) into {keywords, industries, general} data arrays. Universe
+// errors throw (the search depends on it); Master errors are logged and treated
+// as empty so naming degrades gracefully to universe-only.
+async function resolveCorpus(tasks, label, throwOnError) {
+  const keys = ['keywords', 'industries', 'general'];
+  const out = { keywords: [], industries: [], general: [] };
+  const results = await Promise.all(keys.map((k) => (tasks[k] ? tasks[k] : Promise.resolve(null))));
+  keys.forEach((k, i) => {
+    const r = results[i];
+    if (!r) return;
+    if (r.error) {
+      if (throwOnError) throw new Error(`${label} query failed: ${r.error.message}`);
+      console.error(`${label} ${k} pass failed (continuing without it):`, r.error.message);
+      return;
+    }
+    out[k] = r.data || [];
+  });
+  return out;
+}
+
+// Round-robin merge two row arrays so both corpora are represented within a
+// priority tier (one from a, one from b, …). Either may be empty.
+function interleave(a, b) {
+  const out = [];
+  const la = Array.isArray(a) ? a : [];
+  const lb = Array.isArray(b) ? b : [];
+  const n = Math.max(la.length, lb.length);
+  for (let i = 0; i < n; i++) {
+    if (i < la.length) out.push(la[i]);
+    if (i < lb.length) out.push(lb[i]);
+  }
+  return out;
+}
+
+// Project a Master Domain List row into the universe row shape the rest of the
+// pipeline (conOk/formOk filters, shapeRow, splitAndShape) expects. Master has
+// no `sld` column, so derive it from the domain; no quality_score/deal_score, so
+// those are null (relevance ranking handles ordering). dictionary_word is 'Y'/'N'.
+function normalizeMasterRow(r) {
+  const domain = String(r.domain || '');
+  const sld = domain.includes('.') ? domain.slice(0, domain.indexOf('.')) : domain;
+  return {
+    domain,
+    sld,
+    tld: r.tld || (domain.includes('.') ? domain.slice(domain.indexOf('.') + 1) : null),
+    sld_length: r.sld_length != null ? Number(r.sld_length) : sld.length,
+    num_words: r.number_of_words != null ? Number(r.number_of_words) : null,
+    num_syllables: null,
+    is_dictionary_word: r.dictionary_word === 'Y',
+    best_price: r.price != null ? Number(r.price) : null,
+    best_price_source: r.source || null,
+    sources: r.source ? [r.source] : [],
+    quality_score: null,
+    deal_score: null,
+    source_tier: null,
+    category: r.category || null,
+    connotation: r.connotation || null,
+    keywords: Array.isArray(r.keywords) ? r.keywords : [],
+    industries: Array.isArray(r.industries) ? r.industries : [],
+    emotions: Array.isArray(r.emotions) ? r.emotions : [],
+  };
 }
 
 // PostgREST .or() takes a comma-separated filter string; commas, parens, or

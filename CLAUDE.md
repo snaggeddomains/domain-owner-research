@@ -75,6 +75,23 @@ matches score 2× substring in relevance. Needs GIN indexes for speed:
 `create index if not exists idx_universe_keywords_gin on name_universe using gin (keywords);`
 (same for `industries`, `emotions`).
 
+**Naming exercise = BOTH corpora (2026-06):** `lib/naming/query.js` now queries
+`name_universe` AND the Master Domain List together — every Master row is for
+sale, so Master is always in the candidate pool. Each corpus runs the same three
+passes (enriched keywords[] overlap > industries[] overlap > general top); within
+each priority tier the two corpora are interleaved round-robin (so Master isn't
+crowded out by the universe's larger row count) then deduped by domain
+(universe-first on overlap). Master rows are normalized to the universe row shape
+(`normalizeMasterRow`): Master has no `sld` (derived from domain) and no
+`quality_score`/`deal_score` (null — relevance ranking handles ordering); its
+general pass orders by `price desc`. Master errors are non-fatal (log + continue
+universe-only). **Master needs its own indexes** (run on the Master project):
+`create index if not exists idx_master_keywords_gin on "Master Domain List" using gin (keywords);`
+(same for `industries`), plus `create index if not exists idx_master_tld_price on "Master Domain List" (tld, price desc nulls last);`
+and `create index if not exists idx_master_price on "Master Domain List" (price desc nulls last);`
+— without them the overlaps/ordered scans over ~435K rows can hit the statement
+timeout (the search just falls back to universe-only until they exist).
+
 **Search endpoints:** `api/dbsearch.js` = Domain **Name** Search (filterable browse,
 `db=both|universe|master`, gated by `dbsearch`); `api/dbscreen.js` = Domain DB
 **Screen** (single-domain lookup, gated by `dbscreen`). Owner of owned-feed domains

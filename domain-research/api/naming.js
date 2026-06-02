@@ -332,6 +332,8 @@ async function handleExport(body, res, user) {
     ? body.title.trim()
     : ('Naming — ' + (String(body.brief || '').replace(/\s+/g, ' ').slice(0, 60) || 'results'));
 
+  const sharedId = (process.env.NAMING_EXPORT_SHEET_ID || '').trim();
+
   try {
     const { sheets: sheetsApi, auth: gauth } = await import('@googleapis/sheets');
     const { drive: driveApi } = await import('@googleapis/drive');
@@ -342,13 +344,67 @@ async function handleExport(body, res, user) {
     const sheets = sheetsApi({ version: 'v4', auth: authClient });
     const drive = driveApi({ version: 'v3', auth: authClient });
 
+    // Preferred path: write into ONE workbook pre-shared with the service account
+    // as Editor (env NAMING_EXPORT_SHEET_ID). A Google Workspace service account
+    // cannot CREATE Drive files (no personal storage quota), but it CAN edit a
+    // sheet a human already shared with it. Each export adds a fresh tab, so no
+    // Drive create / permission grant is needed and nothing hits org policy.
+    if (sharedId) {
+      // Tab names: ≤100 chars, can't contain []*?/\: — sanitize + dedupe.
+      const stamp = new Date().toISOString().slice(0, 16).replace('T', ' ');
+      let tabBase = `${title} ${stamp}`.replace(/[\[\]\*\?\/\\:]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 90);
+      if (!tabBase) tabBase = `Export ${stamp}`;
+      let tabTitle = tabBase;
+      let added;
+      for (let attempt = 0; attempt < 5; attempt++) {
+        try {
+          added = await sheets.spreadsheets.batchUpdate({
+            spreadsheetId: sharedId,
+            requestBody: { requests: [{ addSheet: { properties: { title: tabTitle } } }] },
+          });
+          break;
+        } catch (e) {
+          // Most likely a duplicate tab name — disambiguate and retry.
+          if (/already exists|duplicate/i.test(e.message || '') && attempt < 4) {
+            tabTitle = `${tabBase} (${attempt + 2})`.slice(0, 99);
+            continue;
+          }
+          res.status(500).json({ error: `Couldn't add a tab to the export workbook (check NAMING_EXPORT_SHEET_ID and that it's shared with the service account as Editor): ${e.message || e}` });
+          return;
+        }
+      }
+      const newSheetId = added.data.replies[0].addSheet.properties.sheetId;
+      const safeTab = `'${tabTitle.replace(/'/g, "''")}'`;
+      await sheets.spreadsheets.values.update({
+        spreadsheetId: sharedId, range: `${safeTab}!A1`, valueInputOption: 'RAW', requestBody: { values },
+      });
+      await sheets.spreadsheets.batchUpdate({
+        spreadsheetId: sharedId,
+        requestBody: {
+          requests: [{
+            repeatCell: {
+              range: { sheetId: newSheetId, startRowIndex: 0, endRowIndex: 1 },
+              cell: { userEnteredFormat: { textFormat: { bold: true } } },
+              fields: 'userEnteredFormat.textFormat.bold',
+            },
+          }],
+        },
+      });
+      const url = `https://docs.google.com/spreadsheets/d/${sharedId}/edit#gid=${newSheetId}`;
+      res.status(200).json({ url, count: rows.length });
+      return;
+    }
+
+    // Fallback: create a brand-new spreadsheet. Only works if the service account
+    // can create Drive files (i.e. NOT a quota-less Workspace SA). If it can't,
+    // surface a clear message pointing at the NAMING_EXPORT_SHEET_ID setup.
     let created;
     try {
       created = await sheets.spreadsheets.create({
         requestBody: { properties: { title }, sheets: [{ properties: { title: 'Results' } }] },
       });
     } catch (e) {
-      res.status(500).json({ error: `Couldn't create the sheet (service account / Sheets API): ${e.message || e}` });
+      res.status(500).json({ error: `Couldn't create the sheet (the service account likely can't create Drive files). Create one Google Sheet, share it with the service account's client_email as Editor, and set NAMING_EXPORT_SHEET_ID to its ID. (${e.message || e})` });
       return;
     }
     const spreadsheetId = created.data.spreadsheetId;
