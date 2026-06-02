@@ -2473,6 +2473,33 @@ async function patchLesson(id, patch, rowEl) {
 // Buy-ready vs Stretch buckets. Implementation spec §1-5.
 let namingLastResults = null; // cached for CSV/Sheet export of the current view
 
+// Connotation multi-select on the naming screen. Default = all 5 (= "Any", no
+// constraint). A selected subset is sent with the search and becomes a results
+// criterion (enriched off-tone names drop out; still-unenriched rows pass).
+const namingConSet = new Set(DS_CONNOTATIONS);
+function initNamingConnotation() {
+  const list = document.getElementById('nm-con-list');
+  const label = document.getElementById('nm-con-label');
+  const count = document.getElementById('nm-con-count');
+  if (!list || list._init) return;
+  list._init = true;
+  const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
+  const summary = () => {
+    const any = namingConSet.size === 0 || namingConSet.size >= DS_CONNOTATIONS.length;
+    count.textContent = any ? '' : String(namingConSet.size);
+    label.textContent = any ? 'Any' : [...namingConSet].map(cap).join(', ');
+  };
+  list.innerHTML = DS_CONNOTATIONS.map((c) =>
+    `<label class="dbs-multi-opt"><input type="checkbox" value="${c}" checked/> ${cap(c)}</label>`).join('');
+  list.addEventListener('change', (e) => {
+    const cb = e.target.closest('input[type="checkbox"]'); if (!cb) return;
+    if (cb.checked) namingConSet.add(cb.value); else namingConSet.delete(cb.value);
+    summary();
+  });
+  summary();
+}
+initNamingConnotation();
+
 async function runNaming() {
   const brief = (els.namingInput?.value || '').trim();
   if (!brief) return;
@@ -2483,7 +2510,7 @@ async function runNaming() {
     const res = await fetch('/research/api/naming', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ action: 'search', brief }),
+      body: JSON.stringify({ action: 'search', brief, connotation: [...namingConSet] }),
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.error || `Search failed (${res.status})`);

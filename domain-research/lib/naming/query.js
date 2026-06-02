@@ -96,6 +96,13 @@ function buildQuery(db, filters, keywords, matchMode) {
   // rows pass through so they can surface as north-star options.
   if (filters.max_price != null) q = q.or(`best_price.lte.${filters.max_price},best_price.is.null`);
   if (filters.min_price != null) q = q.or(`best_price.gte.${filters.min_price},best_price.is.null`);
+  // Connotation criteria (UI multi-select). Keep enriched rows whose connotation
+  // is in the chosen set, AND keep still-unenriched rows (NULL) so the filter
+  // doesn't wipe the not-yet-enriched majority. "Any" arrives as null (no clause).
+  if (Array.isArray(filters.connotation) && filters.connotation.length) {
+    const list = filters.connotation.map((c) => `"${c}"`).join(',');
+    q = q.or(`connotation.in.(${list}),connotation.is.null`);
+  }
   // Precise per-domain blocklist. validateFilters() already restricted these
   // to [a-z0-9.-] so the comma-joined PostgREST list is safe.
   if (Array.isArray(filters.exclude_domains) && filters.exclude_domains.length) {
@@ -140,7 +147,7 @@ function sanitizeKeywords(arr) {
 
 function splitAndShape(rows, filters) {
   const kw = Array.isArray(filters.semantic_keywords) ? filters.semantic_keywords : [];
-  const shaped = rows.map((r) => shapeRow(r, kw));
+  const shaped = rows.map((r) => shapeRow(r, kw, filters));
   const cap = filters.max_price;
   const floor = filters.min_price;
   const buyReady = [];
@@ -182,7 +189,7 @@ function splitAndShape(rows, filters) {
 // Project a name_universe row into the 9-column shape §4.1 wants. The Status
 // column defaults to "For Sale" until Phase 3 lander validation lands — the
 // LLM-generated "why it works" column also stays empty until Phase 3.
-function shapeRow(r, keywords) {
+function shapeRow(r, keywords, filters) {
   // Treat best_price === 0 as "no public price" — Afternic in particular uses
   // 0 as a make-offer / no-BIN sentinel and the live data shows it flooding
   // results that should have routed to Stretch as TBD.
@@ -206,6 +213,14 @@ function shapeRow(r, keywords) {
   const semSet = new Set(matched_semantic);
   const matched_sld = briefKw.filter((k) => sld && sld.includes(k) && !semSet.has(k));
   const matched_keywords = [...matched_semantic, ...matched_sld];
+  // Enrichment ranking boosts (filters from the parsed brief). On-category +3;
+  // on-tone +1, off-tone -2 (so a negative-connotation name sinks for a warm
+  // brief). Unenriched rows (null category/connotation) get no boost — neutral.
+  const wantCat = filters && filters.category ? String(filters.category).toLowerCase() : null;
+  const wantCon = filters && Array.isArray(filters.connotation) ? new Set(filters.connotation) : null;
+  let boost = 0;
+  if (wantCat && r.category && String(r.category).toLowerCase() === wantCat) boost += 3;
+  if (wantCon && wantCon.size && r.connotation) boost += wantCon.has(String(r.connotation)) ? 1 : -2;
   return {
     domain: r.domain,
     sld: r.sld,
@@ -226,7 +241,7 @@ function shapeRow(r, keywords) {
     status: 'For Sale',
     landing_url: deriveLandingUrl(r),
     matched_keywords,
-    relevance: matched_semantic.length * 2 + matched_sld.length,
+    relevance: matched_semantic.length * 2 + matched_sld.length + boost,
   };
 }
 

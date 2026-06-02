@@ -184,6 +184,15 @@ async function handleSearch(body, res, user) {
     res.status(502).json({ error: `Couldn't parse your brief: ${e.message || e}` });
     return;
   }
+  // Explicit connotation control from the UI multi-select is authoritative:
+  // a subset narrows results to those tones (enriched rows + still-unenriched
+  // rows); all five selected (or none) = "Any" → no constraint, overriding any
+  // tone the brief inferred.
+  if (Array.isArray(body.connotation)) {
+    const VALID = ['positive', 'somewhat positive', 'neutral', 'somewhat negative', 'negative'];
+    const picked = [...new Set(body.connotation.map((c) => String(c || '').toLowerCase()).filter((c) => VALID.includes(c)))];
+    filters.connotation = picked.length === 0 || picked.length >= VALID.length ? null : picked;
+  }
   let results;
   try {
     results = await searchUniverse(filters);

@@ -816,6 +816,10 @@ body.modal-open { overflow: hidden; }
 .dbs-multi-opt { display: flex; align-items: center; gap: 7px; padding: 4px 10px; font-size: 13px; color: var(--navy); cursor: pointer; text-transform: none; letter-spacing: 0; font-weight: 400; }
 .dbs-multi-opt:hover { background: var(--cream-2, #fbf7ee); }
 .dbs-multi-empty { padding: 8px 10px; font-size: 12px; color: var(--navy-3); }
+/* Naming exercise connotation control (reuses .dbs-multi) */
+.naming-connotation { display: inline-flex; align-items: center; gap: 8px; }
+.naming-con-cap { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--navy-3); }
+.naming-connotation .dbs-multi { min-width: 150px; }
 .dbs-factions { display: flex; gap: 8px; margin-top: 4px; }
 .dbs-factions .btn-primary { background: var(--coral, #e08a6f); color: #fff; border: none; }
 .dbs-resultswrap { flex: 1 1 auto; min-width: 0; }

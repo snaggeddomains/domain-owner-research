@@ -2,6 +2,26 @@ import Anthropic from '@anthropic-ai/sdk';
 
 // Free-form brief → structured filter JSON. One Haiku call per brief — cheap
 // (~$0.001) and fast. Schema and prompt mirror §2.2 of the v1 spec.
+
+// Controlled enrichment vocab (mirrors tools/enrich.py). category/connotation
+// from the brief are used to RANK candidates (not hard-filter), so they nudge
+// on-category, on-tone enriched names up without excluding unenriched rows.
+const CATEGORIES = [
+  'Technology & Software', 'Internet & Web', 'AI & Data', 'Finance & Fintech',
+  'Crypto & Web3', 'E-Commerce & Retail', 'Business & Professional',
+  'Marketing & Advertising', 'Media & Publishing', 'Entertainment & Gaming',
+  'Social & Community', 'Education & Learning', 'Health & Wellness',
+  'Medical & Biotech', 'Food & Drink', 'Travel & Hospitality',
+  'Real Estate & Property', 'Home & Living', 'Fashion & Beauty',
+  'Sports & Fitness', 'Automotive & Transport', 'Energy & Environment',
+  'Legal & Government', 'Nonprofit & Causes', 'Family & Parenting',
+  'Arts & Design', 'Science & Research', 'Pets & Animals',
+  'Dating & Relationships', 'Lifestyle', 'General & Other',
+];
+const CATEGORY_SET = new Set(CATEGORIES.map((c) => c.toLowerCase()));
+const CONNOTATIONS = ['positive', 'somewhat positive', 'neutral', 'somewhat negative', 'negative'];
+const CONNOTATION_SET = new Set(CONNOTATIONS);
+
 const SYSTEM = `You are parsing a domain-naming brief into a JSON filter object. The downstream system queries a Postgres table of domain marketplace candidates. Return ONLY valid JSON matching this schema:
 
 {
@@ -14,6 +34,8 @@ const SYSTEM = `You are parsing a domain-naming brief into a JSON filter object.
   "max_price": 5000,
   "min_quality_score": 2.5,
   "semantic_keywords": ["tech", "B2B", "saas"],
+  "category": "Travel & Hospitality",
+  "connotation": ["positive", "somewhat positive", "neutral"],
   "exclude_domains": [],
   "exclude_inflected": false,
   "include_stretch": true
@@ -27,6 +49,8 @@ Rules:
 - If they say "easy to spell" without specifying word count, set dictionary_word_only: true but leave num_words: null.
 - Price: if the brief gives a RANGE ("$50K to $150K", "between 5k and 20k"), put the LOW end in min_price and the HIGH end in max_price. If they give only an upper bound ("under $5K", "up to $50K"), set max_price only and leave min_price null. If they say "premium" without a number, set max_price high (50000+).
 - semantic_keywords: ENUMERATE 25-50 semantically-related terms — synonyms, adjacent concepts, sub-domains of the industry, tone-evocative roots — NOT just the literal nouns from the brief. The downstream filter matches these against each candidate's enriched keyword/industry tags AND the domain text, so on-theme terms surface names that are *about* the theme even when the word isn't in the domain. Breadth helps. For "health care startup," return roughly: health, care, medical, wellness, healthcare, clinic, therapy, patient, doctor, hospital, pharma, biotech, dental, hospice, cure, heal, vital, body, mind, fit, life, well, wellbeing, recovery, surgical, nurse, remedy, healing, holistic, fitness, organic. Aim for breadth, not exact synonyms. Lowercase, short, [a-z0-9] only. Skip generic words like "startup", "company", "brand".
+- category: the SINGLE best-fit brand category, copied VERBATIM from this list (or null if genuinely unclear): ${CATEGORIES.join(', ')}. This ranks on-category enriched names higher — pick the closest even if imperfect.
+- connotation: the desired brand TONE as an array of allowed grades from [${CONNOTATIONS.join(', ')}]. A premium / warm / aspirational / trustworthy brand → ["positive", "somewhat positive", "neutral"] (i.e. exclude negative). A bold/edgy brand might allow all. null if the brief gives no tone signal. Off-tone enriched names get down-ranked, so this matters for warmth/premium briefs.
 - Output JSON only — no prose, no code fences.`;
 
 export async function parseBrief(brief, env) {
@@ -108,6 +132,16 @@ export function validateFilters(raw) {
   const exclude_inflected = Boolean(f.exclude_inflected);
   const include_stretch = f.include_stretch !== false; // default true
 
+  // Ranking signals (not filters). category must match the controlled vocab;
+  // connotation is the subset of grades to prefer (off-list grades dropped).
+  const catRaw = typeof f.category === 'string' ? f.category.trim() : '';
+  const category = catRaw && CATEGORY_SET.has(catRaw.toLowerCase())
+    ? CATEGORIES.find((c) => c.toLowerCase() === catRaw.toLowerCase())
+    : null;
+  const connotation = Array.isArray(f.connotation)
+    ? [...new Set(f.connotation.map((c) => String(c || '').trim().toLowerCase()).filter((c) => CONNOTATION_SET.has(c)))]
+    : null;
+
   return {
     tlds,
     sld_length_min,
@@ -118,6 +152,8 @@ export function validateFilters(raw) {
     max_price,
     min_quality_score,
     semantic_keywords,
+    category,
+    connotation: connotation && connotation.length ? connotation : null,
     exclude_domains,
     exclude_inflected,
     include_stretch,
