@@ -130,7 +130,10 @@ function buildQuery(db, filters, keywords, matchMode) {
   if (keywords && keywords.length && matchMode) {
     if (matchMode === 'keywords') q = q.overlaps('keywords', keywords);
     else if (matchMode === 'industries') q = q.overlaps('industries', keywords);
-    else if (matchMode === 'sld') q = q.or(keywords.map((k) => `sld.ilike.%${k}%`).join(','));
+    // SLD substring is a trigram scan; a 50-way OR over millions of rows can blow
+    // the statement timeout, so cap it to the top terms (the GIN keyword/industry
+    // passes already carry the full set for enriched rows).
+    else if (matchMode === 'sld') q = q.or(keywords.slice(0, 12).map((k) => `sld.ilike.%${k}%`).join(','));
   }
   // Ranking per the 2026-05-30 decision recorded in §3.2: quality dominates,
   // tier breaks ties at similar quality, deal_score breaks ties below that.
