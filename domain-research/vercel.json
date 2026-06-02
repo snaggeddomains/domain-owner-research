@@ -22,6 +22,16 @@
       "permanent": true
     }
   ],
+  "headers": [
+    {
+      "source": "/(app.js|styles.css)",
+      "headers": [{ "key": "Cache-Control", "value": "no-cache, must-revalidate" }]
+    },
+    {
+      "source": "/research/(app.js|styles.css)",
+      "headers": [{ "key": "Cache-Control", "value": "no-cache, must-revalidate" }]
+    }
+  ],
   "rewrites": [
     { "source": "/research", "destination": "/index.html" },
     { "source": "/research/admin", "destination": "/index.html" },

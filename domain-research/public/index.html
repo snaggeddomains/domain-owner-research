@@ -20,7 +20,7 @@
          the app is served from /research/* (app.snagged.com/research/*). -->
     <base href="/research/" />
     <link rel="icon" href="favicon-32.png" />
-    <link rel="stylesheet" href="styles.css" />
+    <link rel="stylesheet" href="styles.css?v=20260602b" />
     <!-- Layout: horizontal tab nav (Admin-style), no sidebar. -->
   </head>
   <body>
@@ -512,6 +512,7 @@ The model parses it into structured filters (TLDs, length, budget, tone, etc.) a
       </div>
     </div>
 
-    <script src="app.js"></script>
+    <!-- Bump ?v= on any public/app.js or styles.css change to bust caches. -->
+    <script src="app.js?v=20260602b"></script>
   </body>
 </html>
