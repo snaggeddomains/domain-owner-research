@@ -291,18 +291,87 @@ async function handleSearch(body, res, user) {
 // on this Vercel project (and the googleapis dep is added), this returns 501
 // with a clear message — the browser-side CSV export (§5.2) handles the v1
 // "get the results out of the app" path on its own.
-async function handleExport(_body, res) {
+// Create a Google Sheet from the current results and return its URL. Uses a
+// service account (GOOGLE_SERVICE_ACCOUNT_JSON); the sheet is shared
+// anyone-with-link (reader) so the requester can open it. Columns mirror the
+// CSV export. Requires the Sheets + Drive APIs enabled on the service account.
+async function handleExport(body, res) {
   if (!process.env.GOOGLE_SERVICE_ACCOUNT_JSON) {
     res.status(501).json({
-      error:
-        'Google Sheets export is not configured on this deployment. ' +
-        'Use "Copy as CSV" for now, or set GOOGLE_SERVICE_ACCOUNT_JSON ' +
-        'and wire the googleapis client to enable sheet export.',
+      error: 'Google Sheets export is not configured on this deployment — set GOOGLE_SERVICE_ACCOUNT_JSON. Use "Copy as CSV" meanwhile.',
     });
     return;
   }
-  // Intentionally not implemented in this PR — the dep + service-account
-  // plumbing is a follow-up. Leaving the action shape stable so the frontend
-  // export button keeps working once the backend lands.
-  res.status(501).json({ error: 'Sheet export endpoint stub — implementation pending' });
+  let creds;
+  try {
+    creds = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_JSON);
+  } catch {
+    res.status(500).json({ error: 'GOOGLE_SERVICE_ACCOUNT_JSON is not valid JSON.' });
+    return;
+  }
+  const results = (body && body.results) || {};
+  const rows = [...(results.buyReady || []), ...(results.stretch || [])];
+  if (!rows.length) { res.status(400).json({ error: 'No results to export.' }); return; }
+
+  const header = ['Domain', 'Price', 'Source', 'Status', 'Relevance', 'Bucket', 'Link'];
+  const values = [header];
+  for (const r of rows) {
+    const bucket = r.bucket || (r.best_price != null ? 'Buy-ready' : 'Stretch');
+    const relevance = Array.isArray(r.matched_keywords) ? r.matched_keywords.join(' / ') : '';
+    values.push([
+      r.domain || '',
+      r.best_price == null ? 'TBD' : r.best_price,
+      r.source_label || '',
+      r.status || '',
+      relevance,
+      bucket,
+      r.landing_url || '',
+    ]);
+  }
+  const title = (typeof body.title === 'string' && body.title.trim())
+    ? body.title.trim()
+    : ('Naming — ' + (String(body.brief || '').replace(/\s+/g, ' ').slice(0, 60) || 'results'));
+
+  try {
+    const { sheets: sheetsApi, auth: gauth } = await import('@googleapis/sheets');
+    const { drive: driveApi } = await import('@googleapis/drive');
+    const authClient = new gauth.GoogleAuth({
+      credentials: creds,
+      scopes: ['https://www.googleapis.com/auth/spreadsheets', 'https://www.googleapis.com/auth/drive'],
+    });
+    const sheets = sheetsApi({ version: 'v4', auth: authClient });
+    const drive = driveApi({ version: 'v3', auth: authClient });
+
+    const created = await sheets.spreadsheets.create({
+      requestBody: {
+        properties: { title },
+        sheets: [{ properties: { title: 'Results' } }],
+      },
+    });
+    const spreadsheetId = created.data.spreadsheetId;
+    await sheets.spreadsheets.values.update({
+      spreadsheetId,
+      range: 'Results!A1',
+      valueInputOption: 'RAW',
+      requestBody: { values },
+    });
+    // Bold the header row.
+    await sheets.spreadsheets.batchUpdate({
+      spreadsheetId,
+      requestBody: {
+        requests: [{
+          repeatCell: {
+            range: { sheetId: created.data.sheets[0].properties.sheetId, startRowIndex: 0, endRowIndex: 1 },
+            cell: { userEnteredFormat: { textFormat: { bold: true } } },
+            fields: 'userEnteredFormat.textFormat.bold',
+          },
+        }],
+      },
+    });
+    await drive.permissions.create({ fileId: spreadsheetId, requestBody: { role: 'reader', type: 'anyone' } });
+    const url = created.data.spreadsheetUrl || `https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit`;
+    res.status(200).json({ url, count: rows.length });
+  } catch (e) {
+    res.status(500).json({ error: `Sheets export failed: ${e.message || e}` });
+  }
 }

@@ -2803,7 +2803,7 @@ async function exportNamingSheet() {
     const res = await fetch('/research/api/naming', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ action: 'export', brief, results: namingLastResults }),
+      body: JSON.stringify({ action: 'export', brief, title: (els.namingTitle && els.namingTitle.value.trim()) || null, results: namingLastResults }),
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.error || `Export failed (${res.status})`);
