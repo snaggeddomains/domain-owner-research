@@ -385,16 +385,18 @@
             <p class="hero-sub">Tell me your criteria and I'll find readily-available names that fit.</p>
           </div>
           <div class="naming-form">
+            <input id="naming-title" class="naming-title-input" type="text" autocomplete="off" placeholder="Project name (optional — defaults to the brief)" />
             <textarea id="naming-input" class="naming-input" rows="9" placeholder="Paste a brief — e.g. &quot;Tech startup, B2B SaaS, premium feel. One-word .com, easy to spell, under $5,000. Keywords: cloud, data, ops.&quot;
 
 The model parses it into structured filters (TLDs, length, budget, tone, etc.) and queries the universe of marketplace inventory."></textarea>
             <div class="naming-actions">
               <button id="naming-go" type="button" class="naming-go">Find Names</button>
+              <button id="naming-new" type="button" class="naming-new">+ New project</button>
               <span id="naming-status" class="naming-status" hidden></span>
             </div>
             <p id="naming-error" class="login-error" hidden></p>
 
-            <div class="naming-filters-panel">
+            <div class="naming-filters-panel" id="naming-filters-panel" hidden>
               <h3 class="naming-filters-heading">Filters</h3>
               <div class="naming-filters-grid">
                 <div class="naming-filter">

@@ -3,7 +3,7 @@ import { isNamingDbConfigured } from '../lib/db/supabase-naming.js';
 import { parseBrief } from '../lib/naming/brief.js';
 import { searchUniverse } from '../lib/naming/query.js';
 import { runNamingChatTurn } from '../lib/naming/chat.js';
-import { saveNamingRun, listNamingRuns, getNamingRun, renameNamingRun, setNamingRunStar } from '../lib/db/naming-runs.js';
+import { saveNamingRun, updateNamingRun, listNamingRuns, getNamingRun, renameNamingRun, setNamingRunStar } from '../lib/db/naming-runs.js';
 import { listNamingChat, addNamingChatMessage } from '../lib/db/naming-chat.js';
 
 export const config = { maxDuration: 30 };
@@ -256,20 +256,32 @@ async function handleSearch(body, res, user) {
     res.status(502).json({ error: `Universe query failed: ${e.message || e}` });
     return;
   }
-  // Persist for the Recent / Past Naming Runs view. Failure to save must
-  // never fail the search itself — the user got their results either way.
+  // Persist for the Past Naming Runs view. Run continuity: when the client
+  // sends a run_id (it's editing an existing project), UPDATE that row in place
+  // — re-running a brief / changing filters / tweaking the prompt all stay in
+  // the same project. No run_id = new project (insert). Save failure must never
+  // fail the search itself.
+  const title = typeof body.title === 'string' && body.title.trim() ? body.title.trim() : null;
+  const runId = typeof body.run_id === 'string' ? body.run_id : '';
   let savedId = null;
   try {
-    const saved = await saveNamingRun({
-      user_id: user && user.id ? user.id : null,
-      brief,
-      filters,
-      buyReady: results.buyReady,
-      stretch: results.stretch,
-    });
-    savedId = saved && saved.id;
+    if (runId) {
+      const existing = await getNamingRun(runId);
+      const owns = existing && (!user || user.is_admin || !existing.user_id || existing.user_id === user.id);
+      if (owns) {
+        await updateNamingRun(runId, { brief, filters, buyReady: results.buyReady, stretch: results.stretch, title });
+        savedId = runId;
+      }
+    }
+    if (!savedId) {
+      const saved = await saveNamingRun({
+        user_id: user && user.id ? user.id : null,
+        brief, filters, buyReady: results.buyReady, stretch: results.stretch, title,
+      });
+      savedId = saved && saved.id;
+    }
   } catch (e) {
-    console.error('saveNamingRun failed:', e && e.message);
+    console.error('save/update naming run failed:', e && e.message);
   }
   res.status(200).json({ run_id: savedId, filters, ...results });
 }

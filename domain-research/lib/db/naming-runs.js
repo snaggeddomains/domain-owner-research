@@ -2,7 +2,7 @@ import { getDb, isDbConfigured } from './supabase.js';
 
 const T = 'domain_research_naming_runs';
 
-export async function saveNamingRun({ user_id, brief, filters, buyReady, stretch }) {
+export async function saveNamingRun({ user_id, brief, filters, buyReady, stretch, title }) {
   if (!isDbConfigured()) return null;
   const row = {
     user_id: user_id || null,
@@ -11,8 +11,23 @@ export async function saveNamingRun({ user_id, brief, filters, buyReady, stretch
     buy_ready: Array.isArray(buyReady) ? buyReady : [],
     stretch: Array.isArray(stretch) ? stretch : [],
   };
+  if (title) row.title = String(title).slice(0, 120);
   const { data, error } = await getDb().from(T).insert(row).select('id,created_at').single();
   if (error) throw new Error(`saveNamingRun: ${error.message}`);
+  return data;
+}
+
+// Update an existing run in place (run continuity — re-running a project's brief
+// or filters overwrites the same row instead of creating a new project).
+export async function updateNamingRun(id, { brief, filters, buyReady, stretch, title }) {
+  const patch = {};
+  if (brief !== undefined) patch.brief = String(brief || '').slice(0, 6000);
+  if (filters !== undefined) patch.filters = filters || null;
+  if (buyReady !== undefined) patch.buy_ready = Array.isArray(buyReady) ? buyReady : [];
+  if (stretch !== undefined) patch.stretch = Array.isArray(stretch) ? stretch : [];
+  if (title !== undefined) patch.title = title ? String(title).slice(0, 120) : null;
+  const { data, error } = await getDb().from(T).update(patch).eq('id', id).select('id').single();
+  if (error) throw new Error(`updateNamingRun: ${error.message}`);
   return data;
 }
 

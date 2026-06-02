@@ -81,8 +81,11 @@ const els = {
   navAppraisal: $('nav-appraisal'),
   navNaming: $('nav-naming'),
   namingInput: $('naming-input'),
+  namingTitle: $('naming-title'),
   namingGo: $('naming-go'),
+  namingNew: $('naming-new'),
   namingApply: $('naming-apply'),
+  namingFiltersPanel: $('naming-filters-panel'),
   namingPriceMin: $('nm-price-min'),
   namingPriceMax: $('nm-price-max'),
   namingStatus: $('naming-status'),
@@ -2558,6 +2561,9 @@ async function runNaming() {
       body: JSON.stringify({
         action: 'search',
         brief,
+        // run_id present → update this project in place; absent → new project.
+        run_id: currentNamingRunId || null,
+        title: (els.namingTitle && els.namingTitle.value.trim()) || null,
         connotation: [...namingConSet],
         exclude: [...namingExcludeSet],
         tlds: [...namingTldSet],
@@ -2569,6 +2575,7 @@ async function runNaming() {
     if (!res.ok) throw new Error(data.error || `Search failed (${res.status})`);
     namingLastResults = data;
     renderNamingResults(data);
+    if (els.namingFiltersPanel) els.namingFiltersPanel.hidden = false; // filters appear after a run
     setNamingStatus('');
     // Deep-link to the saved run so refresh / share works, and refresh the
     // Recent strip below the form. Skip the URL update if the save failed.
@@ -2793,6 +2800,8 @@ async function exportNamingSheet() {
 // sections hidden). Used when leaving a past-run view back to a fresh brief.
 function resetNamingView() {
   if (els.namingInput) els.namingInput.value = '';
+  if (els.namingTitle) els.namingTitle.value = '';
+  if (els.namingFiltersPanel) els.namingFiltersPanel.hidden = true; // filters hide until a run
   if (els.namingFilters) { els.namingFilters.hidden = true; els.namingFilters.innerHTML = ''; }
   if (els.namingResults) els.namingResults.hidden = true;
   if (els.namingBuyReadyTable) els.namingBuyReadyTable.innerHTML = '';
@@ -2872,10 +2881,12 @@ async function openNamingRun(id) {
     const r = data.run;
     currentNamingRunId = r.id;
     if (els.namingInput) els.namingInput.value = String(r.brief || '');
+    if (els.namingTitle) els.namingTitle.value = String(r.title || '');
     const buy = Array.isArray(r.buy_ready) ? r.buy_ready : [];
     const stretch = Array.isArray(r.stretch) ? r.stretch : [];
     namingLastResults = { run_id: r.id, filters: r.filters, buyReady: buy, stretch };
     renderNamingResults({ filters: r.filters, buyReady: buy, stretch });
+    if (els.namingFiltersPanel) els.namingFiltersPanel.hidden = false; // opened run → filters visible
     setNamingStatus('');
     // Pull chat history and replay the latest refinement (if any).
     await loadNamingChat(r.id);
@@ -3231,6 +3242,13 @@ els.tmForm?.addEventListener('submit', (e) => { e.preventDefault(); const q = el
 els.apForm?.addEventListener('submit', (e) => { e.preventDefault(); const v = els.apDomain.value.trim(); if (v) runAppraisal(v); });
 els.namingGo?.addEventListener('click', runNaming);
 els.namingApply?.addEventListener('click', runNaming);
+// Start a fresh project: clears the brief/title/results so the next Find Names
+// inserts a new run instead of updating the current one.
+els.namingNew?.addEventListener('click', () => {
+  resetNamingView();
+  if (location.pathname !== '/research/naming') history.replaceState(null, '', '/research/naming');
+  if (els.namingTitle) els.namingTitle.focus();
+});
 // Live-format price inputs as "$1,234,567"; Enter applies.
 function formatPriceField(el) {
   const digits = String(el.value).replace(/[^0-9]/g, '');
