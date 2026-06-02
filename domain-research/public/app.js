@@ -1421,7 +1421,7 @@ async function loadNotifications() {
 function startNotifPolling() {
   if (notifPollTimer) return;
   loadNotifications();
-  notifPollTimer = setInterval(loadNotifications, 60000);
+  notifPollTimer = setInterval(loadNotifications, 30000);
 }
 // True when the given view isn't the one on screen — used to only ding the bell
 // for a client-completed tool (appraisal/trademark) when you've navigated away.
@@ -1709,6 +1709,10 @@ function startPolling(runId, label) {
         renderReport(r.report);
         setReportMeta(r.created_at, r.report && r.report.phase);
         els.go.disabled = false;
+        // The report-done notification is created server-side at this exact
+        // moment (same step as the email) — refresh the bell now instead of
+        // waiting up to a full poll interval.
+        if (typeof loadNotifications === 'function') loadNotifications();
       } else if (r.status === 'error') {
         clearTimers();
         setStatus(r.error || 'The run failed.', true);
