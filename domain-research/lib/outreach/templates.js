@@ -240,3 +240,8 @@ export function customToTemplate(row) {
     builtin: false,
   };
 }
+
+// Lightweight list of the built-in scenarios for the UI dropdown.
+export function scenarioOptions() {
+  return SCENARIOS.map((s) => ({ id: s.id, name: s.name }));
+}
