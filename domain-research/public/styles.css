@@ -413,8 +413,18 @@ a.naming-card-domain:hover { color: var(--coral-deep); text-decoration: underlin
 /* Consolidated primary-target contact card */
 .contact-card { padding: 14px 16px; background: var(--cream); border: 1.5px solid var(--line); border-radius: var(--radius-sm); }
 .contact-card .cc-name { font-family: var(--body); font-weight: 800; font-size: 1.15rem; color: var(--navy); }
+.contact-card .cc-role { font-size: .92rem; color: var(--navy-2); margin: 3px 0 6px; }
 .contact-card .cc-org { font-size: .95rem; color: var(--navy-2); margin: 2px 0 10px; }
 .contact-card .contacts { gap: 6px; }
+/* Per-person / per-entity lead cards — one self-contained box per contact so
+   distinct people and their channels are easy to tell apart at a glance. */
+.lead-cards { display: grid; gap: 10px; }
+.lead-card { padding: 11px 14px; background: var(--cream); border: 1.5px solid var(--line); border-radius: var(--radius-sm); }
+.lead-card .lc-head { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.lead-card .lc-kind { flex: none; font-size: .68rem; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--navy-3); }
+.lead-card .lc-title { font-family: var(--body); font-weight: 800; font-size: 1.02rem; color: var(--navy); }
+.lead-card .lc-note { font-size: .9rem; color: var(--navy-2); margin: 4px 0 0; }
+.lead-card .contacts { margin-top: 9px; gap: 6px; }
 .cc-actions { margin: 0 0 10px; }
 .copy-emails { background: var(--cream); color: var(--navy-2); border: 1.5px solid var(--line); box-shadow: none; padding: 6px 14px; font-size: 12.5px; font-weight: 700; border-radius: 999px; cursor: pointer; }
 .copy-emails:hover { border-color: var(--coral); color: var(--navy); transform: none; box-shadow: none; }

@@ -1044,8 +1044,32 @@ function renderSummary(d) {
   const linkify = (c) => {
     const v = String(c.value == null ? '' : c.value);
     if (c.type === 'email') return `<a href="mailto:${e(v)}">${e(v)}</a>`;
-    if (c.type === 'social' || /^https?:\/\//.test(v)) return `<a href="${e(v)}" target="_blank" rel="noopener">${e(v)}</a>`;
+    if (/^https?:\/\//.test(v)) return `<a href="${e(v)}" target="_blank" rel="noopener">${e(v)}</a>`;
+    if (c.type === 'social') {
+      // Social handles often arrive without a scheme: a LinkedIn vanity path
+      // ("in/jane-doe", "company/acme", "pub/…") or a bare profile domain.
+      if (/^(in|pub|company|school)\//i.test(v)) return `<a href="https://www.linkedin.com/${e(v)}" target="_blank" rel="noopener">${e(v)}</a>`;
+      if (/^[a-z0-9.-]+\.[a-z]{2,}(\/|$)/i.test(v)) return `<a href="https://${e(v.replace(/^www\./i, ''))}" target="_blank" rel="noopener">${e(v)}</a>`;
+    }
     return e(v);
+  };
+  // Escape text, then auto-link any URLs / LinkedIn profiles that appear INSIDE a
+  // free-text note (e.g. "… LinkedIn in/sean-moriarty-186688" → a real link).
+  // Placeholders shield already-linked URLs from the bare-handle pass.
+  const linkifyNote = (text) => {
+    let s = e(String(text == null ? '' : text));
+    const slots = [];
+    const stash = (html) => ` ${slots.push(html) - 1} `;
+    s = s.replace(/\bhttps?:\/\/[^\s<>"']+/g, (m) => {
+      const trail = (m.match(/[.,;:)]+$/) || [''])[0];
+      const url = m.slice(0, m.length - trail.length);
+      return stash(`<a href="${url}" target="_blank" rel="noopener">${url}</a>`) + trail;
+    });
+    s = s.replace(/\b(?:www\.)?linkedin\.com\/[A-Za-z0-9/_%.-]+/gi, (m) =>
+      stash(`<a href="https://${m.replace(/^www\./i, '')}" target="_blank" rel="noopener">${m}</a>`));
+    s = s.replace(/(^|[\s(,;])((?:in|pub|company|school)\/[A-Za-z0-9_-]{2,})/g, (full, pre, h) =>
+      `${pre}${stash(`<a href="https://www.linkedin.com/${h}" target="_blank" rel="noopener">${h}</a>`)}`);
+    return s.replace(/ (\d+) /g, (_, i) => slots[Number(i)]);
   };
   let html = '';
   if (d.summary) html += `<p class="verdict">${e(d.summary)}</p>`;
@@ -1072,12 +1096,12 @@ function renderSummary(d) {
     };
     const contactLi = (c) => {
       const val = isUsefulClue(c) ? `<span class="clue">${linkify(c)}</span>` : linkify(c);
-      return `<li><span class="ctype">${e(c.type || '')}</span> ${val}${c.note ? ` <span class="muted">— ${e(c.note)}</span>` : ''}${msgLinks(c)}</li>`;
+      return `<li><span class="ctype">${e(c.type || '')}</span> ${val}${c.note ? ` <span class="muted">— ${linkifyNote(c.note)}</span>` : ''}${msgLinks(c)}</li>`;
     };
     const list = (arr) => `<ul class="contacts">${arr.map(contactLi).join('')}</ul>`;
     const isPrimary = (c) => String((c && c.tier) || '').toLowerCase() === 'primary';
-    // Consolidated contact card for the primary target: name as a heading, org
-    // beneath, then the email/phone/profile rows — one easy-to-consume block.
+    // Consolidated contact card for the primary target: name as a heading, role
+    // + org beneath, then the email/phone/profile rows — one easy-to-consume block.
     const card = (arr) => {
       const order = { name: 0, org: 1, email: 2, phone: 3, social: 4 };
       const sorted = arr.slice().sort((a, b) => (order[a.type] ?? 9) - (order[b.type] ?? 9));
@@ -1086,21 +1110,55 @@ function renderSummary(d) {
       const rest = sorted.filter((c) => c !== nameC && c !== orgC);
       const emails = arr.filter((c) => c.type === 'email' && c.value).map((c) => String(c.value).trim());
       let h = '<div class="contact-card">';
-      if (nameC) h += `<div class="cc-name">${isUsefulClue(nameC) ? `<span class="clue">${e(nameC.value)}</span>` : e(nameC.value)}</div>`;
-      if (orgC) h += `<div class="cc-org">${linkify(orgC)}${orgC.note ? ` <span class="muted">— ${e(orgC.note)}</span>` : ''}</div>`;
+      if (nameC) {
+        h += `<div class="cc-name">${isUsefulClue(nameC) ? `<span class="clue">${e(nameC.value)}</span>` : e(nameC.value)}</div>`;
+        if (nameC.note) h += `<div class="cc-role">${linkifyNote(nameC.note)}</div>`;
+      }
+      if (orgC) h += `<div class="cc-org">${linkify(orgC)}${orgC.note ? ` <span class="muted">— ${linkifyNote(orgC.note)}</span>` : ''}</div>`;
       if (emails.length) h += `<div class="cc-actions"><button type="button" class="copy-emails" data-emails="${e(emails.join(', '))}">Copy ${emails.length === 1 ? 'email' : `all ${emails.length} emails`}</button></div>`;
       if (rest.length) h += list(rest);
       return h + '</div>';
     };
+    // Group a contact array into per-entity blocks: a new block starts at each
+    // name/org entry and the email/phone/social rows that follow attach to it —
+    // mirroring how the agent lists a person, then their reachable channels.
+    const groupLeads = (arr) => {
+      const groups = [];
+      let cur = null;
+      for (const c of arr) {
+        const t = String(c.type || '').toLowerCase();
+        if (t === 'name' || t === 'org' || !cur) {
+          cur = { header: (t === 'name' || t === 'org') ? c : null, rows: [] };
+          groups.push(cur);
+          if (cur.header) continue;
+        }
+        cur.rows.push(c);
+      }
+      return groups;
+    };
+    // One self-contained box per person/entity so distinct contacts are easy to
+    // tell apart: a header (name or org, with its role/source note) + the rows.
+    const leadCard = (g) => {
+      let head = '';
+      if (g.header) {
+        const h = g.header;
+        const title = isUsefulClue(h) ? `<span class="clue">${linkify(h)}</span>` : linkify(h);
+        head = `<div class="lc-head"><span class="lc-kind">${e(String(h.type || ''))}</span>`
+          + `<span class="lc-title">${title}</span></div>`
+          + (h.note ? `<div class="lc-note">${linkifyNote(h.note)}</div>` : '');
+      }
+      return `<div class="lead-card">${head}${g.rows.length ? list(g.rows) : ''}</div>`;
+    };
+    const leadCards = (arr) => `<div class="lead-cards">${groupLeads(arr).map(leadCard).join('')}</div>`;
     // Group into the primary target vs. other (secondary/tertiary/untagged)
-    // leads when the report tags tiers; otherwise show one flat list.
+    // leads when the report tags tiers; otherwise show grouped per-entity cards.
     if (contacts.some(isPrimary)) {
       const primary = contacts.filter(isPrimary);
       const other = contacts.filter((c) => !isPrimary(c));
       html += `<div class="sum-block"><h3>Primary target — how to reach the likely owner</h3>${card(primary)}</div>`;
-      if (other.length) html += `<div class="sum-block"><h3>Other &amp; historical leads</h3>${list(other)}</div>`;
+      if (other.length) html += `<div class="sum-block"><h3>Other &amp; historical leads</h3>${leadCards(other)}</div>`;
     } else {
-      html += `<div class="sum-block"><h3>Key contacts</h3>${list(contacts)}</div>`;
+      html += `<div class="sum-block"><h3>Key contacts</h3>${leadCards(contacts)}</div>`;
     }
   }
   const path = Array.isArray(d.contact_path) ? d.contact_path : [];
@@ -1195,10 +1253,12 @@ async function checkAuth() {
       currentUser = u;
       if (els.navAccountEmail) els.navAccountEmail.textContent = u.email;
       if (els.topbarAccount) els.topbarAccount.hidden = false;
-      // Show the Admin link for is_admin OR anyone granted the `admin` module
-      // permission (matches the umbrella's userCan('admin')); is_admin-only here
-      // hid the admin side from permission-granted non-admins.
-      if (els.topbarAdmin) els.topbarAdmin.hidden = !(u.is_admin || (u.permissions && u.permissions.admin === true));
+      // Show the Admin link to anyone who can ENTER the admin area: the owner
+      // (is_admin), the umbrella `admin` grant, OR any single granular admin tab
+      // (admin.imports, admin.sources, …). Mirrors permissions.ts#canEnterAdmin —
+      // checking only is_admin||admin hid the chrome from granular admins (e.g. a
+      // user with just admin.imports couldn't reach the dashboard from here).
+      if (els.topbarAdmin) els.topbarAdmin.hidden = !canEnterAdmin(u);
       if (els.navAccount) els.navAccount.hidden = false;
       renderProfile(u);
       startNotifPolling();
@@ -1270,7 +1330,22 @@ function canAdminLessons(user) {
   if (!user) return false;
   if (user.is_admin) return true;
   const perms = user.permissions || {};
+  // The umbrella `admin` grant is full access (all tabs), so it covers lessons too.
+  if (perms.admin === true) return true;
   return perms['admin.lessons.approve'] === true || perms['research.admin.lessons.approve'] === true;
+}
+// Mirror of permissions.ts#canEnterAdmin: the owner, the umbrella `admin` grant,
+// or ANY single granular admin tab can open the admin dashboard.
+const ADMIN_TAB_PERMS = [
+  'admin.sources', 'admin.config', 'admin.schedule',
+  'admin.users.manage', 'admin.imports', 'admin.lessons.approve',
+];
+function canEnterAdmin(user) {
+  if (!user) return false;
+  if (user.is_admin) return true;
+  const perms = user.permissions || {};
+  if (perms.admin === true) return true;
+  return ADMIN_TAB_PERMS.some((k) => perms[k] === true);
 }
 // Generic module gate matching gateNavByPermissions' `can()` — used to HIDE a
 // deep-linked tool view from a user without the permission (fall through to the

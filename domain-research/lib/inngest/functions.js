@@ -6,7 +6,7 @@ import { getUser } from '../db/users.js';
 import { createNotification } from '../db/notifications.js';
 import { loadLessonsAddendum, bumpAppliedCounts } from '../db/lessons.js';
 import { sendEmail, isEmailConfigured } from '../email.js';
-import { reportUrl, reportHash } from '../reportUrl.js';
+import { reportUrl } from '../reportUrl.js';
 import { summarizeReport } from '../reportSummary.js';
 
 // Format the refine-chat history as a single corrections block the agent can
@@ -144,7 +144,12 @@ async function createReportNotification(runId) {
   const u = await getUser(run.user_id);
   if (u && u.notify_in_app === false) return { created: false, reason: 'bell disabled' };
   const phase = (run.report && run.report.phase) || 'shallow';
-  const link = reportHash({ domain: run.domain, runId: run.id, createdAt: run.created_at });
+  // Absolute URL (not a bare #hash) so the link works from BOTH chromes: the
+  // research SPA's own bell AND the snagged-admin chrome bell (app.snagged.com/
+  // admin/*), where a relative "#/r/…" would just append to the admin URL and
+  // never reach the report. The research bell's openNotifLink handles an
+  // absolute same-origin URL fine (pushState + route()).
+  const link = reportUrl({ domain: run.domain, runId: run.id, createdAt: run.created_at });
   await createNotification({
     user_id: run.user_id,
     kind: 'domain_owner',
