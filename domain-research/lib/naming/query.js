@@ -251,6 +251,8 @@ function buildQuery(db, filters, keywords, matchMode, opts = {}) {
   if (filters.syllables_min != null) q = q.gte('num_syllables', filters.syllables_min);
   if (filters.syllables_max != null) q = q.lte('num_syllables', filters.syllables_max);
   if (filters.num_words != null) q = q.eq('num_words', filters.num_words);
+  if (filters.num_words_min != null) q = q.gte('num_words', filters.num_words_min);
+  if (filters.num_words_max != null) q = q.lte('num_words', filters.num_words_max);
   if (filters.dictionary_word_only) q = q.eq('is_dictionary_word', true);
   if (filters.min_quality_score != null) q = q.gte('quality_score', filters.min_quality_score);
   if (pricedOnly) {
@@ -318,6 +320,8 @@ function buildMasterQuery(db, filters, keywords, matchMode, opts = {}) {
   if (filters.sld_length_min != null) q = q.gte('sld_length', filters.sld_length_min);
   if (filters.sld_length_max != null) q = q.lte('sld_length', filters.sld_length_max);
   if (filters.num_words != null) q = q.eq('number_of_words', filters.num_words);
+  if (filters.num_words_min != null) q = q.gte('number_of_words', filters.num_words_min);
+  if (filters.num_words_max != null) q = q.lte('number_of_words', filters.num_words_max);
   if (filters.dictionary_word_only) q = q.eq('dictionary_word', 'Y');
   // Master has no quality_score column, so min_quality_score can't apply here —
   // including these rows unfiltered errs toward "more names" per product intent.

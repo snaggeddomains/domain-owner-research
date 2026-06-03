@@ -338,6 +338,16 @@ async function handleSearch(body, res, user) {
   if (body.len_max !== undefined && uiInt(body.len_max) != null) filters.sld_length_max = uiInt(body.len_max);
   if (body.syllables_min !== undefined && uiInt(body.syllables_min) != null) filters.syllables_min = uiInt(body.syllables_min);
   if (body.syllables_max !== undefined && uiInt(body.syllables_max) != null) filters.syllables_max = uiInt(body.syllables_max);
+  // Manual Words min/max range. A range from the UI governs word count, so clear
+  // any exact num_words the brief inferred (avoids eq + range over-constraining).
+  if (
+    (body.words_min !== undefined && uiInt(body.words_min) != null) ||
+    (body.words_max !== undefined && uiInt(body.words_max) != null)
+  ) {
+    filters.num_words = null;
+    if (body.words_min !== undefined && uiInt(body.words_min) != null) filters.num_words_min = uiInt(body.words_min);
+    if (body.words_max !== undefined && uiInt(body.words_max) != null) filters.num_words_max = uiInt(body.words_max);
+  }
   let results;
   try {
     results = await searchUniverse(filters);
