@@ -3519,7 +3519,7 @@ async function loadOutreach(scenarioId) {
   try {
     const payload = { run_id: currentRunId };
     if (scenarioId) payload.scenario_id = scenarioId;
-    const res = await fetch('/api/outreach', {
+    const res = await fetch('/research/api/outreach', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
