@@ -11,6 +11,7 @@
 
 import { isAuthed, currentUser, userCan, moduleForSource } from '../lib/auth.js';
 import { runTool } from '../lib/sources/index.js';
+import { withCategory } from '../lib/db/usage.js';
 import { normalizeDomain } from '../lib/util.js';
 import { saveToolLookup, listToolLookups, getToolLookup } from '../lib/db/tools.js';
 import { getDefinitionWithFallback, sldOf } from '../lib/db/dictionary.js';
@@ -40,7 +41,9 @@ async function handleRunTool(req, res, source) {
   for (const [k, v] of Object.entries(rest)) args[k] = Array.isArray(v) ? v[0] : v;
   if (args.domain) args.domain = normalizeDomain(args.domain);
 
-  const result = await runTool(source, args, process.env);
+  // Tag cost to the module this tool belongs to (trademark_search → 'trademark',
+  // appraise_lookup → 'appraisal', the rest → 'domain_owner').
+  const result = await withCategory(moduleForSource(source), () => runTool(source, args, process.env));
 
   // Decorate successful appraisal responses with the SLD's dictionary entry
   // when we have one. The Appraisal LLM reasons heavily about word meaning
