@@ -1177,7 +1177,10 @@ async function checkAuth() {
       currentUser = u;
       if (els.navAccountEmail) els.navAccountEmail.textContent = u.email;
       if (els.topbarAccount) els.topbarAccount.hidden = false;
-      if (els.topbarAdmin) els.topbarAdmin.hidden = !u.is_admin;
+      // Show the Admin link for is_admin OR anyone granted the `admin` module
+      // permission (matches the umbrella's userCan('admin')); is_admin-only here
+      // hid the admin side from permission-granted non-admins.
+      if (els.topbarAdmin) els.topbarAdmin.hidden = !(u.is_admin || (u.permissions && u.permissions.admin === true));
       if (els.navAccount) els.navAccount.hidden = false;
       renderProfile(u);
       startNotifPolling();
