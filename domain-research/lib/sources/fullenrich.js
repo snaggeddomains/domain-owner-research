@@ -32,13 +32,14 @@ function collectPhones(ci) {
 export default {
   name: 'fullenrich_lookup',
   description:
-    'FullEnrich WATERFALL contact lookup (PREMIUM — spends a credit). Runs many data providers in sequence to find ' +
-    'the best WORK + PERSONAL emails (each with a deliverability status) and PHONE for a NAMED person — higher match ' +
-    'rate than any single provider. Run it for the PRIMARY likely owner once named — ALONGSIDE rocketreach_lookup, in ' +
-    'parallel: do NOT skip it when RocketReach already returned contacts, since it corroborates the hit and often adds ' +
-    'a personal email/mobile RocketReach lacks. Pass their name plus the domain under research and/or their ' +
-    'company/LinkedIn URL. A miss just means no provider had a record — not that contact info does not exist. NEVER ' +
-    'run it on brokers, marketplaces, or registrar/privacy entities.',
+    'FullEnrich WATERFALL contact lookup (PREMIUM — COST-GATED FALLBACK). Runs many data providers in sequence to find ' +
+    'a NAMED person\'s best WORK + PERSONAL emails (with deliverability status), and OPTIONALLY a PHONE. Credits: emails ' +
+    'are cheap; PHONE numbers cost MUCH more — so phone is OFF by default. Use this as a FALLBACK, not in parallel: run ' +
+    'it for a person ONLY when rocketreach_lookup did NOT return a usable email/phone for them (its value is finding ' +
+    'contacts RocketReach lacks). Do NOT run it redundantly when RocketReach already returned a deliverable contact. ' +
+    'Set include_phone:true ONLY for the single PRIMARY likely owner (never for secondary contacts, employees, or ' +
+    'discovered leaders). Pass their name plus the domain under research and/or their company/LinkedIn URL. A miss just ' +
+    'means no provider had a record. NEVER run it on brokers, marketplaces, or registrar/privacy entities.',
   parameters: {
     type: 'object',
     properties: {
@@ -48,10 +49,11 @@ export default {
       domain: { type: 'string', description: 'Domain associated with the person (e.g. the domain under research) — strongly improves the match' },
       company: { type: 'string', description: 'Company / employer name to disambiguate' },
       linkedin_url: { type: 'string', description: 'LinkedIn profile URL — the single strongest anchor when known' },
+      include_phone: { type: 'boolean', description: 'Also run the (much more expensive) phone waterfall. Default false = emails only. Set true ONLY for the single primary likely owner.' },
     },
   },
   requiresKey: ['FULL_ENRICH_API_KEY'],
-  async run({ name, first_name, last_name, domain, company, linkedin_url }, { env }) {
+  async run({ name, first_name, last_name, domain, company, linkedin_url, include_phone }, { env }) {
     let fn = first_name, ln = last_name;
     if ((!fn || !ln) && name) {
       const parts = String(name).trim().split(/\s+/);
@@ -64,10 +66,14 @@ export default {
     }
 
     const headers = { Authorization: `Bearer ${env.FULL_ENRICH_API_KEY}`, 'content-type': 'application/json' };
+    // Emails only by default — PHONE is the expensive part of the waterfall, so
+    // it's opt-in (include_phone) and reserved for the single primary owner.
+    const enrich_fields = ['contact.work_emails', 'contact.personal_emails'];
+    if (include_phone) enrich_fields.push('contact.phones');
     const contact = {
       first_name: fn,
       last_name: ln,
-      enrich_fields: ['contact.work_emails', 'contact.personal_emails', 'contact.phones'],
+      enrich_fields,
     };
     if (domain) contact.domain = domain;
     if (company) contact.company_name = company;
