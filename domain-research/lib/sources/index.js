@@ -10,6 +10,7 @@ import universeOwnership from './universe_ownership.js';
 import livesite from './livesite.js';
 import rocketreach from './rocketreach.js';
 import rocketreachLookup from './rocketreachlookup.js';
+import fullenrich from './fullenrich.js';
 import whoxyHistory from './whoxyhistory.js';
 import whoxyReverse from './whoxyreverse.js';
 import readurl from './readurl.js';
@@ -31,7 +32,7 @@ import namebio from './namebio.js';
 const ALL = [
   rdap, whois, dns, wayback, livesite, marketplace, cluster, masterlist, universeOwnership, rocketreach, readurl, analytics,
   whoisxml, domainiq, bigdomaindata, reversewhois, reversens, reverseip, websearch, bravesearch, trademark, appraise,
-  rocketreachLookup, whoxyHistory, whoxyReverse, identify, namebio,
+  rocketreachLookup, fullenrich, whoxyHistory, whoxyReverse, identify, namebio,
 ];
 
 // Paid sources spend external API credits. They are withheld from the free
@@ -40,7 +41,7 @@ const ALL = [
 const PAID = new Set([
   'whoisxml_lookup', 'domainiq_lookup', 'bigdomaindata_lookup',
   'reverse_whois', 'reverse_ns', 'reverse_ip', 'web_search', 'brave_search', 'trademark_search', 'appraise_lookup',
-  'rocketreach_lookup', 'whoxy_history', 'whoxy_reverse', 'identify_operator', 'namebio_sales',
+  'rocketreach_lookup', 'fullenrich_lookup', 'whoxy_history', 'whoxy_reverse', 'identify_operator', 'namebio_sales',
 ]);
 
 // Recap grouping — each source's category, used to break the "Sources checked"
@@ -66,6 +67,7 @@ const CATEGORY = {
   universe_ownership: 'Internal list',
   rocketreach_search: 'People & contacts',
   rocketreach_lookup: 'People & contacts',
+  fullenrich_lookup: 'People & contacts',
   web_search: 'Web & social',
   brave_search: 'Web & social',
   read_url: 'Web & social',
