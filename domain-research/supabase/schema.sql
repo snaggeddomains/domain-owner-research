@@ -408,7 +408,10 @@ create or replace function cost_series(p_period text, p_since timestamptz, p_cat
 returns table(bucket text, cost numeric)
 language sql stable as $$
   select to_char(
-           date_trunc(case p_period when 'month' then 'month' when 'week' then 'week' else 'day' end, u.created_at),
+           date_trunc(
+             case p_period when 'month' then 'month' when 'week' then 'week' else 'day' end,
+             u.created_at at time zone 'America/New_York'
+           ),
            case p_period when 'month' then 'YYYY-MM' else 'YYYY-MM-DD' end
          ) as bucket,
          sum(u.units * coalesce(r.usd_per_unit, 0)) as cost
