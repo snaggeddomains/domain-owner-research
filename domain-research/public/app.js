@@ -75,8 +75,14 @@ const els = {
   odDomain: $('od-domain'),
   odScenarioSel: $('od-scenario-sel'),
   odWhy: $('od-why'),
+  odFitNote: $('od-fit-note'),
   odSubject: $('od-subject'),
   odBody: $('od-bodytext'),
+  odCopySubject: $('od-copy-subject'),
+  odCopyBody: $('od-copy-body'),
+  odTplTitle: $('od-tpl-title'),
+  odTplSave: $('od-tpl-save'),
+  odTplStatus: $('od-tpl-status'),
   odStatus: $('od-status'),
   odRegen: $('od-regen'),
   odCopy: $('od-copy'),
@@ -3501,6 +3507,8 @@ function openOutreach() {
   els.outreachDrawer.hidden = false;
   document.body.classList.add('drawer-open');
   if (els.odDomain) els.odDomain.textContent = currentReportDomain || '';
+  if (els.odTplTitle) els.odTplTitle.value = '';
+  if (els.odTplStatus) { els.odTplStatus.hidden = true; els.odTplStatus.textContent = ''; }
   outreachLoaded = false;
   loadOutreach(null);
 }
@@ -3542,16 +3550,20 @@ async function loadOutreach(scenarioId) {
 }
 
 function renderOutreach(data) {
-  // Populate the scenario dropdown once (or refresh selection).
+  // (Re)build the scenario dropdown when the set of ids changes (e.g. a newly
+  // saved custom template appears).
   if (els.odScenarioSel && Array.isArray(data.scenarios)) {
-    if (els.odScenarioSel.options.length !== data.scenarios.length) {
+    const sig = data.scenarios.map((s) => s.id).join('|');
+    if (els.odScenarioSel.dataset.ids !== sig) {
       els.odScenarioSel.innerHTML = '';
+      let group = null;
       for (const s of data.scenarios) {
         const opt = document.createElement('option');
         opt.value = s.id;
-        opt.textContent = s.name;
+        opt.textContent = s.name + (s.custom ? ' (saved)' : '');
         els.odScenarioSel.appendChild(opt);
       }
+      els.odScenarioSel.dataset.ids = sig;
     }
     if (data.scenario && data.scenario.id) els.odScenarioSel.value = data.scenario.id;
   }
@@ -3559,8 +3571,71 @@ function renderOutreach(data) {
     const why = (data.scenario && Array.isArray(data.scenario.why)) ? data.scenario.why : [];
     els.odWhy.textContent = why.length ? `Why this template: ${why.join(' · ')}` : '';
   }
+  // Fit note: when the closest template is only a weak match, nudge toward saving
+  // a new one (and prefill the suggested name).
+  if (els.odFitNote) {
+    if (data.fit === 'weak') {
+      els.odFitNote.hidden = false;
+      els.odFitNote.textContent = 'No close template match — drafted from the nearest one. Consider saving this as a new template (name suggested below).';
+    } else {
+      els.odFitNote.hidden = true;
+      els.odFitNote.textContent = '';
+    }
+  }
+  // Prefill the save-as-template name from the model's suggestion, unless the
+  // user has already typed one.
+  if (els.odTplTitle && data.suggested_title && !els.odTplTitle.value.trim()) {
+    els.odTplTitle.value = data.suggested_title;
+  }
   if (els.odSubject) els.odSubject.value = data.subject || '';
   if (els.odBody) els.odBody.value = data.body || '';
+}
+
+// Flash a copy-icon button to confirm the copy.
+function flashCopy(btn) {
+  if (!btn) return;
+  btn.classList.add('copied');
+  const t = btn.getAttribute('title');
+  btn.setAttribute('title', 'Copied!');
+  setTimeout(() => { btn.classList.remove('copied'); if (t) btn.setAttribute('title', t); }, 1400);
+}
+function copyText(text, btn) {
+  if (!text || !navigator.clipboard) return;
+  navigator.clipboard.writeText(text).then(() => flashCopy(btn)).catch(() => {});
+}
+
+async function saveOutreachTemplate() {
+  if (!currentRunId || !els.odTplTitle) return;
+  const title = els.odTplTitle.value.trim();
+  if (!title) { if (els.odTplStatus) { els.odTplStatus.hidden = false; els.odTplStatus.textContent = 'Give the template a name first.'; els.odTplStatus.className = 'od-status od-status-err'; } return; }
+  if (els.odTplStatus) { els.odTplStatus.hidden = false; els.odTplStatus.textContent = 'Saving…'; els.odTplStatus.className = 'od-status od-status-busy'; }
+  if (els.odTplSave) els.odTplSave.disabled = true;
+  try {
+    const res = await fetch('/research/api/outreach', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        run_id: currentRunId,
+        action: 'save_template',
+        title,
+        subject: els.odSubject ? els.odSubject.value : '',
+        body: els.odBody ? els.odBody.value : '',
+      }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      if (els.odTplStatus) { els.odTplStatus.textContent = data.error || `Couldn't save (${res.status})`; els.odTplStatus.className = 'od-status od-status-err'; }
+      return;
+    }
+    if (els.odTplStatus) { els.odTplStatus.textContent = 'Saved — added to your templates.'; els.odTplStatus.className = 'od-status'; }
+    if (els.odFitNote) els.odFitNote.hidden = true;
+    // Reload so the new template shows in the dropdown and is selected.
+    if (data.template && data.template.id) loadOutreach(data.template.id);
+  } catch (e) {
+    if (els.odTplStatus) { els.odTplStatus.textContent = "Couldn't reach the server."; els.odTplStatus.className = 'od-status od-status-err'; }
+  } finally {
+    if (els.odTplSave) els.odTplSave.disabled = false;
+  }
 }
 
 els.outreachBtn?.addEventListener('click', openOutreach);
@@ -3571,6 +3646,9 @@ document.addEventListener('keydown', (e) => {
 });
 els.odScenarioSel?.addEventListener('change', () => { if (outreachLoaded) loadOutreach(els.odScenarioSel.value); });
 els.odRegen?.addEventListener('click', () => loadOutreach(els.odScenarioSel ? els.odScenarioSel.value : null));
+els.odCopySubject?.addEventListener('click', () => copyText(els.odSubject ? els.odSubject.value : '', els.odCopySubject));
+els.odCopyBody?.addEventListener('click', () => copyText(els.odBody ? els.odBody.value : '', els.odCopyBody));
+els.odTplSave?.addEventListener('click', saveOutreachTemplate);
 els.odCopy?.addEventListener('click', () => {
   const subject = els.odSubject ? els.odSubject.value : '';
   const body = els.odBody ? els.odBody.value : '';

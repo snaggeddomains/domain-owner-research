@@ -1,27 +1,34 @@
 // Draft a first-touch outreach email. The user picked "LLM free-write, templates
-// as style guide": we let the model compose in Rob's voice, but anchor it hard on
-// the matched scenario's real templates + the recurring spine, and constrain it
-// to the report's facts (no invented names/companies/platforms/prices — missing
-// values stay as a visible [BRACKET] for Rob to fill). Falls back to a plain
-// placeholder-filled template if the model call fails.
+// as style guide": we let the model compose in Rob's voice, anchored hard on the
+// chosen template (built-in scenario OR a saved custom one) + the recurring spine,
+// constrained to the report's facts (no invented names/companies/platforms/prices
+// — missing values stay as a visible [BRACKET]). The same call also judges whether
+// the template actually FITS this report and proposes a short title for the
+// situation, so the UI can offer "save this as a new template" when nothing fits.
+// Falls back to a plain placeholder-filled template if the model is unavailable.
 
 import Anthropic from '@anthropic-ai/sdk';
-import { SCENARIO_BY_ID, STYLE_GUIDE } from './templates.js';
+import { STYLE_GUIDE } from './templates.js';
 
 const SYSTEM = `You are drafting a FIRST-TOUCH cold outreach email AS Rob Schutz of Snagged.com, a domain brokerage, to the current owner of a domain his client wants to acquire. This is the opening email only.
 
 ${STYLE_GUIDE}
 
 HARD RULES:
-- Write in Rob's voice. Use the provided scenario template(s) as the style anchor — match their tone, length, and structure closely. This is a light personalization of a proven template, NOT a fresh essay.
+- Write in Rob's voice. Use the provided template(s) as the style anchor — match their tone, length, and structure closely. This is a light personalization of a proven template, NOT a fresh essay.
 - Only use facts present in RESEARCH FACTS / report excerpt. NEVER invent a person's name, company, acquisition story, marketplace platform, or price.
-- If a template needs a value you don't have (e.g. the company a breadcrumb refers to, a parent site, a first name), either omit that clause or leave a clearly bracketed placeholder like [COMPANY] or [First Name] for Rob to fill in. Do not guess.
+- If the template needs a value you don't have, either omit that clause or leave a clearly bracketed placeholder like [COMPANY] or [First Name] for Rob to fill. Do not guess.
 - Keep it short — match the example length. No subject-line preamble in the body.
 - Do not state or imply a price, and don't promise anything beyond what the templates say.
 - The subject line must be exactly: <DOMAIN> Domain Inquiry
 
+Also assess FIT: does the anchor template genuinely suit this owner situation?
+- "good" = the template's best-fit clearly matches the report.
+- "weak" = it's the closest available but the situation is meaningfully different (e.g. a mix of signals, or a case none of the scenarios cover well).
+And propose "suggested_title": a short (3-6 word) Title Case label naming THIS owner situation, suitable as the name of a reusable template (e.g. "Estate / Deceased Owner", "Foreign-Language Registrant", "Charity / Nonprofit Owner").
+
 Return STRICT JSON only, no prose, no code fence:
-{"subject": "...", "body": "..."}`;
+{"subject": "...", "body": "...", "fit": "good" | "weak", "suggested_title": "..."}`;
 
 function factsBlock(sig) {
   const f = [];
@@ -40,13 +47,32 @@ function factsBlock(sig) {
   return f.join('\n');
 }
 
-function fillTemplate(tpl, sig) {
+export function fillTemplate(tpl, sig) {
   return String(tpl || '')
     .replace(/\[DOMAIN\]/g, sig.domain || '[DOMAIN]')
     .replace(/\[First Name\]/g, sig.firstName || '[First Name]')
     .replace(/\[Names\]/g, sig.primaryContactName || '[Names]')
     .replace(/\[PLATFORM\]/g, sig.platform || '[PLATFORM]')
     .replace(/\[PARENT SITE\]/g, sig.parentHost || '[PARENT SITE]');
+}
+
+// Reverse of fillTemplate: turn a concrete draft back into a reusable template by
+// swapping the report's actual values for [PLACEHOLDERS]. Used when saving.
+export function placeholderize(text, sig) {
+  let out = String(text || '');
+  const sub = (val, token) => {
+    const v = String(val || '').trim();
+    if (v.length < 2) return;
+    const re = new RegExp(v.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
+    out = out.replace(re, token);
+  };
+  // Longest / most-specific first so a name inside an org isn't half-replaced.
+  sub(sig.primaryContactName, '[Names]');
+  if (sig.parentHost) sub(sig.parentHost, '[PARENT SITE]');
+  if (sig.platform) sub(sig.platform, '[PLATFORM]');
+  sub(sig.domain, '[DOMAIN]');
+  if (sig.firstName) sub(sig.firstName, '[First Name]');
+  return out;
 }
 
 function parseJsonLoose(text) {
@@ -64,30 +90,32 @@ function parseJsonLoose(text) {
 }
 
 // Deterministic fallback when the LLM is unavailable/misbehaves.
-export function fallbackDraft(scenario, sig) {
+export function fallbackDraft(template, sig) {
+  const anchor = (template.anchors && template.anchors[0]) || '';
   return {
     subject: `${sig.domain} Domain Inquiry`,
-    body: fillTemplate(scenario.cleaned || scenario.closest, sig),
+    body: fillTemplate(anchor, sig),
+    fit: 'good',
+    suggested_title: template.name || '',
   };
 }
 
-export async function generateOutreach({ scenarioId, signals, env = process.env }) {
-  const scenario = SCENARIO_BY_ID[scenarioId];
-  if (!scenario) throw new Error(`Unknown scenario: ${scenarioId}`);
+// template = { id, name, bestFit, adjustment, anchors: [string,...], subject }
+export async function generateOutreach({ template, signals, env = process.env }) {
+  if (!template || !Array.isArray(template.anchors) || !template.anchors.length) {
+    throw new Error('generateOutreach: template with anchors required');
+  }
+  if (!env.ANTHROPIC_API_KEY) return { ...fallbackDraft(template, signals), fallback: true };
 
-  if (!env.ANTHROPIC_API_KEY) return { ...fallbackDraft(scenario, signals), fallback: true };
+  const variants = template.anchors
+    .map((a, i) => `${i === 0 ? 'PRIMARY anchor (stay close to this)' : 'Alternative variant'}:\n${a}`)
+    .join('\n\n');
 
-  const variants = [
-    `CLOSEST-TO-REAL (stay very close to this):\n${scenario.closest}`,
-    scenario.cleaned ? `LIGHTLY CLEANED reusable variant:\n${scenario.cleaned}` : '',
-    scenario.ultraLight ? `ULTRA-LIGHT one-liner variant (fine when confidence is thin):\n${scenario.ultraLight}` : '',
-  ].filter(Boolean).join('\n\n');
+  const userPrompt = `TEMPLATE: ${template.name}
+${template.bestFit ? `Best fit: ${template.bestFit}` : ''}
+${template.adjustment ? `How Rob adjusts here: ${template.adjustment}` : ''}
 
-  const userPrompt = `SCENARIO: ${scenario.name}
-Best fit: ${scenario.bestFit}
-How Rob adjusts here: ${scenario.adjustment}
-
-TEMPLATE(S) TO ANCHOR ON:
+TEMPLATE TEXT TO ANCHOR ON:
 ${variants}
 
 RESEARCH FACTS:
@@ -96,7 +124,7 @@ ${factsBlock(signals)}
 REPORT EXCERPT (for breadcrumbs — only use what's here, don't infer beyond it):
 ${signals.narrativeExcerpt || '(none)'}
 
-Draft the opening email now. Personalize lightly from the facts; leave bracketed placeholders for anything you don't actually know.`;
+Draft the opening email now, then assess fit and suggest a title.`;
 
   const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY });
   const model = env.OUTREACH_MODEL || 'claude-sonnet-4-6';
@@ -110,10 +138,16 @@ Draft the opening email now. Personalize lightly from the facts; leave bracketed
     const text = (resp.content || []).filter((b) => b.type === 'text').map((b) => b.text).join('');
     const parsed = parseJsonLoose(text);
     if (parsed && parsed.subject && parsed.body) {
-      return { subject: String(parsed.subject).trim(), body: String(parsed.body).trim(), model };
+      return {
+        subject: String(parsed.subject).trim(),
+        body: String(parsed.body).trim(),
+        fit: parsed.fit === 'weak' ? 'weak' : 'good',
+        suggested_title: String(parsed.suggested_title || template.name || '').trim(),
+        model,
+      };
     }
-    return { ...fallbackDraft(scenario, signals), fallback: true, model };
+    return { ...fallbackDraft(template, signals), fallback: true, model };
   } catch (err) {
-    return { ...fallbackDraft(scenario, signals), fallback: true, error: String(err && err.message || err) };
+    return { ...fallbackDraft(template, signals), fallback: true, error: String((err && err.message) || err) };
   }
 }

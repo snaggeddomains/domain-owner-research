@@ -70,10 +70,23 @@ real opening emails ("Domain Owner Initial Outreach" playbook).
 - **API** (`api/outreach.js`): `POST {run_id, scenario_id?}` → `{scenario:{id,name,
   why[]}, scenarios[], subject, body}`. Gated by `domain_owner` **and** the new
   `outreach` action permission (admins auto-pass).
+- **Fit + suggest-a-new-template**: the draft call also returns `fit`
+  (`good`|`weak`) and a `suggested_title`. On a weak fit the drawer shows a note
+  and prefills a **Save as a new template** name. Saving (`POST {action:
+  'save_template', run_id, title, subject, body}`) **placeholderizes** the concrete
+  draft back to `[DOMAIN]`/`[First Name]`/`[PLATFORM]`/`[PARENT SITE]`/`[Names]`
+  (`placeholderize` in generate.js) and stores it in
+  `domain_research_outreach_templates` (`lib/db/outreachTemplates.js`). Saved
+  templates merge into the dropdown (`customToTemplate`) and can be re-selected to
+  draft from. **One-time migration:** the table in `supabase/schema.sql` (RLS
+  auto-enabled by the trailing `domain_research_%` loop) must be run on the
+  research project before Save works; drafting/fit work without it (listTemplates
+  is best-effort → `[]`).
 - **UI**: a "✉ Draft outreach" button in the report header opens a right-side
   **slide-over drawer** (`#outreach-drawer` in index.html; logic + `openOutreach`
   in app.js; `.od-*` styles in styles.css). Scenario dropdown (override →
-  re-draft), editable subject/body, **copy-to-clipboard only — nothing is sent**.
+  re-draft), editable subject/body with **per-field copy icons** (subject + body),
+  Save-as-template row, Copy-email. **Copy-to-clipboard only — nothing is sent.**
   Launcher hidden unless `canOutreach`.
 - **Permission**: catalog key `research.outreach` (action) added in the
   snagged-admin Users editor (`dashboard/lib/permissions.ts`); stored flat as

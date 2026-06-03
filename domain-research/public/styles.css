@@ -1098,3 +1098,29 @@ body.drawer-open { overflow: hidden; }
 @media (max-width: 600px) {
   .od-panel { width: 100%; border-left: none; }
 }
+
+/* Outreach drawer: per-field copy icons, fit note, save-as-template row */
+.od-label-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+.od-label-row .od-label { margin-bottom: 0; }
+.od-copy-icon {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 28px; height: 24px; padding: 0;
+  background: var(--cream); color: var(--navy-3);
+  border: 1.5px solid var(--line); border-radius: 7px; cursor: pointer;
+}
+.od-copy-icon:hover { color: var(--navy); border-color: var(--coral); background: var(--paper); }
+.od-copy-icon.copied { color: #fff; background: var(--teal-deep); border-color: var(--teal-deep); }
+
+.od-fit-note {
+  margin: -4px 0 14px; padding: 10px 12px;
+  background: rgba(228,128,105,.1); border: 1.5px solid var(--coral);
+  border-radius: var(--radius-sm); color: var(--coral-deep);
+  font-size: 12.5px; line-height: 1.45;
+}
+
+.od-save-tpl {
+  margin-top: 8px; padding-top: 14px; border-top: 1.5px dashed var(--line);
+}
+.od-save-row { display: flex; gap: 8px; align-items: stretch; }
+.od-save-row .od-input { flex: 1; }
+.od-save-row .od-btn { flex: none; white-space: nowrap; }

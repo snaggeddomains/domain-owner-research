@@ -20,7 +20,7 @@
          the app is served from /research/* (app.snagged.com/research/*). -->
     <base href="/research/" />
     <link rel="icon" href="favicon-32.png" />
-    <link rel="stylesheet" href="styles.css?v=20260603a" />
+    <link rel="stylesheet" href="styles.css?v=20260603c" />
     <!-- Layout: horizontal tab nav (Admin-style), no sidebar. -->
   </head>
   <body>
@@ -614,13 +614,32 @@ The model parses it into structured filters (TLDs, length, budget, tone, etc.) a
             <select id="od-scenario-sel" class="od-select"></select>
             <div id="od-why" class="od-why"></div>
           </div>
+          <div id="od-fit-note" class="od-fit-note" hidden></div>
           <div class="od-field">
-            <label class="od-label" for="od-subject">Subject</label>
+            <div class="od-label-row">
+              <label class="od-label" for="od-subject">Subject</label>
+              <button id="od-copy-subject" class="od-copy-icon" type="button" title="Copy subject" aria-label="Copy subject">
+                <svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><path fill="currentColor" d="M16 1H4a2 2 0 0 0-2 2v12h2V3h12V1zm3 4H8a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2zm0 16H8V7h11v14z"/></svg>
+              </button>
+            </div>
             <input id="od-subject" class="od-input" type="text" autocomplete="off" />
           </div>
           <div class="od-field">
-            <label class="od-label" for="od-bodytext">Email</label>
-            <textarea id="od-bodytext" class="od-textarea" rows="15"></textarea>
+            <div class="od-label-row">
+              <label class="od-label" for="od-bodytext">Email</label>
+              <button id="od-copy-body" class="od-copy-icon" type="button" title="Copy email body" aria-label="Copy email body">
+                <svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><path fill="currentColor" d="M16 1H4a2 2 0 0 0-2 2v12h2V3h12V1zm3 4H8a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2zm0 16H8V7h11v14z"/></svg>
+              </button>
+            </div>
+            <textarea id="od-bodytext" class="od-textarea" rows="14"></textarea>
+          </div>
+          <div class="od-save-tpl">
+            <label class="od-label" for="od-tpl-title">Save as a new template</label>
+            <div class="od-save-row">
+              <input id="od-tpl-title" class="od-input" type="text" autocomplete="off" placeholder="Template name" maxlength="120" />
+              <button id="od-tpl-save" class="od-btn od-btn-ghost" type="button">Save</button>
+            </div>
+            <div id="od-tpl-status" class="od-status" hidden></div>
           </div>
           <div id="od-status" class="od-status" hidden></div>
         </div>
@@ -632,6 +651,6 @@ The model parses it into structured filters (TLDs, length, budget, tone, etc.) a
     </aside>
 
     <!-- Bump ?v= on any public/app.js or styles.css change to bust caches. -->
-    <script src="app.js?v=20260603b"></script>
+    <script src="app.js?v=20260603c"></script>
   </body>
 </html>

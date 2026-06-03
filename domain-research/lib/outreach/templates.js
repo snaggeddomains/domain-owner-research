@@ -214,7 +214,29 @@ Thanks so much,
 
 export const SCENARIO_BY_ID = Object.fromEntries(SCENARIOS.map((s) => [s.id, s]));
 
-// Lightweight list for the UI dropdown.
-export function scenarioOptions() {
-  return SCENARIOS.map((s) => ({ id: s.id, name: s.name }));
+// Normalize a built-in scenario to the shared template shape the drafter wants
+// ({ id, name, bestFit, adjustment, anchors:[...], subject }).
+export function builtinToTemplate(s) {
+  return {
+    id: s.id,
+    name: s.name,
+    bestFit: s.bestFit,
+    adjustment: s.adjustment,
+    subject: s.subject,
+    anchors: [s.closest, s.cleaned, s.ultraLight].filter(Boolean),
+    builtin: true,
+  };
+}
+
+// Normalize a saved custom row (from domain_research_outreach_templates).
+export function customToTemplate(row) {
+  return {
+    id: row.id,
+    name: row.name,
+    bestFit: row.best_fit || null,
+    adjustment: null,
+    subject: row.subject || SUBJECT,
+    anchors: [row.body].filter(Boolean),
+    builtin: false,
+  };
 }
