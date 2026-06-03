@@ -1041,17 +1041,41 @@ function isUsefulClue(c) {
 }
 function renderSummary(d) {
   const e = escapeHtml;
+  // Canonicalize any LinkedIn reference (full URL, bare linkedin.com/…, or a bare
+  // "in/jane-doe" handle) to the full profile URL with a trailing slash, e.g.
+  // https://www.linkedin.com/in/jane-doe/ — or null if it isn't a LinkedIn ref.
+  const liCanon = (value) => {
+    const m = String(value == null ? '' : value).match(/(?:linkedin\.com\/)?((?:in|pub|company|school)\/[A-Za-z0-9_%-]+)/i);
+    return m ? `https://www.linkedin.com/${m[1].replace(/\/+$/, '')}/` : null;
+  };
   const linkify = (c) => {
     const v = String(c.value == null ? '' : c.value);
     if (c.type === 'email') return `<a href="mailto:${e(v)}">${e(v)}</a>`;
-    if (/^https?:\/\//.test(v)) return `<a href="${e(v)}" target="_blank" rel="noopener">${e(v)}</a>`;
     if (c.type === 'social') {
-      // Social handles often arrive without a scheme: a LinkedIn vanity path
-      // ("in/jane-doe", "company/acme", "pub/…") or a bare profile domain.
-      if (/^(in|pub|company|school)\//i.test(v)) return `<a href="https://www.linkedin.com/${e(v)}" target="_blank" rel="noopener">${e(v)}</a>`;
+      // Show LinkedIn as the full canonical profile URL (both link + visible text).
+      const li = liCanon(v);
+      if (li) return `<a href="${li}" target="_blank" rel="noopener">${li}</a>`;
+      if (/^https?:\/\//.test(v)) return `<a href="${e(v)}" target="_blank" rel="noopener">${e(v)}</a>`;
       if (/^[a-z0-9.-]+\.[a-z]{2,}(\/|$)/i.test(v)) return `<a href="https://${e(v.replace(/^www\./i, ''))}" target="_blank" rel="noopener">${e(v)}</a>`;
     }
+    if (/^https?:\/\//.test(v)) return `<a href="${e(v)}" target="_blank" rel="noopener">${e(v)}</a>`;
     return e(v);
+  };
+  // Pull LinkedIn refs out of a free-text note → canonical full URLs + the note
+  // with those refs (and a leading "LinkedIn" label) removed, so the profile can
+  // be promoted to its own row alongside Email / Phone instead of buried in prose.
+  const extractLinkedIn = (note) => {
+    let rest = String(note == null ? '' : note);
+    const urls = [];
+    const add = (raw) => { const u = liCanon(raw); if (u && !urls.includes(u)) urls.push(u); };
+    rest = rest.replace(/[;,]?\s*\bLinkedIn\b[\s:]*(?:https?:\/\/)?(?:www\.)?(?:linkedin\.com\/)?((?:in|pub|company|school)\/[A-Za-z0-9_%-]+)\/?/gi,
+      (m, p) => { add(p); return ''; });
+    rest = rest.replace(/(?:https?:\/\/)?(?:www\.)?linkedin\.com\/((?:in|pub|company|school)\/[A-Za-z0-9_%-]+)\/?/gi,
+      (m, p) => { add(p); return ''; });
+    rest = rest.replace(/\s{2,}/g, ' ').replace(/\s+([,.;:])/g, '$1')
+      .replace(/([.,;:])[.,;:\s]*\1/g, '$1').replace(/\.{2,}/g, '.')
+      .replace(/^[\s,;:.\-]+|[\s,;:\-]+$/g, '').trim();
+    return { urls, rest };
   };
   // Escape text, then auto-link any URLs / LinkedIn profiles that appear INSIDE a
   // free-text note (e.g. "… LinkedIn in/sean-moriarty-186688" → a real link).
@@ -1095,11 +1119,30 @@ function renderSummary(d) {
       return ` <span class="msg-links"><a href="https://wa.me/${digits}" target="_blank" rel="noopener">WhatsApp</a><a href="https://t.me/${digits}" target="_blank" rel="noopener">Telegram</a></span>`;
     };
     const contactLi = (c) => {
+      // Label a LinkedIn social row "LinkedIn" rather than the generic "social".
+      const label = (String(c.type || '').toLowerCase() === 'social' && liCanon(c.value)) ? 'LinkedIn' : (c.type || '');
       const val = isUsefulClue(c) ? `<span class="clue">${linkify(c)}</span>` : linkify(c);
-      return `<li><span class="ctype">${e(c.type || '')}</span> ${val}${c.note ? ` <span class="muted">— ${linkifyNote(c.note)}</span>` : ''}${msgLinks(c)}</li>`;
+      return `<li><span class="ctype">${e(label)}</span> ${val}${c.note ? ` <span class="muted">— ${linkifyNote(c.note)}</span>` : ''}${msgLinks(c)}</li>`;
     };
     const list = (arr) => `<ul class="contacts">${arr.map(contactLi).join('')}</ul>`;
     const isPrimary = (c) => String((c && c.tier) || '').toLowerCase() === 'primary';
+    // Promote LinkedIn profiles out of row notes into their own social rows (full
+    // URL, de-duped against any social row already present), and strip them from
+    // those notes. seedUrls carries profiles pulled from a card/header note.
+    const promoteLinkedIn = (rows, seedUrls) => {
+      const have = new Set(rows.map((c) => liCanon(c.value)).filter(Boolean));
+      const found = [];
+      const out = rows.map((c) => {
+        if (!c.note) return c;
+        const { urls, rest } = extractLinkedIn(c.note);
+        urls.forEach((u) => found.push(u));
+        return rest === c.note ? c : { ...c, note: rest };
+      });
+      (seedUrls || []).concat(found).forEach((u) => {
+        if (u && !have.has(u)) { have.add(u); out.push({ type: 'social', value: u }); }
+      });
+      return out;
+    };
     // Consolidated contact card for the primary target: name as a heading, role
     // + org beneath, then the email/phone/profile rows — one easy-to-consume block.
     const card = (arr) => {
@@ -1107,14 +1150,21 @@ function renderSummary(d) {
       const sorted = arr.slice().sort((a, b) => (order[a.type] ?? 9) - (order[b.type] ?? 9));
       const nameC = sorted.find((c) => c.type === 'name');
       const orgC = sorted.find((c) => c.type === 'org');
-      const rest = sorted.filter((c) => c !== nameC && c !== orgC);
+      const rest0 = sorted.filter((c) => c !== nameC && c !== orgC);
+      // Pull LinkedIn out of the name/org notes so it shows as its own row.
+      const seed = [];
+      let nameNote = nameC && nameC.note;
+      if (nameC && nameC.note) { const r = extractLinkedIn(nameC.note); seed.push(...r.urls); nameNote = r.rest; }
+      let orgNote = orgC && orgC.note;
+      if (orgC && orgC.note) { const r = extractLinkedIn(orgC.note); seed.push(...r.urls); orgNote = r.rest; }
+      const rest = promoteLinkedIn(rest0, seed);
       const emails = arr.filter((c) => c.type === 'email' && c.value).map((c) => String(c.value).trim());
       let h = '<div class="contact-card">';
       if (nameC) {
         h += `<div class="cc-name">${isUsefulClue(nameC) ? `<span class="clue">${e(nameC.value)}</span>` : e(nameC.value)}</div>`;
-        if (nameC.note) h += `<div class="cc-role">${linkifyNote(nameC.note)}</div>`;
+        if (nameNote) h += `<div class="cc-role">${linkifyNote(nameNote)}</div>`;
       }
-      if (orgC) h += `<div class="cc-org">${linkify(orgC)}${orgC.note ? ` <span class="muted">— ${linkifyNote(orgC.note)}</span>` : ''}</div>`;
+      if (orgC) h += `<div class="cc-org">${linkify(orgC)}${orgNote ? ` <span class="muted">— ${linkifyNote(orgNote)}</span>` : ''}</div>`;
       if (emails.length) h += `<div class="cc-actions"><button type="button" class="copy-emails" data-emails="${e(emails.join(', '))}">Copy ${emails.length === 1 ? 'email' : `all ${emails.length} emails`}</button></div>`;
       if (rest.length) h += list(rest);
       return h + '</div>';
@@ -1140,14 +1190,18 @@ function renderSummary(d) {
     // tell apart: a header (name or org, with its role/source note) + the rows.
     const leadCard = (g) => {
       let head = '';
+      let seed = [];
       if (g.header) {
         const h = g.header;
+        const { urls, rest } = extractLinkedIn(h.note);
+        seed = urls;
         const title = isUsefulClue(h) ? `<span class="clue">${linkify(h)}</span>` : linkify(h);
         head = `<div class="lc-head"><span class="lc-kind">${e(String(h.type || ''))}</span>`
           + `<span class="lc-title">${title}</span></div>`
-          + (h.note ? `<div class="lc-note">${linkifyNote(h.note)}</div>` : '');
+          + (rest ? `<div class="lc-note">${linkifyNote(rest)}</div>` : '');
       }
-      return `<div class="lead-card">${head}${g.rows.length ? list(g.rows) : ''}</div>`;
+      const rows = promoteLinkedIn(g.rows, seed);
+      return `<div class="lead-card">${head}${rows.length ? list(rows) : ''}</div>`;
     };
     const leadCards = (arr) => `<div class="lead-cards">${groupLeads(arr).map(leadCard).join('')}</div>`;
     // Group into the primary target vs. other (secondary/tertiary/untagged)
@@ -1862,6 +1916,11 @@ function startPolling(runId, label) {
         setStatus(r.error || 'The run failed.', true);
         if (els.runControls) els.runControls.hidden = true;
         els.go.disabled = false;
+      } else if (r.status === 'cancelled') {
+        clearTimers();
+        setStatus('Cancelled — this run was stopped to save credits. Re-run it any time.');
+        if (els.runControls) els.runControls.hidden = true;
+        els.go.disabled = false;
       } else if (Date.now() - startedAt > STALL_MS) {
         // Going far longer than any real run — treat as stalled. Stop the
         // spinner/clock and surface it; leave any already-rendered report in
@@ -2183,9 +2242,19 @@ async function deepen() {
 // if a free report is already on screen (e.g. a deep pass is running), keep it.
 function cancelRun() {
   const hadReport = els.report && !els.report.hidden;
+  const runId = currentRunId;
   clearTimers();
   els.go.disabled = false;
   if (els.runControls) els.runControls.hidden = true;
+  // Tell the server to actually STOP the run (Inngest cancelOn) so we stop
+  // spending credits — not just stop watching it client-side.
+  if (runId && !hadReport) {
+    fetch('/research/api/research', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ id: runId, cancel: true }),
+    }).catch(() => {});
+  }
   if (hadReport) {
     setStatus('Stopped watching — the free pre-flight result is shown below.');
     els.deepenBar.hidden = false;

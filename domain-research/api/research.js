@@ -1,4 +1,4 @@
-import { inngest, RUN_REQUESTED } from '../lib/inngest/client.js';
+import { inngest, RUN_REQUESTED, RUN_CANCELLED } from '../lib/inngest/client.js';
 import { isValidDomain, normalizeDomain } from '../lib/util.js';
 import { checkRateLimit, clientIp } from '../lib/ratelimit.js';
 import { isAuthed, currentUser, userCan, userCanReportPhase } from '../lib/auth.js';
@@ -84,6 +84,32 @@ export default async function handler(req, res) {
   }
 
   const body = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : req.body || {};
+
+  // ── Cancel an in-progress run (stop the spend) ──────────────────────────────
+  // Marks the run cancelled and fires RUN_CANCELLED so Inngest stops the
+  // pipeline at the next step boundary — no further (paid) steps run.
+  if (body.cancel) {
+    if (!body.id) {
+      res.status(400).json({ error: 'Missing run id' });
+      return;
+    }
+    const run = await getRun(body.id);
+    if (!run) {
+      res.status(404).json({ error: 'Run not found' });
+      return;
+    }
+    // Only terminal-ize a still-active run; leave done/error/cancelled as-is.
+    if (run.status !== 'done' && run.status !== 'error' && run.status !== 'cancelled') {
+      await setRunStatus(run.id, 'cancelled', 'cancelled');
+    }
+    try {
+      await inngest.send({ name: RUN_CANCELLED, data: { runId: run.id } });
+    } catch {
+      /* best-effort — the status flip already stops the UI + blocks the save */
+    }
+    res.status(200).json({ ok: true, run_id: run.id, status: 'cancelled' });
+    return;
+  }
 
   // ── Regenerate report from refine-chat ─────────────────────────────────────
   // body.regenerate_from_chat = 'synth' (re-run critique with chat as

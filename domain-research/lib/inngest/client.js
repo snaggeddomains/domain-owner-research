@@ -6,3 +6,7 @@ export const inngest = new Inngest({ id: 'domain-research' });
 
 export const RUN_REQUESTED = 'domain-research/run.requested';
 export const CHAT_REQUESTED = 'domain-research/chat.requested';
+// Sent when a user cancels an in-progress run; runResearch is configured to
+// cancelOn this event (matched by data.runId) so Inngest stops the pipeline at
+// the next step boundary and no further paid steps run.
+export const RUN_CANCELLED = 'domain-research/run.cancelled';

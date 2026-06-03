@@ -1,4 +1,4 @@
-import { inngest, RUN_REQUESTED, CHAT_REQUESTED } from './client.js';
+import { inngest, RUN_REQUESTED, CHAT_REQUESTED, RUN_CANCELLED } from './client.js';
 import { gather, critique, chatTurn } from '../agent.js';
 import { setRunStatus, saveRunReport, failRun, getRun } from '../db/runs.js';
 import { getChat, updateTurn } from '../db/chat.js';
@@ -176,6 +176,10 @@ export const runResearch = inngest.createFunction(
   {
     id: 'run-domain-research',
     retries: 1,
+    // User-initiated cancel (api/research.js POST {cancel:true}) sends
+    // RUN_CANCELLED with the runId; Inngest stops this run at the next step
+    // boundary so no further (paid) steps run — the whole point is saving spend.
+    cancelOn: [{ event: RUN_CANCELLED, match: 'data.runId' }],
     onFailure: async ({ event, step }) => {
       const original = event && event.data && event.data.event;
       const runId = original && original.data && original.data.runId;
