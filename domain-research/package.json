@@ -10,6 +10,7 @@
   "scripts": {
     "dev": "vercel dev",
     "deploy": "vercel deploy --prod",
+    "check": "node scripts/check-imports.mjs",
     "eval": "node evals/run.js"
   },
   "dependencies": {

@@ -43,6 +43,66 @@ Password-gated (single `APP_PASSWORD`). Async pipeline runs in Inngest so jobs a
 
 ---
 
+## Owner Outreach module (2026-06-03) — email-draft add-on to a report
+
+Optional, permission-gated feature that drafts a **first-touch** outreach email to
+the likely owner, off the signals the report already produced. Seeded from Rob's
+real opening emails ("Domain Owner Initial Outreach" playbook).
+
+- **Templates** (`lib/outreach/templates.js`): 7 scenarios verbatim from the
+  playbook (closest-to-real + lightly-cleaned variants), each with the recurring
+  spine + per-scenario adjustment. `SUBJECT = "[DOMAIN] Domain Inquiry"`.
+- **Signals** (`lib/outreach/signals.js`): `extractSignals(report, domain)` reads
+  the report PART-1 JSON + `summarizeReport` + (best-effort) `marketplace_check` /
+  `livesite_inspect` / `registration_cluster`, plus narrative analysis. Produces
+  rich indicators (confidence band, `formerOperator`, `mayStillOwn`,
+  `priorCompanyTie`, `acquisition`, `redirectsToParent`+host, `listed`+platform,
+  `siteActive`/`parked`, `largeCompanyHint`, `multiStakeholder`, `privacy`) AND the
+  **full agent narrative** (PART-2, capped ~9k) so the drafter reads everything.
+- **Mapping table** (`lib/outreach/classify.js`): `MAPPING` is an explicit
+  indicator→template weight table; `rankScenarios(sig)` scores every built-in and
+  returns a ranked list with the reasons that fired (inspectable + tunable —
+  change a weight, not an if/else). The top is the deterministic prior; e.g.
+  pavilion.com → research_informed via may-still-own + prior-company-tie +
+  medium-confidence.
+- **Drafting** (`lib/outreach/generate.js`): one rich LLM call gets the FULL
+  context (indicators + narrative + contacts/timeline/contact_path), the WHOLE
+  template catalog (each template's "use when" + text), and the ranking as a prior,
+  then **interprets the situation and chooses an approach**: adapt a template,
+  propose a `new_template`, or write a fully **bespoke** email when nothing fits.
+  Returns `{situation, approach, template_id, fit, suggested_title, hooks[],
+  subject, body}`. Short + personalized; hard rule = only verifiable facts, never
+  invent (missing → visible `[BRACKET]`). Model `OUTREACH_MODEL` (default
+  `claude-sonnet-4-6`); falls back to the top-ranked template filled in if the LLM
+  is unavailable. The drawer dropdown has a `✨ Personalized (no template)`
+  (`__bespoke__`) option to force a bespoke draft.
+- **API** (`api/outreach.js`): `POST {run_id, scenario_id?}` → `{scenario:{id,name,
+  why[]}, scenarios[], subject, body}`. Gated by `domain_owner` **and** the new
+  `outreach` action permission (admins auto-pass).
+- **Fit + suggest-a-new-template**: the draft call also returns `fit`
+  (`good`|`weak`) and a `suggested_title`. On a weak fit the drawer shows a note
+  and prefills a **Save as a new template** name. Saving (`POST {action:
+  'save_template', run_id, title, subject, body}`) **placeholderizes** the concrete
+  draft back to `[DOMAIN]`/`[First Name]`/`[PLATFORM]`/`[PARENT SITE]`/`[Names]`
+  (`placeholderize` in generate.js) and stores it in
+  `domain_research_outreach_templates` (`lib/db/outreachTemplates.js`). Saved
+  templates merge into the dropdown (`customToTemplate`) and can be re-selected to
+  draft from. **One-time migration:** the table in `supabase/schema.sql` (RLS
+  auto-enabled by the trailing `domain_research_%` loop) must be run on the
+  research project before Save works; drafting/fit work without it (listTemplates
+  is best-effort → `[]`).
+- **UI**: a "✉ Draft outreach" button in the report header opens a right-side
+  **slide-over drawer** (`#outreach-drawer` in index.html; logic + `openOutreach`
+  in app.js; `.od-*` styles in styles.css). Scenario dropdown (override →
+  re-draft), editable subject/body with **per-field copy icons** (subject + body),
+  Save-as-template row, Copy-email. **Copy-to-clipboard only — nothing is sent.**
+  Launcher hidden unless `canOutreach`.
+- **Permission**: catalog key `research.outreach` (action) added in the
+  snagged-admin Users editor (`dashboard/lib/permissions.ts`); stored flat as
+  `outreach` in the `permissions` JSONB. Grant per-user there.
+
+---
+
 ## Domain data model — canonical (do not let this drift)
 
 Two domain corpora in **separate Supabase projects**; the search reads both.

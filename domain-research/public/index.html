@@ -20,7 +20,7 @@
          the app is served from /research/* (app.snagged.com/research/*). -->
     <base href="/research/" />
     <link rel="icon" href="favicon-32.png" />
-    <link rel="stylesheet" href="styles.css?v=20260602r" />
+    <link rel="stylesheet" href="styles.css?v=20260603d" />
     <!-- Layout: horizontal tab nav (Admin-style), no sidebar. -->
   </head>
   <body>
@@ -191,6 +191,7 @@
           <div class="report-header">
             <h2 id="report-domain" class="report-domain" hidden></h2>
             <div id="report-actions" class="report-actions" hidden>
+              <button id="outreach-btn" type="button" hidden>✉ Draft outreach</button>
               <button id="export-pdf" type="button">Export PDF</button>
             </div>
           </div>
@@ -603,7 +604,60 @@ The model parses it into structured filters (TLDs, length, budget, tone, etc.) a
       </div>
     </div>
 
+    <!-- Owner-outreach slide-over drawer (opened from the report header). -->
+    <aside id="outreach-drawer" class="outreach-drawer" hidden>
+      <div class="od-backdrop" id="outreach-backdrop"></div>
+      <div class="od-panel" role="dialog" aria-modal="true" aria-labelledby="od-title">
+        <div class="od-head">
+          <div>
+            <div class="od-title" id="od-title">Owner outreach</div>
+            <div class="od-domain" id="od-domain"></div>
+          </div>
+          <button id="outreach-close" class="od-close" type="button" aria-label="Close">×</button>
+        </div>
+        <div class="od-body">
+          <div class="od-field">
+            <label class="od-label" for="od-scenario-sel">Template</label>
+            <select id="od-scenario-sel" class="od-select"></select>
+            <div id="od-why" class="od-why"></div>
+          </div>
+          <div id="od-fit-note" class="od-fit-note" hidden></div>
+          <div class="od-field">
+            <div class="od-label-row">
+              <label class="od-label" for="od-subject">Subject</label>
+              <button id="od-copy-subject" class="od-copy-icon" type="button" title="Copy subject" aria-label="Copy subject">
+                <svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><path fill="currentColor" d="M16 1H4a2 2 0 0 0-2 2v12h2V3h12V1zm3 4H8a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2zm0 16H8V7h11v14z"/></svg>
+              </button>
+            </div>
+            <input id="od-subject" class="od-input" type="text" autocomplete="off" />
+          </div>
+          <div class="od-field">
+            <div class="od-label-row">
+              <label class="od-label" for="od-bodytext">Email</label>
+              <button id="od-copy-body" class="od-copy-icon" type="button" title="Copy email body" aria-label="Copy email body">
+                <svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><path fill="currentColor" d="M16 1H4a2 2 0 0 0-2 2v12h2V3h12V1zm3 4H8a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2zm0 16H8V7h11v14z"/></svg>
+              </button>
+            </div>
+            <textarea id="od-bodytext" class="od-textarea" rows="14"></textarea>
+          </div>
+          <div class="od-save-tpl">
+            <label class="od-label" for="od-tpl-title">Save as a new template</label>
+            <div class="od-save-row">
+              <input id="od-tpl-title" class="od-input" type="text" autocomplete="off" placeholder="Template name" maxlength="120" />
+              <button id="od-tpl-save" class="od-btn od-btn-ghost" type="button">Save</button>
+            </div>
+            <div id="od-tpl-status" class="od-status" hidden></div>
+          </div>
+          <div id="od-status" class="od-status" hidden></div>
+        </div>
+        <div class="od-actions">
+          <button id="od-regen" class="od-btn od-btn-ghost" type="button">Regenerate</button>
+          <button id="od-copy" class="od-btn od-btn-primary" type="button">Copy email</button>
+        </div>
+      </div>
+    </aside>
+
     <!-- Bump ?v= on any public/app.js or styles.css change to bust caches. -->
-    <script src="app.js?v=20260602r"></script>
+    <script src="app.js?v=20260603f"></script>
   </body>
 </html>

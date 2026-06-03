@@ -350,6 +350,19 @@ create table if not exists domain_research_playbook_lessons (
 create index if not exists idx_dr_lessons_status on domain_research_playbook_lessons (status);
 create index if not exists idx_dr_lessons_created on domain_research_playbook_lessons (created_at desc);
 
+-- ── Owner-outreach saved templates (custom scenarios beyond the built-in 7) ──
+create table if not exists domain_research_outreach_templates (
+  id            uuid primary key default gen_random_uuid(),
+  name          text not null,
+  subject       text not null default '[DOMAIN] Domain Inquiry',
+  body          text not null,                       -- reusable, with [PLACEHOLDERS]
+  best_fit      text null,                           -- optional "best when…" note
+  created_by    uuid null references domain_research_users(id) on delete set null,
+  source_run_id uuid null references domain_research_runs(id) on delete set null,
+  created_at    timestamptz not null default now()
+);
+create index if not exists idx_dr_outreach_tpl_created on domain_research_outreach_templates (created_at desc);
+
 -- ── Enable RLS (no policies → backend secret key only) ──────────────────────
 do $$
 declare t text;

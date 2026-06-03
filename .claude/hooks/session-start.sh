@@ -62,6 +62,12 @@ if [ -f domain-research/package.json ]; then
     || echo "  ⚠ npm install failed (check connectivity / package.json)"
 fi
 
+# ── 3b. Activate repo git hooks (pre-push import-resolution gate) ──────────
+if [ -d .githooks ] && command -v git >/dev/null 2>&1; then
+  git config core.hooksPath .githooks 2>/dev/null \
+    && echo "▸ git hooks: core.hooksPath → .githooks (pre-push import check active)"
+fi
+
 # ── 4. Headless-browser tooling for GUI verification ───────────────────────
 # A Chromium is pre-installed in this environment; expose its path and install
 # the Playwright/jsdom npm drivers (skipping the browser DOWNLOAD, which the
