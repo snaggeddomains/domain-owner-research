@@ -68,6 +68,18 @@ const els = {
   reportActions: $('report-actions'),
   reportMeta: $('report-meta'),
   exportPdf: $('export-pdf'),
+  outreachBtn: $('outreach-btn'),
+  outreachDrawer: $('outreach-drawer'),
+  outreachBackdrop: $('outreach-backdrop'),
+  outreachClose: $('outreach-close'),
+  odDomain: $('od-domain'),
+  odScenarioSel: $('od-scenario-sel'),
+  odWhy: $('od-why'),
+  odSubject: $('od-subject'),
+  odBody: $('od-bodytext'),
+  odStatus: $('od-status'),
+  odRegen: $('od-regen'),
+  odCopy: $('od-copy'),
   reportFeedback: $('report-feedback'),
   rfYes: $('rf-yes'),
   rfNo: $('rf-no'),
@@ -300,6 +312,7 @@ const POLL_MS = 2500;
 let pollTimer = null;
 let clockTimer = null;
 let currentRunId = null;
+let canOutreach = false;
 
 function clearTimers() {
   if (pollTimer) clearInterval(pollTimer);
@@ -1083,6 +1096,7 @@ function renderReport(report) {
   const band = data && data.confidence ? String(data.confidence).toLowerCase() : extractConfidence(md);
   renderConfidence(band);
   els.reportActions.hidden = false;
+  if (els.outreachBtn) els.outreachBtn.hidden = !(canOutreach && currentRunId);
 
   // Structured summary up top (when present), then the supporting narrative.
   const summaryHtml = data ? renderSummary(data) : '';
@@ -1259,6 +1273,10 @@ function gateNavByPermissions(user) {
   if (els.navNaming) els.navNaming.hidden = !can('naming');
   if (els.navDbscreen) els.navDbscreen.hidden = !can('dbscreen');
   if (els.navDbsearch) els.navDbsearch.hidden = !can('dbsearch');
+  // Owner outreach is a report-page feature (not a nav module); cache whether
+  // this user may use it so renderReport can show/hide the launcher button.
+  canOutreach = can('outreach');
+  if (els.outreachBtn && (!canOutreach || !currentRunId)) els.outreachBtn.hidden = true;
   // Lessons lives in the umbrella Admin module now; its tab stays hidden here
   // (the element is kept only so the /research/admin deep link still routes).
   if (els.navAdmin) els.navAdmin.hidden = true;
@@ -3463,6 +3481,109 @@ els.deepenBtn?.addEventListener('click', deepen);
 els.deepenTopBtn?.addEventListener('click', deepen);
 els.cancelRun?.addEventListener('click', cancelRun);
 els.exportPdf?.addEventListener('click', () => window.print());
+
+// ── Owner outreach drawer ────────────────────────────────────────────────────
+// Slide-over that drafts a first-touch email to the likely owner. The scenario
+// is auto-classified server-side from the report's signals; the dropdown lets
+// you force a different template. Copy-to-clipboard only — nothing is sent.
+let outreachLoaded = false; // whether the current open has fetched a draft yet
+
+function setOutreachStatus(msg, kind) {
+  if (!els.odStatus) return;
+  if (!msg) { els.odStatus.hidden = true; els.odStatus.textContent = ''; return; }
+  els.odStatus.hidden = false;
+  els.odStatus.textContent = msg;
+  els.odStatus.className = 'od-status' + (kind ? ` od-status-${kind}` : '');
+}
+
+function openOutreach() {
+  if (!els.outreachDrawer || !currentRunId) return;
+  els.outreachDrawer.hidden = false;
+  document.body.classList.add('drawer-open');
+  if (els.odDomain) els.odDomain.textContent = currentReportDomain || '';
+  outreachLoaded = false;
+  loadOutreach(null);
+}
+
+function closeOutreach() {
+  if (!els.outreachDrawer) return;
+  els.outreachDrawer.hidden = true;
+  document.body.classList.remove('drawer-open');
+}
+
+async function loadOutreach(scenarioId) {
+  if (!currentRunId) return;
+  setOutreachStatus('Drafting…', 'busy');
+  if (els.odRegen) els.odRegen.disabled = true;
+  if (els.odCopy) els.odCopy.disabled = true;
+  try {
+    const payload = { run_id: currentRunId };
+    if (scenarioId) payload.scenario_id = scenarioId;
+    const res = await fetch('/api/outreach', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      setOutreachStatus(err.error || `Couldn't draft (${res.status})`, 'err');
+      return;
+    }
+    const data = await res.json();
+    renderOutreach(data);
+    outreachLoaded = true;
+    setOutreachStatus(data.fallback ? 'Drafted from the template (LLM unavailable) — edit freely.' : '', data.fallback ? 'warn' : '');
+  } catch (e) {
+    setOutreachStatus("Couldn't reach the drafting service.", 'err');
+  } finally {
+    if (els.odRegen) els.odRegen.disabled = false;
+    if (els.odCopy) els.odCopy.disabled = false;
+  }
+}
+
+function renderOutreach(data) {
+  // Populate the scenario dropdown once (or refresh selection).
+  if (els.odScenarioSel && Array.isArray(data.scenarios)) {
+    if (els.odScenarioSel.options.length !== data.scenarios.length) {
+      els.odScenarioSel.innerHTML = '';
+      for (const s of data.scenarios) {
+        const opt = document.createElement('option');
+        opt.value = s.id;
+        opt.textContent = s.name;
+        els.odScenarioSel.appendChild(opt);
+      }
+    }
+    if (data.scenario && data.scenario.id) els.odScenarioSel.value = data.scenario.id;
+  }
+  if (els.odWhy) {
+    const why = (data.scenario && Array.isArray(data.scenario.why)) ? data.scenario.why : [];
+    els.odWhy.textContent = why.length ? `Why this template: ${why.join(' · ')}` : '';
+  }
+  if (els.odSubject) els.odSubject.value = data.subject || '';
+  if (els.odBody) els.odBody.value = data.body || '';
+}
+
+els.outreachBtn?.addEventListener('click', openOutreach);
+els.outreachClose?.addEventListener('click', closeOutreach);
+els.outreachBackdrop?.addEventListener('click', closeOutreach);
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && els.outreachDrawer && !els.outreachDrawer.hidden) closeOutreach();
+});
+els.odScenarioSel?.addEventListener('change', () => { if (outreachLoaded) loadOutreach(els.odScenarioSel.value); });
+els.odRegen?.addEventListener('click', () => loadOutreach(els.odScenarioSel ? els.odScenarioSel.value : null));
+els.odCopy?.addEventListener('click', () => {
+  const subject = els.odSubject ? els.odSubject.value : '';
+  const body = els.odBody ? els.odBody.value : '';
+  const text = (subject ? `Subject: ${subject}\n\n` : '') + body;
+  if (!text.trim() || !navigator.clipboard) return;
+  navigator.clipboard.writeText(text).then(() => {
+    const orig = els.odCopy.textContent;
+    els.odCopy.textContent = 'Copied!';
+    els.odCopy.classList.add('copied');
+    setTimeout(() => { els.odCopy.textContent = orig; els.odCopy.classList.remove('copied'); }, 1500);
+  }).catch(() => {});
+});
+
 // One-click copy of all the primary target's email addresses (delegated, so it
 // survives report re-renders).
 els.report?.addEventListener('click', (ev) => {

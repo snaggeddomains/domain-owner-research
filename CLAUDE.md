@@ -43,6 +43,44 @@ Password-gated (single `APP_PASSWORD`). Async pipeline runs in Inngest so jobs a
 
 ---
 
+## Owner Outreach module (2026-06-03) — email-draft add-on to a report
+
+Optional, permission-gated feature that drafts a **first-touch** outreach email to
+the likely owner, off the signals the report already produced. Seeded from Rob's
+real opening emails ("Domain Owner Initial Outreach" playbook).
+
+- **Templates** (`lib/outreach/templates.js`): 7 scenarios verbatim from the
+  playbook (closest-to-real + lightly-cleaned variants), each with the recurring
+  spine + per-scenario adjustment. `SUBJECT = "[DOMAIN] Domain Inquiry"`.
+- **Signals** (`lib/outreach/signals.js`): `extractSignals(report, domain)` reads
+  the report PART-1 JSON + `summarizeReport` + (best-effort, trace `data` is
+  truncated to 4000 chars) `marketplace_check` / `livesite_inspect` /
+  `registration_cluster`, plus narrative regex for platform / redirect /
+  acquisition / privacy.
+- **Classifier** (`lib/outreach/classify.js`): priority-ordered, first match wins
+  → listed_for_sale → privacy_proxy → corporate_redirect → continuity_large →
+  active_small → research_informed → passive_individual (default). Returns the
+  reasons that fired ("why this template"). 6-vs-7 (small vs large active company)
+  defaults to active_small; user switches via the dropdown.
+- **Drafting** (`lib/outreach/generate.js`): LLM free-write **anchored** on the
+  matched template + spine + report facts; hard rule = never invent a
+  name/company/platform/price (missing values stay as a visible `[BRACKET]`).
+  Model `OUTREACH_MODEL` (default `claude-sonnet-4-6`). Falls back to a plain
+  placeholder-filled template if the LLM is unavailable.
+- **API** (`api/outreach.js`): `POST {run_id, scenario_id?}` → `{scenario:{id,name,
+  why[]}, scenarios[], subject, body}`. Gated by `domain_owner` **and** the new
+  `outreach` action permission (admins auto-pass).
+- **UI**: a "✉ Draft outreach" button in the report header opens a right-side
+  **slide-over drawer** (`#outreach-drawer` in index.html; logic + `openOutreach`
+  in app.js; `.od-*` styles in styles.css). Scenario dropdown (override →
+  re-draft), editable subject/body, **copy-to-clipboard only — nothing is sent**.
+  Launcher hidden unless `canOutreach`.
+- **Permission**: catalog key `research.outreach` (action) added in the
+  snagged-admin Users editor (`dashboard/lib/permissions.ts`); stored flat as
+  `outreach` in the `permissions` JSONB. Grant per-user there.
+
+---
+
 ## Domain data model — canonical (do not let this drift)
 
 Two domain corpora in **separate Supabase projects**; the search reads both.
