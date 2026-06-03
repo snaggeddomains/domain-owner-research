@@ -1,4 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk';
+import { recordModelUsage } from '../db/usage.js';
 
 // Free-form brief → structured filter JSON. One Haiku call per brief — cheap
 // (~$0.001) and fast. Schema and prompt mirror §2.2 of the v1 spec.
@@ -109,6 +110,7 @@ export async function parseBrief(brief, env) {
     }
     throw e;
   }
+  recordModelUsage('anthropic', model, response.usage);
   const text = response.content
     .filter((b) => b.type === 'text')
     .map((b) => b.text)

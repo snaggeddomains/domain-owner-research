@@ -1,5 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { runTool } from '../sources/index.js';
+import { recordModelUsage } from '../db/usage.js';
 
 // Anthropic (Claude) adapter: same shape as the OpenAI adapter.
 // Uses the Messages API tool-use loop (tool_use / tool_result blocks),
@@ -30,6 +31,7 @@ export async function runAgent({ system, history, userPrompt, toolSpecs, env, ma
       output_config: { effort },
       messages,
     });
+    recordModelUsage('anthropic', model, response.usage); // best-effort cost log
 
     // Append the assistant's full content array verbatim — this preserves
     // thinking blocks and their signatures, which the API requires on the
@@ -74,6 +76,7 @@ export async function runAgent({ system, history, userPrompt, toolSpecs, env, ma
     thinking: { type: 'disabled' },
     messages,
   });
+  recordModelUsage('anthropic', model, finalize.usage); // best-effort cost log
   return { report: extractText(finalize.content), trace };
 }
 

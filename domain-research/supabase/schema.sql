@@ -363,6 +363,28 @@ create table if not exists domain_research_outreach_templates (
 );
 create index if not exists idx_dr_outreach_tpl_created on domain_research_outreach_templates (created_at desc);
 
+-- ── API-cost tracking (Reports → Cost tab) ─────────────────────────────────
+-- One row per paid action; `units` in the meter's natural billing unit (1 per
+-- lookup/enrichment/phone; LLM tokens in MILLIONS so the rate is "$ per 1M").
+create table if not exists domain_research_api_usage (
+  id          bigint generated always as identity primary key,
+  meter       text not null,
+  units       numeric not null default 0,
+  run_id      uuid null references domain_research_runs(id) on delete set null,
+  meta        jsonb null,
+  created_at  timestamptz not null default now()
+);
+create index if not exists idx_dr_usage_created on domain_research_api_usage (created_at desc);
+create index if not exists idx_dr_usage_meter_created on domain_research_api_usage (meter, created_at desc);
+
+-- Admin-editable dollar rate per meter; cost = units × usd_per_unit.
+create table if not exists domain_research_cost_rates (
+  meter        text primary key,
+  usd_per_unit numeric not null default 0,
+  unit_label   text null,
+  updated_at   timestamptz not null default now()
+);
+
 -- ── Enable RLS (no policies → backend secret key only) ──────────────────────
 do $$
 declare t text;

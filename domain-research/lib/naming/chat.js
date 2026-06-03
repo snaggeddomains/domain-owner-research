@@ -1,4 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk';
+import { recordModelUsage } from '../db/usage.js';
 import { validateFilters } from './brief.js';
 import { searchUniverse } from './query.js';
 
@@ -88,6 +89,7 @@ export async function runNamingChatTurn({ run, history, message, env }) {
     system: `${SYSTEM}\n\nContext for this naming run:\n${context}`,
     messages,
   });
+  recordModelUsage('anthropic', model, response.usage);
   const text = response.content
     .filter((b) => b.type === 'text')
     .map((b) => b.text)

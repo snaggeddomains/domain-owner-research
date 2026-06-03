@@ -9,6 +9,7 @@
 // unavailable.
 
 import Anthropic from '@anthropic-ai/sdk';
+import { recordModelUsage } from '../db/usage.js';
 import { STYLE_GUIDE } from './templates.js';
 
 const SYSTEM = `You are Rob Schutz of Snagged.com, a domain brokerage, writing the FIRST-TOUCH email to the likely owner of a domain a client wants to acquire. Opening email only.
@@ -196,6 +197,7 @@ Interpret the situation, choose the approach, and write the opener now. Be thoro
       system: [{ type: 'text', text: SYSTEM, cache_control: { type: 'ephemeral' } }],
       messages: [{ role: 'user', content: userPrompt }],
     });
+    recordModelUsage('anthropic', model, resp.usage);
     const text = (resp.content || []).filter((b) => b.type === 'text').map((b) => b.text).join('');
     const parsed = parseJsonLoose(text);
     if (parsed && parsed.subject && parsed.body) {

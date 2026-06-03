@@ -1,4 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk';
+import { recordModelUsage } from '../db/usage.js';
 
 // One Haiku call to distill a refine-chat exchange into a reusable playbook
 // rule. The output is a DRAFT — the admin reviews/edits before it goes live.
@@ -33,6 +34,7 @@ export async function distillLesson({ domain, reportSnippet, userMessage, assist
     system: SYSTEM,
     messages: [{ role: 'user', content: userPrompt }],
   });
+  recordModelUsage('anthropic', model, response.usage);
   const text = response.content
     .filter((b) => b.type === 'text')
     .map((b) => b.text)
