@@ -139,6 +139,8 @@ const els = {
   namingLenMax: $('nm-len-max'),
   namingSylMin: $('nm-syl-min'),
   namingSylMax: $('nm-syl-max'),
+  namingWordsMin: $('nm-words-min'),
+  namingWordsMax: $('nm-words-max'),
   namingStatus: $('naming-status'),
   namingError: $('naming-error'),
   namingFilters: $('naming-filters'),
@@ -2948,6 +2950,8 @@ async function runNaming() {
         len_max: numOrNull(els.namingLenMax && els.namingLenMax.value),
         syllables_min: numOrNull(els.namingSylMin && els.namingSylMin.value),
         syllables_max: numOrNull(els.namingSylMax && els.namingSylMax.value),
+        words_min: numOrNull(els.namingWordsMin && els.namingWordsMin.value),
+        words_max: numOrNull(els.namingWordsMax && els.namingWordsMax.value),
       }),
     });
     const data = await res.json().catch(() => ({}));
