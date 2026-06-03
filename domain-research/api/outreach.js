@@ -5,6 +5,7 @@ import { rankScenarios } from '../lib/outreach/classify.js';
 import { generateOutreach, placeholderize, fillTemplate } from '../lib/outreach/generate.js';
 import { SCENARIOS, SCENARIO_BY_ID } from '../lib/outreach/templates.js';
 import { listTemplates, createTemplate } from '../lib/db/outreachTemplates.js';
+import { withCategory } from '../lib/db/usage.js';
 
 // Owner-outreach draft generator for a finished report.
 //   POST { run_id, scenario_id? }            -> draft (auto-selected, or forced to
@@ -138,7 +139,7 @@ export default async function handler(req, res) {
     return;
   }
 
-  const draft = await generateOutreach({ signals, catalog, ranked, forced, env: process.env });
+  const draft = await withCategory('outreach', () => generateOutreach({ signals, catalog, ranked, forced, env: process.env }));
 
   // The selected option for the dropdown: the chosen template id, or bespoke.
   const chosenId = draft.template_id || BESPOKE;

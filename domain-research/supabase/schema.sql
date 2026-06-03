@@ -366,16 +366,20 @@ create index if not exists idx_dr_outreach_tpl_created on domain_research_outrea
 -- ── API-cost tracking (Reports → Cost tab) ─────────────────────────────────
 -- One row per paid action; `units` in the meter's natural billing unit (1 per
 -- lookup/enrichment/phone; LLM tokens in MILLIONS so the rate is "$ per 1M").
+-- `category` = the activity/product the cost belongs to (domain_owner, naming,
+-- outreach, …; pipeline: auctions, snap, aux, enrichment) for cost breakdowns.
 create table if not exists domain_research_api_usage (
   id          bigint generated always as identity primary key,
   meter       text not null,
   units       numeric not null default 0,
+  category    text null,
   run_id      uuid null references domain_research_runs(id) on delete set null,
   meta        jsonb null,
   created_at  timestamptz not null default now()
 );
 create index if not exists idx_dr_usage_created on domain_research_api_usage (created_at desc);
 create index if not exists idx_dr_usage_meter_created on domain_research_api_usage (meter, created_at desc);
+create index if not exists idx_dr_usage_cat_created on domain_research_api_usage (category, created_at desc);
 
 -- Admin-editable dollar rate per meter; cost = units × usd_per_unit.
 create table if not exists domain_research_cost_rates (
@@ -385,20 +389,34 @@ create table if not exists domain_research_cost_rates (
   updated_at   timestamptz not null default now()
 );
 
--- Aggregate usage into day/week/month buckets per meter (server-side).
-create or replace function cost_usage_buckets(p_period text, p_since timestamptz)
-returns table(bucket text, meter text, units numeric)
+-- Totals per (category, meter) since a cutoff — the report pivots this into
+-- "by system" / "by category" / the per-meter rate editor (rates applied live).
+create or replace function cost_totals(p_since timestamptz)
+returns table(category text, meter text, units numeric)
 language sql stable as $$
-  select to_char(
-           date_trunc(case p_period when 'month' then 'month' when 'week' then 'week' else 'day' end, created_at),
-           case p_period when 'month' then 'YYYY-MM' else 'YYYY-MM-DD' end
-         ) as bucket,
-         meter,
-         sum(units) as units
+  select coalesce(category, 'uncategorized') as category, meter, sum(units) as units
   from domain_research_api_usage
   where created_at >= p_since
   group by 1, 2
-  order by 1 desc, 2;
+  order by 1, 2;
+$$;
+
+-- Time series: $ per day/week/month bucket using SAVED rates (optionally one
+-- category). Joins cost_rates so the result stays tiny.
+create or replace function cost_series(p_period text, p_since timestamptz, p_category text default null)
+returns table(bucket text, cost numeric)
+language sql stable as $$
+  select to_char(
+           date_trunc(case p_period when 'month' then 'month' when 'week' then 'week' else 'day' end, u.created_at),
+           case p_period when 'month' then 'YYYY-MM' else 'YYYY-MM-DD' end
+         ) as bucket,
+         sum(u.units * coalesce(r.usd_per_unit, 0)) as cost
+  from domain_research_api_usage u
+  left join domain_research_cost_rates r on r.meter = u.meter
+  where u.created_at >= p_since
+    and (p_category is null or coalesce(u.category, 'uncategorized') = p_category)
+  group by 1
+  order by 1 desc;
 $$;
 
 -- ── Enable RLS (no policies → backend secret key only) ──────────────────────

@@ -7,6 +7,7 @@ import { getChat } from '../lib/db/chat.js';
 import { listUsers } from '../lib/db/users.js';
 import { createNotification } from '../lib/db/notifications.js';
 import { sendEmail, isEmailConfigured } from '../lib/email.js';
+import { withCategory } from '../lib/db/usage.js';
 
 export const config = { maxDuration: 30 };
 
@@ -158,13 +159,13 @@ async function handleDistill(req, res, body) {
   const userMessage = idx > 0 && messages[idx - 1].role === 'user' ? messages[idx - 1].content : '';
   const reportSnippet = (run.report && run.report.markdown) || '';
   try {
-    const draft = await distillLesson({
+    const draft = await withCategory('lessons', () => distillLesson({
       domain: run.domain,
       reportSnippet: reportSnippet.slice(0, 2000),
       userMessage,
       assistantMessage: assistantMessage.content,
       env: process.env,
-    });
+    }));
     res.status(200).json({ draft });
   } catch (e) {
     res.status(502).json({ error: `Distill failed: ${e.message || e}` });

@@ -6,6 +6,7 @@ import { runNamingChatTurn } from '../lib/naming/chat.js';
 import { saveNamingRun, updateNamingRun, listNamingRuns, getNamingRun, renameNamingRun, setNamingRunStar } from '../lib/db/naming-runs.js';
 import { listNamingChat, addNamingChatMessage } from '../lib/db/naming-chat.js';
 import { fetchText, extractClues } from '../lib/util.js';
+import { withCategory } from '../lib/db/usage.js';
 import { getFreshLiveChecks, saveLiveChecks } from '../lib/db/livechecks.js';
 
 export const config = { maxDuration: 30 };
@@ -254,7 +255,7 @@ async function handleChat(body, res, user) {
   }
 
   try {
-    const turn = await runNamingChatTurn({ run: currentRun, history, message, env: process.env });
+    const turn = await withCategory('naming', () => runNamingChatTurn({ run: currentRun, history, message, env: process.env }));
     const result_snapshot = turn.refined_results
       ? { buyReady: turn.refined_results.buyReady || [], stretch: turn.refined_results.stretch || [] }
       : null;
@@ -300,7 +301,7 @@ async function handleSearch(body, res, user) {
   }
   let filters;
   try {
-    filters = await parseBrief(brief, process.env);
+    filters = await withCategory('naming', () => parseBrief(brief, process.env));
   } catch (e) {
     res.status(502).json({ error: `Couldn't parse your brief: ${e.message || e}` });
     return;

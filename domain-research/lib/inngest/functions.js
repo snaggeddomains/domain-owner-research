@@ -4,6 +4,7 @@ import { setRunStatus, saveRunReport, failRun, getRun } from '../db/runs.js';
 import { getChat, updateTurn } from '../db/chat.js';
 import { getUser } from '../db/users.js';
 import { createNotification } from '../db/notifications.js';
+import { withCategory } from '../db/usage.js';
 import { loadLessonsAddendum, bumpAppliedCounts } from '../db/lessons.js';
 import { sendEmail, isEmailConfigured } from '../email.js';
 import { reportUrl } from '../reportUrl.js';
@@ -233,7 +234,7 @@ export const runResearch = inngest.createFunction(
         if (!draft) throw new Error('regenerate-synth: existing draft is empty — run gather first');
         await step.run('mark-verifying', () => setRunStatus(runId, 'running', 'regenerating'));
         const refined = await step.run('critique-regen', () =>
-          critique({ domain, env: process.env, tier, draft, priorTrace, lessons, chatCorrections }),
+          withCategory('domain_owner', () => critique({ domain, env: process.env, tier, draft, priorTrace, lessons, chatCorrections })),
         );
         report = refined.report;
         trace = refined.trace;
@@ -248,7 +249,7 @@ export const runResearch = inngest.createFunction(
         // For regenerate-deep, chatCorrections gets folded into the user
         // prompt so the new pass anchors on the user's confirmed findings.
         gathered = await step.run('gather', () =>
-          gather({ domain, question, env: process.env, tier, lessons, chatCorrections }),
+          withCategory('domain_owner', () => gather({ domain, question, env: process.env, tier, lessons, chatCorrections })),
         );
 
         report = gathered.report;
@@ -259,7 +260,7 @@ export const runResearch = inngest.createFunction(
         if ((deep || isRegenDeep) && process.env.RESEARCH_CRITIQUE !== 'off') {
           await step.run('mark-verifying', () => setRunStatus(runId, 'running', 'verifying'));
           const refined = await step.run('critique', () =>
-            critique({ domain, env: process.env, tier, draft: report, priorTrace: trace, lessons, chatCorrections }),
+            withCategory('domain_owner', () => critique({ domain, env: process.env, tier, draft: report, priorTrace: trace, lessons, chatCorrections })),
           );
           report = refined.report;
           trace = refined.trace;
@@ -310,7 +311,7 @@ export const runChat = inngest.createFunction(
   async ({ event, step }) => {
     const { turnId, runId } = event.data;
     try {
-      const reply = await step.run('chat', async () => {
+      const reply = await step.run('chat', () => withCategory('domain_owner', async () => {
         const run = await getRun(runId);
         const domain = (run && run.domain) || '';
         const reportMarkdown = (run && run.report && run.report.markdown) || '';
@@ -329,7 +330,7 @@ export const runChat = inngest.createFunction(
             `Try a narrower, single-step ask — e.g. "run whois_lookup on horoscopes.com" or "whoxy_reverse the registrant email".`;
         }
         return text;
-      });
+      }));
       await step.run('save', () => updateTurn(turnId, reply, 'done'));
       return { turnId, ok: true };
     } catch (err) {

@@ -1,4 +1,19 @@
+import { AsyncLocalStorage } from 'node:async_hooks';
 import { getDb, isDbConfigured } from './supabase.js';
+
+// Cost category (the activity/product a spend belongs to: 'domain_owner',
+// 'naming', 'outreach', 'trademark', 'appraisal', 'lessons', …). Set once at a
+// flow's entry with withCategory(); every nested tool/LLM call inherits it via
+// async context, so recordUsage() tags rows without threading a param through
+// the whole call tree.
+const categoryStore = new AsyncLocalStorage();
+export function withCategory(category, fn) {
+  return categoryStore.run({ category }, fn);
+}
+export function currentCategory() {
+  const s = categoryStore.getStore();
+  return (s && s.category) || null;
+}
 
 // Per-call API-usage log that powers the snagged-admin "Reports → Cost" tab.
 // One row per paid action, keyed by a free-form `meter` string (e.g.
@@ -10,12 +25,13 @@ import { getDb, isDbConfigured } from './supabase.js';
 // cost logging must NEVER break a research request.
 const T = 'domain_research_api_usage';
 
-export async function recordUsage(meter, units, { run_id = null, meta = null } = {}) {
+export async function recordUsage(meter, units, { run_id = null, meta = null, category = undefined } = {}) {
   try {
     if (!isDbConfigured() || !meter) return;
     const n = Number(units);
     if (!Number.isFinite(n) || n <= 0) return;
-    await getDb().from(T).insert({ meter, units: n, run_id, meta });
+    const cat = category === undefined ? currentCategory() : category;
+    await getDb().from(T).insert({ meter, units: n, category: cat, run_id, meta });
   } catch {
     /* swallow — never let usage logging surface to the caller */
   }

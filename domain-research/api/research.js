@@ -5,6 +5,7 @@ import { isAuthed, currentUser, userCan, userCanReportPhase } from '../lib/auth.
 import { isDbConfigured } from '../lib/db/supabase.js';
 import { createRun, getRun, failRun, setRunStatus, listRuns, updateRunReport } from '../lib/db/runs.js';
 import { runTool } from '../lib/sources/index.js';
+import { withCategory } from '../lib/db/usage.js';
 
 export const config = { maxDuration: 60 };
 
@@ -132,9 +133,9 @@ export default async function handler(req, res) {
       res.status(400).json({ error: 'Provide a contact name or linkedin_url to enhance.' });
       return;
     }
-    const result = await runTool('fullenrich_lookup', {
+    const result = await withCategory('domain_owner', () => runTool('fullenrich_lookup', {
       name, linkedin_url, company, domain: run.domain, include_phone: true,
-    }, process.env);
+    }, process.env));
     const data = (result && result.data) || {};
     const phones = Array.isArray(data.phones) ? data.phones : [];
     const emails = Array.isArray(data.emails) ? data.emails : [];
