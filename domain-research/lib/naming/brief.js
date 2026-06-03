@@ -29,6 +29,8 @@ const SYSTEM = `You are parsing a domain-naming brief into a JSON filter object.
   "sld_length_min": null,
   "sld_length_max": null,
   "num_words": null,
+  "num_words_min": null,
+  "num_words_max": null,
   "dictionary_word_only": false,
   "min_price": null,
   "max_price": null,
@@ -45,7 +47,11 @@ CORE PRINCIPLE — DEFAULT BROAD. Every numeric/categorical filter above default
 
 Rules:
 - tlds: include ONLY the TLDs the brief explicitly names (e.g. ".com only" → [".com"]; ".io or .ai" → [".io",".ai"]). If the brief says nothing about TLD, return [] (empty = no TLD constraint; the UI defaults to All).
-- num_words: 1 ONLY if the brief explicitly says "one word", "single word", or "1-word only". 2 ONLY if it explicitly says "two-word only" or "exactly two words". For "one or two words", "1-2 words", "1 or 2", or anything ambiguous, return null (no constraint).
+- num_words / num_words_min / num_words_max — word-count constraints; ALL default null. Use these:
+  - Exact count: num_words=1 ONLY for "one word"/"single word"/"1-word only"; num_words=2 ONLY for "two-word only"/"exactly two words".
+  - Maximum ("one to two words", "1-2 words", "one or two words", "up to two words", "two words or fewer", "no more than two words", "at most N words", "one to N words"): set num_words_max to the upper bound (e.g. 2) and leave num_words AND num_words_min null. A lower bound of "one"/1 means NO minimum — just the max.
+  - Minimum ("at least two words", "two or more words"): set num_words_min. A true span like "two to three words" → num_words_min=2 AND num_words_max=3.
+  - Say nothing about word count → leave all three null.
 - min_quality_score: default NULL (no floor) — results are already ordered best-first, so a floor only trims names. quality_score is WORD-FREQUENCY-derived, so it rewards COMMON words and penalizes rare/literary ones; NEVER raise it for "premium"/"luxury"/"literary"/"evocative" (those want uncommon words). Set a floor ONLY if the brief explicitly wants common, instantly-familiar, everyday words — and even then keep it ≤ 2.5.
 - include_stretch: default true. Set false ONLY if the brief explicitly says to show just priced / buy-ready / immediately-purchasable names. Premium, luxury, aspirational, and one-word-dictionary briefs MUST keep it true — their best candidates are usually UNPRICED north-star options that live in the Stretch bucket; disabling stretch hides them and returns nothing.
 - sld_length_min / sld_length_max: leave BOTH null unless the brief explicitly constrains length ("short", "≤ 7 letters", "punchy"). A great single word can be 3-14 letters (almanac, sanctuary, chronicle, ensemble), so do NOT impose a tight max just because it's one word.
@@ -138,6 +144,15 @@ export function validateFilters(raw) {
 
   const numWordsRaw = Number(f.num_words);
   const num_words = numWordsRaw === 1 || numWordsRaw === 2 ? numWordsRaw : null;
+  const clampWords = (v) => {
+    const n = Number(v);
+    if (!Number.isFinite(n)) return null;
+    return Math.max(1, Math.min(6, Math.round(n)));
+  };
+  const num_words_min = f.num_words_min == null ? null : clampWords(f.num_words_min);
+  let num_words_max = f.num_words_max == null ? null : clampWords(f.num_words_max);
+  // Keep bounds ordered if the parser flipped them.
+  if (num_words_min != null && num_words_max != null && num_words_max < num_words_min) num_words_max = null;
 
   const dictionary_word_only = Boolean(f.dictionary_word_only);
 
@@ -191,6 +206,8 @@ export function validateFilters(raw) {
     sld_length_min,
     sld_length_max,
     num_words,
+    num_words_min,
+    num_words_max,
     dictionary_word_only,
     min_price,
     max_price,
