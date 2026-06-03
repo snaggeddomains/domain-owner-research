@@ -391,19 +391,20 @@ create table if not exists domain_research_cost_rates (
 
 -- Totals per (category, meter) since a cutoff — the report pivots this into
 -- "by system" / "by category" / the per-meter rate editor (rates applied live).
-create or replace function cost_totals(p_since timestamptz)
+create or replace function cost_totals(p_since timestamptz, p_until timestamptz default null)
 returns table(category text, meter text, units numeric)
 language sql stable as $$
   select coalesce(category, 'uncategorized') as category, meter, sum(units) as units
   from domain_research_api_usage
   where created_at >= p_since
+    and (p_until is null or created_at < p_until)
   group by 1, 2
   order by 1, 2;
 $$;
 
 -- Time series: $ per day/week/month bucket using SAVED rates (optionally one
--- category). Joins cost_rates so the result stays tiny.
-create or replace function cost_series(p_period text, p_since timestamptz, p_category text default null)
+-- category, optionally an upper time bound). Joins cost_rates so it stays tiny.
+create or replace function cost_series(p_period text, p_since timestamptz, p_category text default null, p_until timestamptz default null)
 returns table(bucket text, cost numeric)
 language sql stable as $$
   select to_char(
@@ -414,6 +415,7 @@ language sql stable as $$
   from domain_research_api_usage u
   left join domain_research_cost_rates r on r.meter = u.meter
   where u.created_at >= p_since
+    and (p_until is null or u.created_at < p_until)
     and (p_category is null or coalesce(u.category, 'uncategorized') = p_category)
   group by 1
   order by 1 desc;
