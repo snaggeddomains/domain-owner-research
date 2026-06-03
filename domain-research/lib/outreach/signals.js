@@ -109,27 +109,48 @@ export function extractSignals(report, domain = '') {
     }
   }
 
-  // ── breadcrumbs from the narrative ────────────────────────────────────────
-  const acquisition = /\bacqui(red|sition)\b/i.test(narrative) || /\b(merger|consolidat|inherited)\b/i.test(narrative);
+  // ── breadcrumbs / indicators from the narrative + structured fields ───────
+  const acquisition = /\bacqui(red|sition|res)\b/i.test(narrative) || /\b(merger|consolidat|inherited|portfolio cleanup|brand consolidation)\b/i.test(narrative);
   const clusterTie = traceData(trace, 'registration_cluster').some(
     (d) => d && Array.isArray(d.siblings) && d.siblings.some((s) => s && s.same_registrant),
   );
-  const largeCompanyHint = siteActive && /\b(Inc\.?|Corporation|Holdings|publicly traded|enterprise|Fortune\s?\d|NYSE|NASDAQ|global)\b/.test(narrative);
+  const largeCompanyHint = siteActive && /\b(Inc\.?|Corporation|Holdings|publicly traded|enterprise|Fortune\s?\d|NYSE|NASDAQ|multinational|global)\b/.test(narrative);
 
   const likelyOwner = sum.likelyOwner || null;
   const primary = sum.primaryContact || null;
   const hasPrimaryContact = Boolean(primary && primary.value);
-  const privacy = /\b(privacy|redacted for privacy|domains? by proxy|whoisguard|privacyguardian|proxy-?protected)\b/i.test(narrative);
+  const privacy = /\b(privacy|redacted for privacy|domains? by proxy|whoisguard|privacyguardian|proxy-?protected|withheld for privacy)\b/i.test(narrative);
+
+  const confidenceBand = sum.confidence || null;
+  const ownerTypeRaw = ownerType || 'unknown';
+  const isCompany = ownerTypeRaw === 'active_company';
+  const isIndividual = ownerTypeRaw === 'individual';
+  const formerOperator = ownerTypeRaw === 'former_operator';
+  // "Used to be associated with the name but might still own it" (the pavilion.com
+  // case): a former operator, or narrative language to that effect.
+  const mayStillOwn = formerOperator
+    || /\b(may|might|could|possibly|likely) (still )?(own|hold|control|retain)\b/i.test(narrative)
+    || /\b(former|previously|used to|at the time|your time with|back when|legacy)\b/i.test(narrative);
+  const priorCompanyTie = acquisition || clusterTie
+    || /\b(traces? back to|tied to|associated with|connected to|your time with|formerly of|ex-)\b/i.test(narrative);
+  // More than one named primary stakeholder to address (the corporate / "Hi Names" case).
+  const namedContacts = (Array.isArray(json.contacts) ? json.contacts : []).filter(
+    (c) => c && c.type === 'name' && c.value && String(c.tier || '').toLowerCase() !== 'tertiary',
+  );
+  const multiStakeholder = namedContacts.length > 1 || /\b(owners|stakeholders|team|all as the owners)\b/i.test(narrative);
 
   return {
     domain,
-    ownerType,
-    confidence: sum.confidence || null,
+    ownerType: ownerTypeRaw,
+    confidence: confidenceBand,
+    confidenceBand,
     likelyOwner,
     summary: sum.summary || json.summary || null,
     firstName: firstNameOf(primary && primary.type === 'name' ? primary.value : likelyOwner),
     primaryContactName: (primary && primary.type === 'name' && primary.value) || (likelyOwner || ''),
+    namedContactNames: namedContacts.map((c) => String(c.value).trim()),
     hasPrimaryContact,
+    namedOwner: hasPrimaryContact && Boolean(primary && primary.type === 'name'),
     contacts: Array.isArray(json.contacts) ? json.contacts : [],
     contactPath: Array.isArray(json.contact_path) ? json.contact_path : [],
     timeline: Array.isArray(json.timeline) ? json.timeline : [],
@@ -144,6 +165,16 @@ export function extractSignals(report, domain = '') {
     clusterTie,
     largeCompanyHint,
     privacy,
+    isCompany,
+    isIndividual,
+    formerOperator,
+    mayStillOwn,
+    priorCompanyTie,
+    multiStakeholder,
+    // Full agent narrative (PART-2) for the drafter to read — the agent's own
+    // synthesis, the richest concise context we have. Capped generously.
+    narrative: narrative.trim().slice(0, 9000),
     narrativeExcerpt: narrative.trim().slice(0, 4000),
   };
 }
+

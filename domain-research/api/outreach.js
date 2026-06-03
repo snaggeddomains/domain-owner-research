@@ -1,18 +1,43 @@
 import { isAuthed, currentUser, userCan } from '../lib/auth.js';
 import { getRun } from '../lib/db/runs.js';
 import { extractSignals } from '../lib/outreach/signals.js';
-import { classifyScenario } from '../lib/outreach/classify.js';
+import { rankScenarios } from '../lib/outreach/classify.js';
 import { generateOutreach, placeholderize } from '../lib/outreach/generate.js';
-import { SCENARIO_BY_ID, builtinToTemplate, customToTemplate, scenarioOptions } from '../lib/outreach/templates.js';
+import { SCENARIOS, SCENARIO_BY_ID } from '../lib/outreach/templates.js';
 import { listTemplates, createTemplate } from '../lib/db/outreachTemplates.js';
 
 // Owner-outreach draft generator for a finished report.
-//   POST { run_id, scenario_id? }            -> draft (auto-classified or overridden)
-//   POST { run_id, action:'save_template', title, subject, body } -> save a custom template
-// The draft is LLM-written, anchored on the matched template + report facts, and
-// also reports a `fit` judgement + a `suggested_title` so the UI can offer "save
-// this as a new template" when nothing fits well.
+//   POST { run_id, scenario_id? }            -> draft (auto-selected, or forced to
+//                                                a template id / '__bespoke__')
+//   POST { run_id, action:'save_template', title, subject, body } -> save a template
+// The drafter ingests the full report context + the whole template catalog +
+// an indicator-based ranking, then adapts a template, proposes a new one, or
+// writes a fully bespoke email. It returns the chosen approach + the situation
+// read + the personalization hooks so the UI can show its reasoning.
 export const config = { maxDuration: 30 };
+
+const BESPOKE = '__bespoke__';
+
+function buildCatalog(custom, ranked) {
+  const scoreOf = Object.fromEntries(ranked.map((r) => [r.id, r.score]));
+  const builtins = SCENARIOS.map((s) => ({
+    id: s.id,
+    name: s.name,
+    useWhen: s.bestFit,
+    adjustment: s.adjustment,
+    text: s.closest,
+    builtin: true,
+  })).sort((a, b) => (scoreOf[b.id] || 0) - (scoreOf[a.id] || 0));
+  const customs = (custom || []).map((c) => ({
+    id: c.id,
+    name: c.name,
+    useWhen: c.best_fit || null,
+    adjustment: null,
+    text: c.body,
+    builtin: false,
+  }));
+  return [...builtins, ...customs];
+}
 
 export default async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store');
@@ -46,15 +71,8 @@ export default async function handler(req, res) {
   // ── Save a custom template ────────────────────────────────────────────────
   if (body.action === 'save_template') {
     const title = String(body.title || '').trim();
-    if (!title) {
-      res.status(400).json({ error: 'Give the template a name' });
-      return;
-    }
-    if (!body.body || !String(body.body).trim()) {
-      res.status(400).json({ error: 'Nothing to save' });
-      return;
-    }
-    // Generalize the concrete draft back into a reusable template.
+    if (!title) { res.status(400).json({ error: 'Give the template a name' }); return; }
+    if (!body.body || !String(body.body).trim()) { res.status(400).json({ error: 'Nothing to save' }); return; }
     const tplBody = placeholderize(String(body.body), signals);
     const tplSubject = placeholderize(String(body.subject || '[DOMAIN] Domain Inquiry'), signals);
     try {
@@ -79,34 +97,37 @@ export default async function handler(req, res) {
   }
 
   const custom = await listTemplates();
-  const customById = Object.fromEntries(custom.map((c) => [c.id, c]));
-  const scenarios = [...scenarioOptions(), ...custom.map((c) => ({ id: c.id, name: c.name, custom: true }))];
+  const ranked = rankScenarios(signals);
+  const catalog = buildCatalog(custom, ranked);
 
-  // Resolve the selected template: explicit override (built-in or custom) or the
-  // deterministic classifier's pick.
-  let template;
-  let scenarioId;
-  let why;
-  if (body.scenario_id && SCENARIO_BY_ID[body.scenario_id]) {
-    scenarioId = body.scenario_id;
-    template = builtinToTemplate(SCENARIO_BY_ID[scenarioId]);
-    why = ['Manually selected'];
-  } else if (body.scenario_id && customById[body.scenario_id]) {
-    scenarioId = body.scenario_id;
-    template = customToTemplate(customById[scenarioId]);
-    why = ['Saved custom template'];
-  } else {
-    const classified = classifyScenario(signals);
-    scenarioId = classified.id;
-    template = builtinToTemplate(SCENARIO_BY_ID[scenarioId]);
-    why = classified.reasons;
-  }
+  // Resolve the user's forced selection (dropdown), if any.
+  let forced = { mode: 'auto' };
+  const sel = body.scenario_id;
+  if (sel === BESPOKE) forced = { mode: 'bespoke' };
+  else if (sel && catalog.some((c) => c.id === sel)) forced = { mode: 'template', templateId: sel };
 
-  const draft = await generateOutreach({ template, signals, env: process.env });
+  const draft = await generateOutreach({ signals, catalog, ranked, forced, env: process.env });
+
+  // The selected option for the dropdown: the chosen template id, or bespoke.
+  const chosenId = draft.template_id || BESPOKE;
+  const chosenName = draft.template_id ? (draft.template_name || (SCENARIO_BY_ID[draft.template_id]?.name) || 'Template') : 'Personalized (no template)';
+  const rankReasons = (ranked.find((r) => r.id === draft.template_id) || {}).reasons || [];
+  const why = draft.approach === 'template'
+    ? (rankReasons.length ? rankReasons : ['Best-matching template'])
+    : (draft.approach === 'new_template' ? ['No close template fit — drafted fresh; save it to reuse'] : ['No template fit — written bespoke for this report']);
+
+  const scenarios = [
+    { id: BESPOKE, name: '✨ Personalized (no template)' },
+    ...SCENARIOS.map((s) => ({ id: s.id, name: s.name })),
+    ...custom.map((c) => ({ id: c.id, name: c.name, custom: true })),
+  ];
 
   res.status(200).json({
     domain: run.domain || '',
-    scenario: { id: scenarioId, name: template.name, why },
+    scenario: { id: chosenId, name: chosenName, why },
+    approach: draft.approach,
+    situation: draft.situation || '',
+    hooks: draft.hooks || [],
     scenarios,
     subject: draft.subject,
     body: draft.body,

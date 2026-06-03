@@ -3568,15 +3568,24 @@ function renderOutreach(data) {
     if (data.scenario && data.scenario.id) els.odScenarioSel.value = data.scenario.id;
   }
   if (els.odWhy) {
+    const e = escapeHtml;
+    const lines = [];
+    if (data.situation) lines.push(`<div class="od-why-situation">${e(data.situation)}</div>`);
     const why = (data.scenario && Array.isArray(data.scenario.why)) ? data.scenario.why : [];
-    els.odWhy.textContent = why.length ? `Why this template: ${why.join(' · ')}` : '';
+    const meta = [];
+    if (why.length) meta.push(`Why: ${why.map(e).join(' · ')}`);
+    if (Array.isArray(data.hooks) && data.hooks.length) meta.push(`Personalized with: ${data.hooks.map(e).join(' · ')}`);
+    if (meta.length) lines.push(`<div class="od-why-meta">${meta.join('<br>')}</div>`);
+    els.odWhy.innerHTML = lines.join('');
   }
-  // Fit note: when the closest template is only a weak match, nudge toward saving
-  // a new one (and prefill the suggested name).
+  // Nudge toward saving a template when the draft was bespoke / a weak fit.
   if (els.odFitNote) {
-    if (data.fit === 'weak') {
+    const bespoke = data.approach === 'bespoke' || data.approach === 'new_template';
+    if (data.fit === 'weak' || bespoke) {
       els.odFitNote.hidden = false;
-      els.odFitNote.textContent = 'No close template match — drafted from the nearest one. Consider saving this as a new template (name suggested below).';
+      els.odFitNote.textContent = bespoke
+        ? 'No template was a strong fit — this was written for this report. If it’s a pattern you’ll see again, save it as a new template (name suggested below).'
+        : 'Only a loose template match — drafted from the nearest one. Consider saving this as a new template (name suggested below).';
     } else {
       els.odFitNote.hidden = true;
       els.odFitNote.textContent = '';

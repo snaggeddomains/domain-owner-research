@@ -1,57 +1,113 @@
-// Draft a first-touch outreach email. The user picked "LLM free-write, templates
-// as style guide": we let the model compose in Rob's voice, anchored hard on the
-// chosen template (built-in scenario OR a saved custom one) + the recurring spine,
-// constrained to the report's facts (no invented names/companies/platforms/prices
-// — missing values stay as a visible [BRACKET]). The same call also judges whether
-// the template actually FITS this report and proposes a short title for the
-// situation, so the UI can offer "save this as a new template" when nothing fits.
-// Falls back to a plain placeholder-filled template if the model is unavailable.
+// Draft a first-touch outreach email — thoroughly. The drafter reads the FULL
+// report context (structured conclusion + indicators + the agent's whole
+// narrative + contacts/timeline), is handed the entire template catalog (so it
+// understands what each template is for) plus a deterministic indicator-based
+// ranking as a prior, and then decides the best approach: adapt a template,
+// propose a new named template, or write a fully bespoke personalized email when
+// nothing fits. It writes short, specific, and in Rob's voice, weaving in only
+// verifiable hooks. Falls back to a placeholder-filled template if the LLM is
+// unavailable.
 
 import Anthropic from '@anthropic-ai/sdk';
 import { STYLE_GUIDE } from './templates.js';
 
-const SYSTEM = `You are drafting a FIRST-TOUCH cold outreach email AS Rob Schutz of Snagged.com, a domain brokerage, to the current owner of a domain his client wants to acquire. This is the opening email only.
+const SYSTEM = `You are Rob Schutz of Snagged.com, a domain brokerage, writing the FIRST-TOUCH email to the likely owner of a domain a client wants to acquire. Opening email only.
+
+Your job is to be THOROUGH about context but CONCISE on the page. Read everything provided, understand the ownership situation, and write a short, sharp, genuinely personalized opener — not a mail-merge.
 
 ${STYLE_GUIDE}
 
+PROCESS (think it through, then write):
+1. Interpret the situation in one line: who likely owns this, their relationship to the domain (current operator? former operator who may still hold it? investor? acquired/redirected corporate asset? privacy-shielded unknown?), and the most compelling, VERIFIABLE hook for reaching out now.
+2. Choose the APPROACH:
+   - "template": one catalog template clearly fits → adapt it (keep its structure and Rob's voice), personalized with the real hooks.
+   - "new_template": no catalog template fits, but this is a recognizable, repeatable pattern worth saving → write the email and name the pattern (3-6 word Title Case suggested_title).
+   - "bespoke": no template fits and it's a one-off → write a fully personalized email from scratch, still on Rob's spine and voice.
+   If the user FORCED a template (noted in the input), use it (approach "template", that template_id).
+3. Pick the 1-3 strongest hooks actually supported by the report and weave them in naturally. One earned, specific sentence ("I believe the domain traces back to your time with Amicus") beats three generic ones.
+
 HARD RULES:
-- Write in Rob's voice. Use the provided template(s) as the style anchor — match their tone, length, and structure closely. This is a light personalization of a proven template, NOT a fresh essay.
-- Only use facts present in RESEARCH FACTS / report excerpt. NEVER invent a person's name, company, acquisition story, marketplace platform, or price.
-- If the template needs a value you don't have, either omit that clause or leave a clearly bracketed placeholder like [COMPANY] or [First Name] for Rob to fill. Do not guess.
-- Keep it short — match the example length. No subject-line preamble in the body.
-- Do not state or imply a price, and don't promise anything beyond what the templates say.
-- The subject line must be exactly: <DOMAIN> Domain Inquiry
+- Use ONLY facts present in the provided context. NEVER invent a name, company, acquisition, platform, price, or relationship. If you need a value you don't have, leave a clearly bracketed placeholder like [COMPANY] for Rob to fill — do not guess.
+- SHORT: roughly 4-9 sentences. Cut anything that isn't earning its place. No corporate filler.
+- Match Rob's warmth and directness. No pricing or commitments beyond the templates' spirit.
+- Subject line EXACTLY: <DOMAIN> Domain Inquiry. Sign off "-Rob".
 
-Also assess FIT: does the anchor template genuinely suit this owner situation?
-- "good" = the template's best-fit clearly matches the report.
-- "weak" = it's the closest available but the situation is meaningfully different (e.g. a mix of signals, or a case none of the scenarios cover well).
-And propose "suggested_title": a short (3-6 word) Title Case label naming THIS owner situation, suitable as the name of a reusable template (e.g. "Estate / Deceased Owner", "Foreign-Language Registrant", "Charity / Nonprofit Owner").
+Return STRICT JSON only (no prose, no code fence):
+{"situation":"one-line read of the ownership situation","approach":"template"|"new_template"|"bespoke","template_id":"<catalog id or null>","fit":"good"|"weak","suggested_title":"<name if new_template/bespoke, else ''>","hooks":["the specific facts you used"],"subject":"...","body":"..."}`;
 
-Return STRICT JSON only, no prose, no code fence:
-{"subject": "...", "body": "...", "fit": "good" | "weak", "suggested_title": "..."}`;
+function compactContacts(contacts) {
+  return (Array.isArray(contacts) ? contacts : [])
+    .slice(0, 12)
+    .map((c) => `- [${c.type || '?'}${c.tier ? `/${c.tier}` : ''}] ${String(c.value || '').trim()}${c.note ? ` (${c.note})` : ''}`)
+    .join('\n');
+}
+function compactTimeline(tl) {
+  return (Array.isArray(tl) ? tl : [])
+    .slice(0, 12)
+    .map((t) => `- ${t.date || ''}: ${t.event || ''}${t.detail ? ` — ${t.detail}` : ''}`)
+    .join('\n');
+}
 
-function factsBlock(sig) {
-  const f = [];
-  f.push(`Domain: ${sig.domain}`);
-  if (sig.firstName) f.push(`Owner first name: ${sig.firstName}`);
-  if (sig.primaryContactName) f.push(`Likely owner / contact: ${sig.primaryContactName}`);
-  if (sig.ownerType) f.push(`Owner type: ${sig.ownerType}`);
-  if (sig.confidence) f.push(`Ownership confidence: ${sig.confidence}`);
-  if (sig.listed) f.push(`Listed for sale: yes${sig.platform ? ` (on ${sig.platform})` : ''}`);
-  if (sig.redirectsToParent) f.push(`Redirects to parent site: ${sig.parentHost || 'yes'}`);
-  if (sig.siteActive) f.push('Site/email appear actively in use: yes');
-  if (sig.parked) f.push('Domain is parked / inactive: yes');
-  if (sig.acquisition) f.push('Acquisition / inheritance suggested in the research: yes');
-  if (sig.privacy) f.push('WHOIS is privacy/proxy-protected: yes');
-  if (sig.summary) f.push(`Research bottom line: ${sig.summary}`);
-  return f.join('\n');
+function indicatorList(sig) {
+  const on = [];
+  if (sig.listed) on.push(`listed-for-sale${sig.platform ? ` on ${sig.platform}` : ''}`);
+  if (sig.redirectsToParent) on.push(`redirects-to-parent${sig.parentHost ? ` (${sig.parentHost})` : ''}`);
+  if (sig.acquisition) on.push('acquisition/inheritance');
+  if (sig.formerOperator) on.push('former-operator');
+  if (sig.mayStillOwn) on.push('may-still-own');
+  if (sig.priorCompanyTie) on.push('prior-company-tie');
+  if (sig.multiStakeholder) on.push('multiple-stakeholders');
+  if (sig.siteActive) on.push('active-site/email');
+  if (sig.largeCompanyHint) on.push('larger-company');
+  if (sig.parked) on.push('parked/inactive');
+  if (sig.privacy) on.push('privacy-protected');
+  return on.join('; ') || '(none distinctive)';
+}
+
+function contextBlock(sig) {
+  return `Domain: ${sig.domain}
+Identity confidence: ${sig.confidenceBand || 'unknown'}
+Likely owner: ${sig.likelyOwner || '(not established)'}
+Owner type: ${sig.ownerType || 'unknown'}
+Address as: ${sig.namedContactNames && sig.namedContactNames.length ? sig.namedContactNames.join(', ') : sig.firstName || '(no clear name — "Hi there")'}
+Key indicators: ${indicatorList(sig)}
+Bottom line: ${sig.summary || '(none)'}
+
+Contacts:
+${compactContacts(sig.contacts) || '(none)'}
+
+Timeline:
+${compactTimeline(sig.timeline) || '(none)'}
+
+Recommended contact path:
+${(Array.isArray(sig.contactPath) ? sig.contactPath : []).slice(0, 6).map((p) => `- ${p}`).join('\n') || '(none)'}
+
+FULL RESEARCH NARRATIVE (the agent's own synthesis — your richest context):
+${sig.narrative || '(none)'}`;
+}
+
+function catalogBlock(catalog) {
+  return catalog
+    .map(
+      (t) =>
+        `[${t.id}] ${t.name}${t.builtin ? '' : ' (saved custom)'}\nUSE WHEN: ${t.useWhen || '—'}${t.adjustment ? `\nADJUST: ${t.adjustment}` : ''}\nTEMPLATE:\n${t.text}`,
+    )
+    .join('\n\n— — —\n\n');
+}
+
+function rankingBlock(ranked) {
+  return ranked
+    .filter((r) => r.score > 0)
+    .slice(0, 5)
+    .map((r, i) => `${i + 1}. ${r.id} (score ${r.score}): ${r.reasons.join('; ')}`)
+    .join('\n') || '(no strong signal — consider bespoke)';
 }
 
 export function fillTemplate(tpl, sig) {
   return String(tpl || '')
     .replace(/\[DOMAIN\]/g, sig.domain || '[DOMAIN]')
     .replace(/\[First Name\]/g, sig.firstName || '[First Name]')
-    .replace(/\[Names\]/g, sig.primaryContactName || '[Names]')
+    .replace(/\[Names\]/g, (sig.namedContactNames && sig.namedContactNames.join(' and ')) || sig.primaryContactName || '[Names]')
     .replace(/\[PLATFORM\]/g, sig.platform || '[PLATFORM]')
     .replace(/\[PARENT SITE\]/g, sig.parentHost || '[PARENT SITE]');
 }
@@ -66,7 +122,7 @@ export function placeholderize(text, sig) {
     const re = new RegExp(v.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
     out = out.replace(re, token);
   };
-  // Longest / most-specific first so a name inside an org isn't half-replaced.
+  for (const n of sig.namedContactNames || []) sub(n, '[Names]');
   sub(sig.primaryContactName, '[Names]');
   if (sig.parentHost) sub(sig.parentHost, '[PARENT SITE]');
   if (sig.platform) sub(sig.platform, '[PLATFORM]');
@@ -89,65 +145,77 @@ function parseJsonLoose(text) {
   }
 }
 
-// Deterministic fallback when the LLM is unavailable/misbehaves.
-export function fallbackDraft(template, sig) {
-  const anchor = (template.anchors && template.anchors[0]) || '';
+// Deterministic fallback when the LLM is unavailable/misbehaves: fill the top
+// candidate's template.
+export function fallbackDraft(catalog, ranked, sig) {
+  const topId = (ranked.find((r) => r.score > 0) || ranked[0] || {}).id;
+  const t = catalog.find((c) => c.id === topId) || catalog[0];
   return {
-    subject: `${sig.domain} Domain Inquiry`,
-    body: fillTemplate(anchor, sig),
+    situation: sig.summary || '',
+    approach: 'template',
+    template_id: t ? t.id : null,
+    template_name: t ? t.name : '',
     fit: 'good',
-    suggested_title: template.name || '',
+    suggested_title: '',
+    hooks: [],
+    subject: `${sig.domain} Domain Inquiry`,
+    body: fillTemplate(t ? t.text : '', sig),
   };
 }
 
-// template = { id, name, bestFit, adjustment, anchors: [string,...], subject }
-export async function generateOutreach({ template, signals, env = process.env }) {
-  if (!template || !Array.isArray(template.anchors) || !template.anchors.length) {
-    throw new Error('generateOutreach: template with anchors required');
+// catalog: [{ id, name, useWhen, adjustment, text, builtin }]
+// ranked:  [{ id, name, score, reasons }] (built-in prior)
+// forced:  { mode:'auto'|'template'|'bespoke', templateId? }
+export async function generateOutreach({ signals, catalog, ranked, forced = { mode: 'auto' }, env = process.env }) {
+  if (!env.ANTHROPIC_API_KEY) return { ...fallbackDraft(catalog, ranked, signals), fallback: true };
+
+  let forcedNote = '';
+  if (forced.mode === 'bespoke') {
+    forcedNote = '\n\nUSER OVERRIDE: write a BESPOKE personalized email (approach "bespoke", template_id null). Do not anchor on a catalog template.';
+  } else if (forced.mode === 'template' && forced.templateId) {
+    forcedNote = `\n\nUSER OVERRIDE: use template "${forced.templateId}" (approach "template", template_id "${forced.templateId}"). Adapt it to the context.`;
   }
-  if (!env.ANTHROPIC_API_KEY) return { ...fallbackDraft(template, signals), fallback: true };
 
-  const variants = template.anchors
-    .map((a, i) => `${i === 0 ? 'PRIMARY anchor (stay close to this)' : 'Alternative variant'}:\n${a}`)
-    .join('\n\n');
+  const userPrompt = `REPORT CONTEXT
+${contextBlock(signals)}
 
-  const userPrompt = `TEMPLATE: ${template.name}
-${template.bestFit ? `Best fit: ${template.bestFit}` : ''}
-${template.adjustment ? `How Rob adjusts here: ${template.adjustment}` : ''}
+DETERMINISTIC RANKING (indicator-based prior; strongest first):
+${rankingBlock(ranked)}
 
-TEMPLATE TEXT TO ANCHOR ON:
-${variants}
+TEMPLATE CATALOG (understand each before choosing):
+${catalogBlock(catalog)}${forcedNote}
 
-RESEARCH FACTS:
-${factsBlock(signals)}
-
-REPORT EXCERPT (for breadcrumbs — only use what's here, don't infer beyond it):
-${signals.narrativeExcerpt || '(none)'}
-
-Draft the opening email now, then assess fit and suggest a title.`;
+Interpret the situation, choose the approach, and write the opener now. Be thorough about context, concise on the page, and personalize with verifiable hooks only.`;
 
   const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY });
   const model = env.OUTREACH_MODEL || 'claude-sonnet-4-6';
   try {
     const resp = await client.messages.create({
       model,
-      max_tokens: 1200,
+      max_tokens: 1500,
       system: [{ type: 'text', text: SYSTEM, cache_control: { type: 'ephemeral' } }],
       messages: [{ role: 'user', content: userPrompt }],
     });
     const text = (resp.content || []).filter((b) => b.type === 'text').map((b) => b.text).join('');
     const parsed = parseJsonLoose(text);
     if (parsed && parsed.subject && parsed.body) {
+      const tid = parsed.template_id && catalog.some((c) => c.id === parsed.template_id) ? parsed.template_id : null;
+      const tname = tid ? (catalog.find((c) => c.id === tid) || {}).name : '';
       return {
+        situation: String(parsed.situation || '').trim(),
+        approach: ['template', 'new_template', 'bespoke'].includes(parsed.approach) ? parsed.approach : (tid ? 'template' : 'bespoke'),
+        template_id: tid,
+        template_name: tname || '',
+        fit: parsed.fit === 'weak' ? 'weak' : 'good',
+        suggested_title: String(parsed.suggested_title || '').trim(),
+        hooks: Array.isArray(parsed.hooks) ? parsed.hooks.map((h) => String(h).trim()).filter(Boolean).slice(0, 5) : [],
         subject: String(parsed.subject).trim(),
         body: String(parsed.body).trim(),
-        fit: parsed.fit === 'weak' ? 'weak' : 'good',
-        suggested_title: String(parsed.suggested_title || template.name || '').trim(),
         model,
       };
     }
-    return { ...fallbackDraft(template, signals), fallback: true, model };
+    return { ...fallbackDraft(catalog, ranked, signals), fallback: true, model };
   } catch (err) {
-    return { ...fallbackDraft(template, signals), fallback: true, error: String((err && err.message) || err) };
+    return { ...fallbackDraft(catalog, ranked, signals), fallback: true, error: String((err && err.message) || err) };
   }
 }

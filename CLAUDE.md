@@ -53,20 +53,29 @@ real opening emails ("Domain Owner Initial Outreach" playbook).
   playbook (closest-to-real + lightly-cleaned variants), each with the recurring
   spine + per-scenario adjustment. `SUBJECT = "[DOMAIN] Domain Inquiry"`.
 - **Signals** (`lib/outreach/signals.js`): `extractSignals(report, domain)` reads
-  the report PART-1 JSON + `summarizeReport` + (best-effort, trace `data` is
-  truncated to 4000 chars) `marketplace_check` / `livesite_inspect` /
-  `registration_cluster`, plus narrative regex for platform / redirect /
-  acquisition / privacy.
-- **Classifier** (`lib/outreach/classify.js`): priority-ordered, first match wins
-  → listed_for_sale → privacy_proxy → corporate_redirect → continuity_large →
-  active_small → research_informed → passive_individual (default). Returns the
-  reasons that fired ("why this template"). 6-vs-7 (small vs large active company)
-  defaults to active_small; user switches via the dropdown.
-- **Drafting** (`lib/outreach/generate.js`): LLM free-write **anchored** on the
-  matched template + spine + report facts; hard rule = never invent a
-  name/company/platform/price (missing values stay as a visible `[BRACKET]`).
-  Model `OUTREACH_MODEL` (default `claude-sonnet-4-6`). Falls back to a plain
-  placeholder-filled template if the LLM is unavailable.
+  the report PART-1 JSON + `summarizeReport` + (best-effort) `marketplace_check` /
+  `livesite_inspect` / `registration_cluster`, plus narrative analysis. Produces
+  rich indicators (confidence band, `formerOperator`, `mayStillOwn`,
+  `priorCompanyTie`, `acquisition`, `redirectsToParent`+host, `listed`+platform,
+  `siteActive`/`parked`, `largeCompanyHint`, `multiStakeholder`, `privacy`) AND the
+  **full agent narrative** (PART-2, capped ~9k) so the drafter reads everything.
+- **Mapping table** (`lib/outreach/classify.js`): `MAPPING` is an explicit
+  indicator→template weight table; `rankScenarios(sig)` scores every built-in and
+  returns a ranked list with the reasons that fired (inspectable + tunable —
+  change a weight, not an if/else). The top is the deterministic prior; e.g.
+  pavilion.com → research_informed via may-still-own + prior-company-tie +
+  medium-confidence.
+- **Drafting** (`lib/outreach/generate.js`): one rich LLM call gets the FULL
+  context (indicators + narrative + contacts/timeline/contact_path), the WHOLE
+  template catalog (each template's "use when" + text), and the ranking as a prior,
+  then **interprets the situation and chooses an approach**: adapt a template,
+  propose a `new_template`, or write a fully **bespoke** email when nothing fits.
+  Returns `{situation, approach, template_id, fit, suggested_title, hooks[],
+  subject, body}`. Short + personalized; hard rule = only verifiable facts, never
+  invent (missing → visible `[BRACKET]`). Model `OUTREACH_MODEL` (default
+  `claude-sonnet-4-6`); falls back to the top-ranked template filled in if the LLM
+  is unavailable. The drawer dropdown has a `✨ Personalized (no template)`
+  (`__bespoke__`) option to force a bespoke draft.
 - **API** (`api/outreach.js`): `POST {run_id, scenario_id?}` → `{scenario:{id,name,
   why[]}, scenarios[], subject, body}`. Gated by `domain_owner` **and** the new
   `outreach` action permission (admins auto-pass).

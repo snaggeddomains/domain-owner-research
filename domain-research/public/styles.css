@@ -1124,3 +1124,6 @@ body.drawer-open { overflow: hidden; }
 .od-save-row { display: flex; gap: 8px; align-items: stretch; }
 .od-save-row .od-input { flex: 1; }
 .od-save-row .od-btn { flex: none; white-space: nowrap; }
+
+.od-why-situation { font-size: 13px; color: var(--navy); font-weight: 600; line-height: 1.45; }
+.od-why-meta { margin-top: 5px; font-size: 12px; color: var(--navy-3); line-height: 1.5; }
