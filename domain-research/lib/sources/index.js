@@ -26,13 +26,14 @@ import cluster from './cluster.js';
 import trademark from './trademark.js';
 import appraise from './appraise.js';
 import namebio from './namebio.js';
+import namepros from './namepros.js';
 
 // To add a new data source: create a module exporting { name, description,
 // parameters, requiresKey?, run(args, { env }) } and register it here.
 const ALL = [
   rdap, whois, dns, wayback, livesite, marketplace, cluster, masterlist, universeOwnership, rocketreach, readurl, analytics,
   whoisxml, domainiq, bigdomaindata, reversewhois, reversens, reverseip, websearch, bravesearch, trademark, appraise,
-  rocketreachLookup, fullenrich, whoxyHistory, whoxyReverse, identify, namebio,
+  rocketreachLookup, fullenrich, whoxyHistory, whoxyReverse, identify, namebio, namepros,
 ];
 
 // Paid sources spend external API credits. They are withheld from the free
@@ -42,6 +43,7 @@ const PAID = new Set([
   'whoisxml_lookup', 'domainiq_lookup', 'bigdomaindata_lookup',
   'reverse_whois', 'reverse_ns', 'reverse_ip', 'web_search', 'brave_search', 'trademark_search', 'appraise_lookup',
   'rocketreach_lookup', 'fullenrich_lookup', 'whoxy_history', 'whoxy_reverse', 'identify_operator', 'namebio_sales',
+  'namepros_search',
 ]);
 
 // Recap grouping — each source's category, used to break the "Sources checked"
@@ -72,6 +74,7 @@ const CATEGORY = {
   brave_search: 'Web & social',
   read_url: 'Web & social',
   identify_operator: 'Web & social',
+  namepros_search: 'Web & social',
   trademark_search: 'Trademark / legal',
   appraise_lookup: 'Valuation',
   namebio_sales: 'Sales history',
