@@ -3519,33 +3519,65 @@ function closeOutreach() {
   document.body.classList.remove('drawer-open');
 }
 
-async function loadOutreach(scenarioId) {
+// Cache of finished (LLM-sharpened) drafts, keyed by run + selection, so
+// reopening or toggling back is instant.
+const outreachCache = {};
+let outreachSeq = 0;
+
+async function fetchOutreach(scenarioId, mode) {
+  const payload = { run_id: currentRunId };
+  if (scenarioId) payload.scenario_id = scenarioId;
+  if (mode === 'skeleton') payload.mode = 'skeleton';
+  const res = await fetch('/research/api/outreach', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    const e = new Error(err.error || `Couldn't draft (${res.status})`);
+    e.status = res.status;
+    throw e;
+  }
+  return res.json();
+}
+
+// Two-phase load: render a deterministic template-fill instantly (skeleton),
+// then swap in the LLM-sharpened draft. Cached full drafts skip both.
+async function loadOutreach(scenarioId, opts = {}) {
   if (!currentRunId) return;
-  setOutreachStatus('Drafting…', 'busy');
-  if (els.odRegen) els.odRegen.disabled = true;
+  const key = currentRunId + '::' + (scenarioId || 'auto');
+  const seq = ++outreachSeq;
+
+  if (!opts.force && outreachCache[key]) {
+    renderOutreach(outreachCache[key]);
+    outreachLoaded = true;
+    setOutreachStatus('', '');
+    return;
+  }
+
   if (els.odCopy) els.odCopy.disabled = true;
+  setOutreachStatus('Sharpening with AI…', 'busy');
+
+  // Instant skeleton (deterministic, no LLM) — only applied if the full draft
+  // hasn't already arrived and this is still the active load.
+  let fullArrived = false;
+  fetchOutreach(scenarioId, 'skeleton')
+    .then((sk) => { if (seq === outreachSeq && !fullArrived) { renderOutreach(sk); outreachLoaded = true; } })
+    .catch(() => {});
+
   try {
-    const payload = { run_id: currentRunId };
-    if (scenarioId) payload.scenario_id = scenarioId;
-    const res = await fetch('/research/api/outreach', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      setOutreachStatus(err.error || `Couldn't draft (${res.status})`, 'err');
-      return;
-    }
-    const data = await res.json();
+    const data = await fetchOutreach(scenarioId, 'full');
+    if (seq !== outreachSeq) return; // superseded by a newer load
+    fullArrived = true;
     renderOutreach(data);
+    outreachCache[key] = data;
     outreachLoaded = true;
     setOutreachStatus(data.fallback ? 'Drafted from the template (LLM unavailable) — edit freely.' : '', data.fallback ? 'warn' : '');
   } catch (e) {
-    setOutreachStatus("Couldn't reach the drafting service.", 'err');
+    if (seq === outreachSeq) setOutreachStatus(e.message || "Couldn't reach the drafting service.", 'err');
   } finally {
-    if (els.odRegen) els.odRegen.disabled = false;
-    if (els.odCopy) els.odCopy.disabled = false;
+    if (seq === outreachSeq && els.odCopy) els.odCopy.disabled = false;
   }
 }
 
@@ -3579,9 +3611,10 @@ function renderOutreach(data) {
     els.odWhy.innerHTML = lines.join('');
   }
   // Nudge toward saving a template when the draft was bespoke / a weak fit.
+  // (Skip during the instant skeleton — wait for the real LLM verdict.)
   if (els.odFitNote) {
     const bespoke = data.approach === 'bespoke' || data.approach === 'new_template';
-    if (data.fit === 'weak' || bespoke) {
+    if (!data.skeleton && (data.fit === 'weak' || bespoke)) {
       els.odFitNote.hidden = false;
       els.odFitNote.textContent = bespoke
         ? 'No template was a strong fit — this was written for this report. If it’s a pattern you’ll see again, save it as a new template (name suggested below).'
@@ -3654,7 +3687,10 @@ document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape' && els.outreachDrawer && !els.outreachDrawer.hidden) closeOutreach();
 });
 els.odScenarioSel?.addEventListener('change', () => { if (outreachLoaded) loadOutreach(els.odScenarioSel.value); });
-els.odRegen?.addEventListener('click', () => loadOutreach(els.odScenarioSel ? els.odScenarioSel.value : null));
+els.odRegen?.addEventListener('click', () => {
+  const sel = els.odScenarioSel ? els.odScenarioSel.value : null;
+  loadOutreach(sel === '__bespoke__' ? '__bespoke__' : sel, { force: true });
+});
 els.odCopySubject?.addEventListener('click', () => copyText(els.odSubject ? els.odSubject.value : '', els.odCopySubject));
 els.odCopyBody?.addEventListener('click', () => copyText(els.odBody ? els.odBody.value : '', els.odCopyBody));
 els.odTplSave?.addEventListener('click', saveOutreachTemplate);

@@ -2,7 +2,7 @@ import { isAuthed, currentUser, userCan } from '../lib/auth.js';
 import { getRun } from '../lib/db/runs.js';
 import { extractSignals } from '../lib/outreach/signals.js';
 import { rankScenarios } from '../lib/outreach/classify.js';
-import { generateOutreach, placeholderize } from '../lib/outreach/generate.js';
+import { generateOutreach, placeholderize, fillTemplate } from '../lib/outreach/generate.js';
 import { SCENARIOS, SCENARIO_BY_ID } from '../lib/outreach/templates.js';
 import { listTemplates, createTemplate } from '../lib/db/outreachTemplates.js';
 
@@ -106,6 +106,38 @@ export default async function handler(req, res) {
   if (sel === BESPOKE) forced = { mode: 'bespoke' };
   else if (sel && catalog.some((c) => c.id === sel)) forced = { mode: 'template', templateId: sel };
 
+  const scenarios = [
+    { id: BESPOKE, name: '✨ Personalized (no template)' },
+    ...SCENARIOS.map((s) => ({ id: s.id, name: s.name })),
+    ...custom.map((c) => ({ id: c.id, name: c.name, custom: true })),
+  ];
+
+  // ── Skeleton mode: instant deterministic template-fill, NO LLM call. The UI
+  // shows this immediately while the full LLM draft is sharpened in parallel.
+  if (body.mode === 'skeleton') {
+    let tpl = forced.mode === 'template' && forced.templateId ? catalog.find((c) => c.id === forced.templateId) : null;
+    if (!tpl) {
+      const topId = (ranked.find((r) => r.score > 0) || ranked[0] || {}).id;
+      tpl = catalog.find((c) => c.id === topId) || catalog[0];
+    }
+    const skId = forced.mode === 'bespoke' ? BESPOKE : (tpl ? tpl.id : BESPOKE);
+    const skReasons = (ranked.find((r) => r.id === (tpl && tpl.id)) || {}).reasons || [];
+    res.status(200).json({
+      domain: run.domain || '',
+      scenario: { id: skId, name: forced.mode === 'bespoke' ? 'Personalized (no template)' : (tpl ? tpl.name : 'Template'), why: skReasons },
+      approach: forced.mode === 'bespoke' ? 'bespoke' : 'template',
+      situation: '',
+      hooks: [],
+      scenarios,
+      subject: `${run.domain || ''} Domain Inquiry`,
+      body: fillTemplate(tpl ? tpl.text : '', signals),
+      fit: 'good',
+      suggested_title: '',
+      skeleton: true,
+    });
+    return;
+  }
+
   const draft = await generateOutreach({ signals, catalog, ranked, forced, env: process.env });
 
   // The selected option for the dropdown: the chosen template id, or bespoke.
@@ -115,12 +147,6 @@ export default async function handler(req, res) {
   const why = draft.approach === 'template'
     ? (rankReasons.length ? rankReasons : ['Best-matching template'])
     : (draft.approach === 'new_template' ? ['No close template fit — drafted fresh; save it to reuse'] : ['No template fit — written bespoke for this report']);
-
-  const scenarios = [
-    { id: BESPOKE, name: '✨ Personalized (no template)' },
-    ...SCENARIOS.map((s) => ({ id: s.id, name: s.name })),
-    ...custom.map((c) => ({ id: c.id, name: c.name, custom: true })),
-  ];
 
   res.status(200).json({
     domain: run.domain || '',
