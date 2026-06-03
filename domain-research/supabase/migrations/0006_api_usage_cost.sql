@@ -25,6 +25,23 @@ create table if not exists domain_research_cost_rates (
   updated_at   timestamptz not null default now()
 );
 
+-- Aggregate usage into day/week/month buckets per meter, server-side (keeps the
+-- result small — well under PostgREST's row cap — vs. fetching raw rows).
+create or replace function cost_usage_buckets(p_period text, p_since timestamptz)
+returns table(bucket text, meter text, units numeric)
+language sql stable as $$
+  select to_char(
+           date_trunc(case p_period when 'month' then 'month' when 'week' then 'week' else 'day' end, created_at),
+           case p_period when 'month' then 'YYYY-MM' else 'YYYY-MM-DD' end
+         ) as bucket,
+         meter,
+         sum(units) as units
+  from domain_research_api_usage
+  where created_at >= p_since
+  group by 1, 2
+  order by 1 desc, 2;
+$$;
+
 -- RLS on (no policies → service-key/backend access only; matches every other
 -- domain_research_% table).
 alter table public.domain_research_api_usage enable row level security;
