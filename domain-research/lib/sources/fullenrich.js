@@ -34,10 +34,11 @@ export default {
   description:
     'FullEnrich WATERFALL contact lookup (PREMIUM — spends a credit). Runs many data providers in sequence to find ' +
     'the best WORK + PERSONAL emails (each with a deliverability status) and PHONE for a NAMED person — higher match ' +
-    'rate than any single provider. Use it for the PRIMARY likely owner once named: pass their name plus the domain ' +
-    'under research and/or their company/LinkedIn URL. Try it when rocketreach_lookup misses, or to corroborate a hit. ' +
-    'A miss just means no provider had a record — not that contact info does not exist. NEVER run it on brokers, ' +
-    'marketplaces, or registrar/privacy entities.',
+    'rate than any single provider. Run it for the PRIMARY likely owner once named — ALONGSIDE rocketreach_lookup, in ' +
+    'parallel: do NOT skip it when RocketReach already returned contacts, since it corroborates the hit and often adds ' +
+    'a personal email/mobile RocketReach lacks. Pass their name plus the domain under research and/or their ' +
+    'company/LinkedIn URL. A miss just means no provider had a record — not that contact info does not exist. NEVER ' +
+    'run it on brokers, marketplaces, or registrar/privacy entities.',
   parameters: {
     type: 'object',
     properties: {
