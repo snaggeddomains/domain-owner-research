@@ -3,7 +3,8 @@ import { isValidDomain, normalizeDomain } from '../lib/util.js';
 import { checkRateLimit, clientIp } from '../lib/ratelimit.js';
 import { isAuthed, currentUser, userCan, userCanReportPhase } from '../lib/auth.js';
 import { isDbConfigured } from '../lib/db/supabase.js';
-import { createRun, getRun, failRun, setRunStatus, listRuns } from '../lib/db/runs.js';
+import { createRun, getRun, failRun, setRunStatus, listRuns, updateRunReport } from '../lib/db/runs.js';
+import { runTool } from '../lib/sources/index.js';
 
 export const config = { maxDuration: 60 };
 
@@ -108,6 +109,42 @@ export default async function handler(req, res) {
       /* best-effort — the status flip already stops the UI + blocks the save */
     }
     res.status(200).json({ ok: true, run_id: run.id, status: 'cancelled' });
+    return;
+  }
+
+  // ── On-demand phone enhance (per-contact, paid) ─────────────────────────────
+  // The report defaults to emails-only (FullEnrich phone is the expensive part).
+  // This pulls a phone for ONE named person on explicit request and persists it
+  // onto the run's report (report.enhancements) so it survives reloads without
+  // re-spending. Gated like the deep pass since it spends premium credits.
+  if (body.enhance_contact) {
+    if (_userForPerm && !userCanReportPhase(_userForPerm, 'deep')) {
+      res.status(403).json({ error: "You don't have access to premium enrichment — ask an admin to enable deep research." });
+      return;
+    }
+    const run = await getRun(body.id);
+    if (!run) {
+      res.status(404).json({ error: 'Run not found' });
+      return;
+    }
+    const { name, linkedin_url, company } = body.enhance_contact || {};
+    if (!name && !linkedin_url) {
+      res.status(400).json({ error: 'Provide a contact name or linkedin_url to enhance.' });
+      return;
+    }
+    const result = await runTool('fullenrich_lookup', {
+      name, linkedin_url, company, domain: run.domain, include_phone: true,
+    }, process.env);
+    const data = (result && result.data) || {};
+    const phones = Array.isArray(data.phones) ? data.phones : [];
+    const emails = Array.isArray(data.emails) ? data.emails : [];
+    // Persist onto the report so a reload shows it without paying again.
+    const report = (run.report && typeof run.report === 'object') ? run.report : {};
+    const enhancements = Array.isArray(report.enhancements) ? report.enhancements : [];
+    enhancements.push({ name: name || data.name || null, linkedin_url: linkedin_url || null, phones, emails, at: new Date().toISOString() });
+    report.enhancements = enhancements;
+    try { await updateRunReport(run.id, report); } catch { /* non-fatal: still return the result */ }
+    res.status(result && result.ok ? 200 : 200).json({ ok: Boolean(result && result.ok), phones, emails, found: phones.length > 0 || emails.length > 0 });
     return;
   }
 

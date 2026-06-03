@@ -46,6 +46,13 @@ export async function saveRunReport(id, report) {
   if (error) throw new Error(`saveRunReport: ${error.message}`);
 }
 
+// Patch ONLY the report jsonb (no status/finished_at change) — used to merge
+// on-demand enrichments (e.g. a phone pulled later) into an already-done run.
+export async function updateRunReport(id, report) {
+  const { error } = await getDb().from(RUNS).update({ report }).eq('id', id);
+  if (error) throw new Error(`updateRunReport: ${error.message}`);
+}
+
 export async function failRun(id, message) {
   const { error } = await getDb()
     .from(RUNS)

@@ -68,8 +68,10 @@ export default {
     const headers = { Authorization: `Bearer ${env.FULL_ENRICH_API_KEY}`, 'content-type': 'application/json' };
     // Emails only by default — PHONE is the expensive part of the waterfall, so
     // it's opt-in (include_phone) and reserved for the single primary owner.
+    // Coerce: the agent passes a real boolean; HTTP query params arrive as strings.
+    const wantPhone = include_phone === true || String(include_phone).toLowerCase() === 'true';
     const enrich_fields = ['contact.work_emails', 'contact.personal_emails'];
-    if (include_phone) enrich_fields.push('contact.phones');
+    if (wantPhone) enrich_fields.push('contact.phones');
     const contact = {
       first_name: fn,
       last_name: ln,

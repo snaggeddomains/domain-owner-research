@@ -321,6 +321,8 @@ let pollTimer = null;
 let clockTimer = null;
 let currentRunId = null;
 let canOutreach = false;
+// On-demand phone enhance (FullEnrich, premium) is gated like the deep pass.
+let canEnhance = false;
 
 function clearTimers() {
   if (pollTimer) clearInterval(pollTimer);
@@ -1126,6 +1128,13 @@ function renderSummary(d) {
     };
     const list = (arr) => `<ul class="contacts">${arr.map(contactLi).join('')}</ul>`;
     const isPrimary = (c) => String((c && c.tier) || '').toLowerCase() === 'primary';
+    // On-demand "Get phone number" affordance: phones are the expensive part of
+    // the FullEnrich waterfall, so they're not pulled automatically — this lets a
+    // user spend a credit for ONE named person when they actually need it.
+    const hasPhone = (rows) => rows.some((c) => String(c.type || '').toLowerCase() === 'phone' && c.value);
+    const liUrlOf = (rows, seed) => rows.map((c) => liCanon(c.value)).find(Boolean) || (seed && seed[0]) || '';
+    const enhanceBtn = (name, liUrl) =>
+      `<div class="lc-enhance"><button type="button" class="enhance-phone" data-name="${e(String(name || ''))}" data-linkedin="${e(String(liUrl || ''))}">☎ Get phone number</button><span class="lc-enhance-note">premium · spends a credit</span></div>`;
     // Promote LinkedIn profiles out of row notes into their own social rows (full
     // URL, de-duped against any social row already present), and strip them from
     // those notes. seedUrls carries profiles pulled from a card/header note.
@@ -1167,6 +1176,7 @@ function renderSummary(d) {
       if (orgC) h += `<div class="cc-org">${linkify(orgC)}${orgNote ? ` <span class="muted">— ${linkifyNote(orgNote)}</span>` : ''}</div>`;
       if (emails.length) h += `<div class="cc-actions"><button type="button" class="copy-emails" data-emails="${e(emails.join(', '))}">Copy ${emails.length === 1 ? 'email' : `all ${emails.length} emails`}</button></div>`;
       if (rest.length) h += list(rest);
+      if (nameC && canEnhance && !hasPhone(rest)) h += enhanceBtn(nameC.value, liUrlOf(rest, seed));
       return h + '</div>';
     };
     // Group a contact array into per-entity blocks: a new block starts at each
@@ -1201,7 +1211,9 @@ function renderSummary(d) {
           + (rest ? `<div class="lc-note">${linkifyNote(rest)}</div>` : '');
       }
       const rows = promoteLinkedIn(g.rows, seed);
-      return `<div class="lead-card">${head}${rows.length ? list(rows) : ''}</div>`;
+      const isPerson = g.header && String(g.header.type || '').toLowerCase() === 'name';
+      const enh = (canEnhance && isPerson && !hasPhone(rows)) ? enhanceBtn(g.header.value, liUrlOf(rows, seed)) : '';
+      return `<div class="lead-card">${head}${rows.length ? list(rows) : ''}${enh}</div>`;
     };
     const leadCards = (arr) => `<div class="lead-cards">${groupLeads(arr).map(leadCard).join('')}</div>`;
     // Group into the primary target vs. other (secondary/tertiary/untagged)
@@ -1228,9 +1240,47 @@ function renderSummary(d) {
   return html ? `<div class="summary-card">${html}</div>` : '';
 }
 
+// Merge on-demand enrichments (report.enhancements — phones/emails pulled later
+// for a named person) into the parsed contacts so they render inside that
+// person's card. Inserted right after the person's block, de-duped against rows
+// already present. Mutates data.contacts in place.
+function mergeEnhancements(data, enhancements) {
+  if (!data || !Array.isArray(data.contacts) || !Array.isArray(enhancements)) return;
+  const digits = (s) => String(s || '').replace(/\D/g, '');
+  const typeOf = (c) => String((c && c.type) || '').toLowerCase();
+  for (const enh of enhancements) {
+    if (!enh) continue;
+    const nm = String(enh.name || '').trim().toLowerCase();
+    const idx = nm ? data.contacts.findIndex((c) => typeOf(c) === 'name' && String(c.value || '').trim().toLowerCase() === nm) : -1;
+    const tier = idx >= 0 ? data.contacts[idx].tier : 'primary';
+    const rows = [];
+    for (const p of (enh.phones || [])) {
+      const pv = typeof p === 'string' ? p : (p && p.number);
+      if (pv && !data.contacts.some((c) => typeOf(c) === 'phone' && digits(c.value) === digits(pv))) {
+        rows.push({ type: 'phone', value: pv, note: 'mobile — FullEnrich (on-demand)', tier });
+      }
+    }
+    for (const em of (enh.emails || [])) {
+      const ev = typeof em === 'string' ? em : (em && em.email);
+      if (ev && !data.contacts.some((c) => typeOf(c) === 'email' && String(c.value || '').toLowerCase() === ev.toLowerCase())) {
+        rows.push({ type: 'email', value: ev, note: 'FullEnrich (on-demand)', tier });
+      }
+    }
+    if (!rows.length) continue;
+    if (idx >= 0) {
+      let j = idx + 1;
+      while (j < data.contacts.length && !['name', 'org'].includes(typeOf(data.contacts[j]))) j++;
+      data.contacts.splice(j, 0, ...rows);
+    } else {
+      data.contacts.push({ type: 'name', value: enh.name, tier }, ...rows);
+    }
+  }
+}
+
 function renderReport(report) {
   const md = report && report.markdown ? report.markdown : '';
   const data = parseReportData(md);
+  if (data && report && Array.isArray(report.enhancements)) mergeEnhancements(data, report.enhancements);
   const band = data && data.confidence ? String(data.confidence).toLowerCase() : extractConfidence(md);
   renderConfidence(band);
   els.reportActions.hidden = false;
@@ -1424,6 +1474,7 @@ function canPhase(user, phase) {
 function gateReportPhaseUI(user) {
   const canDeep = canPhase(user, 'deep');
   const canShallow = canPhase(user, 'shallow');
+  canEnhance = canDeep; // premium phone enhance rides the deep-pass permission
   // Hide the deep-toggle row entirely when deep isn't allowed.
   const deepToggleLabel = els.deepToggle && els.deepToggle.closest('label');
   if (deepToggleLabel) deepToggleLabel.hidden = !canDeep;
@@ -3911,6 +3962,39 @@ els.report?.addEventListener('click', (ev) => {
     btn.classList.add('copied');
     setTimeout(() => { btn.textContent = orig; btn.classList.remove('copied'); }, 1500);
   }).catch(() => {});
+});
+
+// On-demand phone enhance (delegated). Spends one premium FullEnrich credit to
+// pull a phone for ONE named person; the result is persisted onto the run, so we
+// re-fetch + re-render to show it (and a reload won't re-spend).
+els.report?.addEventListener('click', async (ev) => {
+  const btn = ev.target.closest('.enhance-phone');
+  if (!btn || !currentRunId) return;
+  const name = btn.dataset.name || '';
+  const linkedin_url = btn.dataset.linkedin || '';
+  if (btn.disabled) return;
+  btn.disabled = true;
+  const orig = btn.textContent;
+  btn.textContent = 'Looking up phone… (~30s)';
+  try {
+    const res = await fetch('/research/api/research', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ id: currentRunId, enhance_contact: { name, linkedin_url } }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || `Failed (${res.status})`);
+    if (data.found) {
+      const r = await pollRun(currentRunId);
+      renderReport(r.report); // re-render with the persisted enhancement merged in
+    } else {
+      btn.textContent = 'No phone found';
+      setTimeout(() => { btn.textContent = orig; btn.disabled = false; }, 2500);
+    }
+  } catch (err) {
+    btn.textContent = `⚠️ ${err.message || 'Failed'}`;
+    setTimeout(() => { btn.textContent = orig; btn.disabled = false; }, 3000);
+  }
 });
 
 // Market strip (delegated): "refresh" forces a fresh check; clicking DomainScout
