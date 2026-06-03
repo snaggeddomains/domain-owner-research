@@ -1,0 +1,15 @@
+#!/bin/bash
+# Pre-push gate: static import/export resolution for the app modules. Blocks a
+# push that would ship an unresolved local import (a dropped/renamed export that
+# makes an ESM module fail to link at runtime → an opaque 500). Fast; no
+# node_modules required. Override in a pinch with `git push --no-verify`.
+set -euo pipefail
+repo_root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+checker="$repo_root/domain-research/scripts/check-imports.mjs"
+if [ -f "$checker" ] && command -v node >/dev/null 2>&1; then
+  if ! node "$checker"; then
+    echo ""
+    echo "✗ pre-push blocked — fix the unresolved import(s) above (or 'git push --no-verify' to override)."
+    exit 1
+  fi
+fi
