@@ -391,9 +391,24 @@ function setToolUrl(tool, slug) {
 }
 
 // Single entry point for "where are we" — used after auth and on back/forward.
+// Each deep-linkable tool view → the module permission that unlocks it. A user
+// who lacks it shouldn't see the view at all (the nav button is already hidden);
+// hide it on direct-URL navigation too by routing them back to the entry view.
+const TOOL_PERMISSION = {
+  trademark: 'trademark',
+  naming: 'naming',
+  appraisal: 'appraisal',
+  dbscreen: 'dbscreen',
+  dbsearch: 'dbsearch',
+};
 function route() {
   if (els.app.hidden) return;
   const tr = currentToolRoute();
+  if (tr && TOOL_PERMISSION[tr.tool] && !canModule(currentUser, TOOL_PERMISSION[tr.tool])) {
+    history.replaceState(null, '', '/research');
+    showEntry();
+    return;
+  }
   if (tr && tr.tool === 'trademark') {
     showView('trademark');
     refreshToolRecent(els.tmRecent, 'tm');
@@ -445,7 +460,10 @@ function route() {
     return;
   }
   if (tr && tr.tool === 'admin') {
-    // Lessons (admin-only) — reached from the umbrella Admin module.
+    // Lessons curation (the admin.lessons.approve module). HIDE it from users
+    // who lack the permission — fall through to the entry view rather than
+    // render the Lessons page and then show a "no access" notice on it.
+    if (!canAdminLessons(currentUser)) { history.replaceState(null, '', '/research'); showEntry(); return; }
     showView('admin');
     return;
   }
@@ -1244,6 +1262,25 @@ function maybeAutoRunFromUrl() {
 // Mirrors lib/auth.js#userCanReportPhase — phase keys default to true when
 // absent so existing user rows keep working; only explicit false denies.
 let currentUser = null;
+// Mirror of lib/auth.js#userCan for the lessons-curation module. The umbrella
+// stores this flat as `admin.lessons.approve` (no `research.` prefix); accept
+// the namespaced spelling too. Used to HIDE the Lessons/admin view entirely
+// from users without the permission, rather than show it then deny.
+function canAdminLessons(user) {
+  if (!user) return false;
+  if (user.is_admin) return true;
+  const perms = user.permissions || {};
+  return perms['admin.lessons.approve'] === true || perms['research.admin.lessons.approve'] === true;
+}
+// Generic module gate matching gateNavByPermissions' `can()` — used to HIDE a
+// deep-linked tool view from a user without the permission (fall through to the
+// entry view) instead of rendering it and surfacing a server 403 inside it.
+function canModule(user, key) {
+  if (!user) return false;
+  if (user.is_admin) return true;
+  const perms = user.permissions || {};
+  return Boolean(perms[key]) || perms['research.' + key] === true;
+}
 function canPhase(user, phase) {
   if (!user) return false;
   if (user.is_admin) return true;
@@ -1293,7 +1330,10 @@ function gateNavByPermissions(user) {
   if (els.navAdmin) els.navAdmin.hidden = true;
 }
 
-els.navAdmin?.addEventListener('click', () => { history.pushState(null, '', '/research/admin'); showView('admin'); closeNav(); });
+els.navAdmin?.addEventListener('click', () => {
+  if (!canAdminLessons(currentUser)) { showEntry(); closeNav(); return; }
+  history.pushState(null, '', '/research/admin'); showView('admin'); closeNav();
+});
 
 // ── Profile menu (avatar dropdown) ──────────────────────────────────────────
 // Avatar shows the first letter of the first name (or email). The dropdown
