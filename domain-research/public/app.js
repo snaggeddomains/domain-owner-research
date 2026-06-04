@@ -4166,8 +4166,10 @@ function nsSelectableBlock(headHtml, items, { csvRows = null, seed = '', singleC
       csvBtn +
       '<button type="button" class="ns-btn ns-btn-sm ns-btn-ai" data-act="owner-lookup">🔎 Run free owner lookup on selected</button>' +
     '</div>' +
-    `<ul class="ns-list ns-picklist${singleCol ? ' ns-onecol' : ''}">${lis}</ul>` +
-    '<div id="ns-owner-out"></div>';
+    // Output panel sits ABOVE the list so the running status + results show right
+    // under the button — no scrolling past a long sibling list.
+    '<div id="ns-owner-out"></div>' +
+    `<ul class="ns-list ns-picklist${singleCol ? ' ns-onecol' : ''}">${lis}</ul>`;
 }
 
 // Build + download a CSV client-side (no server round-trip).
@@ -4205,10 +4207,9 @@ async function nsRunOwnerLookup(domains) {
   if (!out) return;
   const list = domains.slice(0, 6);
   const warn = domains.length > 6 ? `<p class="muted">Sweeping the first 6 of ${domains.length} selected (free-sweep cap).</p>` : '';
-  out.innerHTML = warn + '<p class="muted">Sweeping all free endpoints (registrant, cluster, live site, marketplace, our DBs)… this takes a few seconds.</p>';
-  // The result panel sits below a long sibling list — bring it into view so the
-  // click visibly does something.
-  out.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  out.innerHTML = warn + '<div class="ns-running">⏳ Sweeping all free endpoints (registrant, registration cluster, live site, marketplace, our DBs)…</div>';
+  // The panel sits right under the button now; keep it in view on click.
+  out.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   try {
     const ctx = nsState.contextRunId ? `&run_id=${encodeURIComponent(nsState.contextRunId)}` : '';
     const data = await nsFetch(`mode=sweep&domains=${encodeURIComponent(list.join(','))}${ctx}`);
@@ -4422,7 +4423,7 @@ async function nsCtxSearch(term) {
 
 async function runNsPairing(domain) {
   const sub = document.getElementById('ns-sub');
-  if (sub) sub.innerHTML = '<p class="muted">Finding siblings on the same nameserver set…</p>';
+  if (sub) sub.innerHTML = '<div class="ns-running">⏳ Finding siblings on the same nameserver set…</div>';
   try {
     const data = await nsFetch(`mode=pairing&domain=${encodeURIComponent(domain)}`);
     if (!sub) return;
@@ -4446,7 +4447,7 @@ async function runNsPairing(domain) {
 
 async function runNsRelate(domain) {
   const sub = document.getElementById('ns-sub');
-  if (sub) sub.innerHTML = `<p class="muted">Analyzing the pairing for likely-related siblings${nsState.contextRunId ? ' (using linked report context)' : ''}…</p>`;
+  if (sub) sub.innerHTML = `<div class="ns-running">⏳ Analyzing the pairing for likely-related siblings${nsState.contextRunId ? ' (using the linked report for context)' : ''}…</div>`;
   try {
     const ctx = nsState.contextRunId ? `&run_id=${encodeURIComponent(nsState.contextRunId)}` : '';
     const data = await nsFetch(`mode=relate&domain=${encodeURIComponent(domain)}${ctx}`);

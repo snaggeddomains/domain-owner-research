@@ -1236,3 +1236,7 @@ body.drawer-open { overflow: hidden; }
 /* Nameserver Search — contact-lead surfacing (murky seed → reachable sibling) */
 .ns-lead { background: #fdf0c8; color: #8a6300; border-radius: 6px; padding: 6px 10px; font-weight: 700; font-size: 13px; margin: 2px 0 8px; }
 .ns-lead-hint { color: #8a6300; font-weight: 700; }
+
+/* Nameserver Search — running/loading status (stands out, pulses) */
+.ns-running { background: var(--navy); color: #fff; border-radius: 8px; padding: 10px 14px; font-weight: 700; font-size: 14px; margin: 6px 0 12px; display: inline-block; animation: ns-pulse 1.2s ease-in-out infinite; }
+@keyframes ns-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.55; } }
