@@ -4311,16 +4311,75 @@ async function runNsDomain(domain) {
         `<h2>${escapeHtml(data.domain)}</h2>` +
         `<p class="ns-nsrow">Nameservers: ${nsList || '<span class="muted">none</span>'}</p>` +
         liveNote +
+        `<div class="ns-ctx" id="ns-ctx">` +
+          `<span class="ns-ctx-label">✨ relatedness context:</span> ` +
+          `<span id="ns-ctx-state" class="muted">none linked</span> ` +
+          `<button type="button" class="ns-ctx-btn" data-act="ctx-toggle">Link a report</button>` +
+          `<button type="button" class="ns-ctx-btn" data-act="ctx-clear" hidden>Clear</button>` +
+          `<div class="ns-ctx-pick" id="ns-ctx-pick" hidden>` +
+            `<input id="ns-ctx-search" class="ns-ctx-search" type="text" autocomplete="off" placeholder="search a recent report by domain…">` +
+            `<div id="ns-ctx-sug" class="ns-ctx-sug"></div>` +
+          `</div>` +
+        `</div>` +
         `<div class="ns-actions">` +
           `<button type="button" class="ns-btn" data-act="pairing" data-domain="${escapeHtml(data.domain)}">Find domains with the same pairing →</button>` +
           `<button type="button" class="ns-btn ns-btn-ai" data-act="relate" data-domain="${escapeHtml(data.domain)}">✨ Find likely-related siblings</button>` +
         `</div>` +
         `<div class="ns-sub" id="ns-sub"></div>` +
         `</div>`;
+      // Auto-suggest the seed's own most-recent report as the context.
+      nsCtxAuto(data.domain);
     }
     els.nsResult.hidden = false;
   } catch (e) {
     setToolStatus(els.nsStatus, String((e && e.message) || e), true);
+  }
+}
+
+// ── Relatedness context (link a Domain Owner report) ────────────────────────
+function nsCtxFmt(run) {
+  const when = run.created_at ? new Date(run.created_at).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '';
+  return `${run.domain}${when ? ` · ${when}` : ''}`;
+}
+function nsCtxSet(run) {
+  nsState.contextRunId = run.id;
+  nsState.contextLabel = nsCtxFmt(run);
+  const st = document.getElementById('ns-ctx-state');
+  if (st) st.innerHTML = `<span class="ns-ctx-linked">✓ ${escapeHtml(nsState.contextLabel)}</span>`;
+  const clr = document.querySelector('#ns-ctx [data-act="ctx-clear"]');
+  if (clr) clr.hidden = false;
+  const pick = document.getElementById('ns-ctx-pick');
+  if (pick) pick.hidden = true;
+}
+function nsCtxClear() {
+  nsState.contextRunId = null;
+  nsState.contextLabel = null;
+  const st = document.getElementById('ns-ctx-state');
+  if (st) st.innerHTML = '<span class="muted">none linked</span>';
+  const clr = document.querySelector('#ns-ctx [data-act="ctx-clear"]');
+  if (clr) clr.hidden = true;
+}
+async function nsCtxAuto(seed) {
+  nsState.contextRunId = null; nsState.contextLabel = null;
+  try {
+    const data = await nsFetch(`mode=reports&q=${encodeURIComponent(seed)}`);
+    const runs = data.runs || [];
+    const exact = runs.find((r) => r.domain === seed) || runs[0];
+    if (exact) nsCtxSet(exact);
+  } catch { /* no reports — fine */ }
+}
+async function nsCtxSearch(term) {
+  const sug = document.getElementById('ns-ctx-sug');
+  if (!sug) return;
+  if (!term || term.length < 2) { sug.innerHTML = ''; return; }
+  try {
+    const data = await nsFetch(`mode=reports&q=${encodeURIComponent(term)}`);
+    const runs = data.runs || [];
+    sug.innerHTML = runs.length
+      ? runs.map((r) => `<button type="button" class="ns-ctx-opt" data-runid="${escapeHtml(r.id)}" data-domain="${escapeHtml(r.domain)}" data-when="${escapeHtml(r.created_at || '')}">${escapeHtml(nsCtxFmt(r))}</button>`).join('')
+      : '<span class="muted ns-ctx-empty">No matching reports.</span>';
+  } catch (e) {
+    sug.innerHTML = `<span class="muted ns-ctx-empty">${escapeHtml(String((e && e.message) || e))}</span>`;
   }
 }
 
@@ -4346,16 +4405,25 @@ async function runNsPairing(domain) {
 
 async function runNsRelate(domain) {
   const sub = document.getElementById('ns-sub');
-  if (sub) sub.innerHTML = '<p class="muted">Analyzing the pairing for likely-related siblings…</p>';
+  if (sub) sub.innerHTML = `<p class="muted">Analyzing the pairing for likely-related siblings${nsState.contextRunId ? ' (using linked report context)' : ''}…</p>`;
   try {
-    const data = await nsFetch(`mode=relate&domain=${encodeURIComponent(domain)}`);
+    const ctx = nsState.contextRunId ? `&run_id=${encodeURIComponent(nsState.contextRunId)}` : '';
+    const data = await nsFetch(`mode=relate&domain=${encodeURIComponent(domain)}${ctx}`);
     if (!sub) return;
+    // Banner: pairing type (account-unique vs shared) + the owner context applied.
+    const pairNote = data.accountUnique
+      ? `<p class="ns-pairnote ns-pairnote-cf">🔗 Cloudflare account-unique pair — every domain here is almost certainly the <strong>same owner</strong>.</p>`
+      : data.pair === 'shared' ? `<p class="ns-pairnote muted">Shared-host nameservers — relatedness judged by owner/theme, not co-location alone.</p>` : '';
+    const ctxNote = data.contextUsed
+      ? `<p class="ns-pairnote ns-pairnote-ctx">📄 Using context from the <strong>${escapeHtml(data.contextUsed.domain)}</strong> report${data.contextUsed.owner ? ` — owner: ${escapeHtml(data.contextUsed.owner)}${data.contextUsed.ownerType ? ` (${escapeHtml(String(data.contextUsed.ownerType).replace(/_/g, ' '))})` : ''}` : ''}.</p>`
+      : '';
     if (!data.related || !data.related.length) {
-      sub.innerHTML = `<h3>Likely-related siblings</h3><p class="muted">${escapeHtml(data.summary || 'No clearly-related siblings found.')}</p>`;
+      sub.innerHTML = `<h3>Likely-related siblings</h3>${pairNote}${ctxNote}<p class="muted">${escapeHtml(data.summary || 'No clearly-related siblings found.')}</p>`;
       return;
     }
     const head =
       `<h3>Likely-related siblings <span class="muted">(of ${data.siblingCount} on the pairing)</span></h3>` +
+      pairNote + ctxNote +
       `${data.summary ? `<p class="ns-summary">${escapeHtml(data.summary)}</p>` : ''}` +
       `<p class="muted ns-note">Pick the candidates and run a free owner lookup to triangulate a shared owner.</p>`;
     // Seed first (so triangulation compares against it), then siblings; pre-check
@@ -4413,6 +4481,11 @@ els.nsResult?.addEventListener('click', (e) => {
     els.nsResult.querySelectorAll('.ns-cb').forEach((cb) => { cb.checked = on; });
     return;
   }
+  const opt = e.target.closest('button.ns-ctx-opt');
+  if (opt) {
+    nsCtxSet({ id: opt.dataset.runid, domain: opt.dataset.domain, created_at: opt.dataset.when });
+    return;
+  }
   const btn = e.target.closest('button[data-act]');
   if (btn) {
     const act = btn.dataset.act;
@@ -4422,6 +4495,10 @@ els.nsResult?.addEventListener('click', (e) => {
     else if (act === 'export-owner-csv') nsExportOwnerCsv();
     else if (act === 'report') nsDrill(btn.dataset.domain, false);
     else if (act === 'deep') nsDrill(btn.dataset.domain, true);
+    else if (act === 'ctx-toggle') {
+      const pick = document.getElementById('ns-ctx-pick');
+      if (pick) { pick.hidden = !pick.hidden; if (!pick.hidden) { const s = document.getElementById('ns-ctx-search'); if (s) s.focus(); } }
+    } else if (act === 'ctx-clear') nsCtxClear();
     else if (act === 'owner-lookup') {
       const sel = [...els.nsResult.querySelectorAll('.ns-cb:checked')].map((c) => c.value);
       if (sel.length) nsRunOwnerLookup(sel);
@@ -4430,6 +4507,14 @@ els.nsResult?.addEventListener('click', (e) => {
   }
   const dl = e.target.closest('a.ns-dlink');
   if (dl) { e.preventDefault(); setToolUrl('dbscreen', dl.dataset.domain); route(); }
+});
+// Context report type-ahead (debounced).
+let nsCtxTimer = null;
+els.nsResult?.addEventListener('input', (e) => {
+  if (!e.target || e.target.id !== 'ns-ctx-search') return;
+  const term = e.target.value.trim();
+  clearTimeout(nsCtxTimer);
+  nsCtxTimer = setTimeout(() => nsCtxSearch(term), 250);
 });
 
 // DB Search interactions

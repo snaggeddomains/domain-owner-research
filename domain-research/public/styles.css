@@ -1211,3 +1211,19 @@ body.drawer-open { overflow: hidden; }
 .ns-picklist.ns-onecol li { padding: 5px 0; }
 
 .ns-livenote { margin: 6px 0 0; font-size: 13px; }
+
+/* Nameserver Search — relatedness context picker + pairing banners */
+.ns-ctx { margin: 10px 0 4px; font-size: 14px; }
+.ns-ctx-label { color: var(--muted); }
+.ns-ctx-linked { color: #176a2b; font-weight: 600; }
+.ns-ctx-btn { background: none; border: 0; color: var(--coral); font-weight: 600; cursor: pointer; padding: 0 6px; font-size: 13px; }
+.ns-ctx-btn:hover { text-decoration: underline; }
+.ns-ctx-pick { margin-top: 8px; }
+.ns-ctx-search { width: 100%; max-width: 360px; padding: 7px 10px; border: 1px solid var(--line); border-radius: 8px; font: inherit; }
+.ns-ctx-sug { display: flex; flex-direction: column; gap: 2px; margin-top: 4px; max-width: 360px; }
+.ns-ctx-opt { text-align: left; background: #fff; border: 1px solid var(--line); border-radius: 6px; padding: 6px 10px; cursor: pointer; font: inherit; }
+.ns-ctx-opt:hover { background: var(--cream, #f6f3ec); }
+.ns-ctx-empty { padding: 4px 0; }
+.ns-pairnote { margin: 4px 0; font-size: 14px; }
+.ns-pairnote-cf { color: #176a2b; }
+.ns-pairnote-ctx { color: var(--navy); }
