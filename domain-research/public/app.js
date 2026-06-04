@@ -341,10 +341,13 @@ function fmtElapsed(ms) {
   return `${m}:${String(sec).padStart(2, '0')}`;
 }
 
-// A real run (even deep, paid) finishes in a few minutes. If the live clock blows
-// past this, the backend job almost certainly died without writing a terminal
-// status — stop the spinner and tell the user rather than ticking forever.
-const STALL_MS = 15 * 60 * 1000;
+// A deep/paid run is THOROUGH — chasing marketplace listings, WHOIS history and
+// contacts across many Inngest steps legitimately takes 15-25+ minutes. So we do
+// NOT cry "stalled" early: past SLOW_MS we just reassure ("still working") and
+// keep polling; only past STALL_MS (a genuine ceiling well beyond any real run)
+// do we assume the backend job died without writing a terminal status and stop.
+const SLOW_MS = 12 * 60 * 1000;
+const STALL_MS = 40 * 60 * 1000;
 
 // Deeplink helpers — reports live at a readable slug ending in the run id:
 //   #/r/<sld>-<tld>-<DD>-<MM>-<YYYY>-<runId>
@@ -1938,7 +1941,14 @@ function startPolling(runId, label) {
   // would restart the timer at 0:00 every time the page loads.
   let startedAt = Date.now();
   let stage = '';
-  const tick = () => setStatus(`${label}…${stage ? ` (${stage})` : ''} · ${fmtElapsed(Date.now() - startedAt)}`);
+  const tick = () => {
+    const elapsed = Date.now() - startedAt;
+    const base = `${label}…${stage ? ` (${stage})` : ''} · ${fmtElapsed(elapsed)}`;
+    // Reassure on long-but-healthy deep runs instead of letting the user think
+    // it hung — deep research routinely takes 20+ min and is still progressing.
+    const note = elapsed > SLOW_MS ? ' — deep research is thorough; this can take 20+ minutes. Still working…' : '';
+    setStatus(base + note);
+  };
   tick();
   clockTimer = setInterval(tick, 1000);
 
@@ -1979,7 +1989,7 @@ function startPolling(runId, label) {
         clearTimers();
         if (els.runControls) els.runControls.hidden = true;
         els.go.disabled = false;
-        setStatus(`This run has been going ${fmtElapsed(Date.now() - startedAt)} — far longer than the usual few minutes, so it likely stalled. Re-run it, or refresh to check whether it finished.`, true);
+        setStatus(`This run has been going ${fmtElapsed(Date.now() - startedAt)} — well beyond even a thorough deep pass, so it likely stalled. Refresh to check whether it finished, or re-run it.`, true);
       } else {
         stage = r.stage || r.status; // rendered by the clock tick
       }
