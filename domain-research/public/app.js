@@ -4216,7 +4216,7 @@ function nsOwnerTable(results) {
   const body = results.map((r) => {
     const k = keyOf(r);
     const shared = k && counts[k] > 1;
-    const who = r.error ? `<span class="muted">lookup failed</span>`
+    const who = r.error ? `<span class="muted" title="${escapeHtml(r.error)}">lookup failed</span>`
       : r.privacy && !(r.name || r.organization) ? '<span class="muted">privacy-protected</span>'
       : (escapeHtml([r.name, r.organization].filter(Boolean).join(' · ')) || '<span class="muted">—</span>');
     return `<tr class="${shared ? 'ns-tri' : ''}">` +

@@ -9,6 +9,10 @@
 //   GET ?mode=pairing&domain=pizza.com&limit=&offset=
 //        → { domain, nameservers, rows, hasMore }  (siblings on the same NS set)
 
+// Owner-lookup mode fans out free WHOIS/RDAP for up to 12 domains in parallel —
+// give the function room beyond the default sync budget.
+export const maxDuration = 30;
+
 import { currentUser, userCan } from '../lib/auth.js';
 import { normalizeDomain } from '../lib/util.js';
 import {
