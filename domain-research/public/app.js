@@ -4206,6 +4206,9 @@ async function nsRunOwnerLookup(domains) {
   const list = domains.slice(0, 6);
   const warn = domains.length > 6 ? `<p class="muted">Sweeping the first 6 of ${domains.length} selected (free-sweep cap).</p>` : '';
   out.innerHTML = warn + '<p class="muted">Sweeping all free endpoints (registrant, cluster, live site, marketplace, our DBs)… this takes a few seconds.</p>';
+  // The result panel sits below a long sibling list — bring it into view so the
+  // click visibly does something.
+  out.scrollIntoView({ behavior: 'smooth', block: 'center' });
   try {
     const data = await nsFetch(`mode=sweep&domains=${encodeURIComponent(list.join(','))}`);
     nsState.ownerResults = data.results || [];
@@ -4389,8 +4392,12 @@ async function runNsPairing(domain) {
   try {
     const data = await nsFetch(`mode=pairing&domain=${encodeURIComponent(domain)}`);
     if (!sub) return;
-    const more = data.hasMore ? ' <span class="muted">(showing first page)</span>' : '';
-    const head = `<h3>${data.count} other domain${data.count === 1 ? '' : 's'} on this exact pairing${more}</h3>`;
+    if (data.generic) {
+      sub.innerHTML = `<p class="ns-pairnote muted">⚠ ${escapeHtml(data.genericNote || 'Generic/parking nameservers — shared by huge numbers of unrelated domains, so this pairing is not an ownership signal.')} Skipping the lookup.</p>`;
+      return;
+    }
+    const more = data.hasMore ? ' <span class="muted">(first page — many matches; likely a shared host)</span>' : '';
+    const head = `<h3>${data.count}${data.hasMore ? '+' : ''} other domain${data.count === 1 ? '' : 's'} on this exact pairing${more}</h3>`;
     if (!data.rows.length) { sub.innerHTML = head + '<p class="muted">None.</p>'; return; }
     const items = data.rows.map((r) => ({
       domain: r.domain,
@@ -4410,6 +4417,10 @@ async function runNsRelate(domain) {
     const ctx = nsState.contextRunId ? `&run_id=${encodeURIComponent(nsState.contextRunId)}` : '';
     const data = await nsFetch(`mode=relate&domain=${encodeURIComponent(domain)}${ctx}`);
     if (!sub) return;
+    if (data.generic) {
+      sub.innerHTML = `<p class="ns-pairnote muted">⚠ ${escapeHtml(data.genericNote || 'Generic/parking nameservers — not an ownership signal.')} Nothing to analyze.</p>`;
+      return;
+    }
     // Banner: pairing type (account-unique vs shared) + the owner context applied.
     const pairNote = data.accountUnique
       ? `<p class="ns-pairnote ns-pairnote-cf">🔗 Cloudflare account-unique pair — every domain here is almost certainly the <strong>same owner</strong>.</p>`

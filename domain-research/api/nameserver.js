@@ -82,7 +82,13 @@ export default async function handler(req, res) {
       const domain = normalizeDomain((q.domain || '').toString());
       if (!domain) { res.status(400).json({ error: 'Enter a domain to find its pairing.' }); return; }
       const out = await samePairing(domain, { limit: q.limit, offset: q.offset });
-      res.status(200).json({ mode, ...out, count: out.rows.length });
+      res.status(200).json({
+        mode, ...out, count: out.rows.length,
+        pair: out.pair ? out.pair.kind : null,
+        accountUnique: !!(out.pair && out.pair.accountUnique),
+        generic: !!out.tooGeneric,
+        genericNote: out.tooGeneric ? out.pair.note : null,
+      });
       return;
     }
 
@@ -105,7 +111,16 @@ export default async function handler(req, res) {
         res.status(200).json({ mode, domain, found: false, nameservers: [], related: [], summary: 'No nameservers found for this domain (not in our index and no live record).' });
         return;
       }
-      const pair = classifyPair(pairing.nameservers);
+      // Generic parking/registrar pairing — don't run the LLM on a meaningless set.
+      if (pairing.tooGeneric) {
+        res.status(200).json({
+          mode, domain: pairing.domain, nameservers: pairing.nameservers,
+          pair: pairing.pair.kind, generic: true, genericNote: pairing.pair.note,
+          related: [], summary: pairing.pair.note,
+        });
+        return;
+      }
+      const pair = pairing.pair || classifyPair(pairing.nameservers);
       const context = q.run_id ? await reportContextByRunId(q.run_id.toString()) : null;
       const analysis = await analyzeRelated(domain, pairing.rows, { context, pair });
       res.status(200).json({

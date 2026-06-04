@@ -42,9 +42,19 @@ function heuristicRelated(seed, siblings) {
 
 function parseJsonLoose(text) {
   if (!text) return null;
-  const m = text.match(/\{[\s\S]*\}/);
-  if (!m) return null;
-  try { return JSON.parse(m[0]); } catch { return null; }
+  let s = String(text).replace(/```json\s*/gi, '').replace(/```/g, '').trim();
+  const start = s.indexOf('{');
+  if (start < 0) return null;
+  s = s.slice(start);
+  try { return JSON.parse(s); } catch { /* try to repair truncation */ }
+  // The output was likely cut off mid-array (token cap). Keep everything up to
+  // the last complete object and close the related[] array + wrapper object.
+  const arr = s.indexOf('[');
+  const lastObj = s.lastIndexOf('}');
+  if (arr >= 0 && lastObj > arr) {
+    try { return JSON.parse(s.slice(0, lastObj + 1) + ']}'); } catch { /* give up */ }
+  }
+  return null;
 }
 
 // seedDomain + sibling domain strings → ranked related set with reasoning.
@@ -89,7 +99,7 @@ ${candidates.join('\n')}`;
       const client = new Anthropic({ apiKey });
       const resp = await client.messages.create({
         model,
-        max_tokens: 1500,
+        max_tokens: 8000,
         system: [{ type: 'text', text: SYSTEM, cache_control: { type: 'ephemeral' } }],
         messages: [{ role: 'user', content: userPrompt }],
       });

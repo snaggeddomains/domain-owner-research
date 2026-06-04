@@ -17,6 +17,7 @@
 // pagination is stable and cheap.
 import { getZoneDb, isZoneDbConfigured } from '../db/supabase-zone.js';
 import { runTool } from '../sources/index.js';
+import { classifyPair } from './context.js';
 
 const TABLE = 'zone_domains';
 export const MAX_LIMIT = 500;
@@ -95,14 +96,19 @@ export async function domainsByNameservers({ nameservers, mode = 'all', tld = ''
   q = mode === 'any' ? q.overlaps('nameservers', ns) : q.contains('nameservers', ns);
   const t = String(tld || '').trim().toLowerCase().replace(/^\./, '');
   if (t) q = q.eq('tld', t);
-  // Fetch one extra to detect a next page without a COUNT (which would scan).
-  q = q.order('domain', { ascending: true }).range(off, off + lim);
+  // NO ORDER BY: sorting a huge @> match set (e.g. a shared host with millions of
+  // hits) forces Postgres to collect + sort everything → statement timeout. A
+  // bare LIMIT lets the GIN scan stop early and return fast; we sort the small
+  // returned page in JS. Fetch one extra to detect a next page without a COUNT.
+  q = q.range(off, off + lim);
 
   const { data, error } = await q;
   if (error) rethrow(error);
-  const rows = data || [];
-  const hasMore = rows.length > lim;
-  return { rows: hasMore ? rows.slice(0, lim) : rows, hasMore };
+  const all = data || [];
+  const hasMore = all.length > lim;
+  const rows = (hasMore ? all.slice(0, lim) : all)
+    .sort((a, b) => (a.domain < b.domain ? -1 : a.domain > b.domain ? 1 : 0));
+  return { rows, hasMore };
 }
 
 // Resolve a domain's nameservers LIVE (when it isn't in our zone index — e.g. a
@@ -145,9 +151,16 @@ export async function samePairing(domain, { limit, offset = 0, env = process.env
   const self = String(domain || '').toLowerCase();
   const { nameservers, source } = await resolveNameservers(self, env);
   if (!nameservers.length) {
-    return { domain: self, nameservers: [], rows: [], hasMore: false, found: false, source };
+    return { domain: self, nameservers: [], rows: [], hasMore: false, found: false, source, pair: null };
+  }
+  const pair = classifyPair(nameservers);
+  // Generic parking/registrar nameservers are shared by millions of unrelated
+  // domains — the reverse query would just time out and mean nothing. Don't run
+  // it; tell the caller it's generic.
+  if (pair.generic) {
+    return { domain: self, nameservers, rows: [], hasMore: false, found: true, source, pair, tooGeneric: true };
   }
   const { rows, hasMore } = await domainsByNameservers({ nameservers, mode: 'all', limit, offset });
   const filtered = rows.filter((r) => r.domain !== self);
-  return { domain: self, nameservers, rows: filtered, hasMore, found: true, source };
+  return { domain: self, nameservers, rows: filtered, hasMore, found: true, source, pair };
 }
