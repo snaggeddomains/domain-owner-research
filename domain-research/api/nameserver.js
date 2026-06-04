@@ -9,9 +9,9 @@
 //   GET ?mode=pairing&domain=pizza.com&limit=&offset=
 //        → { domain, nameservers, rows, hasMore }  (siblings on the same NS set)
 
-// Owner-lookup mode fans out free WHOIS/RDAP for up to 12 domains in parallel —
-// give the function room beyond the default sync budget.
-export const maxDuration = 30;
+// Owner/sweep modes fan out many free endpoints across several domains in
+// parallel — give the function room beyond the default sync budget.
+export const maxDuration = 60;
 
 import { currentUser, userCan } from '../lib/auth.js';
 import { normalizeDomain } from '../lib/util.js';
@@ -20,6 +20,7 @@ import {
 } from '../lib/nameserver/query.js';
 import { analyzeRelated } from '../lib/nameserver/relate.js';
 import { freeOwnerLookup } from '../lib/nameserver/owner.js';
+import { freeSweep } from '../lib/nameserver/sweep.js';
 
 export default async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store');
@@ -109,6 +110,15 @@ export default async function handler(req, res) {
       const domains = String(q.domains || '').split(',').map((s) => s.trim()).filter(Boolean);
       if (!domains.length) { res.status(400).json({ error: 'No domains to look up.' }); return; }
       const results = await freeOwnerLookup(domains, { env: process.env });
+      res.status(200).json({ mode, results });
+      return;
+    }
+
+    // Free SWEEP — all free endpoints aggregated per domain (no credits/LLM).
+    if (mode === 'sweep') {
+      const domains = String(q.domains || '').split(',').map((s) => s.trim()).filter(Boolean);
+      if (!domains.length) { res.status(400).json({ error: 'No domains to sweep.' }); return; }
+      const results = await freeSweep(domains, { env: process.env });
       res.status(200).json({ mode, results });
       return;
     }

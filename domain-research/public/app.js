@@ -4186,50 +4186,99 @@ function nsExportPairingCsv() {
 function nsExportOwnerCsv() {
   const rows = nsState.ownerResults || [];
   if (!rows.length) return;
-  nsDownloadCsv(`owners-${nsState.seed || 'domains'}.csv`,
-    ['domain', 'registrant_name', 'organization', 'email', 'phone', 'registrar', 'privacy'],
-    rows.map((r) => [r.domain, r.name || '', r.organization || '', r.email || '', r.phone || '', r.registrar || '', r.privacy ? 'yes' : 'no']));
+  nsDownloadCsv(`owner-sweep-${nsState.seed || 'domains'}.csv`,
+    ['domain', 'internal_owner', 'registrant_name', 'organization', 'email', 'phone', 'registrar', 'cluster_siblings', 'site_title', 'listed_for_sale'],
+    rows.map((r) => {
+      const reg = r.registrant || {};
+      return [r.domain, r.internalOwner || '', reg.name || '', reg.organization || '', reg.email || '', reg.phone || '',
+        reg.registrar || '', (r.cluster || []).length, (r.site && r.site.title) || '', (r.listed && r.listed.any) ? 'yes' : 'no'];
+    }));
 }
 
-// Free WHOIS owner lookup over the selected domains → inline triangulation table.
+// Free SWEEP over the selected domains: all free endpoints aggregated per
+// domain (internal owner, registrant, registration cluster, live site,
+// marketplace, DNS) + a per-domain drill-down into the full report.
 async function nsRunOwnerLookup(domains) {
   const out = document.getElementById('ns-owner-out');
   if (!out) return;
-  const list = domains.slice(0, 12);
-  const warn = domains.length > 12 ? `<p class="muted">Looking up the first 12 of ${domains.length} selected (free-lookup cap).</p>` : '';
-  out.innerHTML = warn + '<p class="muted">Running free WHOIS owner lookups…</p>';
+  const list = domains.slice(0, 6);
+  const warn = domains.length > 6 ? `<p class="muted">Sweeping the first 6 of ${domains.length} selected (free-sweep cap).</p>` : '';
+  out.innerHTML = warn + '<p class="muted">Sweeping all free endpoints (registrant, cluster, live site, marketplace, our DBs)… this takes a few seconds.</p>';
   try {
-    const data = await nsFetch(`mode=owner&domains=${encodeURIComponent(list.join(','))}`);
+    const data = await nsFetch(`mode=sweep&domains=${encodeURIComponent(list.join(','))}`);
     nsState.ownerResults = data.results || [];
-    out.innerHTML = warn + nsOwnerTable(data.results || []);
+    out.innerHTML = warn + nsSweepCards(data.results || []);
   } catch (e) {
     out.innerHTML = `<p class="status error">${escapeHtml(String((e && e.message) || e))}</p>`;
   }
 }
-function nsOwnerTable(results) {
+function nsSweepRow(label, html) {
+  return html ? `<div class="ns-srow"><span class="ns-slabel">${label}</span><span class="ns-sval">${html}</span></div>` : '';
+}
+function nsSweepCard(r) {
+  const reg = r.registrant || {};
+  const who = reg.name || reg.organization
+    ? escapeHtml([reg.name, reg.organization].filter(Boolean).join(' · '))
+    : reg.privacy ? '<span class="muted">privacy-protected</span>' : '<span class="muted">—</span>';
+  const cluster = (r.cluster || []).filter((c) => c.registrant || c.shares_ns);
+  const clusterHtml = (r.cluster && r.cluster.length)
+    ? `${r.cluster.length} likely-same-owner sibling${r.cluster.length === 1 ? '' : 's'}` +
+      (cluster.length ? ': ' + cluster.slice(0, 6).map((c) =>
+        `<a href="/dbscreen/${encodeURIComponent(c.domain)}" class="ns-dlink" data-domain="${escapeHtml(c.domain)}">${escapeHtml(c.domain)}</a>` +
+        (c.registrant ? ` <span class="muted">(${escapeHtml(c.registrant)})</span>` : '')).join(', ') : '')
+    : '';
+  const site = r.site;
+  const siteHtml = site
+    ? [site.title ? escapeHtml(site.title) : '', site.copyright ? escapeHtml(site.copyright) : '',
+       (site.emails || []).length ? (site.emails.map((e) => escapeHtml(e)).join(', ')) : '',
+       site.parked ? '<span class="ns-conf ns-conf-low">parked / for sale</span>' : '']
+      .filter(Boolean).join(' · ')
+    : '';
+  const socials = site && site.socials && site.socials.length
+    ? site.socials.slice(0, 6).map((s) => `<a href="${escapeHtml(s)}" target="_blank" rel="noopener">${escapeHtml(s.replace(/^https?:\/\/(www\.)?/, ''))}</a>`).join(' · ')
+    : '';
+  const listed = r.listed && r.listed.any
+    ? `Listed for sale${r.listed.channels.length ? ': ' + r.listed.channels.map((c) => c.url ? `<a href="${escapeHtml(c.url)}" target="_blank" rel="noopener">${escapeHtml(c.channel)}</a>` : escapeHtml(c.channel)).join(', ') : ''}`
+    : '';
+  const dnsHtml = r.dns && (r.dns.mx.length || r.dns.a.length)
+    ? [r.dns.mx.length ? `MX: ${r.dns.mx.map((m) => escapeHtml(m)).join(', ')}` : '', r.dns.a.length ? `IP: ${r.dns.a.map((a) => escapeHtml(a)).join(', ')}` : ''].filter(Boolean).join(' · ')
+    : '';
+  const drill = canModule(currentUser, 'domain_owner')
+    ? `<div class="ns-drill">` +
+      `<button type="button" class="ns-btn ns-btn-sm" data-act="report" data-domain="${escapeHtml(r.domain)}">📄 Free report →</button>` +
+      `<button type="button" class="ns-btn ns-btn-sm ns-btn-ai" data-act="deep" data-domain="${escapeHtml(r.domain)}">🔬 Deep research →</button>` +
+      `</div>` : '';
+  return `<div class="ns-sweepcard">` +
+    `<h4><a href="/dbscreen/${encodeURIComponent(r.domain)}" class="ns-dlink" data-domain="${escapeHtml(r.domain)}">${escapeHtml(r.domain)}</a></h4>` +
+    (r.internalOwner ? `<div class="ns-srow"><span class="ns-slabel">In our DB</span><span class="ns-sval"><strong class="ns-known">${escapeHtml(r.internalOwner)}</strong></span></div>` : '') +
+    nsSweepRow('Registrant', who) +
+    nsSweepRow('Contact', [reg.email ? escapeHtml(reg.email) : '', reg.phone ? escapeHtml(reg.phone) : ''].filter(Boolean).join(' · ')) +
+    nsSweepRow('Registrar', reg.registrar ? escapeHtml(reg.registrar) : '') +
+    nsSweepRow('Cluster', clusterHtml) +
+    nsSweepRow('Live site', siteHtml) +
+    nsSweepRow('Social', socials) +
+    nsSweepRow('Marketplace', listed) +
+    nsSweepRow('DNS', dnsHtml) +
+    drill +
+    `</div>`;
+}
+function nsSweepCards(results) {
   if (!results.length) return '<p class="muted">No results.</p>';
-  // Triangulation: rows sharing a normalized registrant key are likely one owner.
-  const keyOf = (r) => String(r.organization || r.email || r.name || '').trim().toLowerCase();
+  // Triangulation hint: surface when registrants line up across the swept set.
+  const keyOf = (r) => String((r.registrant && (r.registrant.organization || r.registrant.email || r.registrant.name)) || r.internalOwner || '').trim().toLowerCase();
   const counts = {};
   for (const r of results) { const k = keyOf(r); if (k) counts[k] = (counts[k] || 0) + 1; }
-  const anyShared = Object.values(counts).some((c) => c > 1);
-  const body = results.map((r) => {
-    const k = keyOf(r);
-    const shared = k && counts[k] > 1;
-    const who = r.error ? `<span class="muted" title="${escapeHtml(r.error)}">lookup failed</span>`
-      : r.privacy && !(r.name || r.organization) ? '<span class="muted">privacy-protected</span>'
-      : (escapeHtml([r.name, r.organization].filter(Boolean).join(' · ')) || '<span class="muted">—</span>');
-    return `<tr class="${shared ? 'ns-tri' : ''}">` +
-      `<td>${escapeHtml(r.domain)}</td>` +
-      `<td>${who}${shared ? ' <span class="ns-conf ns-conf-high">shared</span>' : ''}</td>` +
-      `<td>${escapeHtml(r.email || '')}</td>` +
-      `<td>${escapeHtml(r.phone || '')}</td>` +
-      `<td>${escapeHtml(r.registrar || '')}</td></tr>`;
-  }).join('');
-  return (anyShared ? '<p class="ns-summary">🎯 Highlighted rows share the same registrant — likely the same owner.</p>' : '') +
-    '<div class="ns-tablewrap"><table class="ns-table"><thead><tr><th>Domain</th><th>Registrant</th><th>Email</th><th>Phone</th><th>Registrar</th></tr></thead>' +
-    `<tbody>${body}</tbody></table></div>` +
-    '<button type="button" class="ns-btn ns-btn-sm" data-act="export-owner-csv">⬇ Export owner results CSV</button>';
+  const shared = Object.entries(counts).filter(([, c]) => c > 1);
+  const hint = shared.length ? `<p class="ns-summary">🎯 Same owner signal: ${shared.map(([k]) => escapeHtml(k)).join(', ')} appears on multiple domains.</p>` : '';
+  return hint + results.map(nsSweepCard).join('') +
+    '<button type="button" class="ns-btn ns-btn-sm" data-act="export-owner-csv">⬇ Export sweep CSV</button>';
+}
+// Drill from a swept domain into the full Domain Owner research (free or deep).
+function nsDrill(domain, deep) {
+  if (!canModule(currentUser, 'domain_owner')) return;
+  history.pushState(null, '', '/research');
+  showView('research');
+  run({ domain, deep, force: false });
 }
 
 const NS_NOT_LOADED = 'The nameserver index isn’t loaded yet — zone files are still being imported. Check back once the load completes.';
@@ -4365,6 +4414,8 @@ els.nsResult?.addEventListener('click', (e) => {
     else if (act === 'relate') runNsRelate(btn.dataset.domain);
     else if (act === 'export-csv') nsExportPairingCsv();
     else if (act === 'export-owner-csv') nsExportOwnerCsv();
+    else if (act === 'report') nsDrill(btn.dataset.domain, false);
+    else if (act === 'deep') nsDrill(btn.dataset.domain, true);
     else if (act === 'owner-lookup') {
       const sel = [...els.nsResult.querySelectorAll('.ns-cb:checked')].map((c) => c.value);
       if (sel.length) nsRunOwnerLookup(sel);

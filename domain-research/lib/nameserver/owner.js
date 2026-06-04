@@ -30,7 +30,7 @@ function vcard(entity, key) {
   }
   return '';
 }
-function fromRdap(data) {
+export function rdapRegistrant(data) {
   const out = { registrar: null, name: null, organization: null, email: null };
   for (const ent of (data && data.entities) || []) {
     const roles = ent.roles || [];
@@ -55,7 +55,7 @@ export async function freeOwnerLookup(domains, { env = process.env } = {}) {
       runTool('rdap_whois', { domain }, env).catch((e) => ({ ok: false, error: String(e && e.message || e) })),
     ]);
     const reg = (w.ok && w.data && w.data.registrant) || {};
-    const r = (rd.ok && rd.data) ? fromRdap(rd.data) : {};
+    const r = (rd.ok && rd.data) ? rdapRegistrant(rd.data) : {};
     const name = reg.name || r.name || null;
     const organization = reg.organization || r.organization || null;
     const email = reg.email || r.email || null;

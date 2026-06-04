@@ -1197,3 +1197,12 @@ body.drawer-open { overflow: hidden; }
 .ns-table th { font-size: 12px; text-transform: uppercase; letter-spacing: .03em; color: var(--muted); }
 .ns-table tr.ns-tri td { background: #eaf7ee; }
 @media (max-width: 560px) { .ns-picklist { columns: 1; } }
+
+/* Nameserver Search — free sweep cards */
+.ns-sweepcard { border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; margin: 10px 0; background: #fff; }
+.ns-sweepcard h4 { margin: 0 0 8px; font-size: 16px; }
+.ns-srow { display: flex; gap: 10px; padding: 3px 0; font-size: 14px; align-items: baseline; }
+.ns-slabel { flex: 0 0 92px; color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .03em; }
+.ns-sval { flex: 1; min-width: 0; word-break: break-word; }
+.ns-known { color: #176a2b; }
+.ns-drill { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
