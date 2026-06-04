@@ -211,6 +211,43 @@ async function handleRename(body, res, user) {
   }
 }
 
+// Apply the UI filter panel onto a filter object IN PLACE. The panel is
+// authoritative over whatever the brief inferred. Used by both search and chat
+// so a chat refinement starts from the SAME constraints the user currently sees
+// (esp. TLD), instead of stale saved run filters.
+function applyUiFilters(filters, body) {
+  if (Array.isArray(body.connotation)) {
+    const VALID = ['positive', 'somewhat positive', 'neutral', 'somewhat negative', 'negative'];
+    const picked = [...new Set(body.connotation.map((c) => String(c || '').toLowerCase()).filter((c) => VALID.includes(c)))];
+    filters.connotation = picked.length === 0 || picked.length >= VALID.length ? null : picked;
+  }
+  if (Array.isArray(body.tlds) && body.tlds.length) {
+    const tlds = body.tlds.map((t) => String(t).replace(/^\./, '').toLowerCase()).filter(Boolean);
+    if (tlds.length) filters.tlds = [...new Set(tlds)];
+  }
+  if (Array.isArray(body.exclude)) {
+    const VALID_FORMS = ['plural', 'past', 'ing', 'ly'];
+    filters.exclude_forms = [...new Set(body.exclude.map((f) => String(f || '').toLowerCase()).filter((f) => VALID_FORMS.includes(f)))];
+  }
+  const uiNum = (v) => (typeof v === 'number' && isFinite(v) && v >= 0 ? v : null);
+  if (body.price_min !== undefined && uiNum(body.price_min) != null) filters.min_price = uiNum(body.price_min);
+  if (body.price_max !== undefined && uiNum(body.price_max) != null) filters.max_price = uiNum(body.price_max);
+  const uiInt = (v) => { const n = uiNum(v); return n == null ? null : Math.round(n); };
+  if (body.len_min !== undefined && uiInt(body.len_min) != null) filters.sld_length_min = uiInt(body.len_min);
+  if (body.len_max !== undefined && uiInt(body.len_max) != null) filters.sld_length_max = uiInt(body.len_max);
+  if (body.syllables_min !== undefined && uiInt(body.syllables_min) != null) filters.syllables_min = uiInt(body.syllables_min);
+  if (body.syllables_max !== undefined && uiInt(body.syllables_max) != null) filters.syllables_max = uiInt(body.syllables_max);
+  if (
+    (body.words_min !== undefined && uiInt(body.words_min) != null) ||
+    (body.words_max !== undefined && uiInt(body.words_max) != null)
+  ) {
+    filters.num_words = null;
+    if (body.words_min !== undefined && uiInt(body.words_min) != null) filters.num_words_min = uiInt(body.words_min);
+    if (body.words_max !== undefined && uiInt(body.words_max) != null) filters.num_words_max = uiInt(body.words_max);
+  }
+  return filters;
+}
+
 async function handleChat(body, res, user) {
   const runId = body.run_id;
   const message = typeof body.message === 'string' ? body.message.trim() : '';
@@ -243,6 +280,11 @@ async function handleChat(body, res, user) {
     buy_ready: latestRefinement ? (latestRefinement.result_snapshot?.buyReady || []) : (run.buy_ready || []),
     stretch: latestRefinement ? (latestRefinement.result_snapshot?.stretch || []) : (run.stretch || []),
   };
+  // The live filter panel (sent with each chat turn) is authoritative over the
+  // saved run filters — so a refinement starts from exactly what the user sees
+  // (especially TLD) and can't silently widen it. Clone so we don't mutate the
+  // stored snapshot.
+  currentRun.filters = applyUiFilters({ ...(currentRun.filters || {}) }, body);
 
   // Persist the user turn before running the model so a model failure still
   // leaves the question in the thread (with an error assistant reply).
@@ -306,49 +348,10 @@ async function handleSearch(body, res, user) {
     res.status(502).json({ error: `Couldn't parse your brief: ${e.message || e}` });
     return;
   }
-  // Explicit connotation control from the UI multi-select is authoritative:
-  // a subset narrows results to those tones (enriched rows + still-unenriched
-  // rows); all five selected (or none) = "Any" → no constraint, overriding any
-  // tone the brief inferred.
-  if (Array.isArray(body.connotation)) {
-    const VALID = ['positive', 'somewhat positive', 'neutral', 'somewhat negative', 'negative'];
-    const picked = [...new Set(body.connotation.map((c) => String(c || '').toLowerCase()).filter((c) => VALID.includes(c)))];
-    filters.connotation = picked.length === 0 || picked.length >= VALID.length ? null : picked;
-  }
-  // TLD multi-select from the UI is authoritative when present — it overrides
-  // whatever TLDs the brief inferred. Sent bare ('com'); normalize defensively.
-  if (Array.isArray(body.tlds) && body.tlds.length) {
-    const tlds = body.tlds.map((t) => String(t).replace(/^\./, '').toLowerCase()).filter(Boolean);
-    if (tlds.length) filters.tlds = [...new Set(tlds)];
-  }
-  // Word-form exclusions from the UI (default none). Sanitize to the 4 known
-  // keys; applied in-memory in searchUniverse() to avoid SQL statement timeouts.
-  if (Array.isArray(body.exclude)) {
-    const VALID_FORMS = ['plural', 'past', 'ing', 'ly'];
-    filters.exclude_forms = [...new Set(body.exclude.map((f) => String(f || '').toLowerCase()).filter((f) => VALID_FORMS.includes(f)))];
-  }
-  // Price bounds from the UI inputs override the brief per-bound when provided
-  // (a finite number); a bound sent as null leaves the brief's value for it.
-  const uiNum = (v) => (typeof v === 'number' && isFinite(v) && v >= 0 ? v : null);
-  if (body.price_min !== undefined && uiNum(body.price_min) != null) filters.min_price = uiNum(body.price_min);
-  if (body.price_max !== undefined && uiNum(body.price_max) != null) filters.max_price = uiNum(body.price_max);
-  // SLD letter-count + syllable-count bounds from the UI (override the brief
-  // per-bound when a finite number is provided). Rounded to whole numbers.
-  const uiInt = (v) => { const n = uiNum(v); return n == null ? null : Math.round(n); };
-  if (body.len_min !== undefined && uiInt(body.len_min) != null) filters.sld_length_min = uiInt(body.len_min);
-  if (body.len_max !== undefined && uiInt(body.len_max) != null) filters.sld_length_max = uiInt(body.len_max);
-  if (body.syllables_min !== undefined && uiInt(body.syllables_min) != null) filters.syllables_min = uiInt(body.syllables_min);
-  if (body.syllables_max !== undefined && uiInt(body.syllables_max) != null) filters.syllables_max = uiInt(body.syllables_max);
-  // Manual Words min/max range. A range from the UI governs word count, so clear
-  // any exact num_words the brief inferred (avoids eq + range over-constraining).
-  if (
-    (body.words_min !== undefined && uiInt(body.words_min) != null) ||
-    (body.words_max !== undefined && uiInt(body.words_max) != null)
-  ) {
-    filters.num_words = null;
-    if (body.words_min !== undefined && uiInt(body.words_min) != null) filters.num_words_min = uiInt(body.words_min);
-    if (body.words_max !== undefined && uiInt(body.words_max) != null) filters.num_words_max = uiInt(body.words_max);
-  }
+  // Layer the UI filter panel (TLDs, connotation, price/length/syllable/word
+  // bounds, word-form exclusions) onto the brief-parsed filters — the panel is
+  // authoritative. Shared with handleChat so refinements respect the live panel.
+  applyUiFilters(filters, body);
   let results;
   try {
     results = await searchUniverse(filters);

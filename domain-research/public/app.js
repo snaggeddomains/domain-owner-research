@@ -3161,6 +3161,26 @@ function numOrNull(v) {
   return Number.isFinite(n) && n >= 0 ? n : null;
 }
 
+// Current Filters-panel state as a payload. Sent with BOTH search and the
+// refine-chat so a chat refinement respects exactly what's in the panel right
+// now (especially TLD) instead of stale saved run filters.
+function namingFilterPayload() {
+  return {
+    connotation: [...namingConSet],
+    exclude: [...namingExcludeSet],
+    // TLD override only when narrowed to a proper subset; all/none = no override.
+    tlds: (namingTldSet.size === 0 || namingTldSet.size >= NM_TLD_OPTS.length) ? null : [...namingTldSet],
+    price_min: numOrNull(els.namingPriceMin && els.namingPriceMin.value),
+    price_max: numOrNull(els.namingPriceMax && els.namingPriceMax.value),
+    len_min: numOrNull(els.namingLenMin && els.namingLenMin.value),
+    len_max: numOrNull(els.namingLenMax && els.namingLenMax.value),
+    syllables_min: numOrNull(els.namingSylMin && els.namingSylMin.value),
+    syllables_max: numOrNull(els.namingSylMax && els.namingSylMax.value),
+    words_min: numOrNull(els.namingWordsMin && els.namingWordsMin.value),
+    words_max: numOrNull(els.namingWordsMax && els.namingWordsMax.value),
+  };
+}
+
 async function runNaming() {
   const brief = (els.namingInput?.value || '').trim();
   if (!brief) return;
@@ -3177,19 +3197,7 @@ async function runNaming() {
         // run_id present → update this project in place; absent → new project.
         run_id: currentNamingRunId || null,
         title: (els.namingTitle && els.namingTitle.value.trim()) || null,
-        connotation: [...namingConSet],
-        exclude: [...namingExcludeSet],
-        // Send a TLD override ONLY when narrowed to a proper subset; all/none =
-        // let the brief decide (specified TLD wins; silent = all TLDs).
-        tlds: (namingTldSet.size === 0 || namingTldSet.size >= NM_TLD_OPTS.length) ? null : [...namingTldSet],
-        price_min: numOrNull(els.namingPriceMin && els.namingPriceMin.value),
-        price_max: numOrNull(els.namingPriceMax && els.namingPriceMax.value),
-        len_min: numOrNull(els.namingLenMin && els.namingLenMin.value),
-        len_max: numOrNull(els.namingLenMax && els.namingLenMax.value),
-        syllables_min: numOrNull(els.namingSylMin && els.namingSylMin.value),
-        syllables_max: numOrNull(els.namingSylMax && els.namingSylMax.value),
-        words_min: numOrNull(els.namingWordsMin && els.namingWordsMin.value),
-        words_max: numOrNull(els.namingWordsMax && els.namingWordsMax.value),
+        ...namingFilterPayload(),
       }),
     });
     const data = await res.json().catch(() => ({}));
@@ -3682,7 +3690,7 @@ async function sendNamingChat(message) {
     const res = await fetch('/research/api/naming', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ action: 'chat', run_id: currentNamingRunId, message }),
+      body: JSON.stringify({ action: 'chat', run_id: currentNamingRunId, message, ...namingFilterPayload() }),
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.error || `Chat failed (${res.status})`);
