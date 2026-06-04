@@ -15,14 +15,14 @@
 // (idx_zone_domains_ns_gin). `.contains` = @> (has ALL = AND), `.overlaps` = &&
 // (has ANY = OR). Results are capped + ordered by the `domain` primary key so
 // pagination is stable and cheap.
-import { getNamingDb, isNamingDbConfigured } from '../db/supabase-naming.js';
+import { getZoneDb, isZoneDbConfigured } from '../db/supabase-zone.js';
 
 const TABLE = 'zone_domains';
 export const MAX_LIMIT = 500;
 export const DEFAULT_LIMIT = 200;
 
 export function isConfigured() {
-  return isNamingDbConfigured();
+  return isZoneDbConfigured();
 }
 
 // The zone_domains table is loaded out-of-band (CZDS zone files → COPY). Until
@@ -72,7 +72,7 @@ function clampLimit(n) {
 export async function lookupDomain(domain) {
   const d = String(domain || '').trim().toLowerCase();
   if (!d) return null;
-  const { data, error } = await getNamingDb()
+  const { data, error } = await getZoneDb()
     .from(TABLE)
     .select('domain, tld, nameservers')
     .eq('domain', d)
