@@ -1240,3 +1240,11 @@ body.drawer-open { overflow: hidden; }
 /* Nameserver Search — running/loading status (stands out, pulses) */
 .ns-running { background: var(--navy); color: #fff; border-radius: 8px; padding: 10px 14px; font-weight: 700; font-size: 14px; margin: 6px 0 12px; display: inline-block; animation: ns-pulse 1.2s ease-in-out infinite; }
 @keyframes ns-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.55; } }
+
+/* Nameserver Search — consolidated contact dossier (the answer for the core) */
+.ns-dossier { background: #eaf7ee; border: 1px solid #176a2b55; border-radius: 10px; padding: 14px 16px; margin: 4px 0 14px; }
+.ns-doss-head { font-weight: 800; color: #176a2b; font-size: 15px; margin-bottom: 8px; }
+.ns-doss-row { display: flex; gap: 12px; padding: 4px 0; font-size: 14px; align-items: baseline; }
+.ns-doss-label { flex: 0 0 90px; color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .03em; }
+.ns-doss-val { flex: 1; min-width: 0; word-break: break-word; }
+.ns-src { color: var(--muted); font-size: 12px; }

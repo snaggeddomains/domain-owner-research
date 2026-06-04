@@ -4287,6 +4287,43 @@ function nsSweepCard(r) {
     drill +
     `</div>`;
 }
+// Roll every real contact found across the swept domains into one deduped set,
+// keyed by value, tracking which sibling(s) it came from — the consolidated
+// "owner contact for the core" answer.
+function nsConsolidate(results) {
+  const emails = new Map(); const names = new Map(); const phones = new Map();
+  const pick = (m, val, src) => {
+    const v = String(val == null ? '' : val).trim();
+    if (!v || NS_CONTACT_NOISE.test(v.toLowerCase())) return;
+    const k = v.toLowerCase();
+    if (!m.has(k)) m.set(k, { val: v, srcs: new Set() });
+    m.get(k).srcs.add(src);
+  };
+  for (const r of results) {
+    const reg = r.registrant || {};
+    pick(emails, reg.email, r.domain);
+    for (const e of (r.site && r.site.emails) || []) pick(emails, e, r.domain);
+    pick(names, reg.name, r.domain);
+    pick(names, reg.organization, r.domain);
+    if (r.internalOwner) pick(names, r.internalOwner, r.domain);
+    pick(phones, reg.phone, r.domain);
+  }
+  return { emails: [...emails.values()], names: [...names.values()], phones: [...phones.values()] };
+}
+function nsDossier(results) {
+  const c = nsConsolidate(results);
+  if (!(c.emails.length + c.names.length + c.phones.length)) return '';
+  const seed = nsState.seed || 'the core domain';
+  const src = (s) => `<span class="ns-src">(${[...s].map((d) => escapeHtml(d)).join(', ')})</span>`;
+  const row = (label, items) => items.length
+    ? `<div class="ns-doss-row"><span class="ns-doss-label">${label}</span><span class="ns-doss-val">${items.map((i) => `${escapeHtml(i.val)} ${src(i.srcs)}`).join('<br>')}</span></div>`
+    : '';
+  const leadCount = new Set(results.filter(nsLead).map((r) => r.domain)).size;
+  return '<div class="ns-dossier">' +
+    `<div class="ns-doss-head">📇 Owner contact for <strong>${escapeHtml(seed)}</strong> — triangulated from ${leadCount} related domain${leadCount === 1 ? '' : 's'}</div>` +
+    row('Emails', c.emails) + row('Names / orgs', c.names) + row('Phones', c.phones) +
+    '</div>';
+}
 function nsSweepCards(results) {
   if (!results.length) return '<p class="muted">No results.</p>';
   // Triangulation hint: surface when registrants line up across the swept set.
@@ -4310,7 +4347,9 @@ function nsSweepCards(results) {
   // Leads are the deliverable (a reachable contact for the murky core), so put
   // them at the top — both the rollup and the cards themselves.
   const ordered = results.slice().sort((a, b) => (nsLead(b) ? 1 : 0) - (nsLead(a) ? 1 : 0));
-  return leadHint + confirmHint + hint + ordered.map(nsSweepCard).join('') +
+  // Lead with the consolidated dossier (the answer for the core), then the
+  // shielded-seed framing, then the per-domain detail cards.
+  return nsDossier(results) + leadHint + confirmHint + hint + ordered.map(nsSweepCard).join('') +
     '<button type="button" class="ns-btn ns-btn-sm" data-act="export-owner-csv">⬇ Export sweep CSV</button>';
 }
 // Drill from a swept domain into the full Domain Owner research (free or deep).
