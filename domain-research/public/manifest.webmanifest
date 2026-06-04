@@ -3,7 +3,7 @@
   "short_name": "Research",
   "description": "Domain owner research, naming, trademark & appraisal tools",
   "start_url": "/research/",
-  "scope": "/research/",
+  "scope": "/",
   "display": "standalone",
   "orientation": "portrait",
   "background_color": "#f4eee1",
