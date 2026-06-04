@@ -647,8 +647,10 @@ a.naming-card-domain:hover { color: var(--coral-deep); text-decoration: underlin
   .hero-title { font-size: 2.2rem; }
   .hero-search { flex-direction: column; }
   .page-title { font-size: 32px; }
-  /* Reclaim horizontal space — tighter gutters and card padding on phones. */
-  .wrap { padding: 18px 14px 80px; }
+  /* Reclaim horizontal space — content gutter comes solely from #app (the
+     topbar's gutter too), so zero the wrap's side padding to avoid doubling and
+     let cards use the full width. */
+  .wrap { padding: 18px 0 80px; }
   .report { padding: 6px 14px 14px; }
   .summary-card { padding: 16px 15px; }
   .deepen-bar { padding: 12px 14px; }
@@ -851,7 +853,7 @@ body.modal-open { overflow: hidden; }
    blue circle sits at the identical x-position when switching Research <-> Admin
    (no horizontal "jump"). Placed after the #app centering rule so it wins. */
 @media (max-width: 560px) {
-  #app { padding-left: 16px; padding-right: 16px; }
+  #app { padding-left: 14px; padding-right: 14px; }
 }
 
 /* ─────────────────────────────────────────────────────────────────────────
