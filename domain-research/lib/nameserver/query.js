@@ -90,7 +90,7 @@ export async function domainsByNameservers({ nameservers, mode = 'all', tld = ''
   const lim = clampLimit(limit);
   const off = Math.max(0, Number(offset) || 0);
 
-  let q = getNamingDb().from(TABLE).select('domain, tld, nameservers');
+  let q = getZoneDb().from(TABLE).select('domain, tld, nameservers');
   q = mode === 'any' ? q.overlaps('nameservers', ns) : q.contains('nameservers', ns);
   const t = String(tld || '').trim().toLowerCase().replace(/^\./, '');
   if (t) q = q.eq('tld', t);
