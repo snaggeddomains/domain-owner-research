@@ -9,7 +9,13 @@ import { fetchJson } from '../util.js';
 // strong anchor we almost always have.
 const BASE = 'https://app.fullenrich.com/api/v2/contact/enrich/bulk';
 const POLL_MS = 4000;
-const MAX_POLLS = 24; // ~96s — a multi-provider waterfall can take a bit to settle
+// Keep the poll budget SMALL: several enrich calls in one deep pass must not add
+// up past Vercel's 300s function maxDuration (that was timing deep runs out —
+// esp. when out of credits, where the batch is accepted but never FINISHES, so a
+// long poll just burns the clock). ~36s cap; we return "still running" if it
+// hasn't settled by then rather than hang the whole research step.
+const MAX_POLLS = 9;
+const MAX_WALL_MS = 40000;
 
 function collectEmails(ci) {
   const out = [];
@@ -93,7 +99,9 @@ export default {
 
     let result = null;
     let status = 'IN_PROGRESS';
+    const startedAt = Date.now();
     for (let i = 0; i < MAX_POLLS; i++) {
+      if (Date.now() - startedAt > MAX_WALL_MS) break; // hard wall-clock cap
       await new Promise((r) => setTimeout(r, POLL_MS));
       let g;
       try {
