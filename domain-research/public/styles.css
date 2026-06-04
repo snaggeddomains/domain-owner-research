@@ -1206,3 +1206,6 @@ body.drawer-open { overflow: hidden; }
 .ns-sval { flex: 1; min-width: 0; word-break: break-word; }
 .ns-known { color: #176a2b; }
 .ns-drill { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+
+.ns-picklist.ns-onecol { columns: 1; }
+.ns-picklist.ns-onecol li { padding: 5px 0; }

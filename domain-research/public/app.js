@@ -4152,7 +4152,7 @@ function nsRowsHtml(rows) {
 // A selectable result block: checkbox list + a toolbar (select-all, optional CSV
 // export, and "run free owner lookup on selected"). `items` = [{domain, metaHtml,
 // checked}]. `csvRows` (if given) enables the Export-CSV button for that list.
-function nsSelectableBlock(headHtml, items, { csvRows = null, seed = '' } = {}) {
+function nsSelectableBlock(headHtml, items, { csvRows = null, seed = '', singleCol = false } = {}) {
   nsState.csvRows = csvRows;
   if (seed) nsState.seed = seed;
   const lis = items.map((it) =>
@@ -4166,7 +4166,7 @@ function nsSelectableBlock(headHtml, items, { csvRows = null, seed = '' } = {}) 
       csvBtn +
       '<button type="button" class="ns-btn ns-btn-sm ns-btn-ai" data-act="owner-lookup">🔎 Run free owner lookup on selected</button>' +
     '</div>' +
-    `<ul class="ns-list ns-picklist">${lis}</ul>` +
+    `<ul class="ns-list ns-picklist${singleCol ? ' ns-onecol' : ''}">${lis}</ul>` +
     '<div id="ns-owner-out"></div>';
 }
 
@@ -4362,7 +4362,7 @@ async function runNsRelate(domain) {
         metaHtml: ` <span class="ns-conf ns-conf-${escapeHtml(r.confidence)}">${escapeHtml(r.confidence)}</span>${r.relation ? ` <span class="muted">— ${escapeHtml(r.relation)}</span>` : ''}`,
         checked: r.confidence === 'high' || r.confidence === 'medium',
       })));
-    sub.innerHTML = nsSelectableBlock(head, items, { csvRows: null, seed: data.domain });
+    sub.innerHTML = nsSelectableBlock(head, items, { csvRows: null, seed: data.domain, singleCol: true });
   } catch (e) {
     if (sub) sub.innerHTML = `<p class="status error">${escapeHtml(String((e && e.message) || e))}</p>`;
   }
