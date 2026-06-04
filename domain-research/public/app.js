@@ -4222,6 +4222,62 @@ async function nsRunOwnerLookup(domains) {
 function nsSweepRow(label, html) {
   return html ? `<div class="ns-srow"><span class="ns-slabel">${label}</span><span class="ns-sval">${html}</span></div>` : '';
 }
+
+// ── Background deep research on selected siblings (consolidate → the core) ────
+// When the free sweep hits privacy walls, run the FULL deep report on the
+// privacy-walled siblings ASYNCHRONOUSLY (no navigation), then harvest the
+// contacts each finds back into one consolidated panel for the core. A bell
+// notification also fires server-side per run, so you can leave and come back.
+async function nsRunDeepBackground(domains) {
+  const out = document.getElementById('ns-deep-out');
+  if (!out) return;
+  const list = [...new Set(domains || [])].slice(0, 4);
+  if (!list.length) return;
+  if (!window.confirm(`Run PAID deep research on ${list.length} sibling${list.length === 1 ? '' : 's'} in the background?\n\n${list.join('\n')}\n\nEach is a full deep report (spends credits). A bell fires as each finishes, and any contacts found are pulled in here.`)) return;
+  out.innerHTML = `<div class="ns-running">⏳ Starting deep research on ${list.length} sibling${list.length === 1 ? '' : 's'}…</div>`;
+  const items = [];
+  for (const domain of list) {
+    try { const data = await enqueue({ domain, deep: true }); items.push({ domain, runId: data.run_id, status: 'running' }); }
+    catch (e) { items.push({ domain, error: String((e && e.message) || e) }); }
+  }
+  nsState.deepItems = items;
+  nsDeepRender();
+  for (const it of items) if (it.runId) nsDeepPoll(it);
+}
+function nsDeepPoll(it) {
+  const timer = setInterval(async () => {
+    try {
+      const r = await pollRun(it.runId);
+      if (r.status === 'done') { clearInterval(timer); it.status = 'done'; it.report = r.report; nsDeepHarvest(it); nsDeepRender(); if (typeof loadNotifications === 'function') loadNotifications(); }
+      else if (r.status === 'error' || r.status === 'cancelled') { clearInterval(timer); it.status = r.status; nsDeepRender(); }
+    } catch { /* transient — keep polling */ }
+  }, 5000);
+}
+function nsDeepHarvest(it) {
+  const data = parseReportData(it.report && it.report.markdown) || {};
+  it.likely_owner = data.likely_owner || null;
+  it.contacts = (Array.isArray(data.contacts) ? data.contacts : [])
+    .filter((c) => c && c.value && ['name', 'email', 'phone', 'org', 'social'].includes(String(c.type).toLowerCase()) && !NS_CONTACT_NOISE.test(String(c.value).toLowerCase()));
+}
+function nsDeepRender() {
+  const out = document.getElementById('ns-deep-out');
+  if (!out) return;
+  const items = nsState.deepItems || [];
+  const li = items.map((it) => {
+    if (it.error) return `<li>${escapeHtml(it.domain)} — <span class="status error">failed: ${escapeHtml(it.error)}</span></li>`;
+    if (it.status === 'done') {
+      const cs = (it.contacts || []).slice(0, 8).map((c) => `<span class="ns-deep-c">${escapeHtml(c.type)}: ${escapeHtml(c.value)}</span>`).join(' · ');
+      return `<li>✓ <a href="/dbscreen/${encodeURIComponent(it.domain)}" class="ns-dlink" data-domain="${escapeHtml(it.domain)}">${escapeHtml(it.domain)}</a>` +
+        `${it.likely_owner ? ` — <strong>${escapeHtml(it.likely_owner)}</strong>` : ''}` +
+        `${cs ? `<br>${cs}` : ' <span class="muted">— no new contact found</span>'}</li>`;
+    }
+    return `<li>${escapeHtml(it.domain)} — <span class="muted">researching… (a bell will fire when done)</span></li>`;
+  }).join('');
+  const allDone = items.length && items.every((it) => it.status === 'done' || it.error || it.status === 'error' || it.status === 'cancelled');
+  const head = allDone ? '✅ Deep research complete — contacts consolidated below' : '⏳ Deep research running in the background…';
+  out.innerHTML = `<div class="ns-deep-panel"><h4>${head}</h4><ul class="ns-list ns-onecol ns-deep-list">${li}</ul>` +
+    '<p class="muted ns-note">A bell notification fires for each as it finishes — you can leave this page and come back.</p></div>';
+}
 // A sweep result is a "lead" when it exposes a REAL owner contact (not a
 // privacy/role/registrar value) — a usable handle for an otherwise-murky seed.
 const NS_CONTACT_NOISE = /redact|privacy|priv(?:ate)?|proxy|whois\s?guard|withheld|not\s?disclosed|undisclosed|gdpr|data\s?protected|domains?\s?by\s?proxy|perfect\s?privacy|identity\s?protect|registrant|abuse@|hostmaster@|postmaster@|admin@|noc@/i;
@@ -4347,10 +4403,20 @@ function nsSweepCards(results) {
   // Leads are the deliverable (a reachable contact for the murky core), so put
   // them at the top — both the rollup and the cards themselves.
   const ordered = results.slice().sort((a, b) => (nsLead(b) ? 1 : 0) - (nsLead(a) ? 1 : 0));
+  // Privacy-walled siblings the free pass couldn't crack — offer to run the
+  // deeper LLM research on them in the BACKGROUND and consolidate back here.
+  const needsDeep = results.filter((r) => r.domain !== seedDom && !nsLead(r)).map((r) => r.domain);
+  nsState.needsDeep = needsDeep;
+  const deepCta = (needsDeep.length && canModule(currentUser, 'domain_owner'))
+    ? `<div class="ns-deep-cta">` +
+      `<p class="muted ns-note">${needsDeep.length} sibling${needsDeep.length === 1 ? '' : 's'} are privacy-walled — the free pass can't reach them. Run the deeper research on up to 4 in the background (finds owners the free pass can't; spends credits).</p>` +
+      `<button type="button" class="ns-btn ns-btn-sm ns-btn-ai" data-act="deep-bg">🔬 Deep research on ${Math.min(needsDeep.length, 4)} in the background</button>` +
+      `<div id="ns-deep-out"></div></div>`
+    : '';
   // Lead with the consolidated dossier (the answer for the core), then the
   // shielded-seed framing, then the per-domain detail cards.
   return nsDossier(results) + leadHint + confirmHint + hint + ordered.map(nsSweepCard).join('') +
-    '<button type="button" class="ns-btn ns-btn-sm" data-act="export-owner-csv">⬇ Export sweep CSV</button>';
+    '<button type="button" class="ns-btn ns-btn-sm" data-act="export-owner-csv">⬇ Export sweep CSV</button>' + deepCta;
 }
 // Drill from a swept domain into the full Domain Owner research (free or deep).
 function nsDrill(domain, deep) {
@@ -4578,6 +4644,7 @@ els.nsResult?.addEventListener('click', (e) => {
     else if (act === 'relate') runNsRelate(btn.dataset.domain);
     else if (act === 'export-csv') nsExportPairingCsv();
     else if (act === 'export-owner-csv') nsExportOwnerCsv();
+    else if (act === 'deep-bg') nsRunDeepBackground(nsState.needsDeep || []);
     else if (act === 'report') nsDrill(btn.dataset.domain, false);
     else if (act === 'deep') nsDrill(btn.dataset.domain, true);
     else if (act === 'ctx-toggle') {

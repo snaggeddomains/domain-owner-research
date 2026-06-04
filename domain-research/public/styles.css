@@ -1248,3 +1248,10 @@ body.drawer-open { overflow: hidden; }
 .ns-doss-label { flex: 0 0 90px; color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .03em; }
 .ns-doss-val { flex: 1; min-width: 0; word-break: break-word; }
 .ns-src { color: var(--muted); font-size: 12px; }
+
+/* Nameserver Search — background deep research panel */
+.ns-deep-cta { margin-top: 14px; padding-top: 12px; border-top: 1px dashed var(--line); }
+.ns-deep-panel { margin-top: 10px; background: #fff; border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; }
+.ns-deep-panel h4 { margin: 0 0 8px; }
+.ns-deep-list li { padding: 5px 0; }
+.ns-deep-c { font-size: 13px; }
