@@ -195,7 +195,7 @@ const els = {
   nsModeToggle: $('ns-modetoggle'), nsMatchToggle: $('ns-matchtoggle'),
   nsDomainForm: $('ns-domain-form'), nsDomain: $('ns-domain'),
   nsNsForm: $('ns-ns-form'), nsNs: $('ns-ns'), nsTld: $('ns-tld'),
-  nsStatus: $('ns-status'), nsResult: $('ns-result'),
+  nsStatus: $('ns-status'), nsResult: $('ns-result'), nsRecent: $('ns-recent'),
   dsSearch: $('ds-search'), dsQ: $('ds-q'), dsGo: $('ds-go'),
   dsPriceMin: $('ds-price-min'), dsPriceMax: $('ds-price-max'),
   dsTlds: $('ds-tlds'),
@@ -4139,6 +4139,29 @@ function nsReset() {
   if (els.nsNs) els.nsNs.value = '';
   if (els.nsResult) { els.nsResult.hidden = true; els.nsResult.innerHTML = ''; }
   setToolStatus(els.nsStatus, '');
+  nsRenderRecent();
+}
+
+// Recent domain lookups (client-side, so you can revisit without retyping).
+const NS_RECENT_KEY = 'ns:recent';
+function nsRecentList() {
+  try { return JSON.parse(localStorage.getItem(NS_RECENT_KEY) || '[]').filter(Boolean); } catch { return []; }
+}
+function nsRecentAdd(domain) {
+  const d = String(domain || '').trim().toLowerCase();
+  if (!d) return;
+  const list = [d, ...nsRecentList().filter((x) => x !== d)].slice(0, 8);
+  try { localStorage.setItem(NS_RECENT_KEY, JSON.stringify(list)); } catch { /* ignore quota */ }
+  nsRenderRecent();
+}
+function nsRenderRecent() {
+  if (!els.nsRecent) return;
+  const list = nsRecentList();
+  if (!list.length) { els.nsRecent.hidden = true; els.nsRecent.innerHTML = ''; return; }
+  els.nsRecent.hidden = false;
+  els.nsRecent.innerHTML = '<span class="ns-recent-label">Recent:</span> ' +
+    list.map((d) => `<button type="button" class="ns-recent-chip" data-recent="${escapeHtml(d)}">${escapeHtml(d)}</button>`).join('') +
+    '<button type="button" class="ns-recent-clear" data-recent-clear="1">clear</button>';
 }
 function nsRowsHtml(rows) {
   if (!rows || !rows.length) return '<p class="muted">No domains.</p>';
@@ -4442,6 +4465,7 @@ async function runNsDomain(domain) {
   try {
     const data = await nsFetch(`mode=domain&domain=${encodeURIComponent(domain)}`);
     setToolStatus(els.nsStatus, '');
+    if (data.found) nsRecentAdd(data.domain);
     if (!data.found) {
       els.nsResult.innerHTML = `<div class="ns-card"><p>Couldn’t find nameservers for <strong>${escapeHtml(data.domain)}</strong> — not in our index and no live DNS/WHOIS record.</p></div>`;
     } else {
@@ -4612,6 +4636,11 @@ async function runNsList() {
 }
 
 els.navNameserver?.addEventListener('click', (e) => { if (newTabClick(e)) return; e.preventDefault(); setToolUrl('nameserver', ''); route(); });
+els.nsRecent?.addEventListener('click', (e) => {
+  if (e.target.dataset && e.target.dataset.recentClear) { try { localStorage.removeItem(NS_RECENT_KEY); } catch {} nsRenderRecent(); return; }
+  const chip = e.target.closest('button[data-recent]');
+  if (chip) { const d = chip.dataset.recent; if (els.nsDomain) els.nsDomain.value = d; setToolUrl('nameserver', d); runNsDomain(d); }
+});
 els.nsModeToggle?.addEventListener('click', (e) => { const b = e.target.closest('button[data-mode]'); if (b) nsSetMode(b.dataset.mode); });
 els.nsMatchToggle?.addEventListener('click', (e) => {
   const b = e.target.closest('button[data-match]'); if (!b) return;

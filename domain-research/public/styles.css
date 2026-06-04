@@ -1255,3 +1255,10 @@ body.drawer-open { overflow: hidden; }
 .ns-deep-panel h4 { margin: 0 0 8px; }
 .ns-deep-list li { padding: 5px 0; }
 .ns-deep-c { font-size: 13px; }
+
+/* Nameserver Search — recent lookups */
+.ns-recent { margin: 4px 0 14px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.ns-recent-label { color: var(--muted); font-size: 13px; }
+.ns-recent-chip { background: #fff; border: 1px solid var(--line); border-radius: 999px; padding: 4px 12px; font-size: 13px; font-weight: 600; color: var(--navy); cursor: pointer; }
+.ns-recent-chip:hover { border-color: var(--coral); color: var(--coral); }
+.ns-recent-clear { background: none; border: 0; color: var(--muted); font-size: 12px; cursor: pointer; text-decoration: underline; }
