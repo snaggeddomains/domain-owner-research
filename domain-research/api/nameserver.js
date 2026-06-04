@@ -16,7 +16,7 @@ export const maxDuration = 60;
 import { currentUser, userCan } from '../lib/auth.js';
 import { normalizeDomain } from '../lib/util.js';
 import {
-  isConfigured, lookupDomain, domainsByNameservers, samePairing, parseNsList,
+  isConfigured, domainsByNameservers, samePairing, parseNsList, resolveNameservers,
 } from '../lib/nameserver/query.js';
 import { analyzeRelated } from '../lib/nameserver/relate.js';
 import { freeOwnerLookup } from '../lib/nameserver/owner.js';
@@ -51,12 +51,15 @@ export default async function handler(req, res) {
     if (mode === 'domain') {
       const domain = normalizeDomain((q.domain || '').toString());
       if (!domain) { res.status(400).json({ error: 'Enter a domain to look up.' }); return; }
-      const row = await lookupDomain(domain);
+      // In our zone index, or resolve its nameservers LIVE (DNS/RDAP) so domains
+      // / TLDs we haven't loaded still pair against what we have.
+      const { nameservers, source, tld } = await resolveNameservers(domain, process.env);
       res.status(200).json({
         mode, domain,
-        found: Boolean(row),
-        nameservers: (row && row.nameservers) || [],
-        tld: (row && row.tld) || null,
+        found: nameservers.length > 0,
+        source, // 'zone' | 'live' | null
+        nameservers,
+        tld,
       });
       return;
     }

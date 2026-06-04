@@ -1209,3 +1209,5 @@ body.drawer-open { overflow: hidden; }
 
 .ns-picklist.ns-onecol { columns: 1; }
 .ns-picklist.ns-onecol li { padding: 5px 0; }
+
+.ns-livenote { margin: 6px 0 0; font-size: 13px; }

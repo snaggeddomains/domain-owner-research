@@ -16,6 +16,7 @@
 // (has ANY = OR). Results are capped + ordered by the `domain` primary key so
 // pagination is stable and cheap.
 import { getZoneDb, isZoneDbConfigured } from '../db/supabase-zone.js';
+import { runTool } from '../sources/index.js';
 
 const TABLE = 'zone_domains';
 export const MAX_LIMIT = 500;
@@ -104,20 +105,49 @@ export async function domainsByNameservers({ nameservers, mode = 'all', tld = ''
   return { rows: hasMore ? rows.slice(0, lim) : rows, hasMore };
 }
 
-// domain → other domains on its EXACT nameserver set (the pairing). Looks up the
-// domain's NS first, then does an AND (@>) over that whole set, excluding the
-// domain itself. Returns { domain, nameservers[], rows, hasMore }.
-export async function samePairing(domain, { limit, offset = 0 } = {}) {
-  const self = await lookupDomain(domain);
-  if (!self || !Array.isArray(self.nameservers) || !self.nameservers.length) {
-    return { domain: String(domain || '').toLowerCase(), nameservers: [], rows: [], hasMore: false, found: false };
+// Resolve a domain's nameservers LIVE (when it isn't in our zone index — e.g. a
+// .com we haven't loaded). Live DNS NS records first (authoritative, fast), then
+// the RDAP registry nameservers as a fallback (works even if DNS isn't resolving).
+export async function liveNameservers(domain, env = process.env) {
+  const d = String(domain || '').trim().toLowerCase();
+  if (!d) return [];
+  try {
+    const r = await runTool('dns_lookup', { domain: d }, env);
+    const ns = r && r.ok && Array.isArray(r.data && r.data.ns) ? r.data.ns : [];
+    const clean = [...new Set(ns.map(normalizeNs).filter(Boolean))];
+    if (clean.length) return clean;
+  } catch { /* fall through to RDAP */ }
+  try {
+    const r = await runTool('rdap_whois', { domain: d }, env);
+    const arr = r && r.ok && Array.isArray(r.data && r.data.nameservers) ? r.data.nameservers : [];
+    const clean = [...new Set(arr.map((n) => normalizeNs((n && (n.ldhName || n.name)) || '')).filter(Boolean))];
+    if (clean.length) return clean;
+  } catch { /* give up */ }
+  return [];
+}
+
+// A domain's nameservers from our zone index if present, else resolved live.
+// Returns { nameservers[], source: 'zone' | 'live' | null, tld }.
+export async function resolveNameservers(domain, env = process.env) {
+  const row = await lookupDomain(domain);
+  if (row && Array.isArray(row.nameservers) && row.nameservers.length) {
+    return { nameservers: row.nameservers, source: 'zone', tld: row.tld || null };
   }
-  const { rows, hasMore } = await domainsByNameservers({
-    nameservers: self.nameservers,
-    mode: 'all',
-    limit,
-    offset,
-  });
-  const filtered = rows.filter((r) => r.domain !== self.domain);
-  return { domain: self.domain, tld: self.tld, nameservers: self.nameservers, rows: filtered, hasMore, found: true };
+  const live = await liveNameservers(domain, env);
+  return { nameservers: live, source: live.length ? 'live' : null, tld: null };
+}
+
+// domain → other domains on its EXACT nameserver set (the pairing). Gets the
+// domain's NS from our index OR live, then does an AND (@>) over that whole set,
+// excluding the domain itself. Returns { domain, nameservers[], rows, hasMore,
+// source }. Works even when the domain/TLD isn't loaded (source 'live').
+export async function samePairing(domain, { limit, offset = 0, env = process.env } = {}) {
+  const self = String(domain || '').toLowerCase();
+  const { nameservers, source } = await resolveNameservers(self, env);
+  if (!nameservers.length) {
+    return { domain: self, nameservers: [], rows: [], hasMore: false, found: false, source };
+  }
+  const { rows, hasMore } = await domainsByNameservers({ nameservers, mode: 'all', limit, offset });
+  const filtered = rows.filter((r) => r.domain !== self);
+  return { domain: self, nameservers, rows: filtered, hasMore, found: true, source };
 }

@@ -4300,13 +4300,17 @@ async function runNsDomain(domain) {
     const data = await nsFetch(`mode=domain&domain=${encodeURIComponent(domain)}`);
     setToolStatus(els.nsStatus, '');
     if (!data.found) {
-      els.nsResult.innerHTML = `<div class="ns-card"><p><strong>${escapeHtml(data.domain)}</strong> is not in the zone index yet.</p></div>`;
+      els.nsResult.innerHTML = `<div class="ns-card"><p>Couldn’t find nameservers for <strong>${escapeHtml(data.domain)}</strong> — not in our index and no live DNS/WHOIS record.</p></div>`;
     } else {
       const nsList = (data.nameservers || []).map((n) => `<code>${escapeHtml(n)}</code>`).join(' ');
+      const liveNote = data.source === 'live'
+        ? `<p class="muted ns-livenote">Not in our zone index — nameservers resolved live; pairing matches against the TLDs we’ve loaded.</p>`
+        : '';
       els.nsResult.innerHTML =
         `<div class="ns-card">` +
         `<h2>${escapeHtml(data.domain)}</h2>` +
         `<p class="ns-nsrow">Nameservers: ${nsList || '<span class="muted">none</span>'}</p>` +
+        liveNote +
         `<div class="ns-actions">` +
           `<button type="button" class="ns-btn" data-act="pairing" data-domain="${escapeHtml(data.domain)}">Find domains with the same pairing →</button>` +
           `<button type="button" class="ns-btn ns-btn-ai" data-act="relate" data-domain="${escapeHtml(data.domain)}">✨ Find likely-related siblings</button>` +
@@ -4334,7 +4338,7 @@ async function runNsPairing(domain) {
       metaHtml: (r.nameservers && r.nameservers.length) ? ` <span class="muted">(${r.nameservers.length} NS)</span>` : '',
       checked: false,
     }));
-    sub.innerHTML = nsSelectableBlock(head, items, { csvRows: data.rows, seed: domain });
+    sub.innerHTML = nsSelectableBlock(head, items, { csvRows: data.rows, seed: domain, singleCol: true });
   } catch (e) {
     if (sub) sub.innerHTML = `<p class="status error">${escapeHtml(String((e && e.message) || e))}</p>`;
   }
