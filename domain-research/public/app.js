@@ -754,7 +754,9 @@ function renderMarkdown(md) {
       .replace(/`([^`]+)`/g, '<code>$1</code>')
       .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
       .replace(/\*([^*]+)\*/g, '<em>$1</em>')
-      .replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+      .replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>')
+      // Bare URLs → clickable (skip ones already inside a markdown link's href/text).
+      .replace(/(?<![">])(https?:\/\/[^\s<)]*[^\s<).,;:!?])/g, '<a href="$1" target="_blank" rel="noopener">$1</a>');
 
   for (const raw of lines) {
     const line = raw.trimEnd();
@@ -1254,7 +1256,7 @@ function renderSummary(d) {
   }
   const path = Array.isArray(d.contact_path) ? d.contact_path : [];
   if (path.length) {
-    html += `<div class="sum-block"><h3>Recommended contact path</h3><ol class="cpath">${path.map((p) => `<li>${e(p)}</li>`).join('')}</ol></div>`;
+    html += `<div class="sum-block"><h3>Recommended contact path</h3><ol class="cpath">${path.map((p) => `<li>${linkifyNote(p)}</li>`).join('')}</ol></div>`;
   }
   const tl = Array.isArray(d.timeline) ? d.timeline : [];
   if (tl.length) {
