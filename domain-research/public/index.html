@@ -20,6 +20,14 @@
          the app is served from /research/* (app.snagged.com/research/*). -->
     <base href="/research/" />
     <link rel="icon" href="favicon-32.png" />
+    <!-- PWA / Add to Home Screen — standalone launch on iOS + Android. -->
+    <link rel="manifest" href="manifest.webmanifest" />
+    <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="Snagged Research" />
+    <meta name="theme-color" content="#254254" />
     <link rel="stylesheet" href="styles.css?v=20260603d" />
     <!-- Layout: horizontal tab nav (Admin-style), no sidebar. -->
   </head>
