@@ -1227,3 +1227,8 @@ body.drawer-open { overflow: hidden; }
 .ns-pairnote { margin: 4px 0; font-size: 14px; }
 .ns-pairnote-cf { color: #176a2b; }
 .ns-pairnote-ctx { color: var(--navy); }
+
+/* Nameserver Search — report contact cross-match */
+.ns-match { background: #d1f0d6; color: #176a2b; border-radius: 6px; padding: 6px 10px; font-weight: 700; font-size: 13px; margin: 2px 0 8px; }
+.ns-sweepcard-hit { border-color: #176a2b; box-shadow: 0 0 0 1px #176a2b22; }
+.ns-confirm { color: #176a2b; font-weight: 700; }

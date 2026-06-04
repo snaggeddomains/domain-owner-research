@@ -152,8 +152,9 @@ export default async function handler(req, res) {
     if (mode === 'sweep') {
       const domains = String(q.domains || '').split(',').map((s) => s.trim()).filter(Boolean);
       if (!domains.length) { res.status(400).json({ error: 'No domains to sweep.' }); return; }
-      const results = await freeSweep(domains, { env: process.env });
-      res.status(200).json({ mode, results });
+      const context = q.run_id ? await reportContextByRunId(q.run_id.toString()) : null;
+      const results = await freeSweep(domains, { env: process.env, context });
+      res.status(200).json({ mode, results, contextUsed: context ? { domain: context.domain, owner: context.owner } : null });
       return;
     }
 

@@ -4210,7 +4210,8 @@ async function nsRunOwnerLookup(domains) {
   // click visibly does something.
   out.scrollIntoView({ behavior: 'smooth', block: 'center' });
   try {
-    const data = await nsFetch(`mode=sweep&domains=${encodeURIComponent(list.join(','))}`);
+    const ctx = nsState.contextRunId ? `&run_id=${encodeURIComponent(nsState.contextRunId)}` : '';
+    const data = await nsFetch(`mode=sweep&domains=${encodeURIComponent(list.join(','))}${ctx}`);
     nsState.ownerResults = data.results || [];
     out.innerHTML = warn + nsSweepCards(data.results || []);
   } catch (e) {
@@ -4253,8 +4254,13 @@ function nsSweepCard(r) {
       `<button type="button" class="ns-btn ns-btn-sm" data-act="report" data-domain="${escapeHtml(r.domain)}">📄 Free report →</button>` +
       `<button type="button" class="ns-btn ns-btn-sm ns-btn-ai" data-act="deep" data-domain="${escapeHtml(r.domain)}">🔬 Deep research →</button>` +
       `</div>` : '';
-  return `<div class="ns-sweepcard">` +
+  const matchLabel = (m) => m.kind === 'email' ? `email ${m.detail}` : m.kind === 'email_domain' ? `email ${m.detail}` : `name “${m.detail}”`;
+  const matchBadge = (r.matches && r.matches.length)
+    ? `<div class="ns-match">🎯 Confirmed same owner — shares ${r.matches.map((m) => escapeHtml(matchLabel(m))).join(', ')} with the linked report</div>`
+    : '';
+  return `<div class="ns-sweepcard${r.matches && r.matches.length ? ' ns-sweepcard-hit' : ''}">` +
     `<h4><a href="/dbscreen/${encodeURIComponent(r.domain)}" class="ns-dlink" data-domain="${escapeHtml(r.domain)}">${escapeHtml(r.domain)}</a></h4>` +
+    matchBadge +
     (r.internalOwner ? `<div class="ns-srow"><span class="ns-slabel">In our DB</span><span class="ns-sval"><strong class="ns-known">${escapeHtml(r.internalOwner)}</strong></span></div>` : '') +
     nsSweepRow('Registrant', who) +
     nsSweepRow('Contact', [reg.email ? escapeHtml(reg.email) : '', reg.phone ? escapeHtml(reg.phone) : ''].filter(Boolean).join(' · ')) +
@@ -4274,8 +4280,10 @@ function nsSweepCards(results) {
   const counts = {};
   for (const r of results) { const k = keyOf(r); if (k) counts[k] = (counts[k] || 0) + 1; }
   const shared = Object.entries(counts).filter(([, c]) => c > 1);
-  const hint = shared.length ? `<p class="ns-summary">🎯 Same owner signal: ${shared.map(([k]) => escapeHtml(k)).join(', ')} appears on multiple domains.</p>` : '';
-  return hint + results.map(nsSweepCard).join('') +
+  const confirmed = results.filter((r) => r.matches && r.matches.length).length;
+  const confirmHint = confirmed ? `<p class="ns-summary ns-confirm">🎯 ${confirmed} domain${confirmed === 1 ? '' : 's'} confirmed against the linked report — shares a contact/person with it.</p>` : '';
+  const hint = shared.length ? `<p class="ns-summary">Same-registrant signal: ${shared.map(([k]) => escapeHtml(k)).join(', ')} appears on multiple domains.</p>` : '';
+  return confirmHint + hint + results.map(nsSweepCard).join('') +
     '<button type="button" class="ns-btn ns-btn-sm" data-act="export-owner-csv">⬇ Export sweep CSV</button>';
 }
 // Drill from a swept domain into the full Domain Owner research (free or deep).
