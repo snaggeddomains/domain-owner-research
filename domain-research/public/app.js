@@ -4306,7 +4306,10 @@ function nsSweepCards(results) {
     ? `<p class="ns-summary ns-lead-hint">🔑 ${siblingLeads.length} related sibling${siblingLeads.length === 1 ? '' : 's'} expose owner contact info${seedShielded ? ` — and the seed <strong>${escapeHtml(seedDom)}</strong> is privacy-shielded, so these are your way in` : ''}: ${siblingLeads.map((r) => `<a href="/dbscreen/${encodeURIComponent(r.domain)}" class="ns-dlink" data-domain="${escapeHtml(r.domain)}">${escapeHtml(r.domain)}</a>`).join(', ')}.</p>`
     : '';
   const hint = shared.length ? `<p class="ns-summary">Same-registrant signal: ${shared.map(([k]) => escapeHtml(k)).join(', ')} appears on multiple domains.</p>` : '';
-  return confirmHint + leadHint + hint + results.map(nsSweepCard).join('') +
+  // Leads are the deliverable (a reachable contact for the murky core), so put
+  // them at the top — both the rollup and the cards themselves.
+  const ordered = results.slice().sort((a, b) => (nsLead(b) ? 1 : 0) - (nsLead(a) ? 1 : 0));
+  return leadHint + confirmHint + hint + ordered.map(nsSweepCard).join('') +
     '<button type="button" class="ns-btn ns-btn-sm" data-act="export-owner-csv">⬇ Export sweep CSV</button>';
 }
 // Drill from a swept domain into the full Domain Owner research (free or deep).
