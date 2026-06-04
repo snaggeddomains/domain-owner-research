@@ -1151,3 +1151,35 @@ body.drawer-open { overflow: hidden; }
 
 .od-why-situation { font-size: 13px; color: var(--navy); font-weight: 600; line-height: 1.45; }
 .od-why-meta { margin-top: 5px; font-size: 12px; color: var(--navy-3); line-height: 1.5; }
+
+/* ── Nameserver Search ─────────────────────────────────────────────────────── */
+.ns-modetoggle { display: inline-flex; gap: 0; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; margin: 0 0 14px; }
+.ns-modetoggle button { background: #fff; border: 0; padding: 8px 16px; font-weight: 600; color: var(--navy); cursor: pointer; }
+.ns-modetoggle button.active { background: var(--navy); color: #fff; }
+.ns-form { margin: 0 0 16px; }
+.ns-form textarea { width: 100%; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; font: inherit; resize: vertical; }
+.ns-controls { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-top: 10px; }
+.ns-matchtoggle { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.ns-matchtoggle button { background: #fff; border: 0; padding: 7px 12px; font-weight: 600; color: var(--navy); cursor: pointer; }
+.ns-matchtoggle button.active { background: var(--navy); color: #fff; }
+.ns-tld { width: 180px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; font: inherit; }
+.ns-result { margin-top: 8px; }
+.ns-card { background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 18px 20px; }
+.ns-card h2 { margin: 0 0 8px; }
+.ns-nsrow code { background: var(--cream, #f6f3ec); padding: 2px 6px; border-radius: 5px; font-size: 13px; }
+.ns-actions { display: flex; flex-wrap: wrap; gap: 10px; margin: 14px 0 4px; }
+.ns-btn { background: var(--coral); color: #fff; border: 0; border-radius: 8px; padding: 9px 14px; font-weight: 700; cursor: pointer; }
+.ns-btn-ai { background: var(--navy); }
+.ns-btn:hover { filter: brightness(1.05); }
+.ns-sub { margin-top: 16px; }
+.ns-sub h3 { margin: 12px 0 8px; }
+.ns-list { list-style: none; padding: 0; margin: 0; columns: 2; }
+.ns-list li { padding: 3px 0; break-inside: avoid; }
+.ns-related { columns: 1; }
+.ns-summary { font-style: italic; color: var(--navy); margin: 4px 0 10px; }
+.ns-note { margin-top: 10px; font-size: 13px; }
+.ns-conf { font-size: 11px; font-weight: 700; text-transform: uppercase; padding: 1px 6px; border-radius: 4px; }
+.ns-conf-high { background: #d1f0d6; color: #176a2b; }
+.ns-conf-medium { background: #fdf0c8; color: #8a6300; }
+.ns-conf-low { background: #eee; color: #555; }
+@media (max-width: 560px) { .ns-list { columns: 1; } }

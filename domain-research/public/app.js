@@ -191,6 +191,11 @@ const els = {
   apRecent: $('ap-recent'),
   navDbscreen: $('nav-dbscreen'),
   navDbsearch: $('nav-dbsearch'),
+  navNameserver: $('nav-nameserver'),
+  nsModeToggle: $('ns-modetoggle'), nsMatchToggle: $('ns-matchtoggle'),
+  nsDomainForm: $('ns-domain-form'), nsDomain: $('ns-domain'),
+  nsNsForm: $('ns-ns-form'), nsNs: $('ns-ns'), nsTld: $('ns-tld'),
+  nsStatus: $('ns-status'), nsResult: $('ns-result'),
   dsSearch: $('ds-search'), dsQ: $('ds-q'), dsGo: $('ds-go'),
   dsPriceMin: $('ds-price-min'), dsPriceMax: $('ds-price-max'),
   dsTlds: $('ds-tlds'),
@@ -384,7 +389,7 @@ function clearHash() {
 // the SPA): Domain DB Screen at /dbscreen, DB Search at /dbsearch.
 const VANITY_TOOLS = ['dbscreen', 'dbsearch'];
 function currentToolRoute() {
-  let m = location.pathname.match(/^\/research\/(trademark|appraisal|naming|dbscreen|dbsearch|admin)(?:\/(.+?))?\/?$/);
+  let m = location.pathname.match(/^\/research\/(trademark|appraisal|naming|dbscreen|dbsearch|nameserver|admin)(?:\/(.+?))?\/?$/);
   if (!m) m = location.pathname.match(/^\/(dbscreen|dbsearch)(?:\/(.+?))?\/?$/);
   if (!m) return null;
   return { tool: m[1], slug: m[2] ? decodeURIComponent(m[2]) : '' };
@@ -405,6 +410,7 @@ const TOOL_PERMISSION = {
   appraisal: 'appraisal',
   dbscreen: 'dbscreen',
   dbsearch: 'dbsearch',
+  nameserver: 'nameserver',
 };
 function route() {
   if (els.app.hidden) return;
@@ -462,6 +468,12 @@ function route() {
   if (tr && tr.tool === 'dbsearch') {
     showView('dbsearch');
     runDbSearch(tr.slug || '');
+    return;
+  }
+  if (tr && tr.tool === 'nameserver') {
+    showView('nameserver');
+    if (tr.slug) { nsSetMode('domain'); if (els.nsDomain) els.nsDomain.value = tr.slug; runNsDomain(tr.slug); }
+    else nsReset();
     return;
   }
   if (tr && tr.tool === 'admin') {
@@ -1514,6 +1526,7 @@ function gateNavByPermissions(user) {
   if (els.navNaming) els.navNaming.hidden = !can('naming');
   if (els.navDbscreen) els.navDbscreen.hidden = !can('dbscreen');
   if (els.navDbsearch) els.navDbsearch.hidden = !can('dbsearch');
+  if (els.navNameserver) els.navNameserver.hidden = !can('nameserver');
   // Owner outreach is a report-page feature (not a nav module); cache whether
   // this user may use it so renderReport can show/hide the launcher button.
   canOutreach = can('outreach');
@@ -2440,6 +2453,7 @@ const VIEWS = {
   'naming-projects': { view: 'view-naming-projects', nav: 'nav-naming' },
   dbscreen: { view: 'view-dbscreen', nav: 'nav-dbscreen' },
   dbsearch: { view: 'view-dbsearch', nav: 'nav-dbsearch' },
+  nameserver: { view: 'view-nameserver', nav: 'nav-nameserver' },
   admin: { view: 'view-admin', nav: 'nav-admin' },
 };
 function showView(name) {
@@ -4104,6 +4118,151 @@ els.dbForm?.addEventListener('submit', (e) => {
   if (!d) return;
   setToolUrl('dbscreen', d);
   runDbScreen(d);
+});
+
+// ── Nameserver Search ───────────────────────────────────────────────────────
+// Domain → its NS; NS set → domains (AND/OR); domain → siblings on the same
+// pairing; + an LLM "which siblings are related" pass. Server: /api/nameserver.
+const nsState = { mode: 'domain', match: 'all' };
+
+function nsSetMode(mode) {
+  nsState.mode = mode === 'ns' ? 'ns' : 'domain';
+  if (els.nsModeToggle) for (const b of els.nsModeToggle.querySelectorAll('button')) b.classList.toggle('active', b.dataset.mode === nsState.mode);
+  if (els.nsDomainForm) els.nsDomainForm.hidden = nsState.mode !== 'domain';
+  if (els.nsNsForm) els.nsNsForm.hidden = nsState.mode !== 'ns';
+}
+function nsReset() {
+  nsSetMode('domain');
+  if (els.nsDomain) els.nsDomain.value = '';
+  if (els.nsNs) els.nsNs.value = '';
+  if (els.nsResult) { els.nsResult.hidden = true; els.nsResult.innerHTML = ''; }
+  setToolStatus(els.nsStatus, '');
+}
+function nsRowsHtml(rows) {
+  if (!rows || !rows.length) return '<p class="muted">No domains.</p>';
+  return '<ul class="ns-list">' + rows.map((r) => {
+    const d = typeof r === 'string' ? r : r.domain;
+    const nsCount = (r && r.nameservers && r.nameservers.length) ? ` <span class="muted">(${r.nameservers.length} NS)</span>` : '';
+    return `<li><a href="/dbscreen/${encodeURIComponent(d)}" class="ns-dlink" data-domain="${escapeHtml(d)}">${escapeHtml(d)}</a>${nsCount}</li>`;
+  }).join('') + '</ul>';
+}
+
+async function nsFetch(params) {
+  const res = await fetch(`/research/api/nameserver?${params}`);
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`);
+  return data;
+}
+
+async function runNsDomain(domain) {
+  showView('nameserver');
+  setToolStatus(els.nsStatus, 'Looking up…');
+  if (els.nsResult) els.nsResult.hidden = true;
+  try {
+    const data = await nsFetch(`mode=domain&domain=${encodeURIComponent(domain)}`);
+    setToolStatus(els.nsStatus, '');
+    if (!data.found) {
+      els.nsResult.innerHTML = `<div class="ns-card"><p><strong>${escapeHtml(data.domain)}</strong> is not in the zone index yet.</p></div>`;
+    } else {
+      const nsList = (data.nameservers || []).map((n) => `<code>${escapeHtml(n)}</code>`).join(' ');
+      els.nsResult.innerHTML =
+        `<div class="ns-card">` +
+        `<h2>${escapeHtml(data.domain)}</h2>` +
+        `<p class="ns-nsrow">Nameservers: ${nsList || '<span class="muted">none</span>'}</p>` +
+        `<div class="ns-actions">` +
+          `<button type="button" class="ns-btn" data-act="pairing" data-domain="${escapeHtml(data.domain)}">Find domains with the same pairing →</button>` +
+          `<button type="button" class="ns-btn ns-btn-ai" data-act="relate" data-domain="${escapeHtml(data.domain)}">✨ Find likely-related siblings</button>` +
+        `</div>` +
+        `<div class="ns-sub" id="ns-sub"></div>` +
+        `</div>`;
+    }
+    els.nsResult.hidden = false;
+  } catch (e) {
+    setToolStatus(els.nsStatus, String((e && e.message) || e), true);
+  }
+}
+
+async function runNsPairing(domain) {
+  const sub = document.getElementById('ns-sub');
+  if (sub) sub.innerHTML = '<p class="muted">Finding siblings on the same nameserver set…</p>';
+  try {
+    const data = await nsFetch(`mode=pairing&domain=${encodeURIComponent(domain)}`);
+    if (!sub) return;
+    const more = data.hasMore ? ' <span class="muted">(showing first page)</span>' : '';
+    sub.innerHTML = `<h3>${data.count} other domain${data.count === 1 ? '' : 's'} on this exact pairing${more}</h3>` + nsRowsHtml(data.rows);
+  } catch (e) {
+    if (sub) sub.innerHTML = `<p class="status error">${escapeHtml(String((e && e.message) || e))}</p>`;
+  }
+}
+
+async function runNsRelate(domain) {
+  const sub = document.getElementById('ns-sub');
+  if (sub) sub.innerHTML = '<p class="muted">Analyzing the pairing for likely-related siblings…</p>';
+  try {
+    const data = await nsFetch(`mode=relate&domain=${encodeURIComponent(domain)}`);
+    if (!sub) return;
+    if (!data.related || !data.related.length) {
+      sub.innerHTML = `<h3>Likely-related siblings</h3><p class="muted">${escapeHtml(data.summary || 'No clearly-related siblings found.')}</p>`;
+      return;
+    }
+    const items = data.related.map((r) =>
+      `<li><a href="/dbscreen/${encodeURIComponent(r.domain)}" class="ns-dlink" data-domain="${escapeHtml(r.domain)}">${escapeHtml(r.domain)}</a>` +
+      ` <span class="ns-conf ns-conf-${escapeHtml(r.confidence)}">${escapeHtml(r.confidence)}</span>` +
+      `${r.relation ? ` <span class="muted">— ${escapeHtml(r.relation)}</span>` : ''}</li>`).join('');
+    sub.innerHTML =
+      `<h3>Likely-related siblings <span class="muted">(of ${data.siblingCount} on the pairing)</span></h3>` +
+      `${data.summary ? `<p class="ns-summary">${escapeHtml(data.summary)}</p>` : ''}` +
+      `<ul class="ns-list ns-related">${items}</ul>` +
+      `<p class="muted ns-note">These are the candidates to run free owner lookups against to triangulate a shared owner.</p>`;
+  } catch (e) {
+    if (sub) sub.innerHTML = `<p class="status error">${escapeHtml(String((e && e.message) || e))}</p>`;
+  }
+}
+
+async function runNsList() {
+  showView('nameserver');
+  const raw = (els.nsNs && els.nsNs.value || '').trim();
+  if (!raw) return;
+  setToolStatus(els.nsStatus, 'Searching…');
+  if (els.nsResult) els.nsResult.hidden = true;
+  try {
+    const tld = (els.nsTld && els.nsTld.value || '').trim();
+    const params = `mode=ns&ns=${encodeURIComponent(raw)}&match=${nsState.match}${tld ? `&tld=${encodeURIComponent(tld)}` : ''}`;
+    const data = await nsFetch(params);
+    setToolStatus(els.nsStatus, '');
+    const more = data.hasMore ? ' <span class="muted">(showing first page)</span>' : '';
+    const head = `Domains using ${nsState.match === 'all' ? 'ALL' : 'ANY'} of: ${(data.nameservers || []).map((n) => `<code>${escapeHtml(n)}</code>`).join(' ')}`;
+    els.nsResult.innerHTML = `<div class="ns-card"><p class="ns-nsrow">${head}</p><h3>${data.count} domain${data.count === 1 ? '' : 's'}${more}</h3>${nsRowsHtml(data.rows)}</div>`;
+    els.nsResult.hidden = false;
+  } catch (e) {
+    setToolStatus(els.nsStatus, String((e && e.message) || e), true);
+  }
+}
+
+els.navNameserver?.addEventListener('click', (e) => { if (newTabClick(e)) return; e.preventDefault(); setToolUrl('nameserver', ''); route(); });
+els.nsModeToggle?.addEventListener('click', (e) => { const b = e.target.closest('button[data-mode]'); if (b) nsSetMode(b.dataset.mode); });
+els.nsMatchToggle?.addEventListener('click', (e) => {
+  const b = e.target.closest('button[data-match]'); if (!b) return;
+  nsState.match = b.dataset.match === 'any' ? 'any' : 'all';
+  for (const x of els.nsMatchToggle.querySelectorAll('button')) x.classList.toggle('active', x === b);
+});
+els.nsDomainForm?.addEventListener('submit', (e) => {
+  e.preventDefault();
+  const d = (els.nsDomain.value || '').trim();
+  if (!d) return;
+  setToolUrl('nameserver', d);
+  runNsDomain(d);
+});
+els.nsNsForm?.addEventListener('submit', (e) => { e.preventDefault(); runNsList(); });
+els.nsResult?.addEventListener('click', (e) => {
+  const btn = e.target.closest('button[data-act]');
+  if (btn) {
+    if (btn.dataset.act === 'pairing') runNsPairing(btn.dataset.domain);
+    else if (btn.dataset.act === 'relate') runNsRelate(btn.dataset.domain);
+    return;
+  }
+  const dl = e.target.closest('a.ns-dlink');
+  if (dl) { e.preventDefault(); setToolUrl('dbscreen', dl.dataset.domain); route(); }
 });
 
 // DB Search interactions

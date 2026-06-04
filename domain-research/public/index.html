@@ -162,6 +162,9 @@
         <a id="nav-dbscreen" class="nav-btn" href="/research/dbscreen" hidden>Domain DB Screen</a>
         <!-- DB Search — filterable browse over the corpus. `dbsearch` permission. -->
         <a id="nav-dbsearch" class="nav-btn" href="/research/dbsearch" hidden>Domain Name Search</a>
+        <!-- Nameserver Search — domain↔nameserver lookups over the zone index.
+             Gated by the `nameserver` permission; shown by JS. -->
+        <a id="nav-nameserver" class="nav-btn" href="/research/nameserver" hidden>Nameserver Search</a>
         <!-- Lessons (playbook curation) is admin-only and now lives in the
              umbrella Admin module; reachable directly at /research/admin. -->
         <button id="nav-admin" class="nav-btn nav-btn-admin" type="button" hidden style="display:none">Lessons</button>
@@ -448,6 +451,40 @@
               </div>
             </div>
           </div>
+        </section>
+
+        <!-- Nameserver Search — domain↔nameserver lookups over the zone index -->
+        <section id="view-nameserver" hidden>
+          <div class="dbs-head">
+            <h1 class="hero-title dbs-title">Nameserver <span class="accent">Search</span></h1>
+            <p class="hero-sub">Look up a domain's nameservers, or find every domain on a nameserver set — then surface likely-related siblings sharing the same pairing.</p>
+          </div>
+          <div class="ns-modetoggle" id="ns-modetoggle">
+            <button type="button" data-mode="domain" class="active">By domain</button>
+            <button type="button" data-mode="ns">By nameserver</button>
+          </div>
+
+          <!-- Domain → its nameservers -->
+          <form id="ns-domain-form" class="search dbs-search ns-form" autocomplete="off">
+            <input id="ns-domain" type="text" placeholder="example.com" />
+            <button id="ns-domain-go" type="submit">Look up</button>
+          </form>
+
+          <!-- Nameserver(s) → domains -->
+          <form id="ns-ns-form" class="ns-form" autocomplete="off" hidden>
+            <textarea id="ns-ns" rows="2" placeholder="ns1.example.com, ns2.example.com (comma, space, or newline separated)"></textarea>
+            <div class="ns-controls">
+              <div class="ns-matchtoggle" id="ns-matchtoggle">
+                <button type="button" data-match="all" class="active">Has ALL (AND)</button>
+                <button type="button" data-match="any">Has ANY (OR)</button>
+              </div>
+              <input id="ns-tld" type="text" class="ns-tld" placeholder="tld (optional, e.g. com)" />
+              <button id="ns-ns-go" type="submit">Find domains</button>
+            </div>
+          </form>
+
+          <section id="ns-status" class="status" hidden></section>
+          <div id="ns-result" class="ns-result" hidden></div>
         </section>
 
         <!-- Naming exercise -->
