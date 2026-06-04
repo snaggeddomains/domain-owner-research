@@ -38,14 +38,14 @@ function collectPhones(ci) {
 export default {
   name: 'fullenrich_lookup',
   description:
-    'FullEnrich WATERFALL contact lookup (PREMIUM — COST-GATED FALLBACK). Runs many data providers in sequence to find ' +
-    'a NAMED person\'s best WORK + PERSONAL emails (with deliverability status), and OPTIONALLY a PHONE. Credits: emails ' +
-    'are cheap; PHONE numbers cost MUCH more — so phone is OFF by default. Use this as a FALLBACK, not in parallel: run ' +
-    'it for a person ONLY when rocketreach_lookup did NOT return a usable email/phone for them (its value is finding ' +
-    'contacts RocketReach lacks). Do NOT run it redundantly when RocketReach already returned a deliverable contact. ' +
-    'Set include_phone:true ONLY for the single PRIMARY likely owner (never for secondary contacts, employees, or ' +
-    'discovered leaders). Pass their name plus the domain under research and/or their company/LinkedIn URL. A miss just ' +
-    'means no provider had a record. NEVER run it on brokers, marketplaces, or registrar/privacy entities.',
+    'FullEnrich WATERFALL contact lookup (PREMIUM — COST-GATED FALLBACK, EMAILS ONLY). Runs many data providers in ' +
+    'sequence to find a NAMED person\'s best WORK + PERSONAL emails (with deliverability status). It returns EMAILS ONLY ' +
+    '— it does NOT look up phone numbers (the FullEnrich phone waterfall is far too expensive to run automatically; the ' +
+    'user pulls a phone on demand later via a button). Use this as a FALLBACK, not in parallel: run it for a person ONLY ' +
+    'when rocketreach_lookup did NOT return a usable email for them (its value is finding contacts RocketReach lacks). ' +
+    'Do NOT run it redundantly when RocketReach already returned a deliverable email. Pass their name plus the domain ' +
+    'under research and/or their company/LinkedIn URL. A miss just means no provider had a record. NEVER run it on ' +
+    'brokers, marketplaces, or registrar/privacy entities.',
   parameters: {
     type: 'object',
     properties: {
@@ -55,7 +55,10 @@ export default {
       domain: { type: 'string', description: 'Domain associated with the person (e.g. the domain under research) — strongly improves the match' },
       company: { type: 'string', description: 'Company / employer name to disambiguate' },
       linkedin_url: { type: 'string', description: 'LinkedIn profile URL — the single strongest anchor when known' },
-      include_phone: { type: 'boolean', description: 'Also run the (much more expensive) phone waterfall. Default false = emails only. Set true ONLY for the single primary likely owner.' },
+      // NOTE: include_phone is intentionally NOT exposed here so the research
+      // agent can never trigger FullEnrich's expensive phone waterfall. run()
+      // still honors it internally for the on-demand "Get phone number" button
+      // (api/research.js enhance_contact), which passes include_phone:true.
     },
   },
   requiresKey: ['FULL_ENRICH_API_KEY'],
