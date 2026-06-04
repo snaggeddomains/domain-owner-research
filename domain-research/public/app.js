@@ -4147,6 +4147,91 @@ function nsRowsHtml(rows) {
   }).join('') + '</ul>';
 }
 
+// A selectable result block: checkbox list + a toolbar (select-all, optional CSV
+// export, and "run free owner lookup on selected"). `items` = [{domain, metaHtml,
+// checked}]. `csvRows` (if given) enables the Export-CSV button for that list.
+function nsSelectableBlock(headHtml, items, { csvRows = null, seed = '' } = {}) {
+  nsState.csvRows = csvRows;
+  if (seed) nsState.seed = seed;
+  const lis = items.map((it) =>
+    `<li><input type="checkbox" class="ns-cb" value="${escapeHtml(it.domain)}"${it.checked ? ' checked' : ''}> ` +
+    `<a href="/dbscreen/${encodeURIComponent(it.domain)}" class="ns-dlink" data-domain="${escapeHtml(it.domain)}">${escapeHtml(it.domain)}</a>` +
+    `${it.metaHtml || ''}</li>`).join('');
+  const csvBtn = csvRows ? '<button type="button" class="ns-btn ns-btn-sm" data-act="export-csv">⬇ Export CSV</button>' : '';
+  return headHtml +
+    '<div class="ns-toolbar">' +
+      '<label class="ns-selall-l"><input type="checkbox" class="ns-selall" checked> Select all</label>' +
+      csvBtn +
+      '<button type="button" class="ns-btn ns-btn-sm ns-btn-ai" data-act="owner-lookup">🔎 Run free owner lookup on selected</button>' +
+    '</div>' +
+    `<ul class="ns-list ns-picklist">${lis}</ul>` +
+    '<div id="ns-owner-out"></div>';
+}
+
+// Build + download a CSV client-side (no server round-trip).
+function nsDownloadCsv(filename, header, rows) {
+  const esc = (v) => { v = v == null ? '' : String(v); return /[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v; };
+  const body = [header.join(',')].concat(rows.map((r) => r.map(esc).join(','))).join('\n');
+  const url = URL.createObjectURL(new Blob([body], { type: 'text/csv' }));
+  const a = document.createElement('a');
+  a.href = url; a.download = filename; a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+function nsExportPairingCsv() {
+  const rows = nsState.csvRows || [];
+  if (!rows.length) return;
+  nsDownloadCsv(`pairing-${nsState.seed || 'domains'}.csv`, ['domain', 'tld', 'nameservers'],
+    rows.map((r) => [r.domain, r.tld || '', (r.nameservers || []).join(' ')]));
+}
+function nsExportOwnerCsv() {
+  const rows = nsState.ownerResults || [];
+  if (!rows.length) return;
+  nsDownloadCsv(`owners-${nsState.seed || 'domains'}.csv`,
+    ['domain', 'registrant_name', 'organization', 'email', 'phone', 'registrar', 'privacy'],
+    rows.map((r) => [r.domain, r.name || '', r.organization || '', r.email || '', r.phone || '', r.registrar || '', r.privacy ? 'yes' : 'no']));
+}
+
+// Free WHOIS owner lookup over the selected domains → inline triangulation table.
+async function nsRunOwnerLookup(domains) {
+  const out = document.getElementById('ns-owner-out');
+  if (!out) return;
+  const list = domains.slice(0, 12);
+  const warn = domains.length > 12 ? `<p class="muted">Looking up the first 12 of ${domains.length} selected (free-lookup cap).</p>` : '';
+  out.innerHTML = warn + '<p class="muted">Running free WHOIS owner lookups…</p>';
+  try {
+    const data = await nsFetch(`mode=owner&domains=${encodeURIComponent(list.join(','))}`);
+    nsState.ownerResults = data.results || [];
+    out.innerHTML = warn + nsOwnerTable(data.results || []);
+  } catch (e) {
+    out.innerHTML = `<p class="status error">${escapeHtml(String((e && e.message) || e))}</p>`;
+  }
+}
+function nsOwnerTable(results) {
+  if (!results.length) return '<p class="muted">No results.</p>';
+  // Triangulation: rows sharing a normalized registrant key are likely one owner.
+  const keyOf = (r) => String(r.organization || r.email || r.name || '').trim().toLowerCase();
+  const counts = {};
+  for (const r of results) { const k = keyOf(r); if (k) counts[k] = (counts[k] || 0) + 1; }
+  const anyShared = Object.values(counts).some((c) => c > 1);
+  const body = results.map((r) => {
+    const k = keyOf(r);
+    const shared = k && counts[k] > 1;
+    const who = r.error ? `<span class="muted">lookup failed</span>`
+      : r.privacy && !(r.name || r.organization) ? '<span class="muted">privacy-protected</span>'
+      : (escapeHtml([r.name, r.organization].filter(Boolean).join(' · ')) || '<span class="muted">—</span>');
+    return `<tr class="${shared ? 'ns-tri' : ''}">` +
+      `<td>${escapeHtml(r.domain)}</td>` +
+      `<td>${who}${shared ? ' <span class="ns-conf ns-conf-high">shared</span>' : ''}</td>` +
+      `<td>${escapeHtml(r.email || '')}</td>` +
+      `<td>${escapeHtml(r.phone || '')}</td>` +
+      `<td>${escapeHtml(r.registrar || '')}</td></tr>`;
+  }).join('');
+  return (anyShared ? '<p class="ns-summary">🎯 Highlighted rows share the same registrant — likely the same owner.</p>' : '') +
+    '<div class="ns-tablewrap"><table class="ns-table"><thead><tr><th>Domain</th><th>Registrant</th><th>Email</th><th>Phone</th><th>Registrar</th></tr></thead>' +
+    `<tbody>${body}</tbody></table></div>` +
+    '<button type="button" class="ns-btn ns-btn-sm" data-act="export-owner-csv">⬇ Export owner results CSV</button>';
+}
+
 const NS_NOT_LOADED = 'The nameserver index isn’t loaded yet — zone files are still being imported. Check back once the load completes.';
 async function nsFetch(params) {
   const res = await fetch(`/research/api/nameserver?${params}`);
@@ -4191,7 +4276,14 @@ async function runNsPairing(domain) {
     const data = await nsFetch(`mode=pairing&domain=${encodeURIComponent(domain)}`);
     if (!sub) return;
     const more = data.hasMore ? ' <span class="muted">(showing first page)</span>' : '';
-    sub.innerHTML = `<h3>${data.count} other domain${data.count === 1 ? '' : 's'} on this exact pairing${more}</h3>` + nsRowsHtml(data.rows);
+    const head = `<h3>${data.count} other domain${data.count === 1 ? '' : 's'} on this exact pairing${more}</h3>`;
+    if (!data.rows.length) { sub.innerHTML = head + '<p class="muted">None.</p>'; return; }
+    const items = data.rows.map((r) => ({
+      domain: r.domain,
+      metaHtml: (r.nameservers && r.nameservers.length) ? ` <span class="muted">(${r.nameservers.length} NS)</span>` : '',
+      checked: false,
+    }));
+    sub.innerHTML = nsSelectableBlock(head, items, { csvRows: data.rows, seed: domain });
   } catch (e) {
     if (sub) sub.innerHTML = `<p class="status error">${escapeHtml(String((e && e.message) || e))}</p>`;
   }
@@ -4207,15 +4299,19 @@ async function runNsRelate(domain) {
       sub.innerHTML = `<h3>Likely-related siblings</h3><p class="muted">${escapeHtml(data.summary || 'No clearly-related siblings found.')}</p>`;
       return;
     }
-    const items = data.related.map((r) =>
-      `<li><a href="/dbscreen/${encodeURIComponent(r.domain)}" class="ns-dlink" data-domain="${escapeHtml(r.domain)}">${escapeHtml(r.domain)}</a>` +
-      ` <span class="ns-conf ns-conf-${escapeHtml(r.confidence)}">${escapeHtml(r.confidence)}</span>` +
-      `${r.relation ? ` <span class="muted">— ${escapeHtml(r.relation)}</span>` : ''}</li>`).join('');
-    sub.innerHTML =
+    const head =
       `<h3>Likely-related siblings <span class="muted">(of ${data.siblingCount} on the pairing)</span></h3>` +
       `${data.summary ? `<p class="ns-summary">${escapeHtml(data.summary)}</p>` : ''}` +
-      `<ul class="ns-list ns-related">${items}</ul>` +
-      `<p class="muted ns-note">These are the candidates to run free owner lookups against to triangulate a shared owner.</p>`;
+      `<p class="muted ns-note">Pick the candidates and run a free owner lookup to triangulate a shared owner.</p>`;
+    // Seed first (so triangulation compares against it), then siblings; pre-check
+    // the seed + high/medium-confidence ones.
+    const items = [{ domain: data.domain, metaHtml: ' <span class="muted">— seed</span>', checked: true }].concat(
+      data.related.map((r) => ({
+        domain: r.domain,
+        metaHtml: ` <span class="ns-conf ns-conf-${escapeHtml(r.confidence)}">${escapeHtml(r.confidence)}</span>${r.relation ? ` <span class="muted">— ${escapeHtml(r.relation)}</span>` : ''}`,
+        checked: r.confidence === 'high' || r.confidence === 'medium',
+      })));
+    sub.innerHTML = nsSelectableBlock(head, items, { csvRows: null, seed: data.domain });
   } catch (e) {
     if (sub) sub.innerHTML = `<p class="status error">${escapeHtml(String((e && e.message) || e))}</p>`;
   }
@@ -4257,10 +4353,22 @@ els.nsDomainForm?.addEventListener('submit', (e) => {
 });
 els.nsNsForm?.addEventListener('submit', (e) => { e.preventDefault(); runNsList(); });
 els.nsResult?.addEventListener('click', (e) => {
+  if (e.target.classList && e.target.classList.contains('ns-selall')) {
+    const on = e.target.checked;
+    els.nsResult.querySelectorAll('.ns-cb').forEach((cb) => { cb.checked = on; });
+    return;
+  }
   const btn = e.target.closest('button[data-act]');
   if (btn) {
-    if (btn.dataset.act === 'pairing') runNsPairing(btn.dataset.domain);
-    else if (btn.dataset.act === 'relate') runNsRelate(btn.dataset.domain);
+    const act = btn.dataset.act;
+    if (act === 'pairing') runNsPairing(btn.dataset.domain);
+    else if (act === 'relate') runNsRelate(btn.dataset.domain);
+    else if (act === 'export-csv') nsExportPairingCsv();
+    else if (act === 'export-owner-csv') nsExportOwnerCsv();
+    else if (act === 'owner-lookup') {
+      const sel = [...els.nsResult.querySelectorAll('.ns-cb:checked')].map((c) => c.value);
+      if (sel.length) nsRunOwnerLookup(sel);
+    }
     return;
   }
   const dl = e.target.closest('a.ns-dlink');

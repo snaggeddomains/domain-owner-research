@@ -1183,3 +1183,17 @@ body.drawer-open { overflow: hidden; }
 .ns-conf-medium { background: #fdf0c8; color: #8a6300; }
 .ns-conf-low { background: #eee; color: #555; }
 @media (max-width: 560px) { .ns-list { columns: 1; } }
+
+/* Nameserver Search — selectable lists, owner triangulation, CSV */
+.ns-toolbar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin: 10px 0 12px; }
+.ns-selall-l { font-weight: 600; color: var(--navy); display: inline-flex; align-items: center; gap: 6px; }
+.ns-btn-sm { padding: 6px 11px; font-size: 13px; }
+.ns-picklist { columns: 2; }
+.ns-picklist li { padding: 3px 0; break-inside: avoid; }
+.ns-cb { vertical-align: middle; }
+.ns-tablewrap { overflow-x: auto; margin: 8px 0 10px; }
+.ns-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.ns-table th, .ns-table td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+.ns-table th { font-size: 12px; text-transform: uppercase; letter-spacing: .03em; color: var(--muted); }
+.ns-table tr.ns-tri td { background: #eaf7ee; }
+@media (max-width: 560px) { .ns-picklist { columns: 1; } }

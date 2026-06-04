@@ -15,6 +15,7 @@ import {
   isConfigured, lookupDomain, domainsByNameservers, samePairing, parseNsList,
 } from '../lib/nameserver/query.js';
 import { analyzeRelated } from '../lib/nameserver/relate.js';
+import { freeOwnerLookup } from '../lib/nameserver/owner.js';
 
 export default async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store');
@@ -99,7 +100,16 @@ export default async function handler(req, res) {
       return;
     }
 
-    res.status(400).json({ error: `Unknown mode "${mode}" — use domain, ns, pairing, or relate.` });
+    // Free owner triangulation over a set of (typically related) domains.
+    if (mode === 'owner') {
+      const domains = String(q.domains || '').split(',').map((s) => s.trim()).filter(Boolean);
+      if (!domains.length) { res.status(400).json({ error: 'No domains to look up.' }); return; }
+      const results = await freeOwnerLookup(domains, { env: process.env });
+      res.status(200).json({ mode, results });
+      return;
+    }
+
+    res.status(400).json({ error: `Unknown mode "${mode}" — use domain, ns, pairing, relate, or owner.` });
   } catch (e) {
     // Zone index not loaded yet (table missing) — a friendly, expected state.
     if (e && e.code === 'ZONE_NOT_LOADED') {
