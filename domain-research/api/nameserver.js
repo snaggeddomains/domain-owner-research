@@ -21,6 +21,8 @@ import {
 import { analyzeRelated } from '../lib/nameserver/relate.js';
 import { freeOwnerLookup } from '../lib/nameserver/owner.js';
 import { freeSweep } from '../lib/nameserver/sweep.js';
+import { classifyPair, reportContextByRunId } from '../lib/nameserver/context.js';
+import { listRuns } from '../lib/db/runs.js';
 
 export default async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store');
@@ -84,23 +86,37 @@ export default async function handler(req, res) {
       return;
     }
 
-    // Relatedness intelligence: find the pairing, then ask the LLM which siblings
-    // are thematically tied to the seed (the triangulation shortlist).
+    // Recent reports for the context picker (type-ahead / auto-suggest by domain).
+    if (mode === 'reports') {
+      const term = (q.q || '').toString().trim();
+      const runs = await listRuns({ q: term, limit: 12, statuses: ['done'] });
+      res.status(200).json({ mode, runs: runs.map((r) => ({ id: r.id, domain: r.domain, created_at: r.created_at })) });
+      return;
+    }
+
+    // Relatedness intelligence: find the pairing, classify it (account-unique vs
+    // shared), optionally pull a linked report for owner context, then ask the
+    // LLM which siblings are this owner's portfolio.
     if (mode === 'relate') {
       const domain = normalizeDomain((q.domain || '').toString());
       if (!domain) { res.status(400).json({ error: 'Enter a domain to analyze.' }); return; }
       const pairing = await samePairing(domain, { limit: q.limit, offset: q.offset });
       if (!pairing.found) {
-        res.status(200).json({ mode, domain, found: false, nameservers: [], related: [], summary: 'Domain not found in the zone index.' });
+        res.status(200).json({ mode, domain, found: false, nameservers: [], related: [], summary: 'No nameservers found for this domain (not in our index and no live record).' });
         return;
       }
-      const analysis = await analyzeRelated(domain, pairing.rows);
+      const pair = classifyPair(pairing.nameservers);
+      const context = q.run_id ? await reportContextByRunId(q.run_id.toString()) : null;
+      const analysis = await analyzeRelated(domain, pairing.rows, { context, pair });
       res.status(200).json({
         mode,
         domain: pairing.domain,
         nameservers: pairing.nameservers,
         siblingCount: pairing.rows.length,
         hasMore: pairing.hasMore,
+        pair: pair.kind,
+        accountUnique: pair.accountUnique,
+        contextUsed: context ? { domain: context.domain, owner: context.owner, ownerType: context.ownerType } : null,
         related: analysis.related,
         summary: analysis.summary,
         model: analysis.model,

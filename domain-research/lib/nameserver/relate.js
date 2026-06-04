@@ -50,7 +50,7 @@ function parseJsonLoose(text) {
 // seedDomain + sibling domain strings → ranked related set with reasoning.
 // Returns { related: [{domain, confidence: high|medium|low, relation}],
 //           summary, model } — `related` is the triangulation shortlist.
-export async function analyzeRelated(seedDomain, siblings, { env = process.env } = {}) {
+export async function analyzeRelated(seedDomain, siblings, { env = process.env, context = null, pair = null } = {}) {
   const seed = String(seedDomain || '').toLowerCase();
   const candidates = [...new Set((siblings || []).map((s) => (typeof s === 'string' ? s : s && s.domain)).filter(Boolean))]
     .filter((d) => d !== seed)
@@ -64,19 +64,24 @@ export async function analyzeRelated(seedDomain, siblings, { env = process.env }
   }
 
   const model = env.NAMESERVER_RELATE_MODEL || env.ENRICHMENT_MODEL || 'claude-haiku-4-5-20251001';
-  const SYSTEM = `You analyze domains that share a nameserver pairing to find which ones are LIKELY THE SAME OWNER.
+  const accountUnique = pair && pair.accountUnique;
+  const SYSTEM = `You analyze domains that share a nameserver pairing to decide which are LIKELY THE SAME OWNER as the seed domain.
 
-A nameserver pairing groups domains by hosting infrastructure, not meaning — so the list mixes one owner's real portfolio with unrelated tenants on the same provider. Your job: identify the domains that are THEMATICALLY related to the seed domain (shared brand family, topic/industry, naming pattern, or obvious sibling like a ".net"/"get-"/"try-" variant), which strongly suggests common ownership.
+NAMESERVER PAIRING TYPE: ${pair && pair.note ? pair.note : 'Unknown — treat co-location as weak evidence; judge by theme/identity.'}
 
-Be strict: only flag a domain when there is a real semantic/brand link to the SEED, not merely "both are real words." Rank by how confident you are they share an owner.
+${accountUnique
+    ? 'Because this is an ACCOUNT-UNIQUE pair, START from the assumption that the siblings ARE the same owner. Your job is to LABEL the portfolio: group them by what they are (e.g. the owner\'s core brand, a product line, personal domains of the team, throwaway/test domains) and give a confidence that they belong to this owner. Only mark a sibling low/uncertain if it genuinely looks like it could be a different party.'
+    : 'Because these nameservers may be shared by many owners, BE STRICT: only flag a sibling when there is a real semantic/brand/identity link to the seed (shared brand family, topic/industry, naming pattern, or an obvious variant). Mere co-location is not enough.'}
+
+When OWNER CONTEXT is provided (from a research report on the seed), USE IT as the primary lens: judge a sibling by whether it fits this owner's identity, industry, people, or known associations — not just the seed's domain string. A sibling can be related through the owner's BACKGROUND even if it's off-theme from the seed's own name (e.g. a vacation-rental seed whose founders are blockchain builders makes crypto-explorer siblings a likely same-owner portfolio).
 
 Output ONLY JSON:
-{"summary":"one sentence on the owner/theme you infer","related":[{"domain":"x.com","confidence":"high|medium|low","relation":"why it ties to the seed (brand/topic/pattern)"}]}
-Order related most-confident first. Omit domains with no real tie.`;
+{"summary":"one sentence on the owner/portfolio you infer","related":[{"domain":"x.com","confidence":"high|medium|low","relation":"why it ties to this owner (use the context/people/industry where relevant)"}]}
+Order related most-confident first.${accountUnique ? ' Include the off-theme account siblings too, labeled for what they are.' : ' Omit domains with no real tie.'}`;
 
   const userPrompt = `SEED DOMAIN: ${seed}
-
-SIBLING DOMAINS ON THE SAME NAMESERVER PAIRING (pick the related ones):
+${context && context.text ? `\nOWNER CONTEXT (from a research report on the seed):\n${context.text}\n` : ''}
+SIBLING DOMAINS ON THE SAME NAMESERVER PAIRING:
 ${candidates.join('\n')}`;
 
   try {
