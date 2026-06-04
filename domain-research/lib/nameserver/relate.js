@@ -57,6 +57,22 @@ function parseJsonLoose(text) {
   return null;
 }
 
+// Last-resort salvage: pull every {"domain","confidence","relation"} object out
+// of the raw text by regex, even if the wrapper JSON is broken/truncated. The
+// prompt fixes the key order, so this recovers the complete objects that arrived.
+function salvageRelated(text) {
+  if (!text) return [];
+  const out = [];
+  const re = /"domain"\s*:\s*"([^"]+)"\s*,\s*"confidence"\s*:\s*"([^"]*)"\s*,\s*"relation"\s*:\s*"((?:[^"\\]|\\.)*)"/g;
+  let m;
+  while ((m = re.exec(text))) out.push({ domain: m[1], confidence: m[2], relation: m[3].replace(/\\"/g, '"') });
+  return out;
+}
+function salvageSummary(text) {
+  const m = String(text || '').match(/"summary"\s*:\s*"((?:[^"\\]|\\.)*)"/);
+  return m ? m[1].replace(/\\"/g, '"').trim() : '';
+}
+
 // seedDomain + sibling domain strings → ranked related set with reasoning.
 // Returns { related: [{domain, confidence: high|medium|low, relation}],
 //           summary, model } — `related` is the triangulation shortlist.
@@ -106,18 +122,25 @@ ${candidates.join('\n')}`;
       recordModelUsage('anthropic', model, resp.usage);
       const text = (resp.content || []).filter((b) => b.type === 'text').map((b) => b.text).join('');
       const parsed = parseJsonLoose(text);
-      if (!parsed || !Array.isArray(parsed.related)) {
-        return { related: heuristicRelated(seed, candidates), summary: 'Heuristic match (model returned no JSON).', model };
-      }
+      // Prefer clean JSON; if that fails (truncation/odd wrapping), SALVAGE the
+      // individual {domain,confidence,relation} objects straight from the text so
+      // we still return real results instead of the dumb heuristic.
+      let rawRelated = parsed && Array.isArray(parsed.related) ? parsed.related : salvageRelated(text);
+      let summary = (parsed && parsed.summary) ? String(parsed.summary).trim() : salvageSummary(text);
       const known = new Set(candidates);
-      const related = parsed.related
+      const seen = new Set();
+      const related = (rawRelated || [])
         .filter((r) => r && known.has(String(r.domain || '').toLowerCase()))
         .map((r) => ({
           domain: String(r.domain).toLowerCase(),
           confidence: ['high', 'medium', 'low'].includes(r.confidence) ? r.confidence : 'low',
           relation: String(r.relation || '').trim(),
-        }));
-      return { related, summary: String(parsed.summary || '').trim(), model };
+        }))
+        .filter((r) => (seen.has(r.domain) ? false : seen.add(r.domain)));
+      if (!related.length) {
+        return { related: heuristicRelated(seed, candidates), summary: summary || 'Heuristic match (model returned no usable results).', model };
+      }
+      return { related, summary, model };
     });
   } catch (e) {
     return { related: heuristicRelated(seed, candidates), summary: `Heuristic match (LLM error: ${e.message || e}).`, model };

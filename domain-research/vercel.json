@@ -45,6 +45,8 @@
     { "source": "/research/dbscreen/:slug*", "destination": "/index.html" },
     { "source": "/research/dbsearch", "destination": "/index.html" },
     { "source": "/research/dbsearch/:slug*", "destination": "/index.html" },
+    { "source": "/research/nameserver", "destination": "/index.html" },
+    { "source": "/research/nameserver/:slug*", "destination": "/index.html" },
     { "source": "/research/api/:fn*", "destination": "/api/:fn*" },
     { "source": "/research/:path*", "destination": "/:path*" }
   ]
