@@ -4221,6 +4221,18 @@ async function nsRunOwnerLookup(domains) {
 function nsSweepRow(label, html) {
   return html ? `<div class="ns-srow"><span class="ns-slabel">${label}</span><span class="ns-sval">${html}</span></div>` : '';
 }
+// A sweep result is a "lead" when it exposes a REAL owner contact (not a
+// privacy/role/registrar value) — a usable handle for an otherwise-murky seed.
+const NS_CONTACT_NOISE = /redact|privacy|priv(?:ate)?|proxy|whois\s?guard|withheld|not\s?disclosed|undisclosed|gdpr|data\s?protected|domains?\s?by\s?proxy|perfect\s?privacy|identity\s?protect|registrant|abuse@|hostmaster@|postmaster@|admin@|noc@/i;
+function nsLead(r) {
+  if (!r) return false;
+  if (r.internalOwner) return true;
+  const reg = r.registrant || {};
+  const cleanName = (reg.name || reg.organization) && !NS_CONTACT_NOISE.test(`${reg.name || ''} ${reg.organization || ''}`);
+  const cleanEmail = reg.email && !NS_CONTACT_NOISE.test(reg.email);
+  const siteEmail = r.site && Array.isArray(r.site.emails) && r.site.emails.some((e) => !NS_CONTACT_NOISE.test(e));
+  return !!(cleanName || cleanEmail || siteEmail || reg.phone);
+}
 function nsSweepCard(r) {
   const reg = r.registrant || {};
   const who = reg.name || reg.organization
@@ -4261,6 +4273,7 @@ function nsSweepCard(r) {
   return `<div class="ns-sweepcard${r.matches && r.matches.length ? ' ns-sweepcard-hit' : ''}">` +
     `<h4><a href="/dbscreen/${encodeURIComponent(r.domain)}" class="ns-dlink" data-domain="${escapeHtml(r.domain)}">${escapeHtml(r.domain)}</a></h4>` +
     matchBadge +
+    ((!(r.matches && r.matches.length) && nsLead(r)) ? `<div class="ns-lead">🔑 Has public owner contact — a usable lead for the seed</div>` : '') +
     (r.internalOwner ? `<div class="ns-srow"><span class="ns-slabel">In our DB</span><span class="ns-sval"><strong class="ns-known">${escapeHtml(r.internalOwner)}</strong></span></div>` : '') +
     nsSweepRow('Registrant', who) +
     nsSweepRow('Contact', [reg.email ? escapeHtml(reg.email) : '', reg.phone ? escapeHtml(reg.phone) : ''].filter(Boolean).join(' · ')) +
@@ -4282,8 +4295,18 @@ function nsSweepCards(results) {
   const shared = Object.entries(counts).filter(([, c]) => c > 1);
   const confirmed = results.filter((r) => r.matches && r.matches.length).length;
   const confirmHint = confirmed ? `<p class="ns-summary ns-confirm">🎯 ${confirmed} domain${confirmed === 1 ? '' : 's'} confirmed against the linked report — shares a contact/person with it.</p>` : '';
+  // Murky-seed play: the core is privacy-shielded, but a clearly-related sibling
+  // may expose a real contact — that's the lead. Surface those, and flag when the
+  // seed itself is a dead end so the sibling contacts are the way in.
+  const seedDom = (nsState.seed || '').toLowerCase();
+  const seedRes = results.find((r) => r.domain === seedDom);
+  const seedShielded = seedRes && !nsLead(seedRes);
+  const siblingLeads = results.filter((r) => r.domain !== seedDom && nsLead(r) && !(r.matches && r.matches.length));
+  const leadHint = siblingLeads.length
+    ? `<p class="ns-summary ns-lead-hint">🔑 ${siblingLeads.length} related sibling${siblingLeads.length === 1 ? '' : 's'} expose owner contact info${seedShielded ? ` — and the seed <strong>${escapeHtml(seedDom)}</strong> is privacy-shielded, so these are your way in` : ''}: ${siblingLeads.map((r) => `<a href="/dbscreen/${encodeURIComponent(r.domain)}" class="ns-dlink" data-domain="${escapeHtml(r.domain)}">${escapeHtml(r.domain)}</a>`).join(', ')}.</p>`
+    : '';
   const hint = shared.length ? `<p class="ns-summary">Same-registrant signal: ${shared.map(([k]) => escapeHtml(k)).join(', ')} appears on multiple domains.</p>` : '';
-  return confirmHint + hint + results.map(nsSweepCard).join('') +
+  return confirmHint + leadHint + hint + results.map(nsSweepCard).join('') +
     '<button type="button" class="ns-btn ns-btn-sm" data-act="export-owner-csv">⬇ Export sweep CSV</button>';
 }
 // Drill from a swept domain into the full Domain Owner research (free or deep).

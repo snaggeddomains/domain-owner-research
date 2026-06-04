@@ -1232,3 +1232,7 @@ body.drawer-open { overflow: hidden; }
 .ns-match { background: #d1f0d6; color: #176a2b; border-radius: 6px; padding: 6px 10px; font-weight: 700; font-size: 13px; margin: 2px 0 8px; }
 .ns-sweepcard-hit { border-color: #176a2b; box-shadow: 0 0 0 1px #176a2b22; }
 .ns-confirm { color: #176a2b; font-weight: 700; }
+
+/* Nameserver Search — contact-lead surfacing (murky seed → reachable sibling) */
+.ns-lead { background: #fdf0c8; color: #8a6300; border-radius: 6px; padding: 6px 10px; font-weight: 700; font-size: 13px; margin: 2px 0 8px; }
+.ns-lead-hint { color: #8a6300; font-weight: 700; }
