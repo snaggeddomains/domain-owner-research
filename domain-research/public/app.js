@@ -861,21 +861,31 @@ function setReportTitle(domain) {
 // user whether they're looking at the free pre-flight or a paid deep run;
 // the datetime lets them gauge staleness (especially on historical reports);
 // Refresh forces a fresh run at the same depth (server skips the cache).
-function setReportMeta(createdAt, phase) {
+// `deepIncomplete` = the user's deep pass errored/stalled and never produced a
+// deep report, so what's on screen is only the free pre-flight. Say so loudly
+// rather than letting a partial report masquerade as a finished deep one.
+function setReportMeta(createdAt, phase, opts) {
   if (!els.reportMeta) return;
   if (!createdAt) {
     els.reportMeta.hidden = true;
     els.reportMeta.innerHTML = '';
     return;
   }
+  const deepIncomplete = !!(opts && opts.deepIncomplete);
   const typeLabel = phase === 'deep' ? 'Deep research' : phase === 'shallow' ? 'Free report' : 'Report';
   const when = new Date(createdAt).toLocaleString();
-  const refreshDeep = phase === 'deep' ? 'true' : 'false';
+  // Offer to re-run the deep pass when it's the one that didn't finish; otherwise
+  // refresh matches whatever phase we have.
+  const refreshDeep = (phase === 'deep' || deepIncomplete) ? 'true' : 'false';
   els.reportMeta.hidden = false;
+  const warn = deepIncomplete
+    ? `<span class="rm-incomplete">⚠ Deep research did not complete — showing the free pre-flight report only</span> · `
+    : '';
   els.reportMeta.innerHTML =
+    warn +
     `<span class="rm-type">${escapeHtml(typeLabel)}</span> · ` +
     `<span class="rm-when">${escapeHtml(when)}</span> · ` +
-    `<a href="#" class="report-refresh" data-deep="${refreshDeep}">Refresh</a>`;
+    `<a href="#" class="report-refresh" data-deep="${refreshDeep}">${deepIncomplete ? 'Re-run deep' : 'Refresh'}</a>`;
 }
 function clearReportMeta() {
   setReportMeta(null);
@@ -1974,9 +1984,18 @@ function startPolling(runId, label) {
         if (typeof loadNotifications === 'function') loadNotifications();
       } else if (r.status === 'error') {
         clearTimers();
-        setStatus(r.error || 'The run failed.', true);
         if (els.runControls) els.runControls.hidden = true;
         els.go.disabled = false;
+        // If a free pre-flight report was already saved, keep it on screen and
+        // mark deep as incomplete (instead of just an error line that hides it).
+        if (r.report) {
+          if (r.domain) setReportTitle(r.domain);
+          renderReport(r.report);
+          setReportMeta(r.created_at, r.report.phase, { deepIncomplete: r.report.phase !== 'deep' });
+          setStatus('Deep research did not complete — showing the free pre-flight report. Re-run deep to try again.', true);
+        } else {
+          setStatus(r.error || 'The run failed.', true);
+        }
       } else if (r.status === 'cancelled') {
         clearTimers();
         setStatus('Cancelled — this run was stopped to save credits. Re-run it any time.');
@@ -2386,7 +2405,16 @@ async function openProject(id) {
       renderReport(r.report);
       setReportMeta(r.created_at, r.report && r.report.phase);
     } else if (r.status === 'error') {
-      setStatus(r.error || 'This run failed.', true);
+      // A deep pass that errored often still has the free pre-flight report
+      // saved — keep it on screen, but mark clearly that deep never finished
+      // (don't let a partial report look like a complete one).
+      if (r.report) {
+        renderReport(r.report);
+        setReportMeta(r.created_at, r.report.phase, { deepIncomplete: r.report.phase !== 'deep' });
+        setStatus('');
+      } else {
+        setStatus(r.error || 'This run failed.', true);
+      }
     } else {
       // Still running. If a free (shallow) report was already saved (e.g. a deep
       // pass is now in progress), keep it on screen instead of a blank page.

@@ -456,6 +456,7 @@ a.naming-card-domain:hover { color: var(--coral-deep); text-decoration: underlin
 .report-header .report-domain { flex: 1; min-width: 0; margin: 4px 0 0; }
 .report-meta { font-size: 14px; color: var(--muted); margin: 0 0 14px; }
 .report-meta .rm-type { font-weight: 700; color: var(--navy); }
+.report-meta .rm-incomplete { font-weight: 700; color: #b42318; }
 .report-meta a { color: var(--coral); text-decoration: none; font-weight: 600; }
 .report-meta a:hover { text-decoration: underline; }
 .report-actions { flex: none; margin: 6px 0 0; display: flex; gap: 8px; }
