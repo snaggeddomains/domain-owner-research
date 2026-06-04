@@ -4147,10 +4147,12 @@ function nsRowsHtml(rows) {
   }).join('') + '</ul>';
 }
 
+const NS_NOT_LOADED = 'The nameserver index isn’t loaded yet — zone files are still being imported. Check back once the load completes.';
 async function nsFetch(params) {
   const res = await fetch(`/research/api/nameserver?${params}`);
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`);
+  if (data.notLoaded) throw new Error(NS_NOT_LOADED);
   return data;
 }
 

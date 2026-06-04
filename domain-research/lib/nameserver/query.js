@@ -25,6 +25,25 @@ export function isConfigured() {
   return isNamingDbConfigured();
 }
 
+// The zone_domains table is loaded out-of-band (CZDS zone files → COPY). Until
+// that's done, queries fail with a missing-relation / schema-cache error — detect
+// it so the API can say "not loaded yet" instead of leaking a raw PostgREST error.
+export function isNotLoadedError(error) {
+  if (!error) return false;
+  const code = error.code || '';
+  const msg = String(error.message || '').toLowerCase();
+  return code === 'PGRST205' || code === '42P01' ||
+    msg.includes('schema cache') || msg.includes('does not exist');
+}
+function rethrow(error) {
+  if (isNotLoadedError(error)) {
+    const e = new Error('ZONE_NOT_LOADED');
+    e.code = 'ZONE_NOT_LOADED';
+    throw e;
+  }
+  throw new Error(error.message);
+}
+
 // Normalize a nameserver hostname the same way the loader does: lowercase, no
 // trailing dot, trimmed. Returns '' for junk so callers can drop it.
 export function normalizeNs(host) {
@@ -58,7 +77,7 @@ export async function lookupDomain(domain) {
     .select('domain, tld, nameservers')
     .eq('domain', d)
     .limit(1);
-  if (error) throw new Error(error.message);
+  if (error) rethrow(error);
   return (data && data[0]) || null;
 }
 
@@ -79,7 +98,7 @@ export async function domainsByNameservers({ nameservers, mode = 'all', tld = ''
   q = q.order('domain', { ascending: true }).range(off, off + lim);
 
   const { data, error } = await q;
-  if (error) throw new Error(error.message);
+  if (error) rethrow(error);
   const rows = data || [];
   const hasMore = rows.length > lim;
   return { rows: hasMore ? rows.slice(0, lim) : rows, hasMore };

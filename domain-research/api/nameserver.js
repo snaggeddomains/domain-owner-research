@@ -101,6 +101,11 @@ export default async function handler(req, res) {
 
     res.status(400).json({ error: `Unknown mode "${mode}" — use domain, ns, pairing, or relate.` });
   } catch (e) {
+    // Zone index not loaded yet (table missing) — a friendly, expected state.
+    if (e && e.code === 'ZONE_NOT_LOADED') {
+      res.status(200).json({ mode, notLoaded: true, found: false, rows: [], related: [], nameservers: [] });
+      return;
+    }
     res.status(500).json({ error: e.message || String(e) });
   }
 }
