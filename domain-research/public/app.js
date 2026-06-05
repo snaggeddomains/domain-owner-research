@@ -200,6 +200,7 @@ const els = {
   srResults: $('sr-results'), srSummary: $('sr-summary'), srShowAll: $('sr-show-all'),
   srEnrich: $('sr-enrich'), srCsv: $('sr-csv'), srTable: $('sr-table'),
   srAngles: $('sr-angles'), srAnglegate: $('sr-anglegate'), srQualify: $('sr-qualify'),
+  srPathfilter: $('sr-pathfilter'),
   srRecent: $('sr-recent'), srRecentList: $('sr-recent-list'), srRecentAll: $('sr-recent-all'),
   srProjectsSearch: $('sr-projects-search'), srProjectsList: $('sr-projects-list'),
   srEntry: $('sr-entry'), srReshead: $('sr-reshead'), srResheadSeed: $('sr-reshead-seed'), srNew: $('sr-new'),
@@ -4732,6 +4733,7 @@ let salesCandidates = [];          // cached for render + CSV
 let salesSeed = '';
 const salesCollapsed = new Set();  // candidate ids whose contacts are collapsed
 let salesAngles = [];              // angle objects from the last gate render
+let salesPathFilter = 'all';       // view filter: 'all' | 'upgrade' | 'keyword'
 
 // Pull a human string out of an API error payload. Vercel's function-timeout
 // envelope is `{error:{code,message}}`, so a naive `data.error` stringifies to
@@ -4769,7 +4771,7 @@ function setSalesMode(mode, seed) {
 function resetSalesView() {
   clearSalesPoll();
   hideAngleGate();
-  salesProjectId = null; salesCandidates = []; salesSeed = '';
+  salesProjectId = null; salesCandidates = []; salesSeed = ''; salesPathFilter = 'all';
   if (els.srDomain) els.srDomain.value = '';
   if (els.srResults) els.srResults.hidden = true;
   if (els.srTable) els.srTable.innerHTML = '';
@@ -4915,9 +4917,16 @@ function openSalesProject(id) {
   salesPollTimer = setInterval(poll, 2500);
 }
 
+// A candidate's "path": upgrades (the seed name itself, a variant TLD/affix) vs
+// keyword/category (companies surfaced by Explore-by-category). Anything without
+// an explicit category counts as an upgrade (the original discovery path).
+function salesPath(c) { return c.category === 'keyword' ? 'keyword' : 'upgrade'; }
+
 function salesVisible() {
   const showAll = els.srShowAll && els.srShowAll.checked;
-  return salesCandidates.filter((c) => showAll || c.status === 'active');
+  return salesCandidates.filter((c) =>
+    (showAll || c.status === 'active') &&
+    (salesPathFilter === 'all' || salesPath(c) === salesPathFilter));
 }
 
 function renderSalesResults(data) {
@@ -4930,6 +4939,7 @@ function renderSalesResults(data) {
 }
 
 function renderSalesTable() {
+  updatePathFilter();
   const rows = salesVisible();
   // ★ Recommended (LLM high-fit, not yet qualified) float to the very top; then
   // everything else by score (qualified ability-to-pay) then size.
@@ -5093,6 +5103,31 @@ els.srQualify?.addEventListener('click', async () => {
 });
 
 els.srShowAll?.addEventListener('change', renderSalesTable);
+
+els.srPathfilter?.addEventListener('click', (e) => {
+  const btn = e.target.closest('.sr-pf-btn');
+  if (!btn || btn.disabled) return;
+  salesPathFilter = btn.dataset.path || 'all';
+  renderSalesTable();
+});
+
+// Reflect the active path filter + per-path counts on the toggle; auto-revert to
+// "All" if the active filter would show nothing for this run.
+function updatePathFilter() {
+  if (!els.srPathfilter) return;
+  const pool = salesCandidates.filter((c) => (els.srShowAll && els.srShowAll.checked) || c.status === 'active');
+  const counts = { all: pool.length, upgrade: 0, keyword: 0 };
+  for (const c of pool) counts[salesPath(c)]++;
+  if (salesPathFilter !== 'all' && !counts[salesPathFilter]) salesPathFilter = 'all';
+  els.srPathfilter.querySelectorAll('.sr-pf-btn').forEach((b) => {
+    const p = b.dataset.path;
+    const n = counts[p] || 0;
+    b.classList.toggle('active', p === salesPathFilter);
+    b.disabled = p !== 'all' && n === 0;
+    const base = p === 'all' ? 'All' : p === 'upgrade' ? 'Upgrades' : 'Keyword';
+    b.textContent = p === 'all' ? base : `${base} ${n}`;
+  });
+}
 
 els.srEnrich?.addEventListener('click', async () => {
   const ids = selectedCandidateIds();
