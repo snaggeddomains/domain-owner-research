@@ -4737,7 +4737,8 @@ async function loadSalesRecent() {
   } catch { els.srRecent.hidden = true; }
 }
 
-// Past Sales Research runs — searchable full list.
+// Past Sales Research runs — searchable, grouped by seed domain (re-runs of the
+// same domain nest under one master, mirroring the Domain Owner report).
 let salesProjectsTimer = null;
 async function loadSalesProjects(q = '') {
   if (!els.srProjectsList) return;
@@ -4747,9 +4748,28 @@ async function loadSalesProjects(q = '') {
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || `Failed (${res.status})`);
     const projects = data.projects || [];
-    els.srProjectsList.innerHTML = projects.length
-      ? projects.map(salesProjectRow).join('')
-      : '<li class="muted">No sales research runs yet.</li>';
+    if (!projects.length) { els.srProjectsList.innerHTML = '<li class="muted">No sales research runs yet.</li>'; return; }
+    // Group by seed domain (preserves the API's created-desc order).
+    const groups = [];
+    const byDomain = new Map();
+    for (const p of projects) {
+      const key = p.seed_domain || '(unknown)';
+      if (!byDomain.has(key)) { const g = { domain: key, runs: [] }; byDomain.set(key, g); groups.push(g); }
+      byDomain.get(key).runs.push(p);
+    }
+    els.srProjectsList.innerHTML = groups.map((g) => {
+      const items = g.runs.map((p) => {
+        const when = p.created_at ? new Date(p.created_at).toLocaleString() : '';
+        const running = p.status && p.status !== 'done';
+        const meta = running ? `${escapeHtml(p.status)}…` : when;
+        return `<li class="project-run${running ? ' active' : ''}" data-id="${escapeHtml(p.id)}">${escapeHtml(meta)}</li>`;
+      }).join('');
+      const count = g.runs.length > 1 ? `<span class="project-count">${g.runs.length} runs</span>` : '';
+      return `<li class="project-group">
+        <div class="project-group-title">${escapeHtml(g.domain)}${count}</div>
+        <ul class="project-runs">${items}</ul>
+      </li>`;
+    }).join('');
   } catch (e) {
     els.srProjectsList.innerHTML = `<li class="muted">${escapeHtml(String(e.message || e))}</li>`;
   }
@@ -4993,7 +5013,7 @@ function openSalesRunFromList(li) {
   openSalesProject(li.dataset.id);
 }
 els.srRecentList?.addEventListener('click', (e) => openSalesRunFromList(e.target.closest('.recent-run')));
-els.srProjectsList?.addEventListener('click', (e) => openSalesRunFromList(e.target.closest('.recent-run')));
+els.srProjectsList?.addEventListener('click', (e) => openSalesRunFromList(e.target.closest('.project-run')));
 els.srRecentAll?.addEventListener('click', (e) => {
   if (newTabClick(e)) return;
   e.preventDefault();
