@@ -197,7 +197,7 @@ const els = {
   navNameserver: $('nav-nameserver'),
   navSales: $('nav-sales'),
   srForm: $('sr-form'), srDomain: $('sr-domain'), srGo: $('sr-go'), srStatus: $('sr-status'),
-  srResults: $('sr-results'), srSummary: $('sr-summary'), srShowAll: $('sr-show-all'),
+  srResults: $('sr-results'), srSummary: $('sr-summary'), srShowAll: $('sr-show-all'), srSelectAll: $('sr-select-all'),
   srEnrich: $('sr-enrich'), srCsv: $('sr-csv'), srTable: $('sr-table'),
   srAngles: $('sr-angles'), srAnglegate: $('sr-anglegate'), srQualify: $('sr-qualify'),
   srPathfilter: $('sr-pathfilter'),
@@ -5077,10 +5077,25 @@ function selectedCandidateIds() {
 function updateSalesEnrichBtn() {
   const ids = selectedCandidateIds();
   if (els.srEnrich) els.srEnrich.disabled = ids.length === 0;
+  // CSV exports the checked rows → disabled when nothing is checked.
+  if (els.srCsv) els.srCsv.disabled = ids.length === 0;
   // Qualify is enabled when any SELECTED company is still unqualified (no firmographics).
   const anyUnqualified = ids.some((id) => { const c = salesCandidates.find((x) => x.id === id); return c && !c.firmographics; });
   if (els.srQualify) els.srQualify.disabled = !anyUnqualified;
+  // Keep the Select-all box in sync (checked when all visible rows are ticked).
+  if (els.srSelectAll) {
+    const all = [...els.srTable.querySelectorAll('.sr-cb')];
+    els.srSelectAll.checked = all.length > 0 && ids.length === all.length;
+    els.srSelectAll.indeterminate = ids.length > 0 && ids.length < all.length;
+  }
 }
+
+// Select all / none of the currently-visible cards.
+els.srSelectAll?.addEventListener('change', () => {
+  const on = els.srSelectAll.checked;
+  els.srTable.querySelectorAll('.sr-cb').forEach((cb) => { cb.checked = on; });
+  updateSalesEnrichBtn();
+});
 
 // Manual Apollo qualify of the selected unqualified companies (the paid gate).
 els.srQualify?.addEventListener('click', async () => {
@@ -5156,11 +5171,14 @@ els.srEnrich?.addEventListener('click', async () => {
 });
 
 els.srCsv?.addEventListener('click', () => {
-  if (!salesCandidates.length) return;
+  // Export the checked rows only (Select all ticks them all).
+  const ids = new Set(selectedCandidateIds());
+  const picked = salesCandidates.filter((c) => ids.has(c.id));
+  if (!picked.length) return;
   const cell = (v) => { const s = v == null ? '' : String(v); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
   const header = ['Company', 'Domain', 'Status', 'Ability to pay', 'Employees', 'Funding', 'Location', 'Why', 'Contact name', 'Title', 'Email', 'Phone', 'LinkedIn'];
   let csv = header.map(cell).join(',') + '\n';
-  for (const c of salesVisible()) {
+  for (const c of picked) {
     const base = [c.company, c.domain, c.status, c.tier, c.employee_count, c.funding, c.location, c.match_reason];
     const contacts = c.contacts && c.contacts.length ? c.contacts : [null];
     for (const p of contacts) {
