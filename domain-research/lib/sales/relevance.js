@@ -35,20 +35,25 @@ export async function gateRelevance(seedDomain, rows, env = process.env) {
     return `${i}. ${r.company} (${r.domain})${bits ? ` — ${bits}` : ''}`;
   }).join('\n');
 
-  const prompt = `We are selling the premium domain "${seedDomain}". For EACH company below, decide whether "${seedDomain}" is a RELEVANT acquisition for them — i.e. the domain fits their brand, product, or market and they'd plausibly want it. Mark as NOT relevant the companies whose match is only coincidental (the word appears in their name or they happen to own a similar domain, but their actual business — e.g. a school, a souvenir shop, a local services firm — has nothing to do with the domain's meaning).
+  const prompt = `We are selling the premium domain "${seedDomain}". For EACH company below, decide whether it is a REALISTIC, HIGH-QUALITY BUYER for "${seedDomain}" — a real commercial company whose brand/product/market fits the domain AND who could plausibly pay for and use a premium generic .com.
+
+Mark as NOT relevant (relevant:false):
+  • Coincidental matches — the word is in their name or they own a similar domain, but the business (a school, a souvenir shop, a local services firm, a task/other-product app) has nothing to do with the domain's meaning.
+  • Low-quality / non-acquirer entities even if topically on-theme: personal brands or individual professionals (a doctor, a coach), content blogs / media sites, nonprofits / .org community projects, forums or Q&A community properties, and tiny 1–3 person hobby sites.
+Only mark relevant:true for a genuine company/product that would be a credible buyer.
 
 Companies:
 ${list}
 
 Return JSON only — an array, one entry per number:
 {"verdicts":[{"i":0,"relevant":true,"reason":"3-5 words"}]}
-Be strict: irrelevant-but-large still counts as NOT relevant.`;
+Be strict: irrelevant-or-low-quality, even if large, counts as NOT relevant.`;
 
   let parsed = null;
   try {
     const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY });
     const model = env.SALES_RELEVANCE_MODEL || env.SALES_ANGLE_MODEL || env.OUTREACH_MODEL || 'claude-sonnet-4-6';
-    const resp = await client.messages.create({ model, max_tokens: 2000, messages: [{ role: 'user', content: prompt }] });
+    const resp = await client.messages.create({ model, max_tokens: 2000, temperature: 0, messages: [{ role: 'user', content: prompt }] });
     const text = (resp.content || []).filter((b) => b.type === 'text').map((b) => b.text).join('\n');
     parsed = parseJsonLoose(text);
   } catch { return rows; }   // fail open — never block the pipeline on relevance

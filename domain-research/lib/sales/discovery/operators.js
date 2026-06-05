@@ -41,6 +41,16 @@ export function hasWordElement(name, word) {
   return tokens.includes(w);
 }
 
+// Reject subdomains (ask.libreoffice.org, apple.stackexchange.com) — those are Q&A
+// properties of a bigger platform, not an acquirable apex domain or a real buyer.
+const TWO_PART_TLD = new Set(['co.uk', 'org.uk', 'com.au', 'co.nz', 'co.jp', 'com.br', 'co.za', 'co.in', 'com.mx', 'co.il']);
+function isSubdomain(domain) {
+  const labels = String(domain || '').split('.').filter(Boolean);
+  if (labels.length <= 2) return false;
+  if (labels.length === 3 && TWO_PART_TLD.has(labels.slice(1).join('.'))) return false;  // apex on a 2-part ccTLD
+  return true;
+}
+
 // Liveness probe — drop hallucinated / dead domains so only real operators surface.
 async function isLive(domain, timeout = 5000) {
   const probe = async (url) => {
@@ -85,7 +95,10 @@ For EACH: the exact brand name and its primary website domain. REAL, verifiable 
 Return JSON only:
 {"companies":[{"name":"Brand Name","domain":"brand.com"}]}
 List up to ${limit}. The word "${sld}" must genuinely be part of each brand name.`;
-  const resp = await client.messages.create({ model, max_tokens: 4000, messages: [{ role: 'user', content: prompt }] });
+  // temperature 0 → stable, canonical output run-over-run. Default sampling made
+  // each run return a different subset (a great buyer like AskNicely would appear
+  // one run and vanish the next); deterministic keeps the best-known set every time.
+  const resp = await client.messages.create({ model, max_tokens: 4000, temperature: 0, messages: [{ role: 'user', content: prompt }] });
   const text = (resp.content || []).filter((b) => b.type === 'text').map((b) => b.text).join('\n');
   const parsed = parseJsonLoose(text);
   const arr = (parsed && Array.isArray(parsed.companies)) ? parsed.companies : [];
@@ -110,6 +123,7 @@ export async function discoverOperators(seedDomain, env = process.env, { limit =
   const filtered = [];
   for (const c of raw) {
     if (!c.domain || seen.has(c.domain)) continue;
+    if (isSubdomain(c.domain)) continue;                                   // no Q&A subdomains
     const domSld = seedParts(c.domain).sld;
     if (!(hasWordElement(c.name, sld) || domSld.includes(sld))) continue;  // precision gate
     seen.add(c.domain);
