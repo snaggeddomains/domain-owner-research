@@ -5130,23 +5130,40 @@ els.srSelectAll?.addEventListener('change', () => {
 });
 
 // Manual Apollo qualify of the selected unqualified companies (the paid gate).
+const QUALIFY_CHUNK = 10;   // bound each request well under the 60s API cap
 els.srQualify?.addEventListener('click', async () => {
   const ids = selectedCandidateIds().filter((id) => { const c = salesCandidates.find((x) => x.id === id); return c && !c.firmographics; });
   if (!ids.length) return;
   els.srQualify.disabled = true;
   const orig = els.srQualify.textContent;
-  els.srQualify.textContent = `Qualifying ${ids.length}…`;
   // Optimistically mark them pending-ish in the UI.
   for (const id of ids) { const c = salesCandidates.find((x) => x.id === id); if (c) c._qualifying = true; }
   renderSalesTable();
+  // Qualify in chunks so a large selection can't blow the API's 60s cap; refresh
+  // after each chunk so results stream in and a mid-batch failure keeps prior work.
+  let done = 0;
   try {
-    await fetch('/research/api/sales', {
-      method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ action: 'qualify', ids }),
-    });
-    await refreshSalesProject();   // pull the filled-in firmographics + re-rank
-  } catch { /* leave as-is */ }
-  els.srQualify.textContent = orig;
+    for (let i = 0; i < ids.length; i += QUALIFY_CHUNK) {
+      const batch = ids.slice(i, i + QUALIFY_CHUNK);
+      els.srQualify.textContent = ids.length > QUALIFY_CHUNK ? `Qualifying ${done + 1}–${done + batch.length} of ${ids.length}…` : `Qualifying ${batch.length}…`;
+      try {
+        await fetch('/research/api/sales', {
+          method: 'POST', headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ action: 'qualify', ids: batch }),
+        });
+      } catch { /* leave this batch as-is; keep going */ }
+      done += batch.length;
+      await refreshSalesProject();   // pull filled-in firmographics + re-rank as we go
+      // Keep the spinner on companies whose chunk hasn't run yet.
+      const pending = new Set(ids.slice(done));
+      if (pending.size) {
+        for (const c of salesCandidates) if (pending.has(c.id)) c._qualifying = true;
+        renderSalesTable();
+      }
+    }
+  } finally {
+    els.srQualify.textContent = orig;
+  }
 });
 
 els.srShowAll?.addEventListener('change', renderSalesTable);
