@@ -4977,15 +4977,19 @@ function renderSalesTable() {
     const angleBadge = c.category === 'keyword' && c.angle
       ? `<span class="sr-angle-badge">${escapeHtml(String(c.angle).replace(/_/g, ' '))}</span>` : '';
     const unq = !c.firmographics;   // keyword/angle company not yet Apollo-qualified
+    const recommend = unq && c.category === 'keyword' && Number(c.score) >= 2
+      ? '<span class="sr-rec-badge">★ recommended</span>' : '';
+    // The free LLM "why this company would want it" (for unqualified picks).
+    const whyLine = unq && c.match_reason ? `<div class="sr-why-llm">${escapeHtml(c.match_reason)}</div>` : '';
     const qualifying = c._qualifying
       ? '<div class="sr-contacts-note sr-enriching"><span class="sr-spin"></span> Qualifying (ability-to-pay)…</div>'
-      : (unq ? '<div class="sr-unq muted">Not yet qualified — tick + “Qualify selected” to score ability-to-pay.</div>' : '');
+      : (unq ? `${whyLine}<div class="sr-unq muted">Not yet qualified — tick + “Qualify selected” to score ability-to-pay &amp; pull contacts.</div>` : '');
     return `
     <div class="sr-card sr-card-${escapeHtml(c.tier || 'unknown')}${unq ? ' sr-card-unq' : ''}" data-id="${escapeHtml(c.id)}">
       <div class="sr-card-head">
         <label class="sr-card-check"><input type="checkbox" class="sr-cb" data-id="${escapeHtml(c.id)}"></label>
         <div class="sr-card-id">
-          <div class="sr-card-name">${escapeHtml(c.company || '—')}${angleBadge}</div>
+          <div class="sr-card-name">${escapeHtml(c.company || '—')}${recommend}${angleBadge}</div>
           <div class="sr-card-links">
             <a class="sr-card-domain" href="https://${escapeHtml(c.domain)}" target="_blank" rel="noopener">${escapeHtml(c.domain)}</a>
             ${coLi ? `<a class="sr-card-li" href="${escapeHtml(coLi)}" target="_blank" rel="noopener" title="Company LinkedIn" aria-label="Company LinkedIn">in</a>` : ''}
