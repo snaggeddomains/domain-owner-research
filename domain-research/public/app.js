@@ -4047,9 +4047,15 @@ els.report?.addEventListener('click', async (ev) => {
   const name = btn.dataset.name || '';
   const linkedin_url = btn.dataset.linkedin || '';
   if (btn.disabled) return;
-  btn.disabled = true;
   const orig = btn.textContent;
+  // The "premium · spends a credit" note doubles as our PERSISTENT status line —
+  // the outcome stays visible instead of flashing for 2.5s, so the user always
+  // knows whether the lookup found a phone, came up empty, or errored.
+  const note = (btn.closest('.lc-enhance') || btn.parentElement)?.querySelector('.lc-enhance-note');
+  const setNote = (txt, cls) => { if (note) { note.textContent = txt; note.className = `lc-enhance-note${cls ? ` lc-enhance-note-${cls}` : ''}`; } };
+  btn.disabled = true;
   btn.textContent = 'Looking up phone… (~30s)';
+  setNote('Checking FullEnrich…', '');
   try {
     const res = await fetch('/research/api/research', {
       method: 'POST',
@@ -4058,16 +4064,24 @@ els.report?.addEventListener('click', async (ev) => {
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.error || `Failed (${res.status})`);
-    if (data.found) {
+    const phones = Array.isArray(data.phones) ? data.phones : [];
+    if (phones.length) {
+      // A phone came back — re-render so it shows in the contact card (persisted
+      // onto the run, so a reload won't re-spend the credit).
       const r = await pollRun(currentRunId);
-      renderReport(r.report); // re-render with the persisted enhancement merged in
+      renderReport(r.report);
     } else {
-      btn.textContent = 'No phone found';
-      setTimeout(() => { btn.textContent = orig; btn.disabled = false; }, 2500);
+      // Tried, but FullEnrich had no phone for this person. Keep the outcome
+      // PERSISTENT (no auto-revert) and re-enable the button so retry is one click.
+      const emailNote = (Array.isArray(data.emails) && data.emails.length) ? ' (an email is shown above)' : '';
+      btn.textContent = orig;
+      btn.disabled = false;
+      setNote(`No phone number found for this person${emailNote}. Click to try again.`, 'miss');
     }
   } catch (err) {
-    btn.textContent = `⚠️ ${err.message || 'Failed'}`;
-    setTimeout(() => { btn.textContent = orig; btn.disabled = false; }, 3000);
+    btn.textContent = orig;
+    btn.disabled = false;
+    setNote(`⚠️ Lookup failed: ${err.message || 'error'}. Click to try again.`, 'err');
   }
 });
 
