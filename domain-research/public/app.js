@@ -5314,15 +5314,46 @@ function renderAngleGate(angles) {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(apiErrText(data, res));
+      // Runs async in the background now (was timing out the request on mobile).
       els.srAnglegate.hidden = true;
-      await refreshSalesProject();    // pull the new keyword companies into the list
-      setSalesStatus(`Added ${data.added} companies from ${n} ${catWord}. Tick the ones worth qualifying, then "Qualify selected".`);
-      setTimeout(() => setSalesStatus(''), 6000);
+      const before = salesCandidates.length;
+      setSalesStatus(`Researching ${n} ${catWord}… this runs in the background — you can keep working.`);
+      pollAnglesUntilDone(n, catWord, before);
     } catch (err) {
       note.innerHTML = `<span class="sr-status-err">${escapeHtml(String(err.message || err))}</span>`;
       btn.disabled = false;
     }
   });
+}
+
+// Poll the project after dispatching a category fan-out (async Inngest) and render
+// the appended companies when it lands.
+let salesAnglePollTimer = null;
+function pollAnglesUntilDone(n, catWord, beforeCount) {
+  if (salesAnglePollTimer) clearInterval(salesAnglePollTimer);
+  const pid = salesProjectId;
+  let tries = 0;
+  salesAnglePollTimer = setInterval(async () => {
+    if (pid !== salesProjectId) { clearInterval(salesAnglePollTimer); return; }   // user moved on
+    tries += 1;
+    try {
+      const res = await fetch(`/research/api/sales?id=${encodeURIComponent(pid)}`);
+      const data = await res.json();
+      if (!res.ok) return;
+      const st = data.project && data.project.status;
+      if (st === 'done') {
+        clearInterval(salesAnglePollTimer);
+        renderSalesResults(data);
+        const added = (data.candidates || []).length - beforeCount;
+        setSalesStatus(`Added ${added > 0 ? added : 0} companies from ${n} ${catWord}. Tick the ones to qualify, then “Qualify selected”.`);
+        setTimeout(() => setSalesStatus(''), 8000);
+      } else if (st === 'failed') {
+        clearInterval(salesAnglePollTimer);
+        setSalesStatus(data.project.error || 'Category research failed', true);
+      }
+    } catch { /* transient — keep polling */ }
+    if (tries > 120) { clearInterval(salesAnglePollTimer); setSalesStatus('Still working… refresh in a moment to see results.'); }
+  }, 3000);
 }
 
 // Re-pull the current project's candidates and re-render (after angle research / qualify).

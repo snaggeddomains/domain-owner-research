@@ -1,4 +1,4 @@
-import { inngest, RUN_REQUESTED, CHAT_REQUESTED, RUN_CANCELLED, SALES_RESEARCH_REQUESTED } from './client.js';
+import { inngest, RUN_REQUESTED, CHAT_REQUESTED, RUN_CANCELLED, SALES_RESEARCH_REQUESTED, SALES_ANGLES_REQUESTED } from './client.js';
 import { gather, critique, chatTurn } from '../agent.js';
 import { setRunStatus, saveRunReport, failRun, getRun } from '../db/runs.js';
 import { getChat, updateTurn } from '../db/chat.js';
@@ -11,6 +11,7 @@ import { reportUrl, salesUrl } from '../reportUrl.js';
 import { summarizeReport } from '../reportSummary.js';
 import { discoverUpgrade } from '../sales/discovery/upgrade.js';
 import { discoverOperators } from '../sales/discovery/operators.js';
+import { discoverAngles } from '../sales/discovery/keyword.js';
 import { gateRelevance } from '../sales/relevance.js';
 import { resolveCandidates } from '../sales/resolve.js';
 import {
@@ -445,4 +446,34 @@ export const runSalesResearch = inngest.createFunction(
   },
 );
 
-export const functions = [runResearch, runChat, runSalesResearch];
+// Tier-2 category fan-out (Explore by category) — async so multiple per-category
+// LLM calls + liveness checks aren't bound by the API's 60s cap (which surfaced on
+// mobile as "Load failed"). Appends the discovered companies to the project.
+export const runSalesAngles = inngest.createFunction(
+  { id: 'sales-angles', name: 'Sales Research — category fan-out' },
+  { event: SALES_ANGLES_REQUESTED },
+  async ({ event, step }) => {
+    const { projectId, angles, limit } = event.data;
+    if (!projectId || !Array.isArray(angles) || !angles.length) return { ok: false, reason: 'bad payload' };
+    try {
+      const project = await step.run('load', () => getSalesProject(projectId));
+      if (!project) return { ok: false, reason: 'not found' };
+      await step.run('mark-running', () => setSalesProjectStatus(projectId, 'running', 'categories'));
+
+      const fresh = await step.run('discover-angles', async () => {
+        const discovered = await discoverAngles(project.seed_domain, angles, process.env, { limitPerAngle: limit || 15 });
+        const existing = new Set((await listSalesCandidates(projectId)).map((c) => (c.domain || '').toLowerCase()));
+        return discovered.filter((c) => c.domain && !existing.has(c.domain.toLowerCase()));
+      });
+      if (fresh.length) await step.run('persist', () => insertSalesCandidates(projectId, fresh));
+      await step.run('mark-done', () => setSalesProjectStatus(projectId, 'done', 'done'));
+      await step.run('notify', () => createSalesNotification(projectId).catch(() => ({ created: false })));
+      return { ok: true, added: fresh.length };
+    } catch (err) {
+      await step.run('mark-error', () => setSalesProjectStatus(projectId, 'failed', null, String(err?.message || err)));
+      throw err;
+    }
+  },
+);
+
+export const functions = [runResearch, runChat, runSalesResearch, runSalesAngles];

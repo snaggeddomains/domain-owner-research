@@ -11,16 +11,15 @@
 
 import { isAuthed, requirePermission } from '../lib/auth.js';
 import { isDbConfigured } from '../lib/db/supabase.js';
-import { inngest, SALES_RESEARCH_REQUESTED } from '../lib/inngest/client.js';
+import { inngest, SALES_RESEARCH_REQUESTED, SALES_ANGLES_REQUESTED } from '../lib/inngest/client.js';
 import { seedParts } from '../lib/sales/discovery/upgrade.js';
 import { anglesForSeed } from '../lib/sales/discovery/angles.js';
-import { discoverAngles } from '../lib/sales/discovery/keyword.js';
 import { enrichCompany } from '../lib/sales/enrich/contacts.js';
 import { firmographics, abilityToPay } from '../lib/sales/enrich/firmographics.js';
 import {
   createSalesProject, getSalesProject, listSalesProjects, listSalesCandidates, getSalesCandidate,
   setSalesSelection, setCandidateEnrichStatus, replaceCandidateContacts, listContactsForCandidates,
-  insertSalesCandidates, updateCandidateQualification,
+  insertSalesCandidates, updateCandidateQualification, setSalesProjectStatus,
 } from '../lib/db/sales.js';
 
 export const config = { maxDuration: 60 };
@@ -93,12 +92,11 @@ async function handleResearchAngles(body, res) {
   const project = await getSalesProject(projectId);
   if (!project) { res.status(404).json({ error: 'Project not found' }); return; }
   try {
-    const discovered = await discoverAngles(project.seed_domain, angles, process.env, { limitPerAngle: limit });
-    // Skip companies already in the project (dedupe by domain).
-    const existing = new Set((await listSalesCandidates(projectId)).map((c) => (c.domain || '').toLowerCase()));
-    const fresh = discovered.filter((c) => c.domain && !existing.has(c.domain.toLowerCase()));
-    if (fresh.length) await insertSalesCandidates(projectId, fresh);
-    res.status(200).json({ ok: true, added: fresh.length });
+    // ASYNC: the per-category LLM + liveness fan-out can exceed the 60s API cap
+    // (which surfaced on mobile as "Load failed"), so hand it to Inngest and poll.
+    await setSalesProjectStatus(projectId, 'running', 'categories');
+    await inngest.send({ name: SALES_ANGLES_REQUESTED, data: { projectId, angles, limit } });
+    res.status(202).json({ ok: true, async: true });
   } catch (e) {
     res.status(500).json({ error: String(e.message || e) });
   }
