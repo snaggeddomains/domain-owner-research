@@ -1,4 +1,4 @@
-import { inngest, RUN_REQUESTED, CHAT_REQUESTED, RUN_CANCELLED } from './client.js';
+import { inngest, RUN_REQUESTED, CHAT_REQUESTED, RUN_CANCELLED, SALES_RESEARCH_REQUESTED } from './client.js';
 import { gather, critique, chatTurn } from '../agent.js';
 import { setRunStatus, saveRunReport, failRun, getRun } from '../db/runs.js';
 import { getChat, updateTurn } from '../db/chat.js';
@@ -9,6 +9,11 @@ import { loadLessonsAddendum, bumpAppliedCounts } from '../db/lessons.js';
 import { sendEmail, isEmailConfigured } from '../email.js';
 import { reportUrl } from '../reportUrl.js';
 import { summarizeReport } from '../reportSummary.js';
+import { discoverUpgrade } from '../sales/discovery/upgrade.js';
+import { resolveCandidates } from '../sales/resolve.js';
+import {
+  setSalesProjectStatus, insertSalesCandidates, getSalesProject,
+} from '../db/sales.js';
 
 // Format the refine-chat history as a single corrections block the agent can
 // treat as authoritative. Only the user-assistant pairs that contain actual
@@ -340,4 +345,45 @@ export const runChat = inngest.createFunction(
   },
 );
 
-export const functions = [runResearch, runChat];
+// ── Sales Research Agent (Phase 1A — Upgrade) ───────────────────────────────
+// Deterministic pipeline: DISCOVER (free enumerate × autocomplete) → RESOLVE +
+// CLASSIFY + RANK (firmographics + ability-to-pay; enriches ACTIVE candidates
+// only — cost control) → persist candidates. Contact ENRICH is a separate
+// on-demand step (api/sales.js → enrichCompany), not part of this run.
+export const runSalesResearch = inngest.createFunction(
+  {
+    id: 'run-sales-research',
+    retries: 1,
+    onFailure: async ({ event, step }) => {
+      const projectId = event?.data?.event?.data?.projectId;
+      const message = String(event?.data?.error?.message || 'failed').slice(0, 500);
+      if (projectId) await step.run('mark-failed', () => setSalesProjectStatus(projectId, 'failed', null, message));
+    },
+  },
+  { event: SALES_RESEARCH_REQUESTED },
+  async ({ event, step }) => {
+    const { projectId } = event.data;
+    try {
+      const project = await step.run('load', () => getSalesProject(projectId));
+      if (!project) return { projectId, ok: false, reason: 'not found' };
+
+      // DISCOVER — free. (classifyStatus:false; RESOLVE does the heavier classify.)
+      await step.run('mark-discover', () => setSalesProjectStatus(projectId, 'running', 'discover'));
+      const raw = await step.run('discover', () => discoverUpgrade(project.seed_domain, { classifyStatus: false }));
+
+      // RESOLVE + CLASSIFY + RANK — enriches active candidates only.
+      await step.run('mark-resolve', () => setSalesProjectStatus(projectId, 'running', 'resolve'));
+      const resolved = await step.run('resolve', () => resolveCandidates(raw, { env: process.env, enrich: true }));
+
+      await step.run('persist', () => insertSalesCandidates(projectId, resolved));
+      await step.run('mark-done', () => setSalesProjectStatus(projectId, 'done', 'done'));
+      return { projectId, ok: true, candidates: resolved.length };
+    } catch (err) {
+      const message = String(err?.message || err);
+      await step.run('mark-error', () => setSalesProjectStatus(projectId, 'failed', null, message));
+      throw err;
+    }
+  },
+);
+
+export const functions = [runResearch, runChat, runSalesResearch];

@@ -1262,3 +1262,33 @@ body.drawer-open { overflow: hidden; }
 .ns-recent-chip { background: #fff; border: 1px solid var(--line); border-radius: 999px; padding: 4px 12px; font-size: 13px; font-weight: 600; color: var(--navy); cursor: pointer; }
 .ns-recent-chip:hover { border-color: var(--coral); color: var(--coral); }
 .ns-recent-clear { background: none; border: 0; color: var(--muted); font-size: 12px; cursor: pointer; text-decoration: underline; }
+
+/* ── Sales Research ────────────────────────────────────────────────────────── */
+.sr-form { display: flex; gap: 8px; max-width: 640px; }
+.sr-form input { flex: 1; }
+.sr-status { margin: 14px 0; color: var(--navy-3); font-size: 14px; }
+.sr-status-err { color: #c0392b; }
+.sr-results { margin-top: 18px; }
+.sr-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 10px; }
+.sr-summary { font-size: 14px; color: var(--navy); }
+.sr-actions { display: flex; align-items: center; gap: 10px; }
+.sr-show-inactive { font-size: 12px; color: var(--navy-3); display: flex; align-items: center; gap: 4px; }
+.sr-btn { padding: 7px 12px; font-size: 13px; }
+.sr-btn:disabled { opacity: .5; cursor: default; }
+.sr-table-wrap { overflow-x: auto; }
+.sr-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.sr-table th, .sr-table td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line, #e7e9ee); vertical-align: top; }
+.sr-table th { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--navy-3); }
+.sr-co-name { font-weight: 600; color: var(--navy); }
+.sr-why { font-size: 11px; color: var(--navy-3); margin-top: 2px; }
+.sr-contacts { margin-top: 6px; padding-top: 6px; border-top: 1px dashed var(--line, #e7e9ee); }
+.sr-contact { font-size: 12px; color: var(--navy); line-height: 1.5; }
+.sr-tier { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; text-transform: capitalize; }
+.sr-tier-strong { background: #e3f6e9; color: #1b7a3d; }
+.sr-tier-medium { background: #fff3da; color: #946200; }
+.sr-tier-low { background: #f0f1f4; color: #6b7280; }
+.sr-tier-unknown { background: #f0f1f4; color: #9aa0aa; }
+.sr-st { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; text-transform: capitalize; }
+.sr-st-active { background: #e3f6e9; color: #1b7a3d; }
+.sr-st-for_sale { background: #fdeaea; color: #b23b3b; }
+.sr-st-inactive { background: #f0f1f4; color: #9aa0aa; }

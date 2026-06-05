@@ -192,6 +192,10 @@ const els = {
   navDbscreen: $('nav-dbscreen'),
   navDbsearch: $('nav-dbsearch'),
   navNameserver: $('nav-nameserver'),
+  navSales: $('nav-sales'),
+  srForm: $('sr-form'), srDomain: $('sr-domain'), srGo: $('sr-go'), srStatus: $('sr-status'),
+  srResults: $('sr-results'), srSummary: $('sr-summary'), srShowAll: $('sr-show-all'),
+  srEnrich: $('sr-enrich'), srCsv: $('sr-csv'), srTable: $('sr-table'),
   nsModeToggle: $('ns-modetoggle'), nsMatchToggle: $('ns-matchtoggle'),
   nsDomainForm: $('ns-domain-form'), nsDomain: $('ns-domain'),
   nsNsForm: $('ns-ns-form'), nsNs: $('ns-ns'), nsTld: $('ns-tld'),
@@ -474,6 +478,12 @@ function route() {
     showView('nameserver');
     if (tr.slug) { nsSetMode('domain'); if (els.nsDomain) els.nsDomain.value = tr.slug; runNsDomain(tr.slug); }
     else nsReset();
+    return;
+  }
+  if (tr && tr.tool === 'sales') {
+    showView('sales');
+    if (tr.slug) openSalesProject(tr.slug);
+    else resetSalesView();
     return;
   }
   if (tr && tr.tool === 'admin') {
@@ -1529,6 +1539,7 @@ function gateNavByPermissions(user) {
   if (els.navDbscreen) els.navDbscreen.hidden = !can('dbscreen');
   if (els.navDbsearch) els.navDbsearch.hidden = !can('dbsearch');
   if (els.navNameserver) els.navNameserver.hidden = !can('nameserver');
+  if (els.navSales) els.navSales.hidden = !can('sales');
   // Owner outreach is a report-page feature (not a nav module); cache whether
   // this user may use it so renderReport can show/hide the launcher button.
   canOutreach = can('outreach');
@@ -2456,6 +2467,7 @@ const VIEWS = {
   dbscreen: { view: 'view-dbscreen', nav: 'nav-dbscreen' },
   dbsearch: { view: 'view-dbsearch', nav: 'nav-dbsearch' },
   nameserver: { view: 'view-nameserver', nav: 'nav-nameserver' },
+  sales: { view: 'view-sales', nav: 'nav-sales' },
   admin: { view: 'view-admin', nav: 'nav-admin' },
 };
 function showView(name) {
@@ -4636,6 +4648,193 @@ async function runNsList() {
 }
 
 els.navNameserver?.addEventListener('click', (e) => { if (newTabClick(e)) return; e.preventDefault(); setToolUrl('nameserver', ''); route(); });
+els.navSales?.addEventListener('click', (e) => { if (newTabClick(e)) return; e.preventDefault(); setToolUrl('sales', ''); route(); });
+
+// ── Sales Research ───────────────────────────────────────────────────────────
+let salesProjectId = null;
+let salesPollTimer = null;
+let salesCandidates = [];          // cached for render + CSV
+let salesSeed = '';
+
+function setSalesStatus(msg, isErr = false) {
+  if (!els.srStatus) return;
+  els.srStatus.hidden = !msg;
+  els.srStatus.textContent = msg || '';
+  els.srStatus.classList.toggle('sr-status-err', !!isErr);
+}
+function clearSalesPoll() { if (salesPollTimer) { clearInterval(salesPollTimer); salesPollTimer = null; } }
+
+function resetSalesView() {
+  clearSalesPoll();
+  salesProjectId = null; salesCandidates = []; salesSeed = '';
+  if (els.srDomain) els.srDomain.value = '';
+  if (els.srResults) els.srResults.hidden = true;
+  if (els.srTable) els.srTable.innerHTML = '';
+  setSalesStatus('');
+}
+
+els.srForm?.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const domain = (els.srDomain.value || '').trim().toLowerCase();
+  if (!domain) return;
+  els.srGo.disabled = true;
+  setSalesStatus('Starting discovery…');
+  if (els.srResults) els.srResults.hidden = true;
+  try {
+    const res = await fetch('/research/api/sales', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ action: 'create', domain }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || `Failed (${res.status})`);
+    setToolUrl('sales', data.project_id);
+    openSalesProject(data.project_id);
+  } catch (err) {
+    setSalesStatus(String(err.message || err), true);
+    els.srGo.disabled = false;
+  }
+});
+
+function openSalesProject(id) {
+  clearSalesPoll();
+  salesProjectId = id;
+  els.srGo.disabled = true;
+  setSalesStatus('Discovering candidates and qualifying ability-to-pay…');
+  const poll = async () => {
+    try {
+      const res = await fetch(`/research/api/sales?id=${encodeURIComponent(id)}`);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || `Poll failed (${res.status})`);
+      const st = data.project.status;
+      if (st === 'done') {
+        clearSalesPoll();
+        els.srGo.disabled = false;
+        renderSalesResults(data);
+      } else if (st === 'failed') {
+        clearSalesPoll();
+        els.srGo.disabled = false;
+        setSalesStatus(data.project.error || 'Run failed', true);
+      } else {
+        setSalesStatus(`Working… (${data.project.stage || st})`);
+      }
+    } catch (err) {
+      clearSalesPoll();
+      els.srGo.disabled = false;
+      setSalesStatus(String(err.message || err), true);
+    }
+  };
+  poll();
+  salesPollTimer = setInterval(poll, 2500);
+}
+
+function salesVisible() {
+  const showAll = els.srShowAll && els.srShowAll.checked;
+  return salesCandidates.filter((c) => showAll || c.status === 'active');
+}
+
+function renderSalesResults(data) {
+  salesSeed = data.project.seed_domain || '';
+  salesCandidates = data.candidates || [];
+  setSalesStatus('');
+  if (els.srResults) els.srResults.hidden = false;
+  renderSalesTable();
+}
+
+function renderSalesTable() {
+  const rows = salesVisible();
+  const active = salesCandidates.filter((c) => c.status === 'active').length;
+  const strong = salesCandidates.filter((c) => c.tier === 'strong').length;
+  if (els.srSummary) {
+    els.srSummary.innerHTML = `<strong>${escapeHtml(salesSeed)}</strong> — ${salesCandidates.length} companies · ${active} active · ${strong} strong-fit`;
+  }
+  if (!rows.length) { els.srTable.innerHTML = '<p class="muted">No candidates to show.</p>'; updateSalesEnrichBtn(); return; }
+  const tierBadge = (t) => `<span class="sr-tier sr-tier-${t || 'unknown'}">${escapeHtml(t || '—')}</span>`;
+  const statusBadge = (s) => `<span class="sr-st sr-st-${s || 'unknown'}">${escapeHtml(s || '—')}</span>`;
+  const body = rows.map((c) => {
+    const contacts = (c.contacts || []).map((p) =>
+      `<div class="sr-contact">${escapeHtml(p.name || '—')}${p.title ? ` · ${escapeHtml(p.title)}` : ''}` +
+      `${p.email ? ` · <a href="mailto:${escapeHtml(p.email)}">${escapeHtml(p.email)}</a>` : ''}` +
+      `${p.phone ? ` · ${escapeHtml(p.phone)}` : ''}` +
+      `${p.linkedin ? ` · <a href="${escapeHtml(p.linkedin)}" target="_blank" rel="noopener">in</a>` : ''}</div>`).join('');
+    const enrichCell = c.enrich_status === 'done'
+      ? (contacts || '<span class="muted">no contacts found</span>')
+      : c.enrich_status === 'pending' ? '<span class="muted">enriching…</span>'
+      : c.enrich_status === 'failed' ? '<span class="sr-status-err">enrich failed</span>' : '';
+    return `<tr data-id="${escapeHtml(c.id)}">
+      <td><input type="checkbox" class="sr-cb" data-id="${escapeHtml(c.id)}"></td>
+      <td class="sr-co"><div class="sr-co-name">${escapeHtml(c.company || '—')}</div>${c.match_reason ? `<div class="sr-why">${escapeHtml(c.match_reason)}</div>` : ''}${enrichCell ? `<div class="sr-contacts">${enrichCell}</div>` : ''}</td>
+      <td><a href="https://${escapeHtml(c.domain)}" target="_blank" rel="noopener">${escapeHtml(c.domain)}</a></td>
+      <td>${statusBadge(c.status)}</td>
+      <td>${tierBadge(c.tier)}</td>
+      <td>${c.employee_count != null ? escapeHtml(String(c.employee_count)) : '—'}</td>
+      <td>${escapeHtml(c.funding || '—')}</td>
+      <td>${escapeHtml(c.location || '—')}</td>
+    </tr>`;
+  }).join('');
+  els.srTable.innerHTML = `<table class="sr-table">
+    <thead><tr><th></th><th>Company</th><th>Domain</th><th>Status</th><th>Ability to pay</th><th>Staff</th><th>Funding</th><th>Location</th></tr></thead>
+    <tbody>${body}</tbody></table>`;
+  els.srTable.querySelectorAll('.sr-cb').forEach((cb) => cb.addEventListener('change', updateSalesEnrichBtn));
+  updateSalesEnrichBtn();
+}
+
+function selectedCandidateIds() {
+  return [...els.srTable.querySelectorAll('.sr-cb:checked')].map((cb) => cb.dataset.id);
+}
+function updateSalesEnrichBtn() {
+  if (els.srEnrich) els.srEnrich.disabled = selectedCandidateIds().length === 0;
+}
+
+els.srShowAll?.addEventListener('change', renderSalesTable);
+
+els.srEnrich?.addEventListener('click', async () => {
+  const ids = selectedCandidateIds();
+  if (!ids.length || !salesProjectId) return;
+  els.srEnrich.disabled = true;
+  // Persist selection, then enrich each selected company sequentially (RocketReach).
+  try {
+    await fetch('/research/api/sales', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ action: 'select', project_id: salesProjectId, ids, selected: true }),
+    });
+  } catch { /* non-fatal */ }
+  for (const id of ids) {
+    const cand = salesCandidates.find((c) => c.id === id);
+    if (cand) { cand.enrich_status = 'pending'; renderSalesTable(); }
+    try {
+      const res = await fetch('/research/api/sales', {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ action: 'enrich', candidate_id: id }),
+      });
+      const data = await res.json();
+      if (cand) { cand.enrich_status = res.ok ? 'done' : 'failed'; cand.contacts = data.contacts || []; }
+    } catch { if (cand) cand.enrich_status = 'failed'; }
+    renderSalesTable();
+  }
+});
+
+els.srCsv?.addEventListener('click', () => {
+  if (!salesCandidates.length) return;
+  const cell = (v) => { const s = v == null ? '' : String(v); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
+  const header = ['Company', 'Domain', 'Status', 'Ability to pay', 'Employees', 'Funding', 'Location', 'Why', 'Contact name', 'Title', 'Email', 'Phone', 'LinkedIn'];
+  let csv = header.map(cell).join(',') + '\n';
+  for (const c of salesVisible()) {
+    const base = [c.company, c.domain, c.status, c.tier, c.employee_count, c.funding, c.location, c.match_reason];
+    const contacts = c.contacts && c.contacts.length ? c.contacts : [null];
+    for (const p of contacts) {
+      csv += [...base, p && p.name, p && p.title, p && p.email, p && p.phone, p && p.linkedin].map(cell).join(',') + '\n';
+    }
+  }
+  const slug = (salesSeed || 'sales').replace(/\W+/g, '-').slice(0, 40);
+  const stamp = new Date().toISOString().split('T')[0];
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = `${slug}-buyers-${stamp}.csv`;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+});
+
 els.nsRecent?.addEventListener('click', (e) => {
   if (e.target.dataset && e.target.dataset.recentClear) { try { localStorage.removeItem(NS_RECENT_KEY); } catch {} nsRenderRecent(); return; }
   const chip = e.target.closest('button[data-recent]');

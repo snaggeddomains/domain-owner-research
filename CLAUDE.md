@@ -243,6 +243,35 @@ answer from the index.
 
 ---
 
+# Sales Research Agent (Phase 1A — Upgrade) — 2026-06-05
+
+Find companies that would BUY a domain we're selling. UI at **research.snagged.com/research/sales**
+(gated by the `research.sales` module permission). Full design in `domain-research/SALES_RESEARCH_SPEC.md`.
+
+- **Spine:** seed domain → DISCOVER (free: enumerate TLD/affix variations × Clearbit
+  autocomplete, `lib/sales/discovery/upgrade.js`) → RESOLVE+CLASSIFY+RANK
+  (`lib/sales/resolve.js`: names companies via firmographics with an og:site_name/title
+  fallback; CLASSIFY reuses livesite `extractClues` parking detection; ranks by
+  `abilityToPay`; dedupes by company) → persist → human selects → ENRICH contacts
+  (RocketReach, on-demand) → CSV.
+- **Firmographics = the one paid slot** (`lib/sales/enrich/firmographics.js`): Apollo
+  (default) / PDL / `merged`, via `FIRMOGRAPHICS_PROVIDER`. Captures size + headcount
+  growth, funding amount/stage/recency/history, revenue, departments → `abilityToPay(rec)`
+  → `{tier: strong|medium|low|unknown, signals, reasons}`. **Cost control: enriches ACTIVE
+  candidates only + per-run company cache.** Needs `APOLLO_ENRICH_API_KEY` (paid plan;
+  ~1 credit/company); contacts use `ROCKETREACH_API_KEY`.
+- **Pipeline/API/UI:** `runSalesResearch` Inngest fn (event `SALES_RESEARCH_REQUESTED`) ·
+  `api/sales.js` (create/poll/select/enrich, gated by `research.sales`) ·
+  `domain_research_sales_{projects,candidates,contacts}` tables (RLS via the trailing loop —
+  **run the new tables on the research project**) · `/research/sales` tab (`#view-sales`,
+  the `sales*` helpers in app.js, `.sr-*` styles).
+- **Keyword path is Phase 1B (design-only):** additive — `category`/`angle` columns +
+  mode-agnostic spine already in place, so it adds rows, not a fork.
+- **Permission:** `research.sales` in snagged-admin `dashboard/lib/permissions.ts`
+  (MODULES + CATALOG; stored flat as `sales`). Grant per-user in the Users editor.
+
+---
+
 ## Session handoff — 2026-06-02 (lessons notifications + permissions)
 
 - **Lesson submitted → notify curators.** `api/lessons.js` `notifyAdminsOfLesson`

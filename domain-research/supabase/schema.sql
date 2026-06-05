@@ -424,6 +424,63 @@ language sql stable as $$
   order by 1 desc;
 $$;
 
+-- ── Sales Research Agent (Phase 1A) ─────────────────────────────────────────
+-- A "project" is one seed domain we're SELLING; candidates are companies that
+-- would plausibly buy it (Upgrade now; Keyword later via the `category`/`angle`
+-- columns). See SALES_RESEARCH_SPEC.md. RLS auto-enabled by the loop below.
+create table if not exists domain_research_sales_projects (
+  id          uuid primary key default gen_random_uuid(),
+  seed_domain text not null,
+  seed_sld    text not null,
+  filters     jsonb,                                 -- optional industry/geo
+  status      text not null default 'pending',       -- pending|running|done|failed
+  stage       text,                                  -- discover|resolve|done
+  error       text,
+  created_by  uuid references domain_research_users(id) on delete set null,
+  created_at  timestamptz not null default now(),
+  angles      jsonb                                  -- Keyword phase; null in 1A
+);
+create index if not exists idx_sales_proj_created on domain_research_sales_projects (created_at desc);
+
+create table if not exists domain_research_sales_candidates (
+  id            uuid primary key default gen_random_uuid(),
+  project_id    uuid not null references domain_research_sales_projects(id) on delete cascade,
+  domain        text,
+  company       text,
+  company_url   text,
+  description   text,
+  employee_count int,
+  location      text,
+  funding       text,
+  category      text not null default 'upgrade',     -- 'upgrade' | 'keyword'
+  subtype       text,                                -- tld_variant|affix|name_match
+  angle         text,                                -- keyword only
+  status        text,                                -- 'active' | 'for_sale' | 'inactive'
+  tier          text,                                -- strong|medium|low|unknown (ability-to-pay)
+  match_reason  text,                                -- why it surfaced (audit/UX)
+  firmographics jsonb,                               -- full enrichment record
+  score         numeric,                             -- rank
+  alt_domains   text[],                              -- merged duplicate domains
+  selected      boolean not null default false,
+  enrich_status text,                                -- null|pending|done|failed
+  created_at    timestamptz not null default now()
+);
+create index if not exists idx_sales_cand_project on domain_research_sales_candidates (project_id);
+create index if not exists idx_sales_cand_status  on domain_research_sales_candidates (project_id, status);
+
+create table if not exists domain_research_sales_contacts (
+  id           uuid primary key default gen_random_uuid(),
+  candidate_id uuid not null references domain_research_sales_candidates(id) on delete cascade,
+  name         text,
+  title        text,
+  email        text,
+  phone        text,
+  linkedin     text,
+  source       text,                                 -- rocketreach|fullenrich|...
+  created_at   timestamptz not null default now()
+);
+create index if not exists idx_sales_contacts_cand on domain_research_sales_contacts (candidate_id);
+
 -- ── Enable RLS (no policies → backend secret key only) ──────────────────────
 do $$
 declare t text;
