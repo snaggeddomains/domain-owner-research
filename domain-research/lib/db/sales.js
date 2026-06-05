@@ -96,6 +96,24 @@ export async function setSalesSelection(projectId, ids, selected) {
   if (error) throw new Error(`setSalesSelection: ${error.message}`);
 }
 
+// Fill in firmographics + ability-to-pay after a manual Apollo qualify.
+export async function updateCandidateQualification(id, firmo, atp) {
+  const patch = {
+    firmographics: firmo || null,
+    tier: atp.tier,
+    score: { strong: 3, medium: 2, low: 1, unknown: 0 }[atp.tier],
+    match_reason: (atp.reasons || []).join(' · ') || null,
+  };
+  if (firmo) {
+    patch.employee_count = firmo.employees ?? null;
+    patch.funding = firmo.funding ?? null;
+    patch.location = firmo.location ?? null;
+    if (firmo.company) patch.company = firmo.company;
+  }
+  const { error } = await getDb().from(CANDIDATES).update(patch).eq('id', id);
+  if (error) throw new Error(`updateCandidateQualification: ${error.message}`);
+}
+
 export async function setCandidateEnrichStatus(id, enrich_status) {
   const { error } = await getDb().from(CANDIDATES).update({ enrich_status }).eq('id', id);
   if (error) throw new Error(`setCandidateEnrichStatus: ${error.message}`);

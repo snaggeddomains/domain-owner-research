@@ -28,7 +28,7 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="apple-mobile-web-app-title" content="Snagged Research" />
     <meta name="theme-color" content="#254254" />
-    <link rel="stylesheet" href="styles.css?v=20260605r" />
+    <link rel="stylesheet" href="styles.css?v=20260605s" />
     <!-- Layout: horizontal tab nav (Admin-style), no sidebar. -->
   </head>
   <body>
@@ -553,6 +553,7 @@
               <div class="sr-actions">
                 <label class="sr-show-inactive"><input type="checkbox" id="sr-show-all" /> Show for-sale / inactive</label>
                 <button id="sr-angles" type="button" class="sr-btn">✨ Explore by industry</button>
+                <button id="sr-qualify" type="button" class="sr-btn" disabled>Qualify selected</button>
                 <button id="sr-enrich" type="button" class="sr-btn" disabled>Enrich selected</button>
                 <button id="sr-csv" type="button" class="sr-btn">Download CSV</button>
               </div>
@@ -793,6 +794,6 @@ The model parses it into structured filters (TLDs, length, budget, tone, etc.) a
     </aside>
 
     <!-- Bump ?v= on any public/app.js or styles.css change to bust caches. -->
-    <script src="app.js?v=20260605r"></script>
+    <script src="app.js?v=20260605s"></script>
   </body>
 </html>

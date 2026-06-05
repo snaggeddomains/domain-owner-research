@@ -14,10 +14,13 @@ import { isDbConfigured } from '../lib/db/supabase.js';
 import { inngest, SALES_RESEARCH_REQUESTED } from '../lib/inngest/client.js';
 import { seedParts } from '../lib/sales/discovery/upgrade.js';
 import { anglesForSeed } from '../lib/sales/discovery/angles.js';
+import { discoverAngles } from '../lib/sales/discovery/keyword.js';
 import { enrichCompany } from '../lib/sales/enrich/contacts.js';
+import { firmographics, abilityToPay } from '../lib/sales/enrich/firmographics.js';
 import {
   createSalesProject, getSalesProject, listSalesProjects, listSalesCandidates, getSalesCandidate,
   setSalesSelection, setCandidateEnrichStatus, replaceCandidateContacts, listContactsForCandidates,
+  insertSalesCandidates, updateCandidateQualification,
 } from '../lib/db/sales.js';
 
 export const config = { maxDuration: 60 };
@@ -79,6 +82,47 @@ async function handleAngles(body, res) {
   }
 }
 
+// Tier-2: discover companies for the chosen angles (LLM expand, FREE — no Apollo)
+// and add them to the buyers list UNQUALIFIED. The user qualifies manually.
+async function handleResearchAngles(body, res) {
+  const projectId = String(body.project_id || '').trim();
+  const angles = Array.isArray(body.angles) ? body.angles : [];
+  const limit = Math.max(1, Math.min(Number(body.limit) || 15, 60));
+  if (!projectId || !angles.length) { res.status(400).json({ error: 'project_id and angles required' }); return; }
+  if (!process.env.ANTHROPIC_API_KEY) { res.status(503).json({ error: 'Angle research needs ANTHROPIC_API_KEY' }); return; }
+  const project = await getSalesProject(projectId);
+  if (!project) { res.status(404).json({ error: 'Project not found' }); return; }
+  try {
+    const discovered = await discoverAngles(project.seed_domain, angles, process.env, { limitPerAngle: limit });
+    // Skip companies already in the project (dedupe by domain).
+    const existing = new Set((await listSalesCandidates(projectId)).map((c) => (c.domain || '').toLowerCase()));
+    const fresh = discovered.filter((c) => c.domain && !existing.has(c.domain.toLowerCase()));
+    if (fresh.length) await insertSalesCandidates(projectId, fresh);
+    res.status(200).json({ ok: true, added: fresh.length });
+  } catch (e) {
+    res.status(500).json({ error: String(e.message || e) });
+  }
+}
+
+// Manual qualify: spend 1 Apollo firmographics credit per selected company to fill
+// in ability-to-pay. The human cost gate before the paid step.
+async function handleQualify(body, res) {
+  const ids = Array.isArray(body.ids) ? body.ids.map(String) : [];
+  if (!ids.length) { res.status(400).json({ error: 'ids required' }); return; }
+  const out = [];
+  for (const id of ids) {
+    const cand = await getSalesCandidate(id);
+    if (!cand) { out.push({ id, error: 'not found' }); continue; }
+    if (cand.firmographics) { out.push({ id, tier: cand.tier, skipped: true }); continue; }
+    let firmo = null;
+    try { firmo = await firmographics(cand.domain, process.env); } catch { firmo = null; }
+    const atp = abilityToPay(firmo);
+    try { await updateCandidateQualification(id, firmo, atp); } catch { /* non-fatal */ }
+    out.push({ id, tier: atp.tier, matched: !!firmo });
+  }
+  res.status(200).json({ ok: true, qualified: out });
+}
+
 async function handleEnrich(body, res) {
   const candidateId = String(body.candidate_id || '').trim();
   if (!candidateId) { res.status(400).json({ error: 'candidate_id required' }); return; }
@@ -107,6 +151,8 @@ async function route(req, res) {
     const action = String(body.action || 'create');
     if (action === 'create') return handleCreate(body, res, user);
     if (action === 'angles') return handleAngles(body, res);
+    if (action === 'research_angles') return handleResearchAngles(body, res);
+    if (action === 'qualify') return handleQualify(body, res);
     if (action === 'select') return handleSelect(body, res);
     if (action === 'enrich') return handleEnrich(body, res);
     res.status(400).json({ error: `Unknown action: ${action}` });

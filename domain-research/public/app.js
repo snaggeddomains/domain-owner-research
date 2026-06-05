@@ -199,7 +199,7 @@ const els = {
   srForm: $('sr-form'), srDomain: $('sr-domain'), srGo: $('sr-go'), srStatus: $('sr-status'),
   srResults: $('sr-results'), srSummary: $('sr-summary'), srShowAll: $('sr-show-all'),
   srEnrich: $('sr-enrich'), srCsv: $('sr-csv'), srTable: $('sr-table'),
-  srAngles: $('sr-angles'), srAnglegate: $('sr-anglegate'),
+  srAngles: $('sr-angles'), srAnglegate: $('sr-anglegate'), srQualify: $('sr-qualify'),
   srRecent: $('sr-recent'), srRecentList: $('sr-recent-list'), srRecentAll: $('sr-recent-all'),
   srProjectsSearch: $('sr-projects-search'), srProjectsList: $('sr-projects-list'),
   srEntry: $('sr-entry'), srReshead: $('sr-reshead'), srResheadSeed: $('sr-reshead-seed'), srNew: $('sr-new'),
@@ -4725,6 +4725,7 @@ let salesPollTimer = null;
 let salesCandidates = [];          // cached for render + CSV
 let salesSeed = '';
 const salesCollapsed = new Set();  // candidate ids whose contacts are collapsed
+let salesAngles = [];              // angle objects from the last gate render
 
 function setSalesStatus(msg, isErr = false) {
   if (!els.srStatus) return;
@@ -4967,12 +4968,18 @@ function renderSalesTable() {
   };
   const body = rows.map((c) => {
     const coLi = (c.firmographics && c.firmographics.linkedin) || '';
+    const angleBadge = c.category === 'keyword' && c.angle
+      ? `<span class="sr-angle-badge">${escapeHtml(String(c.angle).replace(/_/g, ' '))}</span>` : '';
+    const unq = !c.firmographics;   // keyword/angle company not yet Apollo-qualified
+    const qualifying = c._qualifying
+      ? '<div class="sr-contacts-note sr-enriching"><span class="sr-spin"></span> Qualifying (ability-to-pay)…</div>'
+      : (unq ? '<div class="sr-unq muted">Not yet qualified — tick + “Qualify selected” to score ability-to-pay.</div>' : '');
     return `
-    <div class="sr-card sr-card-${escapeHtml(c.tier || 'unknown')}" data-id="${escapeHtml(c.id)}">
+    <div class="sr-card sr-card-${escapeHtml(c.tier || 'unknown')}${unq ? ' sr-card-unq' : ''}" data-id="${escapeHtml(c.id)}">
       <div class="sr-card-head">
         <label class="sr-card-check"><input type="checkbox" class="sr-cb" data-id="${escapeHtml(c.id)}"></label>
         <div class="sr-card-id">
-          <div class="sr-card-name">${escapeHtml(c.company || '—')}</div>
+          <div class="sr-card-name">${escapeHtml(c.company || '—')}${angleBadge}</div>
           <div class="sr-card-links">
             <a class="sr-card-domain" href="https://${escapeHtml(c.domain)}" target="_blank" rel="noopener">${escapeHtml(c.domain)}</a>
             ${coLi ? `<a class="sr-card-li" href="${escapeHtml(coLi)}" target="_blank" rel="noopener" title="Company LinkedIn" aria-label="Company LinkedIn">in</a>` : ''}
@@ -4980,8 +4987,9 @@ function renderSalesTable() {
         </div>
         <div class="sr-card-badges">${statusBadge(c.status)}${tierBadge(c.tier)}</div>
       </div>
-      ${metricsGrid(c)}
+      ${c.firmographics ? metricsGrid(c) : ''}
       ${subLine(c)}
+      ${qualifying}
       ${contactsBlock(c)}
     </div>`;
   }).join('');
@@ -4994,8 +5002,32 @@ function selectedCandidateIds() {
   return [...els.srTable.querySelectorAll('.sr-cb:checked')].map((cb) => cb.dataset.id);
 }
 function updateSalesEnrichBtn() {
-  if (els.srEnrich) els.srEnrich.disabled = selectedCandidateIds().length === 0;
+  const ids = selectedCandidateIds();
+  if (els.srEnrich) els.srEnrich.disabled = ids.length === 0;
+  // Qualify is enabled when any SELECTED company is still unqualified (no firmographics).
+  const anyUnqualified = ids.some((id) => { const c = salesCandidates.find((x) => x.id === id); return c && !c.firmographics; });
+  if (els.srQualify) els.srQualify.disabled = !anyUnqualified;
 }
+
+// Manual Apollo qualify of the selected unqualified companies (the paid gate).
+els.srQualify?.addEventListener('click', async () => {
+  const ids = selectedCandidateIds().filter((id) => { const c = salesCandidates.find((x) => x.id === id); return c && !c.firmographics; });
+  if (!ids.length) return;
+  els.srQualify.disabled = true;
+  const orig = els.srQualify.textContent;
+  els.srQualify.textContent = `Qualifying ${ids.length}…`;
+  // Optimistically mark them pending-ish in the UI.
+  for (const id of ids) { const c = salesCandidates.find((x) => x.id === id); if (c) c._qualifying = true; }
+  renderSalesTable();
+  try {
+    await fetch('/research/api/sales', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ action: 'qualify', ids }),
+    });
+    await refreshSalesProject();   // pull the filled-in firmographics + re-rank
+  } catch { /* leave as-is */ }
+  els.srQualify.textContent = orig;
+});
 
 els.srShowAll?.addEventListener('change', renderSalesTable);
 
@@ -5072,6 +5104,7 @@ els.srAngles?.addEventListener('click', async () => {
 });
 
 function renderAngleGate(angles) {
+  salesAngles = angles || [];
   if (!angles.length) { els.srAnglegate.innerHTML = '<div class="sr-ag-loading muted">No distinct angles found for this seed.</div>'; return; }
   const order = { high: 0, medium: 1, low: 2 };
   const sorted = angles.slice().sort((a, b) => (order[a.buyer_potential] ?? 1) - (order[b.buyer_potential] ?? 1));
@@ -5107,14 +5140,44 @@ function renderAngleGate(angles) {
     <div class="sr-ag-list">${rows}</div>
     <div class="sr-ag-foot">
       <button id="sr-ag-go" type="button" class="sr-btn sr-ag-go">Research selected angles</button>
-      <span class="sr-ag-note muted">High-potential angles are pre-ticked. Researching runs the full per-company discovery + ranking.</span>
+      <label class="sr-ag-limit">companies / angle
+        <select id="sr-ag-lim"><option value="15" selected>15</option><option value="30">30</option><option value="50">50</option></select>
+      </label>
+      <span class="sr-ag-note muted">Free — finds the companies (no Apollo). You then tick which to <strong>Qualify</strong> (the paid step).</span>
     </div>`;
-  document.getElementById('sr-ag-go')?.addEventListener('click', () => {
-    const keys = [...els.srAnglegate.querySelectorAll('.sr-ag-cb:checked')].map((c) => c.dataset.key);
-    if (!keys.length) return;
-    // Tier-2 per-angle fan-out is the next build; for now confirm the selection.
-    els.srAnglegate.querySelector('.sr-ag-note').innerHTML = `<strong>${keys.length} angle(s) queued:</strong> ${escapeHtml(keys.join(', '))} — per-angle company discovery is the next piece I'm wiring.`;
+  document.getElementById('sr-ag-go')?.addEventListener('click', async () => {
+    const keys = new Set([...els.srAnglegate.querySelectorAll('.sr-ag-cb:checked')].map((c) => c.dataset.key));
+    const chosen = salesAngles.filter((a) => keys.has(a.key));
+    if (!chosen.length || !salesProjectId) return;
+    const limit = Number(document.getElementById('sr-ag-lim')?.value) || 15;
+    const btn = document.getElementById('sr-ag-go');
+    const note = els.srAnglegate.querySelector('.sr-ag-note');
+    btn.disabled = true;
+    note.innerHTML = `<span class="sr-spin"></span> Finding companies across ${chosen.length} angle(s)…`;
+    try {
+      const res = await fetch('/research/api/sales', {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ action: 'research_angles', project_id: salesProjectId, angles: chosen, limit }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || `Failed (${res.status})`);
+      els.srAnglegate.hidden = true;
+      await refreshSalesProject();    // pull the new keyword companies into the list
+      setSalesStatus(`Added ${data.added} companies from ${chosen.length} angle(s). Tick the ones worth qualifying, then "Qualify selected".`);
+      setTimeout(() => setSalesStatus(''), 6000);
+    } catch (err) {
+      note.innerHTML = `<span class="sr-status-err">${escapeHtml(String(err.message || err))}</span>`;
+      btn.disabled = false;
+    }
   });
+}
+
+// Re-pull the current project's candidates and re-render (after angle research / qualify).
+async function refreshSalesProject() {
+  if (!salesProjectId) return;
+  const res = await fetch(`/research/api/sales?id=${encodeURIComponent(salesProjectId)}`);
+  const data = await res.json();
+  if (res.ok) renderSalesResults(data);
 }
 
 // Recent list / projects list — open a run on click; "view all" → projects page.
