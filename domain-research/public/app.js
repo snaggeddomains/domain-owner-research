@@ -4824,7 +4824,34 @@ function renderSalesTable() {
   if (!rows.length) { els.srTable.innerHTML = '<p class="muted">No candidates to show.</p>'; updateSalesEnrichBtn(); return; }
   const tierBadge = (t) => `<span class="sr-tier sr-tier-${t || 'unknown'}">${escapeHtml(t || '—')}</span>`;
   const statusBadge = (s) => `<span class="sr-st sr-st-${s || 'unknown'}">${escapeHtml(s || '—')}</span>`;
-  const chip = (label, val) => (val == null || val === '' ? '' : `<span class="sr-chip"><span class="sr-chip-k">${label}</span> ${escapeHtml(String(val))}</span>`);
+  // Structured ability-to-pay metrics — same labelled cells, same order on every
+  // card, so values line up down the list and compare at a glance.
+  const monthsAgo = (d) => { if (!d) return null; const t = new Date(d); return isNaN(t) ? null : Math.round((Date.now() - t) / (1000 * 60 * 60 * 24 * 30.44)); };
+  const relRaise = (d) => { const m = monthsAgo(d); if (m == null) return ''; if (m < 1) return 'this month'; if (m < 12) return `~${m}mo ago`; const y = m / 12; return `~${y % 1 ? y.toFixed(1) : y.toFixed(0)}y ago`; };
+  const growthPct = (g) => (g == null || !isFinite(g)) ? '' : `${g >= 0 ? '+' : ''}${Math.round(g * 100)}%`;
+  const M = (k, v) => { const blank = v == null || v === ''; return `<div class="sr-m"><div class="sr-m-k">${k}</div><div class="sr-m-v${blank ? ' sr-m-dim' : ''}">${blank ? '—' : escapeHtml(String(v))}</div></div>`; };
+  const metricsGrid = (c) => {
+    const f = c.firmographics || {};
+    const emp = f.employees != null ? f.employees : c.employee_count;
+    const ma = monthsAgo(f.latestFundingDate);
+    const cash = (ma != null && ma <= 24 && (f.fundingAmount || f.funding)) ? 'Likely' : '';
+    return `<div class="sr-metrics">
+      ${M('Raised', f.funding || c.funding || '')}
+      ${M('Stage', f.fundingStage || '')}
+      ${M('Last raise', relRaise(f.latestFundingDate))}
+      ${M('Rounds', f.fundingRounds != null ? f.fundingRounds : '')}
+      ${M('Cash on hand', cash)}
+      ${M('Revenue', f.revenue || '')}
+      ${M('Employees', emp != null ? emp : '')}
+      ${M('Growth 12mo', growthPct(f.headcountGrowth && f.headcountGrowth.twelveMo))}
+      ${M('Founded', f.foundedYear || '')}
+    </div>`;
+  };
+  const subLine = (c) => {
+    const f = c.firmographics || {};
+    const s = [c.location || f.location || '', f.industry || ''].filter(Boolean).join(' · ');
+    return s ? `<div class="sr-card-sub">${escapeHtml(s)}</div>` : '';
+  };
   // One contact = one block (name + title, then email / phone / LinkedIn).
   const contactCard = (p) => {
     const rows2 = [];
@@ -4854,13 +4881,9 @@ function renderSalesTable() {
           <a class="sr-card-domain" href="https://${escapeHtml(c.domain)}" target="_blank" rel="noopener">${escapeHtml(c.domain)}</a>
         </div>
         <div class="sr-card-badges">${statusBadge(c.status)}${tierBadge(c.tier)}</div>
-        <div class="sr-card-stats">
-          ${chip('Staff', c.employee_count != null ? c.employee_count : '')}
-          ${chip('Funding', c.funding)}
-          ${chip('Location', c.location)}
-        </div>
       </div>
-      ${c.match_reason ? `<div class="sr-card-why">${escapeHtml(c.match_reason)}</div>` : ''}
+      ${metricsGrid(c)}
+      ${subLine(c)}
       ${contactsBlock(c)}
     </div>`).join('');
   els.srTable.innerHTML = `<div class="sr-cards">${body}</div>`;

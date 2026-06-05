@@ -1293,11 +1293,14 @@ body.drawer-open { overflow: hidden; }
 .sr-card-name { font-family: var(--body); font-weight: 800; font-size: 1.18rem; color: var(--navy); line-height: 1.2; }
 .sr-card-domain { font-size: 14px; color: var(--teal-deep); text-decoration: none; }
 .sr-card-domain:hover { text-decoration: underline; }
-.sr-card-badges { display: flex; gap: 8px; align-items: center; flex: 0 0 auto; }
-.sr-card-stats { flex-basis: 100%; display: flex; flex-wrap: wrap; gap: 6px 10px; margin-top: 2px; }
-.sr-chip { font-size: 13px; color: var(--navy); background: var(--cream); border: 1px solid var(--line); border-radius: 999px; padding: 3px 11px; }
-.sr-chip-k { color: var(--navy-3); font-weight: 700; font-size: 11px; text-transform: uppercase; letter-spacing: .03em; }
-.sr-card-why { font-size: 13px; color: var(--navy-2); margin: 10px 0 0; line-height: 1.5; }
+.sr-card-badges { display: flex; gap: 8px; align-items: center; flex: 0 0 auto; margin-left: auto; }
+/* Labelled metric grid — fixed columns so the same stat sits in the same place
+   on every card and you can scan/compare straight down the list. */
+.sr-metrics { display: grid; grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 11px 16px; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); }
+.sr-m-k { font-size: 10.5px; text-transform: uppercase; letter-spacing: .04em; color: var(--navy-3); font-weight: 700; white-space: nowrap; }
+.sr-m-v { font-size: 15px; font-weight: 600; color: var(--navy); margin-top: 2px; }
+.sr-m-dim { color: var(--navy-3); font-weight: 400; }
+.sr-card-sub { font-size: 13px; color: var(--navy-3); margin-top: 10px; }
 .sr-contacts-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 10px; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); }
 .sr-contact-card { background: var(--cream); border: 1px solid var(--line); border-radius: 12px; padding: 11px 13px; }
 .sr-c-name { font-weight: 700; font-size: 14.5px; color: var(--navy); }
