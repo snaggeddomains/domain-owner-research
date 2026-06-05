@@ -1281,7 +1281,9 @@ body.drawer-open { overflow: hidden; }
 .report-open .dbs-head,
 .report-open .ns-modetoggle,
 .report-open .ns-form,
-.report-open .ns-recent { display: none !important; }
+.report-open .ns-recent,
+.report-open .naming-form,
+.report-open .naming-recent-five { display: none !important; }
 
 /* ── Sales Research ────────────────────────────────────────────────────────── */
 .sr-form { display: flex; gap: 8px; max-width: 640px; margin: 0 auto; }

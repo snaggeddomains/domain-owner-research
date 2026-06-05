@@ -66,6 +66,7 @@ const els = {
   apNamebio: $('ap-namebio'),
   report: $('report'),
   reportDomain: $('report-domain'),
+  researchNew: $('research-new'),
   reportConfidence: $('report-confidence'),
   reportActions: $('report-actions'),
   reportMeta: $('report-meta'),
@@ -3349,6 +3350,8 @@ function setNamingStatus(text) {
 }
 
 function renderNamingResults(data) {
+  // Collapse the hero+brief into the compact header once names are showing.
+  toolReport('view-naming', String((els.namingTitle && els.namingTitle.value) || 'project').slice(0, 60), true);
   renderNamingFilters(data.filters);
   const buy = Array.isArray(data.buyReady) ? data.buyReady : [];
   const stretch = Array.isArray(data.stretch) ? data.stretch : [];
@@ -3635,6 +3638,7 @@ async function exportNamingSheet() {
 // Reset /naming back to the entry state (textarea + Recent visible; result
 // sections hidden). Used when leaving a past-run view back to a fresh brief.
 function resetNamingView() {
+  toolReport('view-naming', '', false);   // restore the hero+brief entry
   if (els.namingInput) els.namingInput.value = '';
   if (els.namingTitle) els.namingTitle.value = '';
   if (els.namingFiltersPanel) els.namingFiltersPanel.hidden = true; // filters hide until a run
@@ -3733,6 +3737,8 @@ async function openNamingRun(id) {
     currentNamingRunId = r.id;
     if (els.namingInput) els.namingInput.value = String(r.brief || '');
     if (els.namingTitle) els.namingTitle.value = String(r.title || '');
+    // Collapse the hero+brief into the compact header (labelled by the project title).
+    toolReport('view-naming', String(r.title || r.brief || 'project').slice(0, 60), true);
     const buy = Array.isArray(r.buy_ready) ? r.buy_ready : [];
     const stretch = Array.isArray(r.stretch) ? r.stretch : [];
     namingLastResults = { run_id: r.id, filters: r.filters, buyReady: buy, stretch };
@@ -4182,6 +4188,7 @@ els.nav?.addEventListener('click', (e) => { if (e.target.closest('.nav-btn')) cl
 // left-click for in-page SPA nav.
 const newTabClick = (e) => e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0;
 els.navResearch?.addEventListener('click', (e) => { if (newTabClick(e)) return; e.preventDefault(); showEntry(); });
+els.researchNew?.addEventListener('click', () => showEntry());
 els.homeLink?.addEventListener('click', (e) => { e.preventDefault(); closeNav(); showEntry(); });
 els.navTrademark?.addEventListener('click', (e) => { if (newTabClick(e)) return; e.preventDefault(); setToolUrl('trademark', ''); route(); });
 els.navAppraisal?.addEventListener('click', (e) => { if (newTabClick(e)) return; e.preventDefault(); setToolUrl('appraisal', ''); route(); });
