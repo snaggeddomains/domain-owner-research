@@ -769,13 +769,19 @@ const escapeHtml = (s) =>
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
 
+// Any in-progress status (convention: message ends with/contains "…") gets a
+// spinning indicator, so it's always clear from the GUI that work is happening.
+function spinHtml(text, isError) {
+  const t = escapeHtml(String(text || ''));
+  return (!isError && /…/.test(String(text || ''))) ? `<span class="sr-spin"></span> ${t}` : t;
+}
 function setStatus(text, isError = false) {
   if (!text) {
     els.status.hidden = true;
     return;
   }
   els.status.hidden = false;
-  els.status.textContent = text;
+  els.status.innerHTML = spinHtml(text, isError);
   els.status.classList.toggle('error', isError);
 }
 
@@ -2535,7 +2541,7 @@ function showView(name) {
 function setToolStatus(el, text, err = false) {
   if (!text) { el.hidden = true; return; }
   el.hidden = false;
-  el.textContent = text;
+  el.innerHTML = spinHtml(text, err);
   el.classList.toggle('error', err);
 }
 const pick = (o, keys) => {
@@ -3343,10 +3349,10 @@ async function runNaming() {
   }
 }
 
-function setNamingStatus(text) {
+function setNamingStatus(text, isError = false) {
   if (!els.namingStatus) return;
   if (!text) { els.namingStatus.hidden = true; els.namingStatus.textContent = ''; return; }
-  els.namingStatus.textContent = text;
+  els.namingStatus.innerHTML = spinHtml(text, isError);
   els.namingStatus.hidden = false;
 }
 
@@ -4730,7 +4736,7 @@ let salesAngles = [];              // angle objects from the last gate render
 function setSalesStatus(msg, isErr = false) {
   if (!els.srStatus) return;
   els.srStatus.hidden = !msg;
-  els.srStatus.textContent = msg || '';
+  els.srStatus.innerHTML = msg ? spinHtml(msg, isErr) : '';
   els.srStatus.classList.toggle('sr-status-err', !!isErr);
 }
 function clearSalesPoll() { if (salesPollTimer) { clearInterval(salesPollTimer); salesPollTimer = null; } }
@@ -5088,7 +5094,7 @@ els.srAngles?.addEventListener('click', async () => {
   if (open) { els.srAnglegate.hidden = true; return; }   // toggle off
   els.srAnglegate.hidden = false;
   els.srAnglegate.dataset.seed = salesSeed;
-  els.srAnglegate.innerHTML = '<div class="sr-ag-loading muted">Mapping buyer angles and verifying the top player in each…</div>';
+  els.srAnglegate.innerHTML = '<div class="sr-ag-loading sr-enriching"><span class="sr-spin"></span> Mapping buyer angles and verifying the top player in each…</div>';
   els.srAngles.disabled = true;
   try {
     const res = await fetch('/research/api/sales', {
@@ -5120,7 +5126,9 @@ function renderAngleGate(angles) {
     const whale = v && v.matched
       ? `<div class="sr-ag-whale"><span class="sr-ag-whale-lbl">Top player</span> <strong>${escapeHtml(v.name)}</strong> <span class="sr-tier sr-tier-${v.tier}">${escapeHtml(v.tier)}</span>${bits ? ` <span class="sr-ag-whale-meta">${escapeHtml(bits)}</span>` : ''}</div>`
       : (v ? `<div class="sr-ag-whale muted">top player ${escapeHtml(v.name)} — no match</div>` : '');
-    const players = a.players.slice(0, 6).map((p) => `<span class="sr-ag-co">${escapeHtml(p.name)}</span>`).join('')
+    const players = a.players.slice(0, 6).map((p) => p.domain
+      ? `<a class="sr-ag-co sr-ag-co-link" href="https://${escapeHtml(p.domain)}" target="_blank" rel="noopener">${escapeHtml(p.name)}</a>`
+      : `<span class="sr-ag-co">${escapeHtml(p.name)}</span>`).join('')
       + (a.players.length > 6 ? `<span class="sr-ag-co sr-ag-more">+${a.players.length - 6} more</span>` : '');
     return `<label class="sr-ag-row" data-key="${escapeHtml(a.key)}">
       <input type="checkbox" class="sr-ag-cb" data-key="${escapeHtml(a.key)}"${a.buyer_potential === 'high' ? ' checked' : ''}>
