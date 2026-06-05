@@ -28,7 +28,7 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="apple-mobile-web-app-title" content="Snagged Research" />
     <meta name="theme-color" content="#254254" />
-    <link rel="stylesheet" href="styles.css?v=20260605i" />
+    <link rel="stylesheet" href="styles.css?v=20260605j" />
     <!-- Layout: horizontal tab nav (Admin-style), no sidebar. -->
   </head>
   <body>
@@ -79,6 +79,11 @@
           <a href="/admin" id="topbar-admin" hidden>Admin</a>
         </nav>
         <div class="topbar__account" id="topbar-account" hidden>
+          <!-- Back — in-app history nav (handy in the installed PWA where there's
+               no browser back button). -->
+          <button id="back-btn" class="topbar-refresh" type="button" aria-label="Back" title="Back">
+            <svg viewBox="0 0 24 24" width="19" height="19" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5"/><path d="M12 19l-7-7 7-7"/></svg>
+          </button>
           <!-- Reload — force-fetch the latest app version (handy in the installed
                PWA / "Mac app" where there's no browser refresh button). -->
           <button id="refresh-btn" class="topbar-refresh" type="button" aria-label="Reload" title="Reload latest version">
@@ -498,14 +503,31 @@
 
         <!-- Sales Research — companies that would buy a domain we're selling -->
         <section id="view-sales" hidden>
-          <div class="hero tool-hero">
-            <h1 class="hero-title">Sales <span class="accent">Research</span></h1>
-            <p class="hero-sub">Enter a domain we're selling. I'll find companies that would plausibly buy it — ranked by their ability to pay — with decision-maker contacts on demand.</p>
+          <!-- Entry: hero + form + recent. Hidden once a run is open (collapsed
+               into the compact results header below) to reclaim the space. -->
+          <div id="sr-entry">
+            <div class="hero tool-hero">
+              <h1 class="hero-title">Sales <span class="accent">Research</span></h1>
+              <p class="hero-sub">Enter a domain we're selling. I'll find companies that would plausibly buy it — ranked by their ability to pay — with decision-maker contacts on demand.</p>
+            </div>
+            <form id="sr-form" class="search sr-form" autocomplete="off">
+              <input id="sr-domain" type="text" placeholder="Domain we're selling, e.g. artificial.com" />
+              <button id="sr-go" type="submit">Find buyers</button>
+            </form>
+            <!-- Recent runs (last 5), with a link to the full list. -->
+            <div id="sr-recent" class="sr-recent" hidden>
+              <div class="sr-recent-head">Recent sales research</div>
+              <ul id="sr-recent-list" class="sr-recent-list"></ul>
+              <a id="sr-recent-all" class="show-all" href="/research/sales/all">View all sales research &rarr;</a>
+            </div>
           </div>
-          <form id="sr-form" class="search sr-form" autocomplete="off">
-            <input id="sr-domain" type="text" placeholder="Domain we're selling, e.g. artificial.com" />
-            <button id="sr-go" type="submit">Find buyers</button>
-          </form>
+
+          <!-- Compact results header — replaces the hero/form when a run is open. -->
+          <div id="sr-reshead" class="sr-reshead" hidden>
+            <h1 class="sr-reshead-title"><span id="sr-reshead-seed"></span> <span class="accent">buyers</span></h1>
+            <button id="sr-new" type="button" class="sr-new-btn">+ New report</button>
+          </div>
+
           <div id="sr-status" class="sr-status" hidden></div>
 
           <section id="sr-results" class="sr-results" hidden>
@@ -519,13 +541,6 @@
             </div>
             <div id="sr-table" class="sr-table-wrap"></div>
           </section>
-
-          <!-- Recent runs (last 5) under the form, with a link to the full list. -->
-          <div id="sr-recent" class="sr-recent" hidden>
-            <div class="sr-recent-head">Recent sales research</div>
-            <ul id="sr-recent-list" class="sr-recent-list"></ul>
-            <a id="sr-recent-all" class="show-all" href="/research/sales/all">View all sales research &rarr;</a>
-          </div>
         </section>
 
         <!-- Past Sales Research runs — searchable list -->
@@ -754,6 +769,6 @@ The model parses it into structured filters (TLDs, length, budget, tone, etc.) a
     </aside>
 
     <!-- Bump ?v= on any public/app.js or styles.css change to bust caches. -->
-    <script src="app.js?v=20260605i"></script>
+    <script src="app.js?v=20260605j"></script>
   </body>
 </html>

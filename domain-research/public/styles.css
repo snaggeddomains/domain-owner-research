@@ -1285,28 +1285,55 @@ body.drawer-open { overflow: hidden; }
 
 /* ── Buyer cards (full-width, one card per company) ──────────────────────────*/
 .sr-cards { display: flex; flex-direction: column; gap: 14px; }
-.sr-card { border: 1.5px solid var(--line); border-radius: var(--radius-sm); background: var(--cream-2); padding: 16px 18px; box-shadow: var(--shadow-sm); }
+.sr-card { border: 1.5px solid var(--line); border-left-width: 5px; border-radius: var(--radius-sm); background: var(--cream-2); padding: 16px 18px 16px 20px; box-shadow: var(--shadow-sm); }
+/* Tier accent on the left edge so the ranking pops as you scan down the list. */
+.sr-card-strong { border-left-color: #2e9e57; }
+.sr-card-medium { border-left-color: #e0a52e; }
+.sr-card-low { border-left-color: #c2c8cf; }
+.sr-card-unknown { border-left-color: var(--line); }
 .sr-card-head { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; }
 .sr-card-check { display: inline-flex; align-items: center; flex: 0 0 auto; }
-.sr-card-check input { width: 18px; height: 18px; cursor: pointer; }
+.sr-card-check input { width: 18px; height: 18px; cursor: pointer; accent-color: var(--coral-deep); }
 .sr-card-id { flex: 1 1 260px; min-width: 0; }
 .sr-card-name { font-family: var(--body); font-weight: 800; font-size: 1.18rem; color: var(--navy); line-height: 1.2; }
+.sr-card-links { display: flex; align-items: center; gap: 8px; }
 .sr-card-domain { font-size: 14px; color: var(--teal-deep); text-decoration: none; }
 .sr-card-domain:hover { text-decoration: underline; }
+.sr-card-li { display: inline-flex; align-items: center; justify-content: center; width: 19px; height: 19px; border-radius: 4px; background: #0a66c2; color: #fff; font-size: 11px; font-weight: 800; text-decoration: none; line-height: 1; }
 .sr-card-badges { display: flex; gap: 8px; align-items: center; flex: 0 0 auto; margin-left: auto; }
+/* Compact results header (replaces hero/form once a run is open). */
+.sr-reshead { display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap; margin-bottom: 14px; }
+.sr-reshead-title { font-size: 2rem; margin: 0; }
+.sr-reshead-seed { color: var(--navy); }
+.sr-new-btn { padding: 9px 16px; font-size: 14px; font-weight: 700; background: var(--cream); color: var(--coral-deep); border: 1.5px solid var(--coral); border-radius: 999px; cursor: pointer; }
+.sr-new-btn:hover { background: var(--coral); color: #fff; }
+.sr-sum-strong { color: #2e9e57; }
 /* Labelled metric grid — fixed columns so the same stat sits in the same place
    on every card and you can scan/compare straight down the list. */
 .sr-metrics { display: grid; grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 11px 16px; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); }
 .sr-m-k { font-size: 10.5px; text-transform: uppercase; letter-spacing: .04em; color: var(--navy-3); font-weight: 700; white-space: nowrap; }
 .sr-m-v { font-size: 15px; font-weight: 600; color: var(--navy); margin-top: 2px; }
 .sr-m-dim { color: var(--navy-3); font-weight: 400; }
+.sr-m-pos { color: #2e9e57; }                 /* growth / cash-on-hand pop green */
+.sr-m-raise { color: var(--coral-deep); }     /* amount raised pops coral */
 .sr-card-sub { font-size: 13px; color: var(--navy-3); margin-top: 10px; }
-.sr-contacts-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 10px; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); }
+/* Contacts — collapsible header + responsive grid; email/phone/LinkedIn each
+   on their own row (dimmed when absent) so who-has-what is obvious across cards. */
+.sr-contacts { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--line); }
+.sr-contacts-head { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+.sr-contacts-title { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--navy-3); }
+.sr-contacts-n { display: inline-flex; align-items: center; justify-content: center; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px; background: var(--cream); border: 1px solid var(--line); font-size: 11px; color: var(--navy-2); margin-left: 2px; }
+.sr-contacts-toggle { margin-left: auto; background: transparent; border: 1.5px solid var(--line); border-radius: 999px; color: var(--navy-2); font-size: 12px; font-weight: 700; padding: 3px 10px; cursor: pointer; }
+.sr-contacts-toggle:hover { border-color: var(--coral); color: var(--coral-deep); }
+.sr-contacts-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 10px; }
 .sr-contact-card { background: var(--cream); border: 1px solid var(--line); border-radius: 12px; padding: 11px 13px; }
 .sr-c-name { font-weight: 700; font-size: 14.5px; color: var(--navy); }
 .sr-c-title { font-size: 12.5px; color: var(--navy-3); margin-top: 1px; }
-.sr-c-rows { display: flex; flex-direction: column; gap: 3px; margin-top: 7px; }
-.sr-c-link { font-size: 13px; color: var(--teal-deep); text-decoration: none; overflow-wrap: anywhere; }
+.sr-c-rows { display: flex; flex-direction: column; gap: 4px; margin-top: 8px; }
+.sr-c-row { display: flex; align-items: baseline; gap: 7px; font-size: 13px; }
+.sr-c-ico { flex: 0 0 14px; text-align: center; color: var(--navy-3); font-size: 12px; font-weight: 700; }
+.sr-c-row-missing .sr-c-ico, .sr-c-dash { color: #c2c8cf; }
+.sr-c-link { color: var(--teal-deep); text-decoration: none; overflow-wrap: anywhere; }
 .sr-c-link:hover { text-decoration: underline; }
 .sr-contacts-note { font-size: 13px; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); }
 .sr-tier { display: inline-block; padding: 3px 11px; border-radius: 999px; font-size: 12.5px; font-weight: 700; text-transform: capitalize; }

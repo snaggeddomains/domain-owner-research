@@ -33,6 +33,7 @@ const els = {
   // Notifications bell
   notifBtn: $('notif-btn'),
   refreshBtn: $('refresh-btn'),
+  backBtn: $('back-btn'),
   notifCount: $('notif-count'),
   notifMenu: $('notif-menu'),
   notifList: $('notif-list'),
@@ -199,6 +200,7 @@ const els = {
   srEnrich: $('sr-enrich'), srCsv: $('sr-csv'), srTable: $('sr-table'),
   srRecent: $('sr-recent'), srRecentList: $('sr-recent-list'), srRecentAll: $('sr-recent-all'),
   srProjectsSearch: $('sr-projects-search'), srProjectsList: $('sr-projects-list'),
+  srEntry: $('sr-entry'), srReshead: $('sr-reshead'), srResheadSeed: $('sr-reshead-seed'), srNew: $('sr-new'),
   nsModeToggle: $('ns-modetoggle'), nsMatchToggle: $('ns-matchtoggle'),
   nsDomainForm: $('ns-domain-form'), nsDomain: $('ns-domain'),
   nsNsForm: $('ns-ns-form'), nsNs: $('ns-ns'), nsTld: $('ns-tld'),
@@ -1763,6 +1765,8 @@ els.refreshBtn?.addEventListener('click', () => {
   els.refreshBtn.classList.add('spinning');
   location.reload();
 });
+// In-app back navigation (PWA has no browser back button).
+els.backBtn?.addEventListener('click', () => history.back());
 
 els.notifBtn?.addEventListener('click', (e) => {
   e.stopPropagation();
@@ -4690,6 +4694,7 @@ let salesProjectId = null;
 let salesPollTimer = null;
 let salesCandidates = [];          // cached for render + CSV
 let salesSeed = '';
+const salesCollapsed = new Set();  // candidate ids whose contacts are collapsed
 
 function setSalesStatus(msg, isErr = false) {
   if (!els.srStatus) return;
@@ -4699,6 +4704,16 @@ function setSalesStatus(msg, isErr = false) {
 }
 function clearSalesPoll() { if (salesPollTimer) { clearInterval(salesPollTimer); salesPollTimer = null; } }
 
+// Toggle the entry (hero + form + recent) vs. the compact results header. Once a
+// run is open we collapse the hero/form into a one-line "<seed> buyers" header
+// and reclaim the space for results.
+function setSalesMode(mode, seed) {
+  const results = mode === 'results';
+  if (els.srEntry) els.srEntry.hidden = results;
+  if (els.srReshead) els.srReshead.hidden = !results;
+  if (results && seed != null && els.srResheadSeed) els.srResheadSeed.textContent = seed;
+}
+
 function resetSalesView() {
   clearSalesPoll();
   salesProjectId = null; salesCandidates = []; salesSeed = '';
@@ -4706,6 +4721,7 @@ function resetSalesView() {
   if (els.srResults) els.srResults.hidden = true;
   if (els.srTable) els.srTable.innerHTML = '';
   setSalesStatus('');
+  setSalesMode('entry');
   loadSalesRecent();   // re-show the last-5 block under the form
 }
 
@@ -4754,6 +4770,7 @@ els.srForm?.addEventListener('submit', async (e) => {
   els.srGo.disabled = true;
   setSalesStatus('Starting discovery…');
   if (els.srResults) els.srResults.hidden = true;
+  setSalesMode('results', domain);   // collapse the hero/form right away
   try {
     const res = await fetch('/research/api/sales', {
       method: 'POST', headers: { 'content-type': 'application/json' },
@@ -4773,12 +4790,14 @@ function openSalesProject(id) {
   clearSalesPoll();
   salesProjectId = id;
   els.srGo.disabled = true;
+  setSalesMode('results', '');   // collapse entry; seed filled in once the poll returns it
   setSalesStatus('Discovering candidates and qualifying ability-to-pay…');
   const poll = async () => {
     try {
       const res = await fetch(`/research/api/sales?id=${encodeURIComponent(id)}`);
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || `Poll failed (${res.status})`);
+      if (data.project && data.project.seed_domain && els.srResheadSeed) els.srResheadSeed.textContent = data.project.seed_domain;
       const st = data.project.status;
       if (st === 'done') {
         clearSalesPoll();
@@ -4810,6 +4829,7 @@ function renderSalesResults(data) {
   salesSeed = data.project.seed_domain || '';
   salesCandidates = data.candidates || [];
   setSalesStatus('');
+  setSalesMode('results', salesSeed);
   if (els.srResults) els.srResults.hidden = false;
   renderSalesTable();
 }
@@ -4819,7 +4839,7 @@ function renderSalesTable() {
   const active = salesCandidates.filter((c) => c.status === 'active').length;
   const strong = salesCandidates.filter((c) => c.tier === 'strong').length;
   if (els.srSummary) {
-    els.srSummary.innerHTML = `<strong>${escapeHtml(salesSeed)}</strong> — ${salesCandidates.length} companies · ${active} active · ${strong} strong-fit`;
+    els.srSummary.innerHTML = `${salesCandidates.length} companies · ${active} active · <strong class="sr-sum-strong">${strong} strong-fit</strong>`;
   }
   if (!rows.length) { els.srTable.innerHTML = '<p class="muted">No candidates to show.</p>'; updateSalesEnrichBtn(); return; }
   const tierBadge = (t) => `<span class="sr-tier sr-tier-${t || 'unknown'}">${escapeHtml(t || '—')}</span>`;
@@ -4829,21 +4849,22 @@ function renderSalesTable() {
   const monthsAgo = (d) => { if (!d) return null; const t = new Date(d); return isNaN(t) ? null : Math.round((Date.now() - t) / (1000 * 60 * 60 * 24 * 30.44)); };
   const relRaise = (d) => { const m = monthsAgo(d); if (m == null) return ''; if (m < 1) return 'this month'; if (m < 12) return `~${m}mo ago`; const y = m / 12; return `~${y % 1 ? y.toFixed(1) : y.toFixed(0)}y ago`; };
   const growthPct = (g) => (g == null || !isFinite(g)) ? '' : `${g >= 0 ? '+' : ''}${Math.round(g * 100)}%`;
-  const M = (k, v) => { const blank = v == null || v === ''; return `<div class="sr-m"><div class="sr-m-k">${k}</div><div class="sr-m-v${blank ? ' sr-m-dim' : ''}">${blank ? '—' : escapeHtml(String(v))}</div></div>`; };
+  const M = (k, v, cls = '') => { const blank = v == null || v === ''; return `<div class="sr-m"><div class="sr-m-k">${k}</div><div class="sr-m-v${blank ? ' sr-m-dim' : (cls ? ' ' + cls : '')}">${blank ? '—' : escapeHtml(String(v))}</div></div>`; };
   const metricsGrid = (c) => {
     const f = c.firmographics || {};
     const emp = f.employees != null ? f.employees : c.employee_count;
     const ma = monthsAgo(f.latestFundingDate);
     const cash = (ma != null && ma <= 24 && (f.fundingAmount || f.funding)) ? 'Likely' : '';
+    const g = f.headcountGrowth && f.headcountGrowth.twelveMo;
     return `<div class="sr-metrics">
-      ${M('Raised', f.funding || c.funding || '')}
+      ${M('Raised', f.funding || c.funding || '', (f.funding || c.funding) ? 'sr-m-raise' : '')}
       ${M('Stage', f.fundingStage || '')}
       ${M('Last raise', relRaise(f.latestFundingDate))}
       ${M('Rounds', f.fundingRounds != null ? f.fundingRounds : '')}
-      ${M('Cash on hand', cash)}
+      ${M('Cash on hand', cash, cash ? 'sr-m-pos' : '')}
       ${M('Revenue', f.revenue || '')}
       ${M('Employees', emp != null ? emp : '')}
-      ${M('Growth 12mo', growthPct(f.headcountGrowth && f.headcountGrowth.twelveMo))}
+      ${M('Growth 12mo', growthPct(g), (g != null && g > 0) ? 'sr-m-pos' : '')}
       ${M('Founded', f.foundedYear || '')}
     </div>`;
   };
@@ -4852,16 +4873,19 @@ function renderSalesTable() {
     const s = [c.location || f.location || '', f.industry || ''].filter(Boolean).join(' · ');
     return s ? `<div class="sr-card-sub">${escapeHtml(s)}</div>` : '';
   };
-  // One contact = one block (name + title, then email / phone / LinkedIn).
+  // One contact = one block. Email / phone / LinkedIn ALWAYS show as their own
+  // row (dimmed dash when missing) so you can compare who-has-what across the row.
+  const cRow = (ico, present, html) => `<div class="sr-c-row${present ? '' : ' sr-c-row-missing'}"><span class="sr-c-ico">${ico}</span>${present ? html : '<span class="sr-c-dash">—</span>'}</div>`;
   const contactCard = (p) => {
-    const rows2 = [];
-    if (p.email) rows2.push(`<a class="sr-c-link" href="mailto:${escapeHtml(p.email)}">${escapeHtml(p.email)}</a>`);
-    if (p.phone) rows2.push(`<a class="sr-c-link" href="tel:${escapeHtml(String(p.phone).replace(/[^+\d]/g, ''))}">${escapeHtml(p.phone)}</a>`);
-    if (p.linkedin) rows2.push(`<a class="sr-c-link" href="${escapeHtml(p.linkedin)}" target="_blank" rel="noopener">LinkedIn ↗</a>`);
+    const tel = String(p.phone || '').replace(/[^+\d]/g, '');
     return `<div class="sr-contact-card">
       <div class="sr-c-name">${escapeHtml(p.name || '—')}</div>
       ${p.title ? `<div class="sr-c-title">${escapeHtml(p.title)}</div>` : ''}
-      ${rows2.length ? `<div class="sr-c-rows">${rows2.join('')}</div>` : '<div class="sr-c-rows muted">no contact details found</div>'}
+      <div class="sr-c-rows">
+        ${cRow('✉', !!p.email, `<a class="sr-c-link" href="mailto:${escapeHtml(p.email || '')}">${escapeHtml(p.email || '')}</a>`)}
+        ${cRow('☎', !!p.phone, `<a class="sr-c-link" href="tel:${escapeHtml(tel)}">${escapeHtml(p.phone || '')}</a>`)}
+        ${cRow('in', !!p.linkedin, `<a class="sr-c-link" href="${escapeHtml(p.linkedin || '')}" target="_blank" rel="noopener">LinkedIn ↗</a>`)}
+      </div>
     </div>`;
   };
   const contactsBlock = (c) => {
@@ -4870,22 +4894,35 @@ function renderSalesTable() {
     const list = c.contacts || [];
     if (c.enrich_status === 'done' && !list.length) return '<div class="sr-contacts-note muted">No contacts found</div>';
     if (!list.length) return '';
-    return `<div class="sr-contacts-grid">${list.map(contactCard).join('')}</div>`;
+    const collapsed = salesCollapsed.has(c.id);
+    return `<div class="sr-contacts${collapsed ? ' collapsed' : ''}">
+      <div class="sr-contacts-head">
+        <span class="sr-contacts-title">Contacts <span class="sr-contacts-n">${list.length}</span></span>
+        <button type="button" class="sr-contacts-toggle" data-id="${escapeHtml(c.id)}" aria-label="${collapsed ? 'Expand' : 'Collapse'} contacts">${collapsed ? '▸ Show' : '▾ Hide'}</button>
+      </div>
+      ${collapsed ? '' : `<div class="sr-contacts-grid">${list.map(contactCard).join('')}</div>`}
+    </div>`;
   };
-  const body = rows.map((c) => `
-    <div class="sr-card" data-id="${escapeHtml(c.id)}">
+  const body = rows.map((c) => {
+    const coLi = (c.firmographics && c.firmographics.linkedin) || '';
+    return `
+    <div class="sr-card sr-card-${escapeHtml(c.tier || 'unknown')}" data-id="${escapeHtml(c.id)}">
       <div class="sr-card-head">
         <label class="sr-card-check"><input type="checkbox" class="sr-cb" data-id="${escapeHtml(c.id)}"></label>
         <div class="sr-card-id">
           <div class="sr-card-name">${escapeHtml(c.company || '—')}</div>
-          <a class="sr-card-domain" href="https://${escapeHtml(c.domain)}" target="_blank" rel="noopener">${escapeHtml(c.domain)}</a>
+          <div class="sr-card-links">
+            <a class="sr-card-domain" href="https://${escapeHtml(c.domain)}" target="_blank" rel="noopener">${escapeHtml(c.domain)}</a>
+            ${coLi ? `<a class="sr-card-li" href="${escapeHtml(coLi)}" target="_blank" rel="noopener" title="Company LinkedIn" aria-label="Company LinkedIn">in</a>` : ''}
+          </div>
         </div>
         <div class="sr-card-badges">${statusBadge(c.status)}${tierBadge(c.tier)}</div>
       </div>
       ${metricsGrid(c)}
       ${subLine(c)}
       ${contactsBlock(c)}
-    </div>`).join('');
+    </div>`;
+  }).join('');
   els.srTable.innerHTML = `<div class="sr-cards">${body}</div>`;
   els.srTable.querySelectorAll('.sr-cb').forEach((cb) => cb.addEventListener('change', updateSalesEnrichBtn));
   updateSalesEnrichBtn();
@@ -4963,6 +5000,19 @@ els.srRecentAll?.addEventListener('click', (e) => {
   history.pushState(null, '', '/research/sales/all');
   showView('sales-projects');
   loadSalesProjects('');
+});
+// "New report" — back to the entry (hero + form) to start a fresh run.
+els.srNew?.addEventListener('click', () => {
+  history.pushState(null, '', '/research/sales');
+  resetSalesView();
+});
+// Collapse / expand a card's contacts (delegated; persists across re-renders).
+els.srTable?.addEventListener('click', (e) => {
+  const tog = e.target.closest('.sr-contacts-toggle');
+  if (!tog) return;
+  const id = tog.dataset.id;
+  if (salesCollapsed.has(id)) salesCollapsed.delete(id); else salesCollapsed.add(id);
+  renderSalesTable();
 });
 els.srProjectsSearch?.addEventListener('input', () => {
   clearTimeout(salesProjectsTimer);
