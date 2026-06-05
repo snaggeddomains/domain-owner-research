@@ -52,6 +52,14 @@ export function normalizeNs(host) {
   return String(host || '').trim().toLowerCase().replace(/\.+$/, '');
 }
 
+// Some domains carry ephemeral verification / ACME-challenge NS records (e.g.
+// `verification-wu7jp5iv...ns101.verify.hn`) that are unique per-domain and never
+// shared. Including one in a pairing @> set guarantees zero siblings (no other
+// domain has that exact token), so drop them before resolving the NS set.
+export function isJunkNs(host) {
+  return /(^|\.)verify\.|verification-|_acme|acme-challenge/i.test(String(host || ''));
+}
+
 // Parse a free-form NS input (comma / whitespace / newline separated) into a
 // clean, de-duped list.
 export function parseNsList(raw) {
@@ -123,13 +131,13 @@ export async function liveNameservers(domain, env = process.env) {
   try {
     const r = await runTool('dns_lookup', { domain: d }, env);
     const ns = r && r.ok && Array.isArray(r.data && r.data.ns) ? r.data.ns : [];
-    const clean = [...new Set(ns.map(normalizeNs).filter(Boolean))];
+    const clean = [...new Set(ns.map(normalizeNs).filter((h) => h && !isJunkNs(h)))];
     if (clean.length) return clean;
   } catch { /* fall through to RDAP */ }
   try {
     const r = await runTool('rdap_whois', { domain: d }, env);
     const arr = r && r.ok && Array.isArray(r.data && r.data.nameservers) ? r.data.nameservers : [];
-    const clean = [...new Set(arr.map((n) => normalizeNs((n && (n.ldhName || n.name)) || '')).filter(Boolean))];
+    const clean = [...new Set(arr.map((n) => normalizeNs((n && (n.ldhName || n.name)) || '')).filter((h) => h && !isJunkNs(h)))];
     if (clean.length) return clean;
   } catch { /* give up */ }
   return [];

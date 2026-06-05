@@ -29,6 +29,10 @@ const GENERIC_NS = {
   'dnsowl.com': 'Namecheap/Hostinger DNS',
   'sav.com': 'Sav',
   'name.com': 'Name.com default DNS',
+  'spaceship.net': 'Spaceship default DNS',
+  'spaceship.com': 'Spaceship default DNS',
+  'dynadot.com': 'Dynadot default DNS',
+  'porkbun.com': 'Porkbun default DNS',
 };
 function genericProvider(ns) {
   for (const suf of Object.keys(GENERIC_NS)) {
