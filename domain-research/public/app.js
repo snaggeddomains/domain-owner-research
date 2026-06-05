@@ -4824,30 +4824,46 @@ function renderSalesTable() {
   if (!rows.length) { els.srTable.innerHTML = '<p class="muted">No candidates to show.</p>'; updateSalesEnrichBtn(); return; }
   const tierBadge = (t) => `<span class="sr-tier sr-tier-${t || 'unknown'}">${escapeHtml(t || '—')}</span>`;
   const statusBadge = (s) => `<span class="sr-st sr-st-${s || 'unknown'}">${escapeHtml(s || '—')}</span>`;
-  const body = rows.map((c) => {
-    const contacts = (c.contacts || []).map((p) =>
-      `<div class="sr-contact">${escapeHtml(p.name || '—')}${p.title ? ` · ${escapeHtml(p.title)}` : ''}` +
-      `${p.email ? ` · <a href="mailto:${escapeHtml(p.email)}">${escapeHtml(p.email)}</a>` : ''}` +
-      `${p.phone ? ` · ${escapeHtml(p.phone)}` : ''}` +
-      `${p.linkedin ? ` · <a href="${escapeHtml(p.linkedin)}" target="_blank" rel="noopener">in</a>` : ''}</div>`).join('');
-    const enrichCell = c.enrich_status === 'done'
-      ? (contacts || '<span class="muted">no contacts found</span>')
-      : c.enrich_status === 'pending' ? '<span class="muted">enriching…</span>'
-      : c.enrich_status === 'failed' ? '<span class="sr-status-err">enrich failed</span>' : '';
-    return `<tr data-id="${escapeHtml(c.id)}">
-      <td><input type="checkbox" class="sr-cb" data-id="${escapeHtml(c.id)}"></td>
-      <td class="sr-co"><div class="sr-co-name">${escapeHtml(c.company || '—')}</div>${c.match_reason ? `<div class="sr-why">${escapeHtml(c.match_reason)}</div>` : ''}${enrichCell ? `<div class="sr-contacts">${enrichCell}</div>` : ''}</td>
-      <td><a href="https://${escapeHtml(c.domain)}" target="_blank" rel="noopener">${escapeHtml(c.domain)}</a></td>
-      <td>${statusBadge(c.status)}</td>
-      <td>${tierBadge(c.tier)}</td>
-      <td>${c.employee_count != null ? escapeHtml(String(c.employee_count)) : '—'}</td>
-      <td>${escapeHtml(c.funding || '—')}</td>
-      <td>${escapeHtml(c.location || '—')}</td>
-    </tr>`;
-  }).join('');
-  els.srTable.innerHTML = `<table class="sr-table">
-    <thead><tr><th></th><th>Company</th><th>Domain</th><th>Status</th><th>Ability to pay</th><th>Staff</th><th>Funding</th><th>Location</th></tr></thead>
-    <tbody>${body}</tbody></table>`;
+  const chip = (label, val) => (val == null || val === '' ? '' : `<span class="sr-chip"><span class="sr-chip-k">${label}</span> ${escapeHtml(String(val))}</span>`);
+  // One contact = one block (name + title, then email / phone / LinkedIn).
+  const contactCard = (p) => {
+    const rows2 = [];
+    if (p.email) rows2.push(`<a class="sr-c-link" href="mailto:${escapeHtml(p.email)}">${escapeHtml(p.email)}</a>`);
+    if (p.phone) rows2.push(`<a class="sr-c-link" href="tel:${escapeHtml(String(p.phone).replace(/[^+\d]/g, ''))}">${escapeHtml(p.phone)}</a>`);
+    if (p.linkedin) rows2.push(`<a class="sr-c-link" href="${escapeHtml(p.linkedin)}" target="_blank" rel="noopener">LinkedIn ↗</a>`);
+    return `<div class="sr-contact-card">
+      <div class="sr-c-name">${escapeHtml(p.name || '—')}</div>
+      ${p.title ? `<div class="sr-c-title">${escapeHtml(p.title)}</div>` : ''}
+      ${rows2.length ? `<div class="sr-c-rows">${rows2.join('')}</div>` : '<div class="sr-c-rows muted">no contact details found</div>'}
+    </div>`;
+  };
+  const contactsBlock = (c) => {
+    if (c.enrich_status === 'pending') return '<div class="sr-contacts-note muted">Enriching contacts…</div>';
+    if (c.enrich_status === 'failed') return '<div class="sr-contacts-note sr-status-err">Contact enrichment failed</div>';
+    const list = c.contacts || [];
+    if (c.enrich_status === 'done' && !list.length) return '<div class="sr-contacts-note muted">No contacts found</div>';
+    if (!list.length) return '';
+    return `<div class="sr-contacts-grid">${list.map(contactCard).join('')}</div>`;
+  };
+  const body = rows.map((c) => `
+    <div class="sr-card" data-id="${escapeHtml(c.id)}">
+      <div class="sr-card-head">
+        <label class="sr-card-check"><input type="checkbox" class="sr-cb" data-id="${escapeHtml(c.id)}"></label>
+        <div class="sr-card-id">
+          <div class="sr-card-name">${escapeHtml(c.company || '—')}</div>
+          <a class="sr-card-domain" href="https://${escapeHtml(c.domain)}" target="_blank" rel="noopener">${escapeHtml(c.domain)}</a>
+        </div>
+        <div class="sr-card-badges">${statusBadge(c.status)}${tierBadge(c.tier)}</div>
+        <div class="sr-card-stats">
+          ${chip('Staff', c.employee_count != null ? c.employee_count : '')}
+          ${chip('Funding', c.funding)}
+          ${chip('Location', c.location)}
+        </div>
+      </div>
+      ${c.match_reason ? `<div class="sr-card-why">${escapeHtml(c.match_reason)}</div>` : ''}
+      ${contactsBlock(c)}
+    </div>`).join('');
+  els.srTable.innerHTML = `<div class="sr-cards">${body}</div>`;
   els.srTable.querySelectorAll('.sr-cb').forEach((cb) => cb.addEventListener('change', updateSalesEnrichBtn));
   updateSalesEnrichBtn();
 }
