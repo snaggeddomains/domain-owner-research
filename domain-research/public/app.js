@@ -5073,31 +5073,39 @@ els.srAngles?.addEventListener('click', async () => {
 
 function renderAngleGate(angles) {
   if (!angles.length) { els.srAnglegate.innerHTML = '<div class="sr-ag-loading muted">No distinct angles found for this seed.</div>'; return; }
+  const order = { high: 0, medium: 1, low: 2 };
+  const sorted = angles.slice().sort((a, b) => (order[a.buyer_potential] ?? 1) - (order[b.buyer_potential] ?? 1));
   const potClass = { high: 'sr-pot-high', medium: 'sr-pot-medium', low: 'sr-pot-low' };
-  const cards = angles.map((a, i) => {
+  const fmt = (v) => (v == null || v === '' ? '' : String(v));
+  const rows = sorted.map((a) => {
     const v = a.verified;
-    const verLine = v && v.matched
-      ? `<div class="sr-ag-verified">✓ <strong>${escapeHtml(v.name)}</strong> — <span class="sr-tier sr-tier-${v.tier}">${escapeHtml(v.tier)}</span> ${escapeHtml((v.reasons || []).slice(0, 3).join(' · '))}</div>`
-      : (v ? `<div class="sr-ag-verified muted">top player ${escapeHtml(v.name)} — no firmographic match</div>` : '');
-    const players = a.players.map((p) => p.domain
-      ? `<a href="https://${escapeHtml(p.domain)}" target="_blank" rel="noopener">${escapeHtml(p.name)}</a>`
-      : escapeHtml(p.name)).join(' · ');
-    return `<label class="sr-angle" data-key="${escapeHtml(a.key)}">
-      <input type="checkbox" class="sr-ag-cb" data-key="${escapeHtml(a.key)}"${i === 0 ? ' checked' : ''}>
-      <div class="sr-ag-body">
-        <div class="sr-ag-head"><span class="sr-ag-label">${escapeHtml(a.label)}</span> <span class="sr-pot ${potClass[a.buyer_potential] || ''}">${escapeHtml(a.buyer_potential)} potential</span></div>
-        <div class="sr-ag-concept">${escapeHtml(a.concept)}</div>
-        <div class="sr-ag-players">${players}</div>
-        ${verLine}
+    const bits = v && v.matched
+      ? [fmt(v.revenue) && `${fmt(v.revenue)} rev`, fmt(v.employees) && `${fmt(v.employees)} staff`].filter(Boolean).join(' · ')
+      : '';
+    const whale = v && v.matched
+      ? `<span class="sr-ag-whale">✓ ${escapeHtml(v.name)} <span class="sr-tier sr-tier-${v.tier}">${escapeHtml(v.tier)}</span>${bits ? ` <span class="sr-ag-whale-meta">${escapeHtml(bits)}</span>` : ''}</span>`
+      : '';
+    const players = a.players.slice(0, 4).map((p) => escapeHtml(p.name)).join(' · ')
+      + (a.players.length > 4 ? ` +${a.players.length - 4}` : '');
+    return `<label class="sr-ag-row" data-key="${escapeHtml(a.key)}">
+      <input type="checkbox" class="sr-ag-cb" data-key="${escapeHtml(a.key)}"${a.buyer_potential === 'high' ? ' checked' : ''}>
+      <div class="sr-ag-main">
+        <div class="sr-ag-l1">
+          <span class="sr-pot ${potClass[a.buyer_potential] || ''}">${escapeHtml(a.buyer_potential)}</span>
+          <span class="sr-ag-label">${escapeHtml(a.label)}</span>
+          ${whale}
+        </div>
+        <div class="sr-ag-l2">${escapeHtml(a.concept)}</div>
+        <div class="sr-ag-l3">${players}</div>
       </div>
     </label>`;
   }).join('');
   els.srAnglegate.innerHTML = `
-    <div class="sr-ag-title">Buyer angles for <strong>${escapeHtml(salesSeed)}</strong> — pick which to research</div>
-    <div class="sr-ag-list">${cards}</div>
+    <div class="sr-ag-title">Buyer angles for <strong>${escapeHtml(salesSeed)}</strong> — tick the ones worth researching</div>
+    <div class="sr-ag-list">${rows}</div>
     <div class="sr-ag-foot">
       <button id="sr-ag-go" type="button" class="sr-btn sr-ag-go">Research selected angles</button>
-      <span class="sr-ag-note muted">Free preview + verified headliner. Researching an angle does the full per-company discovery + ranking.</span>
+      <span class="sr-ag-note muted">High-potential angles are pre-ticked. Researching runs the full per-company discovery + ranking.</span>
     </div>`;
   document.getElementById('sr-ag-go')?.addEventListener('click', () => {
     const keys = [...els.srAnglegate.querySelectorAll('.sr-ag-cb:checked')].map((c) => c.dataset.key);
