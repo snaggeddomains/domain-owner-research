@@ -53,14 +53,17 @@ Real companies + real domains only. Order best fit first. No placeholders.`;
   })).filter((c) => c.name && c.domain);
 }
 
-// Does the site load at all? (any HTTP response = live; only DNS/connection
-// failures = dead). Lenient on purpose — big sites 403 bots but still "load".
+// Does the site actually serve a working page? Live = 2xx/3xx, or an auth/bot
+// gate (401/403/429) that still proves the site exists. Dead = 404, any 5xx
+// (e.g. 503 "unavailable"), or a network/DNS failure → excluded.
 async function liveCheck(domain) {
   const probe = async (url) => {
     const ctrl = new AbortController();
     const t = setTimeout(() => ctrl.abort(), 8000);
-    try { await fetch(url, { redirect: 'follow', signal: ctrl.signal }); return true; }
-    catch { return false; }
+    try {
+      const res = await fetch(url, { redirect: 'follow', signal: ctrl.signal });
+      return res.status < 400 || res.status === 401 || res.status === 403 || res.status === 429;
+    } catch { return false; }
     finally { clearTimeout(t); }
   };
   return (await probe(`https://${domain}/`)) || (await probe(`http://${domain}/`));
