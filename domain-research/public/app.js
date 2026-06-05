@@ -5032,8 +5032,12 @@ function renderSalesTable() {
   };
   const cardHtml = (c) => {
     const coLi = (c.firmographics && c.firmographics.linkedin) || '';
-    const angleBadge = c.category === 'keyword' && c.angle
-      ? `<span class="sr-angle-badge">${escapeHtml(String(c.angle).replace(/_/g, ' '))}</span>` : '';
+    // The exact-match "product named X" angle gets its own callout; other angles
+    // show the plain angle tag.
+    const angleBadge = c.angle === 'product_named'
+      ? '<span class="sr-product-badge" title="Found because this company has a product/service with a similar name">🏷 product with similar name</span>'
+      : (c.category === 'keyword' && c.angle
+        ? `<span class="sr-angle-badge">${escapeHtml(String(c.angle).replace(/_/g, ' '))}</span>` : '');
     const unq = !c.firmographics;   // keyword/angle company not yet Apollo-qualified
     const recommend = unq && c.category === 'keyword' && Number(c.score) >= 2
       ? '<span class="sr-rec-badge">★ recommended</span>' : '';
@@ -5074,16 +5078,18 @@ function renderSalesTable() {
   const byScore = (a, b) => ((Number(b.score) || 0) - (Number(a.score) || 0)) || ((b.employee_count || 0) - (a.employee_count || 0));
   const sections = [
     { label: 'Recommended — upgrades & best-fit buyers', rows: [] },
+    { label: 'Product-name matches — companies with a product of this name', rows: [] },
     { label: 'Keyword expansions — adjacent industries', rows: [] },
     { label: 'Others', rows: [] },
   ];
   const offTarget = (c) => (c.firmographics && c.firmographics.atp_relevant === false) || Number(c.score) < 0;
   for (const c of rows) {
-    if (c.status && c.status !== 'active') sections[2].rows.push(c);                 // for-sale / inactive
-    else if (offTarget(c)) sections[2].rows.push(c);                                 // relevance-gated → Others
+    if (c.status && c.status !== 'active') sections[3].rows.push(c);                 // for-sale / inactive
+    else if (offTarget(c)) sections[3].rows.push(c);                                 // relevance-gated → Others
+    else if (c.angle === 'product_named') sections[1].rows.push(c);                  // exact product-name matches, grouped
     else if (c.category === 'upgrade' || Number(c.score) >= 2) sections[0].rows.push(c);  // upgrades + best-fit keyword
-    else if (c.category === 'keyword') sections[1].rows.push(c);                     // remaining angle companies
-    else sections[2].rows.push(c);
+    else if (c.category === 'keyword') sections[2].rows.push(c);                     // remaining angle companies
+    else sections[3].rows.push(c);
   }
   els.srTable.innerHTML = sections.filter((s) => s.rows.length).map((s) => {
     s.rows.sort(byScore);
