@@ -28,3 +28,10 @@ export function reportUrl({ domain, runId, createdAt }) {
 export function reportHash({ domain, runId, createdAt }) {
   return `#/r/${buildSlug({ domain, runId, createdAt })}`;
 }
+
+// Absolute deep-link to a Sales Research project (path-routed, not a hash). Works
+// from both chromes — the research bell's openNotifLink pushState+route()s it.
+export function salesUrl(projectId) {
+  const base = (process.env.APP_URL || 'https://app.snagged.com/research').replace(/\/+$/, '');
+  return `${base}/sales/${projectId}`;
+}

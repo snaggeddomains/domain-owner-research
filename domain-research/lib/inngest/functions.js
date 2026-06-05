@@ -7,14 +7,14 @@ import { createNotification } from '../db/notifications.js';
 import { withCategory } from '../db/usage.js';
 import { loadLessonsAddendum, bumpAppliedCounts } from '../db/lessons.js';
 import { sendEmail, isEmailConfigured } from '../email.js';
-import { reportUrl } from '../reportUrl.js';
+import { reportUrl, salesUrl } from '../reportUrl.js';
 import { summarizeReport } from '../reportSummary.js';
 import { discoverUpgrade } from '../sales/discovery/upgrade.js';
 import { discoverOperators } from '../sales/discovery/operators.js';
 import { gateRelevance } from '../sales/relevance.js';
 import { resolveCandidates } from '../sales/resolve.js';
 import {
-  setSalesProjectStatus, insertSalesCandidates, getSalesProject,
+  setSalesProjectStatus, insertSalesCandidates, getSalesProject, listSalesCandidates,
 } from '../db/sales.js';
 
 // Format the refine-chat history as a single corrections block the agent can
@@ -165,6 +165,40 @@ async function createReportNotification(runId) {
     body: phase === 'deep' ? 'Deep research finished.' : 'Free pre-flight finished.',
     link,
   });
+  return { created: true };
+}
+
+// Bell + (opt-in) email when a Sales Research run finishes — these runs got slower
+// with the operator + relevance LLM passes, so the requester shouldn't have to babysit
+// the tab. Notifies the project's creator; best-effort, never blocks the run.
+async function createSalesNotification(projectId, { failed = false } = {}) {
+  const project = await getSalesProject(projectId);
+  if (!project || !project.created_by) return { created: false, reason: 'no user' };
+  const u = await getUser(project.created_by);
+  const link = salesUrl(projectId);
+  let n = null;
+  if (!failed) { try { const rows = await listSalesCandidates(projectId); n = Array.isArray(rows) ? rows.length : null; } catch { /* count is optional */ } }
+
+  if (!(u && u.notify_in_app === false)) {
+    await createNotification({
+      user_id: project.created_by,
+      kind: 'sales',
+      title: failed ? `Buyer research failed — ${project.seed_domain}` : `Buyer research ready — ${project.seed_domain}`,
+      body: failed ? 'The run hit an error — open it to retry.' : (n != null ? `${n} companies found.` : 'Sales research finished.'),
+      link,
+    });
+  }
+  if (!failed && u && u.email_notify_on_done && isEmailConfigured()) {
+    const countTxt = n != null ? ` — ${n} companies` : '';
+    await sendEmail({
+      to: u.email,
+      subject: `${project.seed_domain} buyer research is ready`,
+      text: `Your buyer research for ${project.seed_domain} just finished${countTxt}.\n\nOpen it: ${link}\n\n(You're getting this because "Email me when reports finish" is on. Turn it off in the sidebar to stop.)`,
+      html: `<p>Your buyer research for <strong>${esc(project.seed_domain)}</strong> just finished${esc(countTxt)}.</p>`
+        + `<p><a href="${esc(link)}" style="display:inline-block;padding:10px 16px;background:#e48069;color:#fff;text-decoration:none;border-radius:8px;font-weight:700">Open the buyers</a></p>`
+        + `<p style="color:#999;font-size:11px">You're getting this because "Email me when reports finish" is on. Turn it off in the sidebar to stop.</p>`,
+    });
+  }
   return { created: true };
 }
 
@@ -398,10 +432,14 @@ export const runSalesResearch = inngest.createFunction(
 
       await step.run('persist', () => insertSalesCandidates(projectId, gated));
       await step.run('mark-done', () => setSalesProjectStatus(projectId, 'done', 'done'));
+      await step.run('notify', () => createSalesNotification(projectId).catch((err) => {
+        console.error('[sales notify]', err?.message || err); return { created: false };
+      }));
       return { projectId, ok: true, candidates: resolved.length };
     } catch (err) {
       const message = String(err?.message || err);
       await step.run('mark-error', () => setSalesProjectStatus(projectId, 'failed', null, message));
+      await step.run('notify-failed', () => createSalesNotification(projectId, { failed: true }).catch(() => ({ created: false })));
       throw err;
     }
   },
