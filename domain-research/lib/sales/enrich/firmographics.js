@@ -227,12 +227,14 @@ export function abilityToPay(rec) {
   const raiseMonths = monthsAgo(rec.latestFundingDate);
   const g12 = rec.headcountGrowth && num(rec.headcountGrowth.twelveMo);
 
-  if (fund > 0) { signals.push('funded'); reasons.push(`raised ${rec.funding || fund}${stage ? ` (${rec.fundingStage})` : ''}`); }
+  const money = (v) => { const s = String(v ?? '').trim(); return s ? (/^\$/.test(s) ? s : '$' + s) : ''; };
+  const commas = (n) => Number(n).toLocaleString();
+  if (fund > 0) { signals.push('funded'); reasons.push(`raised ${money(rec.funding || fund)}${stage ? ` (${rec.fundingStage})` : ''}`); }
   if (raiseMonths != null && raiseMonths <= 24) { signals.push('recent_raise'); reasons.push(`raised ~${raiseMonths}mo ago — cash on hand`); }
-  if (rev >= 1e6) { signals.push('revenue'); reasons.push(`revenue ${rec.revenue || rev}`); }
-  if (emp >= 50) { signals.push('sizable'); reasons.push(`${emp} employees`); }
-  else if (emp >= 10) { signals.push('mid'); reasons.push(`${emp} employees`); }
-  else if (emp > 0) { signals.push('small'); reasons.push(`${emp} employees`); }
+  if (rev >= 1e6) { signals.push('revenue'); reasons.push(`revenue ${money(rec.revenue || rev)}`); }
+  if (emp >= 50) { signals.push('sizable'); reasons.push(`${commas(emp)} employees`); }
+  else if (emp >= 10) { signals.push('mid'); reasons.push(`${commas(emp)} employees`); }
+  else if (emp > 0) { signals.push('small'); reasons.push(`${commas(emp)} employees`); }
   if (g12 != null && g12 >= 0.1) { signals.push('growing'); reasons.push(`+${Math.round(g12 * 100)}% headcount /12mo`); }
 
   const strong = (raiseMonths != null && raiseMonths <= 24) || fund >= 5e6 || emp >= 100 || rev >= 1e7

@@ -4967,18 +4967,23 @@ function renderSalesTable() {
   // Build the metric list, dropping blanks. A card with 0 stats shows nothing; 1–2
   // collapse to a one-line summary; 3+ get the labelled grid (only the cells we
   // actually have — no rows of dashes).
+  // Currency → leading $ (idempotent); counts → thousands separators.
+  const money = (v) => { const s = String(v ?? '').trim(); return s ? (/^\$/.test(s) ? s : '$' + s) : ''; };
+  const commas = (v) => (v == null || v === '' || isNaN(Number(v))) ? '' : Number(v).toLocaleString();
   const metricsGrid = (c) => {
     const f = c.firmographics || {};
     const emp = f.employees != null ? f.employees : c.employee_count;
     const g = f.headcountGrowth && f.headcountGrowth.twelveMo;
-    const raised = f.funding || c.funding || '';
+    const raised = money(f.funding || c.funding || '');
+    const rev = money(f.revenue || '');
+    const empC = commas(emp);
     const growth = growthPct(g);
     const cells = [
       { k: 'Raised', v: raised, cls: raised ? 'sr-m-raise' : '', inline: raised ? `raised ${raised}` : '' },
       { k: 'Stage', v: f.fundingStage || '', inline: f.fundingStage || '' },
       { k: 'Last raise', v: relRaise(f.latestFundingDate), inline: relRaise(f.latestFundingDate) ? `last raise ${relRaise(f.latestFundingDate)}` : '' },
-      { k: 'Revenue', v: f.revenue || '', inline: f.revenue ? `${f.revenue} revenue` : '' },
-      { k: 'Employees', v: emp != null ? emp : '', inline: emp != null ? `${Number(emp).toLocaleString()} employees` : '' },
+      { k: 'Revenue', v: rev, inline: rev ? `${rev} revenue` : '' },
+      { k: 'Employees', v: empC, inline: empC ? `${empC} employees` : '' },
       { k: 'Growth 12mo', v: growth, cls: (g != null && g > 0) ? 'sr-m-pos' : '', inline: growth ? `${growth} growth` : '' },
       { k: 'Founded', v: f.foundedYear || '', inline: f.foundedYear ? `founded ${f.foundedYear}` : '' },
     ].filter((m) => m.v !== '' && m.v != null);
