@@ -13,6 +13,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { pathToFileURL } from 'node:url';
 import { seedParts } from './upgrade.js';
+import { classifyDomain } from '../classify.js';
 
 function parseJsonLoose(text) {
   const s = String(text || '');
@@ -68,23 +69,6 @@ Real companies + real domains only. Order best fit first. No placeholders.`;
   })).filter((c) => c.name && c.domain);
 }
 
-// Does the site actually serve a working page? Live = 2xx/3xx, or an auth/bot
-// gate (401/403/429) that still proves the site exists. Dead = 404, any 5xx
-// (e.g. 503 "unavailable"), or a network/DNS failure → excluded.
-const LIVE_TIMEOUT = 5000;
-async function liveCheck(domain) {
-  const probe = async (url) => {
-    const ctrl = new AbortController();
-    const t = setTimeout(() => ctrl.abort(), LIVE_TIMEOUT);
-    try {
-      const res = await fetch(url, { redirect: 'follow', signal: ctrl.signal });
-      return res.status < 400 || res.status === 401 || res.status === 403 || res.status === 429;
-    } catch { return false; }
-    finally { clearTimeout(t); }
-  };
-  return (await probe(`https://${domain}/`)) || (await probe(`http://${domain}/`));
-}
-
 async function mapPool(items, limit, fn) {
   const out = new Array(items.length);
   let i = 0;
@@ -118,16 +102,19 @@ export async function discoverAngles(seedDomain, angles, env = process.env, { li
   }
   if (!raw.length) return [];
 
-  // Liveness-check every site; drop the ones that don't load.
-  const live = await mapPool(raw, concurrency, async (c) => ({ c, ok: await liveCheck(c.domain) }));
-  return live.filter((x) => x.ok).map(({ c }) => ({
+  // Classify every site with the SAME for-sale/parked detection the upgrade path
+  // uses — so a for-sale lander that returns HTTP 200 (e.g. graphicedge.com) is
+  // demoted, not shown as a live buyer. Drop dead sites; keep for-sale ones (they
+  // carry status 'for_sale' → the UI sections them into "Others").
+  const classified = await mapPool(raw, concurrency, async (c) => ({ c, status: await classifyDomain(c.domain) }));
+  return classified.filter((x) => x.status !== 'inactive').map(({ c, status }) => ({
     domain: c.domain,
     company: c.name || null,
     company_url: `https://${c.domain}`,
     subtype: 'angle',
     category: 'keyword',
     angle: c.angle,
-    status: 'active',
+    status,
     qualification: { tier: 'unknown', reasons: c.why ? [c.why] : [] },  // why-line shown in the card
     score: FIT_SCORE[c.fit] ?? 1,                                       // LLM fit drives the sort
   }));

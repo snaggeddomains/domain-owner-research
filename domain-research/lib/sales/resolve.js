@@ -22,20 +22,7 @@ import { pathToFileURL } from 'node:url';
 import { fetchText, extractClues } from '../util.js';
 import { discoverUpgrade, seedParts } from './discovery/upgrade.js';
 import { firmographics, abilityToPay } from './enrich/firmographics.js';
-
-// Title fragments that are not a company name.
-const GENERIC_TITLE = /^(welcome|home ?page|home|index|untitled|404|not found|coming soon|under construction|domain (default|for sale)|account suspended)\b/i;
-
-// Parked / placeholder pages that slip past for-sale detection: registrar default
-// pages, "future home of", host parking, blank CMS installs. We DEMOTE these
-// (status for_sale → "Others") and never let their junk title become a company name.
-const PARKED_MARKERS = /\b(checkdomain|hostinger|unstoppable domains|parked (domain|page|free)|future home of|domain default page|this domain is parked|sedoparking|parking ?crew|courtesy of (the )?domain|buy this domain|domainmarket|this web ?site is parked|website coming soon|godaddy)\b/i;
-const PARKED_NAME = /^(it works!?|index of|apache2? (ubuntu )?(default|server)|welcome to nginx|my (blog|wordpress (blog|site))|future home of|parked( domain| page)?|checkdomain parking|parking page|unstoppable domains|domain default page|coming soon|test page|default web site page|hostinger)\b/i;
-function looksParked(resp) {
-  const head = String(resp.body || '').slice(0, 4000);
-  const title = (head.match(/<title[^>]*>([^<]{0,120})<\/title>/i) || [])[1] || '';
-  return PARKED_MARKERS.test(head) || PARKED_NAME.test(title.trim());
-}
+import { GENERIC_TITLE, PARKED_NAME, classifyResp } from './classify.js';
 
 // Firmographic name↔domain mismatch: the provider returned a company whose name
 // shares nothing with the domain SLD (e.g. askubuntu.com → "Echo Val-Solution") —
@@ -60,30 +47,6 @@ function namesUnrelated(a, b) {
   const toks = (s) => String(s || '').toLowerCase().split(/[^a-z0-9]+/).filter((t) => t.length >= 4);
   if (toks(a).some((t) => nb.includes(t)) || toks(b).some((t) => na.includes(t))) return false;
   return true;
-}
-
-// Marketplace / parking hosts a for-sale domain redirects to (a domainer, not a
-// buyer). extractClues misses GoDaddy's own landers, so we check these too.
-const SALE_HOSTS = [
-  'afternic.com', 'sedo.com', 'sedoparking.com', 'dan.com', 'undeveloped.com',
-  'bodis.com', 'parkingcrew.net', 'above.com', 'hugedomains.com', 'voodoo.com',
-  'sav.com', 'fabulous.com', 'domainmarket.com', 'spaceship.com', 'godaddy.com',
-  'atom.com', 'squadhelp.com', 'brandbucket.com', 'efty.com', 'uniregistry.com',
-  'porkbun.com', 'dynadot.com', 'namecheap.com',
-];
-// High-signal for-sale lander phrases (GoDaddy/Afternic/Sedo "is for sale"). These
-// are specific enough not to fire on an operating business homepage.
-const SALE_PHRASES = /\b(get a price in less than 24 hours|lease to own|buy this domain|this domain (name )?is (for sale|available)|the domain (name )?[\w.-]{0,40} ?is for sale|domain (name )?is for sale|inquire (to|about) (buy|purchas|this domain)|priced to sell|this domain may be for sale|interested in (buying|this domain)|fast transfer)\b/i;
-function looksForSale(resp) {
-  const body = String(resp.body || '');
-  let host = '';
-  try { host = new URL(resp.finalUrl || '').host.replace(/^www\./, ''); } catch { /* ignore */ }
-  if (host && SALE_HOSTS.some((h) => host === h || host.endsWith('.' + h))) return true;
-  // Afternic/GoDaddy stub: a near-empty page that JS-redirects to a parking
-  // lander (e.g. window.location.href="/lander"). The for-sale text is rendered
-  // client-side, so the only signal in the raw HTML is the redirect itself.
-  if (/location\.(href|replace)\s*[=(]\s*["'][^"']*(\/lander|\/park|for[-_]?sale)/i.test(body.slice(0, 3000))) return true;
-  return SALE_PHRASES.test(body.slice(0, 8000));
 }
 
 // Pull a usable company name from a live page: prefer og:site_name, else the most
@@ -112,9 +75,7 @@ async function classifyLive(domain) {
   try { resp = await fetchText(`https://${domain}/`); }
   catch { try { resp = await fetchText(`http://${domain}/`); } catch { return { status: 'inactive', page: null }; } }
   const clues = extractClues(resp.body || '');
-  if (clues.parking?.likely_parked || looksForSale(resp) || looksParked(resp)) return { status: 'for_sale', page: clues, html: resp.body };
-  if (!resp.ok) return { status: 'inactive', page: clues, html: resp.body };
-  return { status: 'active', page: clues, html: resp.body };
+  return { status: classifyResp(resp), page: clues, html: resp.body };
 }
 
 // Resolve + classify a single candidate. `enrich` gates the paid firmographic call.
