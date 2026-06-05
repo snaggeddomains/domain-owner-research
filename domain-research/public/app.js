@@ -421,6 +421,15 @@ const TOOL_PERMISSION = {
   dbsearch: 'dbsearch',
   nameserver: 'nameserver',
 };
+// Collapse a tool's hero+search into the compact "<seed> <label>" header once a
+// result is showing (CSS .report-open); restore the entry when off.
+function toolReport(viewId, seed, on) {
+  const v = document.getElementById(viewId);
+  if (!v) return;
+  v.classList.toggle('report-open', !!on);
+  if (on) { const s = v.querySelector('.tr-seed'); if (s) s.textContent = seed || ''; }
+}
+
 function route() {
   if (els.app.hidden) return;
   const tr = currentToolRoute();
@@ -434,6 +443,7 @@ function route() {
     refreshToolRecent(els.tmRecent, 'tm');
     if (tr.slug) openToolSlug('tm', tr.slug);
     else { els.tmResults.innerHTML = ''; els.tmQuery.value = ''; setToolStatus(els.tmStatus, ''); }
+    toolReport('view-trademark', tr.slug || '', !!tr.slug);
     return;
   }
   if (tr && tr.tool === 'naming') {
@@ -457,6 +467,7 @@ function route() {
     refreshToolRecent(els.apRecent, 'ap');
     if (tr.slug) openToolSlug('ap', tr.slug);
     else { els.apResult.hidden = true; els.apResult.innerHTML = ''; els.apDomain.value = ''; setToolStatus(els.apStatus, ''); }
+    toolReport('view-appraisal', tr.slug || '', !!tr.slug);
     return;
   }
   if (tr && tr.tool === 'dbscreen') {
@@ -472,6 +483,7 @@ function route() {
       if (els.dbResult) els.dbResult.hidden = true;
       setToolStatus(els.dbStatus, '');
     }
+    toolReport('view-dbscreen', q || '', !!q);
     return;
   }
   if (tr && tr.tool === 'dbsearch') {
@@ -483,6 +495,7 @@ function route() {
     showView('nameserver');
     if (tr.slug) { nsSetMode('domain'); if (els.nsDomain) els.nsDomain.value = tr.slug; runNsDomain(tr.slug); }
     else nsReset();
+    toolReport('view-nameserver', tr.slug || '', !!tr.slug);
     return;
   }
   if (tr && tr.tool === 'sales') {
@@ -1767,6 +1780,15 @@ els.refreshBtn?.addEventListener('click', () => {
 });
 // In-app back navigation (PWA has no browser back button).
 els.backBtn?.addEventListener('click', () => history.back());
+
+// "+ New report" on any collapsed tool header → back to that tool's entry.
+document.addEventListener('click', (e) => {
+  const b = e.target.closest('.tool-new-report');
+  if (!b || !b.dataset.tool) return;
+  e.preventDefault();
+  setToolUrl(b.dataset.tool, '');
+  route();
+});
 
 els.notifBtn?.addEventListener('click', (e) => {
   e.stopPropagation();

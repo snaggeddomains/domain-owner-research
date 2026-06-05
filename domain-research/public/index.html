@@ -28,7 +28,7 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="apple-mobile-web-app-title" content="Snagged Research" />
     <meta name="theme-color" content="#254254" />
-    <link rel="stylesheet" href="styles.css?v=20260605m" />
+    <link rel="stylesheet" href="styles.css?v=20260605n" />
     <!-- Layout: horizontal tab nav (Admin-style), no sidebar. -->
   </head>
   <body>
@@ -303,6 +303,10 @@
 
         <!-- Trademark tool -->
         <section id="view-trademark" hidden>
+          <div class="tool-reshead">
+            <h1 class="tool-reshead-title"><span class="tr-seed"></span> <span class="accent">trademark</span></h1>
+            <button class="tool-new-report" data-tool="trademark" type="button">+ New report</button>
+          </div>
           <div class="hero tool-hero">
             <img class="hero-art" src="mascot-hero.png" alt="" />
             <h1 class="hero-title">Trademark <span class="accent">Search</span></h1>
@@ -319,6 +323,10 @@
 
         <!-- Appraisal tool -->
         <section id="view-appraisal" hidden>
+          <div class="tool-reshead">
+            <h1 class="tool-reshead-title"><span class="tr-seed"></span> <span class="accent">appraisal</span></h1>
+            <button class="tool-new-report" data-tool="appraisal" type="button">+ New report</button>
+          </div>
           <div class="hero tool-hero">
             <img class="hero-art" src="mascot-hero.png" alt="" />
             <h1 class="hero-title">Domain <span class="accent">Appraisal</span></h1>
@@ -336,6 +344,10 @@
 
         <!-- Domain DB Screen (single-domain lookup) -->
         <section id="view-dbscreen" hidden>
+          <div class="tool-reshead">
+            <h1 class="tool-reshead-title"><span class="tr-seed"></span> <span class="accent">screen</span></h1>
+            <button class="tool-new-report" data-tool="dbscreen" type="button">+ New report</button>
+          </div>
           <div class="hero tool-hero">
             <img class="hero-art" src="mascot-hero.png" alt="" />
             <h1 class="hero-title">Domain <span class="accent">DB Screen</span></h1>
@@ -468,6 +480,10 @@
 
         <!-- Nameserver Search — domain↔nameserver lookups over the zone index -->
         <section id="view-nameserver" hidden>
+          <div class="tool-reshead">
+            <h1 class="tool-reshead-title"><span class="tr-seed"></span> <span class="accent">nameservers</span></h1>
+            <button class="tool-new-report" data-tool="nameserver" type="button">+ New report</button>
+          </div>
           <div class="dbs-head">
             <h1 class="hero-title dbs-title">Nameserver <span class="accent">Search</span></h1>
             <p class="hero-sub">Look up a domain's nameservers, or find every domain on a nameserver set — then surface likely-related siblings sharing the same pairing.</p>
@@ -769,6 +785,6 @@ The model parses it into structured filters (TLDs, length, budget, tone, etc.) a
     </aside>
 
     <!-- Bump ?v= on any public/app.js or styles.css change to bust caches. -->
-    <script src="app.js?v=20260605m"></script>
+    <script src="app.js?v=20260605n"></script>
   </body>
 </html>
