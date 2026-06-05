@@ -56,10 +56,11 @@ Real companies + real domains only. Order best fit first. No placeholders.`;
 // Does the site actually serve a working page? Live = 2xx/3xx, or an auth/bot
 // gate (401/403/429) that still proves the site exists. Dead = 404, any 5xx
 // (e.g. 503 "unavailable"), or a network/DNS failure → excluded.
+const LIVE_TIMEOUT = 5000;
 async function liveCheck(domain) {
   const probe = async (url) => {
     const ctrl = new AbortController();
-    const t = setTimeout(() => ctrl.abort(), 8000);
+    const t = setTimeout(() => ctrl.abort(), LIVE_TIMEOUT);
     try {
       const res = await fetch(url, { redirect: 'follow', signal: ctrl.signal });
       return res.status < 400 || res.status === 401 || res.status === 403 || res.status === 429;
@@ -80,14 +81,16 @@ async function mapPool(items, limit, fn) {
 
 // Discover companies for the chosen angles → live, UNQUALIFIED candidates
 // (category 'keyword', tagged by angle, fit-scored, with a why). FREE — no Apollo.
-export async function discoverAngles(seedDomain, angles, env = process.env, { limitPerAngle = 15, cap = 80, concurrency = 20 } = {}) {
+export async function discoverAngles(seedDomain, angles, env = process.env, { limitPerAngle = 15, cap = 80, concurrency = 30 } = {}) {
   const { domain } = seedParts(seedDomain);
   const lim = Math.max(1, Math.min(Number(limitPerAngle) || 15, 60));
   const seen = new Set([domain]);
   const raw = [];
-  for (const a of angles) {
-    let expanded = [];
-    try { expanded = await expandAngle(domain, a, env, lim); } catch { expanded = []; }
+  // Expand every angle in PARALLEL (sequential LLM calls timed out the handler).
+  const expandedAll = await Promise.all(angles.map((a) => expandAngle(domain, a, env, lim).catch(() => [])));
+  for (let ai = 0; ai < angles.length; ai++) {
+    const a = angles[ai];
+    const expanded = expandedAll[ai] || [];
     const gatePlayers = (Array.isArray(a.players) ? a.players : []).map((p) => ({ name: p.name, domain: cleanDomain(p.domain), fit: 'medium', why: '' }));
     let perAngle = 0;
     for (const c of [...expanded, ...gatePlayers]) {

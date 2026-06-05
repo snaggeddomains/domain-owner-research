@@ -4733,6 +4733,21 @@ let salesSeed = '';
 const salesCollapsed = new Set();  // candidate ids whose contacts are collapsed
 let salesAngles = [];              // angle objects from the last gate render
 
+// Pull a human string out of an API error payload. Vercel's function-timeout
+// envelope is `{error:{code,message}}`, so a naive `data.error` stringifies to
+// "[object Object]". Handle string, {message}, and the timeout case explicitly.
+function apiErrText(data, res) {
+  const e = data && data.error;
+  if (typeof e === 'string' && e) return e;
+  if (e && typeof e === 'object') {
+    if (e.message) return String(e.message);
+    if (e.code === 'FUNCTION_INVOCATION_TIMEOUT') return 'Timed out — try fewer categories or a smaller per-category count.';
+    try { return JSON.stringify(e); } catch { /* fall through */ }
+  }
+  if (res && res.status === 504) return 'Timed out — try fewer categories or a smaller per-category count.';
+  return `Failed (${res ? res.status : '?'})`;
+}
+
 function setSalesStatus(msg, isErr = false) {
   if (!els.srStatus) return;
   els.srStatus.hidden = !msg;
@@ -4753,6 +4768,7 @@ function setSalesMode(mode, seed) {
 
 function resetSalesView() {
   clearSalesPoll();
+  hideAngleGate();
   salesProjectId = null; salesCandidates = []; salesSeed = '';
   if (els.srDomain) els.srDomain.value = '';
   if (els.srResults) els.srResults.hidden = true;
@@ -4855,9 +4871,19 @@ els.srForm?.addEventListener('submit', async (e) => {
   }
 });
 
+function hideAngleGate() {
+  if (!els.srAnglegate) return;
+  els.srAnglegate.hidden = true;
+  els.srAnglegate.innerHTML = '';
+  delete els.srAnglegate.dataset.seed;
+  salesAngles = [];
+}
+
 function openSalesProject(id) {
   clearSalesPoll();
+  hideAngleGate();               // drop any stale angle gate from the previous run
   salesProjectId = id;
+  salesSeed = '';                // cleared until the poll returns the real seed
   els.srGo.disabled = true;
   setSalesMode('results', '');   // collapse entry; seed filled in once the poll returns it
   setSalesStatus('Discovering candidates and qualifying ability-to-pay…');
@@ -5125,7 +5151,7 @@ els.srAngles?.addEventListener('click', async () => {
   if (open) { els.srAnglegate.hidden = true; return; }   // toggle off
   els.srAnglegate.hidden = false;
   els.srAnglegate.dataset.seed = salesSeed;
-  els.srAnglegate.innerHTML = '<div class="sr-ag-loading sr-enriching"><span class="sr-spin"></span> Mapping buyer angles and verifying the top player in each…</div>';
+  els.srAnglegate.innerHTML = '<div class="sr-ag-loading sr-enriching"><span class="sr-spin"></span> Mapping buyer categories and verifying the top player in each…</div>';
   els.srAngles.disabled = true;
   try {
     const res = await fetch('/research/api/sales', {
@@ -5133,7 +5159,7 @@ els.srAngles?.addEventListener('click', async () => {
       body: JSON.stringify({ action: 'angles', domain: salesSeed }),
     });
     const data = await res.json();
-    if (!res.ok) throw new Error(data.error || `Failed (${res.status})`);
+    if (!res.ok) throw new Error(apiErrText(data, res));
     renderAngleGate(data.angles || []);
   } catch (err) {
     els.srAnglegate.innerHTML = `<div class="sr-ag-loading sr-status-err">${escapeHtml(String(err.message || err))}</div>`;
@@ -5142,7 +5168,7 @@ els.srAngles?.addEventListener('click', async () => {
 
 function renderAngleGate(angles) {
   salesAngles = angles || [];
-  if (!angles.length) { els.srAnglegate.innerHTML = '<div class="sr-ag-loading muted">No distinct angles found for this seed.</div>'; return; }
+  if (!angles.length) { els.srAnglegate.innerHTML = '<div class="sr-ag-loading muted">No distinct categories found for this seed.</div>'; return; }
   const order = { high: 0, medium: 1, low: 2 };
   const sorted = angles.slice().sort((a, b) => (order[a.buyer_potential] ?? 1) - (order[b.buyer_potential] ?? 1));
   const potClass = { high: 'sr-pot-high', medium: 'sr-pot-medium', low: 'sr-pot-low' };
@@ -5175,11 +5201,11 @@ function renderAngleGate(angles) {
     </label>`;
   }).join('');
   els.srAnglegate.innerHTML = `
-    <div class="sr-ag-title">Buyer angles for <strong>${escapeHtml(salesSeed)}</strong> — tick the ones worth researching</div>
+    <div class="sr-ag-title">Buyer categories for <strong>${escapeHtml(salesSeed)}</strong> — tick the ones worth researching</div>
     <div class="sr-ag-list">${rows}</div>
     <div class="sr-ag-foot">
-      <button id="sr-ag-go" type="button" class="sr-btn sr-ag-go">Research selected angles</button>
-      <label class="sr-ag-limit">companies / angle
+      <button id="sr-ag-go" type="button" class="sr-btn sr-ag-go">Research selected categories</button>
+      <label class="sr-ag-limit">companies / category
         <select id="sr-ag-lim"><option value="15" selected>15</option><option value="30">30</option><option value="50">50</option></select>
       </label>
       <span class="sr-ag-note muted">Free — finds the companies (no Apollo). You then tick which to <strong>Qualify</strong> (the paid step).</span>
@@ -5191,18 +5217,20 @@ function renderAngleGate(angles) {
     const limit = Number(document.getElementById('sr-ag-lim')?.value) || 15;
     const btn = document.getElementById('sr-ag-go');
     const note = els.srAnglegate.querySelector('.sr-ag-note');
+    const n = chosen.length;
+    const catWord = n === 1 ? 'category' : 'categories';
     btn.disabled = true;
-    note.innerHTML = `<span class="sr-spin"></span> Finding companies across ${chosen.length} angle(s)…`;
+    note.innerHTML = `<span class="sr-spin"></span> Finding companies across ${n} ${catWord}…`;
     try {
       const res = await fetch('/research/api/sales', {
         method: 'POST', headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ action: 'research_angles', project_id: salesProjectId, angles: chosen, limit }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || `Failed (${res.status})`);
+      if (!res.ok) throw new Error(apiErrText(data, res));
       els.srAnglegate.hidden = true;
       await refreshSalesProject();    // pull the new keyword companies into the list
-      setSalesStatus(`Added ${data.added} companies from ${chosen.length} angle(s). Tick the ones worth qualifying, then "Qualify selected".`);
+      setSalesStatus(`Added ${data.added} companies from ${n} ${catWord}. Tick the ones worth qualifying, then "Qualify selected".`);
       setTimeout(() => setSalesStatus(''), 6000);
     } catch (err) {
       note.innerHTML = `<span class="sr-status-err">${escapeHtml(String(err.message || err))}</span>`;
