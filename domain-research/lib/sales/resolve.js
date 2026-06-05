@@ -50,6 +50,18 @@ function nameDomainMismatch(company, sld) {
   return true;
 }
 
+// Two company names that share no significant token / substring — used to detect a
+// provider returning a DIFFERENT company than the one discovery already named.
+function namesUnrelated(a, b) {
+  const norm = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+  const na = norm(a); const nb = norm(b);
+  if (!na || !nb) return false;
+  if (na.includes(nb) || nb.includes(na)) return false;
+  const toks = (s) => String(s || '').toLowerCase().split(/[^a-z0-9]+/).filter((t) => t.length >= 4);
+  if (toks(a).some((t) => nb.includes(t)) || toks(b).some((t) => na.includes(t))) return false;
+  return true;
+}
+
 // Marketplace / parking hosts a for-sale domain redirects to (a domainer, not a
 // buyer). extractClues misses GoDaddy's own landers, so we check these too.
 const SALE_HOSTS = [
@@ -120,6 +132,20 @@ export async function resolveCandidate(cand, { env = process.env, enrich = true,
     if (cache && cache.has(key)) firmo = cache.get(key);
     else { firmo = await firmographics(cand.domain, env); if (cache) cache.set(key, firmo); }
   }
+  // Wrong-match guard: discovery already named this company (autocomplete / operator)
+  // but the provider returned a TOTALLY unrelated company for the domain
+  // (e.g. videoask.com → "Burnout to All Out"). The firmographics belong to someone
+  // else — keep the trustworthy discovery name and drop the bad data, so it shows as
+  // "<name> — unqualified" instead of being mislabeled with a stranger's stats.
+  if (firmo && firmo.company && cand.company) {
+    const { sld } = seedParts(cand.domain);
+    if (namesUnrelated(firmo.company, cand.company) && nameDomainMismatch(firmo.company, sld)) {
+      firmo = null;
+      out.company = cand.company;
+      out.mismatch_dropped = true;
+    }
+  }
+
   if (firmo) {
     out.company = firmo.company || out.company;
     out.company_url = firmo.website || `https://${cand.domain}`;
@@ -128,8 +154,8 @@ export async function resolveCandidate(cand, { env = process.env, enrich = true,
     out.location = firmo.location ?? out.location ?? null;
     out.funding = firmo.funding ?? out.funding ?? null;
     out.firmographics = firmo;
-    // Flag a wrong-looking provider match (name shares nothing with the domain).
-    // Trust it more when the candidate already carried a name from discovery.
+    // Low-confidence: no discovery name to anchor on, and the provider's name
+    // shares nothing with the domain → keep it but warn (⚠ unverified match).
     if (firmo.company && !cand.company) {
       const { sld } = seedParts(cand.domain);
       if (nameDomainMismatch(firmo.company, sld)) {
