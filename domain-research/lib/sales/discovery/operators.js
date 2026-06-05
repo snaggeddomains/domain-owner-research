@@ -71,16 +71,21 @@ async function llmOperators(domain, sld, env, limit) {
   const model = env.SALES_OPERATOR_MODEL || env.SALES_ANGLE_MODEL || env.OUTREACH_MODEL || 'claude-sonnet-4-6';
   const prompt = `We are selling the premium domain "${domain}" (its core word is "${sld}").
 
-List REAL, currently-operating companies, products, or apps whose BRAND NAME is built around the word "${sld}" — the word "${sld}" appears as a distinct element of the name (as a prefix, a suffix, or a standalone word). Examples of the SHAPE (not the answer): "${sld}" + a modifier, a modifier + "${sld}", or "${sld}" on its own. These are businesses that already use the word, so they're the natural buyers of the clean "${domain}".
+Find as MANY real, currently-operating companies, products, or apps as you can whose BRAND NAME is built around the word "${sld}" — the word "${sld}" must appear as a distinct element of the name. They already use the word, so they're the natural buyers of the clean "${domain}".
 
-Cast a WIDE net and prioritize small & mid-size operators — startups, funded companies, niche B2B/B2C brands, apps, agencies — because they're the most likely to upgrade to "${domain}". Also include larger ones if their brand genuinely contains the word.
+Cover ALL THREE shapes and be EXHAUSTIVE on the SUFFIX shape (it's the easiest to overlook — think hard about real brands that END in "${sld}", e.g. a descriptive word immediately followed by "${sld}"):
+  • SUFFIX:      <modifier>${sld}   — names that END in "${sld}"
+  • PREFIX:      ${sld}<modifier>   — names that START with "${sld}"
+  • STANDALONE / hyphenated / two-word forms (e.g. "${sld}-AI", "${sld} Labs").
+
+Include companies of EVERY size — well-known and large brands too, NOT just startups. A large or well-funded brand that already uses the word is still a real prospect; do not skip it. (Small & mid-size operators are great too — list both.)
 
 For EACH: the exact brand name and its primary website domain. REAL, verifiable companies only — do NOT invent names or guess domains; if unsure a company is real, omit it. No parked domains, no domainers.
 
 Return JSON only:
 {"companies":[{"name":"Brand Name","domain":"brand.com"}]}
-Up to ${limit}. The word "${sld}" must genuinely be part of each brand name. Order best-known / most-likely-buyer first.`;
-  const resp = await client.messages.create({ model, max_tokens: 3000, messages: [{ role: 'user', content: prompt }] });
+List up to ${limit}. The word "${sld}" must genuinely be part of each brand name.`;
+  const resp = await client.messages.create({ model, max_tokens: 4000, messages: [{ role: 'user', content: prompt }] });
   const text = (resp.content || []).filter((b) => b.type === 'text').map((b) => b.text).join('\n');
   const parsed = parseJsonLoose(text);
   const arr = (parsed && Array.isArray(parsed.companies)) ? parsed.companies : [];
@@ -92,7 +97,7 @@ Up to ${limit}. The word "${sld}" must genuinely be part of each brand name. Ord
 // [{ domain, company, subtype:'name_match', category:'upgrade', status:null }].
 // subtype 'name_match' makes RESOLVE always keep them (they carry a real company),
 // and they auto-qualify through the normal active-candidate enrichment.
-export async function discoverOperators(seedDomain, env = process.env, { limit = 30, concurrency = 12 } = {}) {
+export async function discoverOperators(seedDomain, env = process.env, { limit = 40, concurrency = 16 } = {}) {
   const { domain: self, sld } = seedParts(seedDomain);
   if (!sld || !env.ANTHROPIC_API_KEY) return [];
 
