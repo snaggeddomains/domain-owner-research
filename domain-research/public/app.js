@@ -4905,6 +4905,12 @@ function renderSalesResults(data) {
 
 function renderSalesTable() {
   const rows = salesVisible();
+  // ★ Recommended (LLM high-fit, not yet qualified) float to the very top; then
+  // everything else by score (qualified ability-to-pay) then size.
+  const isRec = (c) => !c.firmographics && c.category === 'keyword' && Number(c.score) >= 2;
+  rows.sort((a, b) => (isRec(b) - isRec(a))
+    || ((Number(b.score) || 0) - (Number(a.score) || 0))
+    || ((b.employee_count || 0) - (a.employee_count || 0)));
   const active = salesCandidates.filter((c) => c.status === 'active').length;
   const strong = salesCandidates.filter((c) => c.tier === 'strong').length;
   if (els.srSummary) {
