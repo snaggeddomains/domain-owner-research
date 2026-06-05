@@ -13,6 +13,7 @@ import { isAuthed, requirePermission } from '../lib/auth.js';
 import { isDbConfigured } from '../lib/db/supabase.js';
 import { inngest, SALES_RESEARCH_REQUESTED } from '../lib/inngest/client.js';
 import { seedParts } from '../lib/sales/discovery/upgrade.js';
+import { anglesForSeed } from '../lib/sales/discovery/angles.js';
 import { enrichCompany } from '../lib/sales/enrich/contacts.js';
 import {
   createSalesProject, getSalesProject, listSalesProjects, listSalesCandidates, getSalesCandidate,
@@ -63,6 +64,21 @@ async function handleSelect(body, res) {
   res.status(200).json({ ok: true, updated: ids.length });
 }
 
+// Keyword/angle gate (Tier 0 + 1): enumerate buyer angles + verify the headline
+// player per angle. Free preview + ~1 firmographics credit per angle.
+async function handleAngles(body, res) {
+  const domain = String(body.domain || '').trim().toLowerCase();
+  const { sld } = seedParts(domain);
+  if (!sld) { res.status(400).json({ error: 'Provide a seed domain' }); return; }
+  if (!process.env.ANTHROPIC_API_KEY) { res.status(503).json({ error: 'Angle enumeration needs ANTHROPIC_API_KEY' }); return; }
+  try {
+    const angles = await anglesForSeed(domain, process.env, { verify: body.verify !== false });
+    res.status(200).json({ angles });
+  } catch (e) {
+    res.status(500).json({ error: String(e.message || e) });
+  }
+}
+
 async function handleEnrich(body, res) {
   const candidateId = String(body.candidate_id || '').trim();
   if (!candidateId) { res.status(400).json({ error: 'candidate_id required' }); return; }
@@ -90,6 +106,7 @@ async function route(req, res) {
     const user = req._salesUser;
     const action = String(body.action || 'create');
     if (action === 'create') return handleCreate(body, res, user);
+    if (action === 'angles') return handleAngles(body, res);
     if (action === 'select') return handleSelect(body, res);
     if (action === 'enrich') return handleEnrich(body, res);
     res.status(400).json({ error: `Unknown action: ${action}` });

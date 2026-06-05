@@ -199,6 +199,7 @@ const els = {
   srForm: $('sr-form'), srDomain: $('sr-domain'), srGo: $('sr-go'), srStatus: $('sr-status'),
   srResults: $('sr-results'), srSummary: $('sr-summary'), srShowAll: $('sr-show-all'),
   srEnrich: $('sr-enrich'), srCsv: $('sr-csv'), srTable: $('sr-table'),
+  srAngles: $('sr-angles'), srAnglegate: $('sr-anglegate'),
   srRecent: $('sr-recent'), srRecentList: $('sr-recent-list'), srRecentAll: $('sr-recent-all'),
   srProjectsSearch: $('sr-projects-search'), srProjectsList: $('sr-projects-list'),
   srEntry: $('sr-entry'), srReshead: $('sr-reshead'), srResheadSeed: $('sr-reshead-seed'), srNew: $('sr-new'),
@@ -5045,6 +5046,66 @@ els.srCsv?.addEventListener('click', () => {
   document.body.appendChild(a); a.click(); document.body.removeChild(a);
   URL.revokeObjectURL(url);
 });
+
+// ── Keyword/angle gate ───────────────────────────────────────────────────────
+// "Explore by industry" → enumerate buyer angles (free preview + verified
+// headline player) → pick angles (checkboxes) → research the chosen ones.
+els.srAngles?.addEventListener('click', async () => {
+  if (!salesSeed || !els.srAnglegate) return;
+  const open = !els.srAnglegate.hidden && els.srAnglegate.dataset.seed === salesSeed;
+  if (open) { els.srAnglegate.hidden = true; return; }   // toggle off
+  els.srAnglegate.hidden = false;
+  els.srAnglegate.dataset.seed = salesSeed;
+  els.srAnglegate.innerHTML = '<div class="sr-ag-loading muted">Mapping buyer angles and verifying the top player in each…</div>';
+  els.srAngles.disabled = true;
+  try {
+    const res = await fetch('/research/api/sales', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ action: 'angles', domain: salesSeed }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || `Failed (${res.status})`);
+    renderAngleGate(data.angles || []);
+  } catch (err) {
+    els.srAnglegate.innerHTML = `<div class="sr-ag-loading sr-status-err">${escapeHtml(String(err.message || err))}</div>`;
+  } finally { els.srAngles.disabled = false; }
+});
+
+function renderAngleGate(angles) {
+  if (!angles.length) { els.srAnglegate.innerHTML = '<div class="sr-ag-loading muted">No distinct angles found for this seed.</div>'; return; }
+  const potClass = { high: 'sr-pot-high', medium: 'sr-pot-medium', low: 'sr-pot-low' };
+  const cards = angles.map((a, i) => {
+    const v = a.verified;
+    const verLine = v && v.matched
+      ? `<div class="sr-ag-verified">✓ <strong>${escapeHtml(v.name)}</strong> — <span class="sr-tier sr-tier-${v.tier}">${escapeHtml(v.tier)}</span> ${escapeHtml((v.reasons || []).slice(0, 3).join(' · '))}</div>`
+      : (v ? `<div class="sr-ag-verified muted">top player ${escapeHtml(v.name)} — no firmographic match</div>` : '');
+    const players = a.players.map((p) => p.domain
+      ? `<a href="https://${escapeHtml(p.domain)}" target="_blank" rel="noopener">${escapeHtml(p.name)}</a>`
+      : escapeHtml(p.name)).join(' · ');
+    return `<label class="sr-angle" data-key="${escapeHtml(a.key)}">
+      <input type="checkbox" class="sr-ag-cb" data-key="${escapeHtml(a.key)}"${i === 0 ? ' checked' : ''}>
+      <div class="sr-ag-body">
+        <div class="sr-ag-head"><span class="sr-ag-label">${escapeHtml(a.label)}</span> <span class="sr-pot ${potClass[a.buyer_potential] || ''}">${escapeHtml(a.buyer_potential)} potential</span></div>
+        <div class="sr-ag-concept">${escapeHtml(a.concept)}</div>
+        <div class="sr-ag-players">${players}</div>
+        ${verLine}
+      </div>
+    </label>`;
+  }).join('');
+  els.srAnglegate.innerHTML = `
+    <div class="sr-ag-title">Buyer angles for <strong>${escapeHtml(salesSeed)}</strong> — pick which to research</div>
+    <div class="sr-ag-list">${cards}</div>
+    <div class="sr-ag-foot">
+      <button id="sr-ag-go" type="button" class="sr-btn sr-ag-go">Research selected angles</button>
+      <span class="sr-ag-note muted">Free preview + verified headliner. Researching an angle does the full per-company discovery + ranking.</span>
+    </div>`;
+  document.getElementById('sr-ag-go')?.addEventListener('click', () => {
+    const keys = [...els.srAnglegate.querySelectorAll('.sr-ag-cb:checked')].map((c) => c.dataset.key);
+    if (!keys.length) return;
+    // Tier-2 per-angle fan-out is the next build; for now confirm the selection.
+    els.srAnglegate.querySelector('.sr-ag-note').innerHTML = `<strong>${keys.length} angle(s) queued:</strong> ${escapeHtml(keys.join(', '))} — per-angle company discovery is the next piece I'm wiring.`;
+  });
+}
 
 // Recent list / projects list — open a run on click; "view all" → projects page.
 function openSalesRunFromList(li) {

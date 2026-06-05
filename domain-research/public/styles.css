@@ -1365,3 +1365,25 @@ body.drawer-open { overflow: hidden; }
 .sr-recent-head { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--navy-3); margin-bottom: 8px; }
 .sr-recent-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
 .sales-projects-controls { margin-bottom: 4px; }
+/* angle gate */
+.sr-anglegate { margin: 4px 0 18px; border: 1.5px solid var(--coral); border-radius: var(--radius-sm); background: var(--cream-2); padding: 14px 16px; }
+.sr-ag-loading { font-size: 14px; padding: 8px 0; }
+.sr-ag-title { font-size: 14px; color: var(--navy); margin-bottom: 12px; }
+.sr-ag-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 12px; }
+.sr-angle { display: flex; gap: 10px; align-items: flex-start; background: var(--cream); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; cursor: pointer; }
+.sr-angle:hover { border-color: var(--coral); }
+.sr-ag-cb { width: 18px; height: 18px; margin-top: 2px; accent-color: var(--coral-deep); cursor: pointer; }
+.sr-ag-body { min-width: 0; }
+.sr-ag-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.sr-ag-label { font-weight: 800; font-size: 15px; color: var(--navy); }
+.sr-pot { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; padding: 2px 8px; border-radius: 999px; }
+.sr-pot-high { background: #e3f6e9; color: #1b7a3d; }
+.sr-pot-medium { background: #fff3da; color: #946200; }
+.sr-pot-low { background: #f0f1f4; color: #6b7280; }
+.sr-ag-concept { font-size: 12.5px; color: var(--navy-3); margin-top: 3px; }
+.sr-ag-players { font-size: 13px; color: var(--navy-2); margin-top: 6px; }
+.sr-ag-players a { color: var(--teal-deep); text-decoration: none; }
+.sr-ag-players a:hover { text-decoration: underline; }
+.sr-ag-verified { font-size: 12.5px; color: var(--navy); margin-top: 7px; padding-top: 7px; border-top: 1px dashed var(--line); }
+.sr-ag-foot { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 14px; }
+.sr-ag-note { font-size: 12px; }
