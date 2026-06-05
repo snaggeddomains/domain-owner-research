@@ -4950,7 +4950,10 @@ function renderSalesTable() {
   const active = salesCandidates.filter((c) => c.status === 'active').length;
   const strong = salesCandidates.filter((c) => c.tier === 'strong').length;
   if (els.srSummary) {
-    els.srSummary.innerHTML = `${salesCandidates.length} companies · ${active} active · <strong class="sr-sum-strong">${strong} strong-fit</strong>`;
+    els.srSummary.innerHTML =
+      `<span class="sr-sum-n">${salesCandidates.length}</span> companies`
+      + `<span class="sr-sum-dot">·</span><span class="sr-sum-n">${active}</span> active`
+      + `<span class="sr-sum-dot">·</span><span class="sr-sum-strong">${strong} strong-fit</span>`;
   }
   if (!rows.length) { els.srTable.innerHTML = '<p class="muted">No candidates to show.</p>'; updateSalesEnrichBtn(); return; }
   const tierBadge = (t) => `<span class="sr-tier sr-tier-${t || 'unknown'}">${escapeHtml(t || '—')}</span>`;
@@ -5140,7 +5143,7 @@ function updatePathFilter() {
     b.classList.toggle('active', p === salesPathFilter);
     b.disabled = p !== 'all' && n === 0;
     const base = p === 'all' ? 'All' : p === 'upgrade' ? 'Upgrades' : 'Keyword';
-    b.textContent = p === 'all' ? base : `${base} ${n}`;
+    b.innerHTML = p === 'all' ? base : `${base}<span class="sr-pf-n">${n}</span>`;
   });
 }
 

@@ -28,7 +28,7 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="apple-mobile-web-app-title" content="Snagged Research" />
     <meta name="theme-color" content="#254254" />
-    <link rel="stylesheet" href="styles.css?v=20260605z" />
+    <link rel="stylesheet" href="styles.css?v=20260605aa" />
     <!-- Layout: horizontal tab nav (Admin-style), no sidebar. -->
   </head>
   <body>
@@ -550,18 +550,22 @@
           <section id="sr-results" class="sr-results" hidden>
             <div class="sr-toolbar">
               <div class="sr-summary" id="sr-summary"></div>
-              <div class="sr-actions">
-                <div class="sr-pathfilter" id="sr-pathfilter" role="group" aria-label="Filter by path">
-                  <button type="button" class="sr-pf-btn active" data-path="all">All</button>
-                  <button type="button" class="sr-pf-btn" data-path="upgrade">Upgrades</button>
-                  <button type="button" class="sr-pf-btn" data-path="keyword">Keyword</button>
+              <div class="sr-controls">
+                <div class="sr-controls-left">
+                  <div class="sr-pathfilter" id="sr-pathfilter" role="group" aria-label="Filter by path">
+                    <button type="button" class="sr-pf-btn active" data-path="all">All</button>
+                    <button type="button" class="sr-pf-btn" data-path="upgrade">Upgrades</button>
+                    <button type="button" class="sr-pf-btn" data-path="keyword">Keyword</button>
+                  </div>
+                  <label class="sr-check"><input type="checkbox" id="sr-select-all" /> Select all</label>
+                  <label class="sr-check"><input type="checkbox" id="sr-show-all" /> Show for-sale / inactive</label>
                 </div>
-                <label class="sr-show-inactive"><input type="checkbox" id="sr-select-all" /> Select all</label>
-                <label class="sr-show-inactive"><input type="checkbox" id="sr-show-all" /> Show for-sale / inactive</label>
-                <button id="sr-angles" type="button" class="sr-btn">✨ Explore by category</button>
-                <button id="sr-qualify" type="button" class="sr-btn" disabled title="Ability-to-pay screen: pulls company firmographics from Apollo (size, funding, revenue) for the checked companies and scores how likely they can afford a premium domain. ~1 credit each.">Qualify selected</button>
-                <button id="sr-enrich" type="button" class="sr-btn" disabled title="Pulls decision-maker contacts from RocketReach (names, titles, emails, phone, LinkedIn) for the checked companies — who you'd actually reach out to.">Enrich selected</button>
-                <button id="sr-csv" type="button" class="sr-btn" disabled title="Exports the checked rows (with any contacts) to CSV.">Download CSV</button>
+                <div class="sr-actions">
+                  <button id="sr-angles" type="button" class="sr-btn sr-btn-primary">✨ Explore by category</button>
+                  <button id="sr-qualify" type="button" class="sr-btn sr-btn-ghost" disabled title="Ability-to-pay screen: pulls company firmographics from Apollo (size, funding, revenue) for the checked companies and scores how likely they can afford a premium domain. ~1 credit each.">Qualify selected</button>
+                  <button id="sr-enrich" type="button" class="sr-btn sr-btn-ghost" disabled title="Pulls decision-maker contacts from RocketReach (names, titles, emails, phone, LinkedIn) for the checked companies — who you'd actually reach out to.">Enrich selected</button>
+                  <button id="sr-csv" type="button" class="sr-btn sr-btn-ghost" disabled title="Exports the checked rows (with any contacts) to CSV.">Download CSV</button>
+                </div>
               </div>
             </div>
             <!-- Keyword/angle gate: pick which industries to research (Tier 2). -->
@@ -800,6 +804,6 @@ The model parses it into structured filters (TLDs, length, budget, tone, etc.) a
     </aside>
 
     <!-- Bump ?v= on any public/app.js or styles.css change to bust caches. -->
-    <script src="app.js?v=20260605z"></script>
+    <script src="app.js?v=20260605aa"></script>
   </body>
 </html>

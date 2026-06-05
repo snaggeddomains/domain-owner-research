@@ -1291,17 +1291,46 @@ body.drawer-open { overflow: hidden; }
 .sr-status { margin: 14px 0; color: var(--navy-3); font-size: 14px; }
 .sr-status-err { color: #c0392b; }
 .sr-results { margin-top: 18px; }
-.sr-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 10px; }
-.sr-summary { font-size: 15px; color: var(--navy); }
-.sr-actions { display: flex; align-items: center; gap: 10px; }
-.sr-pathfilter { display: inline-flex; gap: 0; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
-.sr-pathfilter .sr-pf-btn { background: #fff; border: 0; padding: 7px 13px; font-size: 13px; font-weight: 600; color: var(--navy); cursor: pointer; border-left: 1px solid var(--line); }
-.sr-pathfilter .sr-pf-btn:first-child { border-left: 0; }
-.sr-pathfilter .sr-pf-btn.active { background: var(--navy); color: #fff; }
-.sr-pathfilter .sr-pf-btn:disabled { opacity: .4; cursor: default; }
-.sr-show-inactive { font-size: 13px; color: var(--navy-3); display: flex; align-items: center; gap: 5px; }
-.sr-btn { padding: 9px 15px; font-size: 14px; }
-.sr-btn:disabled { opacity: .5; cursor: default; }
+.sr-toolbar { margin-bottom: 18px; }
+.sr-summary { font-size: 15px; color: var(--navy-2); margin-bottom: 12px; }
+.sr-sum-n { font-weight: 800; color: var(--navy); }
+.sr-sum-dot { color: var(--navy-3); margin: 0 7px; }
+.sr-sum-strong { color: #2e9e57; font-weight: 800; }
+
+/* Control bar: a soft rounded panel that holds the view filters (left) and the
+   action buttons (right). Wraps gracefully on narrow screens. */
+.sr-controls {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px 18px; flex-wrap: wrap;
+  padding: 11px 15px;
+  background: var(--cream-2); border: 1.5px solid var(--line);
+  border-radius: 16px; box-shadow: var(--shadow-sm);
+}
+.sr-controls-left { display: flex; align-items: center; gap: 8px 14px; flex-wrap: wrap; }
+.sr-actions { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; }
+
+/* Segmented path filter — pill with a sliding navy active segment. */
+.sr-pathfilter { display: inline-flex; gap: 0; background: #fff; border: 1.5px solid var(--line); border-radius: 999px; overflow: hidden; padding: 3px; }
+.sr-pathfilter .sr-pf-btn { background: transparent; border: 0; padding: 6px 15px; font-size: 13px; font-weight: 700; color: var(--navy-2); cursor: pointer; border-radius: 999px; transition: background .15s ease, color .15s ease; }
+.sr-pathfilter .sr-pf-btn:hover:not(.active):not(:disabled) { background: var(--cream); color: var(--navy); }
+.sr-pathfilter .sr-pf-btn.active { background: var(--navy); color: #fff; box-shadow: var(--shadow-sm); }
+.sr-pathfilter .sr-pf-btn:disabled { opacity: .35; cursor: default; }
+.sr-pf-n { margin-left: 6px; font-size: 11px; font-weight: 800; padding: 1px 7px; border-radius: 999px; background: var(--line); color: var(--navy-2); }
+.sr-pathfilter .sr-pf-btn.active .sr-pf-n { background: rgba(255,255,255,.22); color: #fff; }
+
+/* Checkbox chips. */
+.sr-check { font-size: 13px; font-weight: 600; color: var(--navy-2); display: inline-flex; align-items: center; gap: 6px; cursor: pointer; user-select: none; }
+.sr-check input { width: 16px; height: 16px; cursor: pointer; accent-color: var(--coral-deep); }
+
+/* Action buttons — one primary (Explore), the rest are clean ghost buttons so
+   the disabled state reads as "inactive" rather than washed-out coral. */
+.sr-btn { padding: 9px 16px; font-size: 13.5px; font-weight: 700; border-radius: 999px; }
+.sr-btn-primary { background: var(--coral); color: var(--navy); border: 2px solid var(--navy); }
+.sr-btn-primary:hover { background: #ec8d77; }
+.sr-btn-ghost { background: #fff; color: var(--navy); border: 1.5px solid var(--line); }
+.sr-btn-ghost:hover:not(:disabled) { background: var(--cream); border-color: var(--coral); color: var(--coral-deep); }
+.sr-btn-ghost:disabled { opacity: 1; background: transparent; color: var(--navy-3); border-color: var(--line-2); }
+.sr-btn:disabled { cursor: default; }
 
 /* ── Buyer cards (full-width, one card per company) ──────────────────────────*/
 .sr-cards { display: flex; flex-direction: column; gap: 14px; }
