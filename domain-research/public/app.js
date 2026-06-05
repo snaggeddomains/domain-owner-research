@@ -4071,14 +4071,17 @@ els.report?.addEventListener('click', async (ev) => {
       const r = await pollRun(currentRunId);
       renderReport(r.report);
     } else {
-      // Tried, but FullEnrich had no phone for this person. Keep the outcome
-      // PERSISTENT (no auto-revert) and re-enable the button so retry is one click.
+      // Lookup completed but FullEnrich had no phone for this person. Leave the
+      // button DISABLED — retrying the same person would just burn another credit
+      // for the same empty result. Persistent note explains the outcome.
       const emailNote = (Array.isArray(data.emails) && data.emails.length) ? ' (an email is shown above)' : '';
-      btn.textContent = orig;
-      btn.disabled = false;
-      setNote(`No phone number found for this person${emailNote}. Click to try again.`, 'miss');
+      btn.textContent = 'No phone on file';
+      btn.disabled = true;
+      setNote(`No phone number found for this person${emailNote}.`, 'miss');
     }
   } catch (err) {
+    // The lookup didn't complete (network/timeout) — re-enable so a retry is
+    // possible (this path didn't return a result to spend a credit on).
     btn.textContent = orig;
     btn.disabled = false;
     setNote(`⚠️ Lookup failed: ${err.message || 'error'}. Click to try again.`, 'err');
