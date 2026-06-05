@@ -107,17 +107,24 @@ async function handleResearchAngles(body, res) {
 async function handleQualify(body, res) {
   const ids = Array.isArray(body.ids) ? body.ids.map(String) : [];
   if (!ids.length) { res.status(400).json({ error: 'ids required' }); return; }
-  const out = [];
-  for (const id of ids) {
-    const cand = await getSalesCandidate(id);
-    if (!cand) { out.push({ id, error: 'not found' }); continue; }
-    if (cand.firmographics) { out.push({ id, tier: cand.tier, skipped: true }); continue; }
-    let firmo = null;
-    try { firmo = await firmographics(cand.domain, process.env); } catch { firmo = null; }
-    const atp = abilityToPay(firmo);
-    try { await updateCandidateQualification(id, firmo, atp); } catch { /* non-fatal */ }
-    out.push({ id, tier: atp.tier, matched: !!firmo });
-  }
+  // Qualify in PARALLEL with bounded concurrency — sequential Apollo lookups
+  // (≤15s each) blew the 60s API cap once a handful were selected ("Load failed").
+  const out = new Array(ids.length);
+  let i = 0;
+  const worker = async () => {
+    while (i < ids.length) {
+      const idx = i++; const id = ids[idx];
+      const cand = await getSalesCandidate(id);
+      if (!cand) { out[idx] = { id, error: 'not found' }; continue; }
+      if (cand.firmographics) { out[idx] = { id, tier: cand.tier, skipped: true }; continue; }
+      let firmo = null;
+      try { firmo = await firmographics(cand.domain, process.env); } catch { firmo = null; }
+      const atp = abilityToPay(firmo);
+      try { await updateCandidateQualification(id, firmo, atp); } catch { /* non-fatal */ }
+      out[idx] = { id, tier: atp.tier, matched: !!firmo };
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(6, ids.length) }, worker));
   res.status(200).json({ ok: true, qualified: out });
 }
 

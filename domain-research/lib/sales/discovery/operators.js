@@ -77,7 +77,7 @@ async function mapPool(items, limit, fn) {
 // LLM enumeration of real brands built around the seed word. High-recall prompt,
 // precision enforced after the fact by hasWordElement + the liveness probe.
 async function llmOperators(domain, sld, env, limit) {
-  const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY });
+  const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY, timeout: 60000, maxRetries: 2 });
   const model = env.SALES_OPERATOR_MODEL || env.SALES_ANGLE_MODEL || env.OUTREACH_MODEL || 'claude-sonnet-4-6';
   const prompt = `We are selling the premium domain "${domain}" (its core word is "${sld}").
 

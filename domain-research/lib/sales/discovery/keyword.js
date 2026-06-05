@@ -27,7 +27,7 @@ const FIT_SCORE = { high: 2.5, medium: 1.5, low: 0.5 };
 // LLM-expand one angle into up to `limit` real companies, each with a fit tier +
 // a one-line reason this company would want the seed domain.
 async function expandAngle(seed, angle, env, limit) {
-  const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY });
+  const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY, timeout: 60000, maxRetries: 2 });
   const model = env.SALES_ANGLE_MODEL || env.OUTREACH_MODEL || 'claude-sonnet-4-6';
   const word = String(seed).split('.')[0];
   // The exact-match "product named X" angle hunts by PRODUCT, not industry — find

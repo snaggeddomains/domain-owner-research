@@ -52,7 +52,7 @@ Return JSON only — an array, one entry per number:
 
   let parsed = null;
   try {
-    const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY });
+    const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY, timeout: 60000, maxRetries: 2 });
     const model = env.SALES_RELEVANCE_MODEL || env.SALES_ANGLE_MODEL || env.OUTREACH_MODEL || 'claude-sonnet-4-6';
     const resp = await client.messages.create({ model, max_tokens: 2000, temperature: 0, messages: [{ role: 'user', content: prompt }] });
     const text = (resp.content || []).filter((b) => b.type === 'text').map((b) => b.text).join('\n');
