@@ -4733,7 +4733,7 @@ let salesCandidates = [];          // cached for render + CSV
 let salesSeed = '';
 const salesCollapsed = new Set();  // candidate ids whose contacts are collapsed
 let salesAngles = [];              // angle objects from the last gate render
-let salesPathFilter = 'all';       // view filter: 'all' | 'upgrade' | 'keyword'
+let salesPathFilter = 'all';       // view filter: 'all' | 'upgrade' | 'product' | 'keyword'
 
 // Pull a human string out of an API error payload. Vercel's function-timeout
 // envelope is `{error:{code,message}}`, so a naive `data.error` stringifies to
@@ -4920,7 +4920,10 @@ function openSalesProject(id) {
 // A candidate's "path": upgrades (the seed name itself, a variant TLD/affix) vs
 // keyword/category (companies surfaced by Explore-by-category). Anything without
 // an explicit category counts as an upgrade (the original discovery path).
-function salesPath(c) { return c.category === 'keyword' ? 'keyword' : 'upgrade'; }
+function salesPath(c) {
+  if (c.angle === 'product_named') return 'product';        // exact product-name matches
+  return c.category === 'keyword' ? 'keyword' : 'upgrade';
+}
 
 function salesVisible() {
   const showAll = els.srShowAll && els.srShowAll.checked;
@@ -5160,15 +5163,16 @@ els.srPathfilter?.addEventListener('click', (e) => {
 function updatePathFilter() {
   if (!els.srPathfilter) return;
   const pool = salesCandidates.filter((c) => (els.srShowAll && els.srShowAll.checked) || c.status === 'active');
-  const counts = { all: pool.length, upgrade: 0, keyword: 0 };
+  const counts = { all: pool.length, upgrade: 0, product: 0, keyword: 0 };
   for (const c of pool) counts[salesPath(c)]++;
   if (salesPathFilter !== 'all' && !counts[salesPathFilter]) salesPathFilter = 'all';
+  const LABELS = { all: 'All', upgrade: 'Upgrades', product: 'Product', keyword: 'Keyword' };
   els.srPathfilter.querySelectorAll('.sr-pf-btn').forEach((b) => {
     const p = b.dataset.path;
     const n = counts[p] || 0;
     b.classList.toggle('active', p === salesPathFilter);
     b.disabled = p !== 'all' && n === 0;
-    const base = p === 'all' ? 'All' : p === 'upgrade' ? 'Upgrades' : 'Keyword';
+    const base = LABELS[p] || p;
     b.innerHTML = p === 'all' ? base : `${base}<span class="sr-pf-n">${n}</span>`;
   });
 }
