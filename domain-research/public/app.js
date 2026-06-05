@@ -4729,11 +4729,22 @@ function resetSalesView() {
 async function loadSalesRecent() {
   if (!els.srRecent) return;
   try {
-    const res = await fetch('/research/api/sales?list=1&limit=5');
+    const res = await fetch('/research/api/sales?list=1&limit=30');
     const data = await res.json().catch(() => ({}));
     const projects = res.ok && Array.isArray(data.projects) ? data.projects : [];
-    els.srRecent.hidden = projects.length === 0;
-    if (els.srRecentList) els.srRecentList.innerHTML = projects.map(salesProjectRow).join('');
+    // Collapse to one entry per domain (latest run), with a run count; up to 5.
+    const counts = new Map();
+    for (const p of projects) counts.set(p.seed_domain, (counts.get(p.seed_domain) || 0) + 1);
+    const seen = new Set();
+    const top = [];
+    for (const p of projects) {
+      if (seen.has(p.seed_domain)) continue;
+      seen.add(p.seed_domain);
+      top.push(p);
+      if (top.length >= 5) break;
+    }
+    els.srRecent.hidden = top.length === 0;
+    if (els.srRecentList) els.srRecentList.innerHTML = top.map((p) => salesProjectRow(p, counts.get(p.seed_domain))).join('');
   } catch { els.srRecent.hidden = true; }
 }
 
@@ -4775,11 +4786,12 @@ async function loadSalesProjects(q = '') {
   }
 }
 
-function salesProjectRow(p) {
+function salesProjectRow(p, runCount = 1) {
   const when = p.created_at ? new Date(p.created_at).toLocaleString() : '';
   const st = p.status === 'done' ? '' : ` · ${escapeHtml(p.status || '')}`;
+  const runs = runCount > 1 ? `<span class="project-count">${runCount} runs</span>` : '';
   return `<li class="recent-run" data-id="${escapeHtml(p.id)}">`
-    + `<span class="recent-domain">${escapeHtml(p.seed_domain || '')}${st}</span>`
+    + `<span class="recent-domain">${escapeHtml(p.seed_domain || '')}${runs}${st}</span>`
     + `<span class="recent-when">${escapeHtml(when)}</span></li>`;
 }
 
