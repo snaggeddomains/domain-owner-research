@@ -32,6 +32,7 @@ const els = {
   profilePwStatus: $('profile-pw-status'),
   // Notifications bell
   notifBtn: $('notif-btn'),
+  refreshBtn: $('refresh-btn'),
   notifCount: $('notif-count'),
   notifMenu: $('notif-menu'),
   notifList: $('notif-list'),
@@ -1747,6 +1748,14 @@ async function markNotificationsRead(ids) {
     if (data && data.unread !== undefined) renderNotifCount(Number(data.unread) || 0);
   } catch { /* non-fatal */ }
 }
+// Force-reload the app to the latest deployed version. The HTML shell is served
+// no-cache (vercel.json), so a reload revalidates and pulls the newest app.js /
+// styles.css — useful in the installed PWA where there's no browser refresh.
+els.refreshBtn?.addEventListener('click', () => {
+  els.refreshBtn.classList.add('spinning');
+  location.reload();
+});
+
 els.notifBtn?.addEventListener('click', (e) => {
   e.stopPropagation();
   const open = els.notifMenu.hidden;

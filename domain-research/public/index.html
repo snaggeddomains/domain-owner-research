@@ -28,7 +28,7 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="apple-mobile-web-app-title" content="Snagged Research" />
     <meta name="theme-color" content="#254254" />
-    <link rel="stylesheet" href="styles.css?v=20260605d" />
+    <link rel="stylesheet" href="styles.css?v=20260605e" />
     <!-- Layout: horizontal tab nav (Admin-style), no sidebar. -->
   </head>
   <body>
@@ -79,6 +79,11 @@
           <a href="/admin" id="topbar-admin" hidden>Admin</a>
         </nav>
         <div class="topbar__account" id="topbar-account" hidden>
+          <!-- Reload — force-fetch the latest app version (handy in the installed
+               PWA / "Mac app" where there's no browser refresh button). -->
+          <button id="refresh-btn" class="topbar-refresh" type="button" aria-label="Reload" title="Reload latest version">
+            <svg viewBox="0 0 24 24" width="19" height="19" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+          </button>
           <!-- Notifications bell — red unread count; dropdown deep-links in-app. -->
           <button id="notif-btn" class="notif-bell" type="button" aria-label="Notifications" title="Notifications" aria-haspopup="true" aria-expanded="false">
             <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
@@ -732,6 +737,6 @@ The model parses it into structured filters (TLDs, length, budget, tone, etc.) a
     </aside>
 
     <!-- Bump ?v= on any public/app.js or styles.css change to bust caches. -->
-    <script src="app.js?v=20260605d"></script>
+    <script src="app.js?v=20260605e"></script>
   </body>
 </html>

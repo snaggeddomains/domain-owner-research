@@ -811,6 +811,10 @@ body.modal-open { overflow: hidden; }
 /* Notifications bell + dropdown */
 .notif-bell { position:relative; width:34px; height:34px; border-radius:50%; border:0; background:transparent; color:var(--navy-2); cursor:pointer; display:inline-flex; align-items:center; justify-content:center; padding:0; }
 .notif-bell:hover { background:var(--cream-2); color:var(--navy); }
+.topbar-refresh { width:34px; height:34px; border-radius:50%; border:0; background:transparent; color:var(--navy-2); cursor:pointer; display:inline-flex; align-items:center; justify-content:center; padding:0; }
+.topbar-refresh:hover { background:var(--cream-2); color:var(--navy); }
+.topbar-refresh.spinning svg { animation: tb-spin .7s linear infinite; }
+@keyframes tb-spin { to { transform: rotate(360deg); } }
 .notif-count { position:absolute; top:-1px; right:-1px; min-width:16px; height:16px; padding:0 4px; border-radius:999px; background:#d64545; color:#fff; font-size:10px; font-weight:800; line-height:16px; text-align:center; box-sizing:border-box; }
 .notif-menu { position:absolute; top:calc(100% + 10px); right:0; z-index:60; width:320px; max-height:60vh; overflow-y:auto; background:#fff; border:1px solid var(--line); border-radius:14px; box-shadow:var(--shadow-md, 0 12px 32px rgba(20,40,55,.16)); text-align:left; }
 .notif-head { display:flex; align-items:center; justify-content:space-between; padding:12px 14px; border-bottom:1px solid var(--line); font-weight:800; color:var(--navy); font-size:14px; position:sticky; top:0; background:#fff; border-radius:14px 14px 0 0; }
