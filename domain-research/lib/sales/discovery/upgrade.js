@@ -17,9 +17,16 @@
 
 import { pathToFileURL } from 'node:url';
 
-// Locked variation dictionaries (from the scoping doc's acceptance criteria).
-export const PREFIXES = ['try', 'use', 'get', 'the', 'meet', 'open', 'hi', 'hello'];
-export const SUFFIXES = ['app', 'labs', 'hub', 'hq'];
+// Variation dictionaries. Seeded from the scoping doc, expanded for direct
+// probing (the affix×TLD permutations are resolved live, so a wider net just
+// finds more real affix brands — CLASSIFY filters the parked/dead ones out).
+export const PREFIXES = [
+  'try', 'use', 'get', 'the', 'meet', 'open', 'hi', 'hello',
+  'go', 'my', 'join', 'with', 'build', 'make', 'we', 'run',
+];
+export const SUFFIXES = [
+  'app', 'labs', 'hub', 'hq', 'ly', 'fy', 'ify', 'now', 'pro', 'base', 'kit', 'flow',
+];
 export const TLDS = ['com', 'ai', 'xyz', 'org', 'co', 'net', 'io'];
 
 // Final-redirect hosts that mean "parked / for sale" — a domainer, not an operating
@@ -40,6 +47,21 @@ export function seedParts(domain) {
 // Affix variation strings for the SLD (sub-type 2 seeds for autocomplete).
 export function affixVariations(sld) {
   return [...PREFIXES.map((p) => p + sld), ...SUFFIXES.map((s) => sld + s)];
+}
+
+// Focused TLD set for DIRECT affix-domain probing — affix brands overwhelmingly
+// live on these. (Clearbit autocomplete doesn't index most affix startups, so we
+// resolve the domains directly to catch e.g. usepiston.com / getpiston.io.)
+export const AFFIX_TLDS = ['com', 'io', 'co'];
+
+// Sub-type 2 (DIRECT): SLD+affix × AFFIX_TLDS as concrete domains to resolve live
+// — catches affix brands autocomplete misses (the UsePiston.com case).
+function affixDomains(sld) {
+  const out = [];
+  for (const v of affixVariations(sld)) {
+    for (const t of AFFIX_TLDS) out.push({ domain: `${v}.${t}`, company: null, subtype: 'affix' });
+  }
+  return out;
 }
 
 function withTimeout(ms) {
@@ -117,13 +139,13 @@ export async function discoverUpgrade(seedDomain, { classifyStatus = true, concu
   if (!sld) return [];
 
   const byDomain = new Map();
-  for (const c of [...tldVariants(sld, tld), ...await nameMatch(sld)]) {
+  for (const c of [...tldVariants(sld, tld), ...affixDomains(sld), ...await nameMatch(sld)]) {
     if (c.domain === self) continue;                 // skip the seed itself
     const prev = byDomain.get(c.domain);
-    // Prefer a name_match (carries a company name) over a bare tld_variant.
-    if (!prev || (prev.subtype === 'tld_variant' && c.subtype === 'name_match')) {
-      byDomain.set(c.domain, { ...prev, ...c });
-    }
+    if (!prev) { byDomain.set(c.domain, c); continue; }
+    // Prefer a candidate that carries a company name (name_match) over a bare
+    // enumerated domain (tld_variant / affix).
+    if (!prev.company && c.company) byDomain.set(c.domain, { ...prev, ...c });
   }
   const candidates = [...byDomain.values()].map((c) => ({ ...c, category: 'upgrade', status: null }));
 

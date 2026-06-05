@@ -26,6 +26,30 @@ import { firmographics, abilityToPay } from './enrich/firmographics.js';
 // Title fragments that are not a company name.
 const GENERIC_TITLE = /^(welcome|home ?page|home|index|untitled|404|not found|coming soon|under construction|domain (default|for sale)|account suspended)\b/i;
 
+// Marketplace / parking hosts a for-sale domain redirects to (a domainer, not a
+// buyer). extractClues misses GoDaddy's own landers, so we check these too.
+const SALE_HOSTS = [
+  'afternic.com', 'sedo.com', 'sedoparking.com', 'dan.com', 'undeveloped.com',
+  'bodis.com', 'parkingcrew.net', 'above.com', 'hugedomains.com', 'voodoo.com',
+  'sav.com', 'fabulous.com', 'domainmarket.com', 'spaceship.com', 'godaddy.com',
+  'atom.com', 'squadhelp.com', 'brandbucket.com', 'efty.com', 'uniregistry.com',
+  'porkbun.com', 'dynadot.com', 'namecheap.com',
+];
+// High-signal for-sale lander phrases (GoDaddy/Afternic/Sedo "is for sale"). These
+// are specific enough not to fire on an operating business homepage.
+const SALE_PHRASES = /\b(get a price in less than 24 hours|lease to own|buy this domain|this domain (name )?is (for sale|available)|the domain (name )?[\w.-]{0,40} ?is for sale|domain (name )?is for sale|inquire (to|about) (buy|purchas|this domain)|priced to sell|this domain may be for sale|interested in (buying|this domain)|fast transfer)\b/i;
+function looksForSale(resp) {
+  const body = String(resp.body || '');
+  let host = '';
+  try { host = new URL(resp.finalUrl || '').host.replace(/^www\./, ''); } catch { /* ignore */ }
+  if (host && SALE_HOSTS.some((h) => host === h || host.endsWith('.' + h))) return true;
+  // Afternic/GoDaddy stub: a near-empty page that JS-redirects to a parking
+  // lander (e.g. window.location.href="/lander"). The for-sale text is rendered
+  // client-side, so the only signal in the raw HTML is the redirect itself.
+  if (/location\.(href|replace)\s*[=(]\s*["'][^"']*(\/lander|\/park|for[-_]?sale)/i.test(body.slice(0, 3000))) return true;
+  return SALE_PHRASES.test(body.slice(0, 8000));
+}
+
 // Pull a usable company name from a live page: prefer og:site_name, else the most
 // brand-like <title> segment (split on - | – — :, drop generic boilerplate).
 function nameFromPage(html) {
@@ -52,7 +76,7 @@ async function classifyLive(domain) {
   try { resp = await fetchText(`https://${domain}/`); }
   catch { try { resp = await fetchText(`http://${domain}/`); } catch { return { status: 'inactive', page: null }; } }
   const clues = extractClues(resp.body || '');
-  if (clues.parking?.likely_parked) return { status: 'for_sale', page: clues, html: resp.body };
+  if (clues.parking?.likely_parked || looksForSale(resp)) return { status: 'for_sale', page: clues, html: resp.body };
   if (!resp.ok) return { status: 'inactive', page: clues, html: resp.body };
   return { status: 'active', page: clues, html: resp.body };
 }
@@ -94,13 +118,22 @@ export async function resolveCandidate(cand, { env = process.env, enrich = true,
 // Bounded-concurrency resolve of a candidate list, then dedupe by company (keep the
 // active/best-qualified row per company; merge alt domains onto it).
 export async function resolveCandidates(cands, opts = {}) {
-  const { concurrency = 4 } = opts;
+  const { concurrency = 10 } = opts;
   const cache = opts.cache || new Map();
-  const resolved = new Array(cands.length);
+  const resolvedAll = new Array(cands.length);
   let i = 0;
   await Promise.all(Array.from({ length: Math.min(concurrency, cands.length) }, async () => {
-    while (i < cands.length) { const idx = i++; resolved[idx] = await resolveCandidate(cands[idx], { ...opts, cache }); }
+    while (i < cands.length) { const idx = i++; resolvedAll[idx] = await resolveCandidate(cands[idx], { ...opts, cache }); }
   }));
+
+  // Drop dead enumerated probes (affix/tld_variant that didn't resolve to a live
+  // site, a company name, or firmographics) so ~80 NXDOMAIN affix tries don't
+  // flood the list. name_match rows (from a company index) are always kept.
+  const resolved = resolvedAll.filter((r) =>
+    r.subtype === 'name_match'
+    || r.status === 'active' || r.status === 'for_sale'
+    || r.company || r.firmographics,
+  );
 
   // Dedupe by normalized company name (rows without a company stay distinct).
   const byCompany = new Map();
