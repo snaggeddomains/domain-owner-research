@@ -168,6 +168,81 @@ rob_purchases → Rob Schutz). TLD filters require a single-dot domain.
 
 ---
 
+# Nameserver Search — domain⇄NS ownership triangulation (2026-06)
+
+UI at **research.snagged.com/research/nameserver** (gated by the `research.nameserver`
+module permission; hub tile in snagged-admin `app/page.tsx`). The play: a domain on a
+**uniquely-configured** nameserver pair (e.g. a custom Cloudflare pair) is very likely
+held by the same owner as everything else on that pair — so a privacy-walled core
+domain can be cracked by finding a clearly-related sibling that DOES have public
+contact info. Two directions: domain → its NS set; NS set → the domains using them.
+
+**Dedicated zone DB.** Zone data lives in its OWN Supabase project `snagged-zone-index`
+(ref `opzqyeuumusbmvqxehgf`, region us-west-2; pooler `aws-1-us-west-2.pooler.supabase.com`),
+NOT the naming/master/research projects. App reads it via `ZONE_SUPABASE_URL` /
+`ZONE_SUPABASE_SERVICE_KEY` (falls back to the naming project's vars if unset) —
+`lib/db/supabase-zone.js` (`getZoneDb` / `isZoneDbConfigured`).
+
+**Table + partitioning.** `zone_domains(domain text, tld text, nameservers text[])`,
+one row per domain, **LIST-partitioned by `tld`**. Live layout:
+- `zone_domains_legacy` — the DEFAULT partition (holds the original 5: `dev/org/xyz/ai/co`).
+  Partitioning was a **no-copy ATTACH-as-default** (rename old table → attach as default;
+  the copy-based migration filled the disk → PANIC, so we abandoned it).
+- `zone_domains_com` — `.com` (~163.25M).
+- `zone_domains_io` — `.io` (~1.12M).
+
+Counts (2026-06): com ~163.25M · org ~11.9M · xyz ~7.85M · io ~1.12M · ai ~1.08M ·
+co ~1.04M · dev ~676K → **~187M domains**. The partitioned **parent has no PK**, so
+**every partition needs its OWN two indexes**: a `domain` btree AND a `nameservers`
+GIN. Without the btree, a lookup seq-scans the partition (the .com miss = a timeout —
+that bit us). `lookupDomain` filters on `tld` so the planner prunes to one partition.
+
+**Adding a TLD (repeatable runbook).** Two source formats: CZDS zone-master
+(space-delimited NS records — `.com/.org/.dev/.xyz`) vs Domains-Monitor "detailed"
+(semicolon CSV `"domain";"ns1,ns2";…` — `.ai/.co/.io`). Steps:
+1. `create table zone_domains_<tld> partition of zone_domains for values in ('<tld>');`
+2. Load (partition is index-free → fast COPY, no OOM): snagged-admin `scripts/load_ns.sh
+   <tld> <file>` for the semicolon format (or the inline parser); big TLDs (.com) stream
+   through the droplet so the file never lands on disk.
+3. Build BOTH indexes + analyze (on XL with `maintenance_work_mem='2GB'` for .com; Micro
+   `'256MB'` for small ones): `create index idx_zone_<tld>_ns_gin on zone_domains_<tld>
+   using gin(nameservers); create index idx_zone_<tld>_domain on zone_domains_<tld>
+   (domain); analyze zone_domains_<tld>;`
+SQL/notes: snagged-admin `scripts/zone_domains_partition.sql`.
+
+**Query lib** (`lib/nameserver/`):
+- `query.js` — `lookupDomain` (tld-pruned), `domainsByNameservers` (`.contains`=@>=AND,
+  `.overlaps`=&&=OR; **no ORDER BY** — sorting a huge match set times out, so a bare LIMIT
+  lets the GIN stop early and we sort the page in JS), `samePairing` (siblings on the
+  EXACT pairing). `liveNameservers` resolves NS for un-loaded TLDs in **three tiers**:
+  live DNS NS → `rdap.org` → **authoritative registry RDAP via IANA's bootstrap**
+  (`data.iana.org/rdap/dns.json`, cached) + a `CCTLD_RDAP` override map for ccTLDs that
+  run RDAP but aren't in the bootstrap (`.io/.sh/.ac` → Identity Digital — this is why a
+  SERVFAIL/`rdap.org`-404 `.io` like squeak.io still resolves). `isJunkNs` drops ephemeral
+  verification/ACME-challenge NS records that would poison a pairing `@>` set.
+- `context.js` — `classifyPair(nameservers)`: `cloudflare_account` (accountUnique — same
+  pair == same owner), `generic` (`GENERIC_NS` parking/registrar incl Afternic/Sedo/GoDaddy/
+  Namecheap/**Spaceship/Dynadot/Porkbun** — short-circuit, NOT an ownership signal),
+  or `shared`. `extractReportContext(run)` distills a Domain Owner report into owner/
+  people/email-domains to steer relatedness.
+- `relate.js` — `analyzeRelated` LLM pass (max_tokens 8000, `parseJsonLoose` + salvage
+  for truncated output); `sweep.js` — `freeSweep` runs the free sources per sibling and
+  cross-matches registrants against the linked report's people; `owner.js` — free owner
+  dossier (whois+rdap merge).
+
+**API** `api/nameserver.js` (`maxDuration=60`): modes `domain · ns · pairing · relate ·
+owner · sweep · reports`. relate/sweep accept a `run_id` to pull report context. UI in
+`public/app.js` (the `ns*` helpers): selectable results, free-sweep cards with a
+consolidated owner dossier, 🔑 lead / 🎯 match badges, background deep-research that
+consolidates back into the screen, and localStorage "recent lookups" chips.
+
+**Open / next:** rotate the exposed zone DB password; give the 5 legacy TLDs their own
+partitions (independent refresh); write `update_<tld>.sh` + a cron for periodic refresh
+(esp. `.com`); the live-resolve path is now robust but only a fallback — loaded TLDs
+answer from the index.
+
+---
+
 ## Session handoff — 2026-06-02 (lessons notifications + permissions)
 
 - **Lesson submitted → notify curators.** `api/lessons.js` `notifyAdminsOfLesson`
