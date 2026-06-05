@@ -28,7 +28,9 @@ function parseJsonLoose(text) {
   try { return JSON.parse(s.slice(a, b + 1)); } catch { return null; }
 }
 
-const SYSTEM = `You map a single SEED word/domain to the distinct BUYER ANGLES for selling that domain — the separate industries/interpretations whose companies would plausibly want the name. A polysemous seed has several angles; a narrow one has one or two. For each angle, name the genuinely notable, well-known companies in that space (the kind that could afford a premium domain), with each company's primary website domain. Be honest about buyer potential. Output STRICT JSON only.`;
+const SYSTEM = `You map a single SEED word/domain to the distinct BUYER ANGLES for selling that domain — the separate industries/interpretations whose companies would plausibly want the name. A polysemous seed has several angles; a narrow one has one or two. For each angle, name the genuinely notable, well-known companies in that space (the kind that could afford a premium domain), with each company's primary website domain. Be honest about buyer potential.
+
+ALSO always include one special angle with key "product_named": companies that have a real PRODUCT, app, service, or feature literally NAMED the seed word — even when the company's own name is completely different (e.g. a company whose flagship product is called the seed word). These exact-match holders are among the highest-intent buyers for the domain. Output STRICT JSON only.`;
 
 function userPrompt(seed) {
   return `SEED: ${seed}
@@ -51,7 +53,8 @@ Return JSON:
 }
 
 Rules:
-- 2-5 angles, most promising first. Only real, distinct interpretations.
+- ALWAYS include, as the FIRST angle, key "product_named", label 'Companies with a product named "${seed}"': real companies whose PRODUCT / app / service / feature is literally named "${seed}" (the COMPANY may have a totally different name — find them by the product, not the company name). List the real companies + their primary domains. buyer_potential "high". This is the exact-match angle — be thorough.
+- Then 2-5 INDUSTRY angles, most promising first. Only real, distinct interpretations.
 - 3-6 well-known players per angle, biggest/most-capitalized first, each with a real primary domain (your best knowledge; lowercase, no protocol).
 - buyer_potential reflects whether the angle's players are large/funded enough to buy a premium domain.
 - JSON only, no prose.`;
@@ -72,19 +75,42 @@ export async function enumerateAngles(seedDomain, env = process.env) {
   const text = (resp.content || []).filter((b) => b.type === 'text').map((b) => b.text).join('\n');
   const parsed = parseJsonLoose(text);
   const angles = (parsed && Array.isArray(parsed.angles)) ? parsed.angles : [];
+  const word = sld || domain;
   // Normalize + clean domains.
-  return angles.map((a) => ({
-    key: String(a.key || a.label || '').toLowerCase().replace(/[^a-z0-9]+/g, '_').slice(0, 40) || 'angle',
-    label: String(a.label || a.key || 'Angle'),
-    concept: String(a.concept || ''),
-    industries: Array.isArray(a.industries) ? a.industries.map(String).slice(0, 6) : [],
-    buyer_potential: ['high', 'medium', 'low'].includes(a.buyer_potential) ? a.buyer_potential : 'medium',
-    rationale: String(a.rationale || ''),
-    players: (Array.isArray(a.players) ? a.players : []).slice(0, 6).map((p) => ({
-      name: String(p.name || ''),
-      domain: String(p.domain || '').toLowerCase().replace(/^https?:\/\//, '').replace(/^www\./, '').replace(/\/.*$/, ''),
-    })).filter((p) => p.name),
-  })).filter((a) => a.label);
+  const out = angles.map((a) => {
+    const key = String(a.key || a.label || '').toLowerCase().replace(/[^a-z0-9]+/g, '_').slice(0, 40) || 'angle';
+    const isProduct = key === 'product_named';
+    return {
+      key,
+      // Flag the exact-match "product named X" angle so the Tier-2 fan-out targets
+      // companies whose PRODUCT carries the name (not just industry players).
+      product: isProduct,
+      label: isProduct ? `Companies with a product named “${word}”` : String(a.label || a.key || 'Angle'),
+      concept: isProduct
+        ? `Companies whose product, app, or service is literally named “${word}” — exact-match buyers for the domain.`
+        : String(a.concept || ''),
+      industries: Array.isArray(a.industries) ? a.industries.map(String).slice(0, 6) : [],
+      buyer_potential: isProduct ? 'high' : (['high', 'medium', 'low'].includes(a.buyer_potential) ? a.buyer_potential : 'medium'),
+      rationale: String(a.rationale || ''),
+      players: (Array.isArray(a.players) ? a.players : []).slice(0, 6).map((p) => ({
+        name: String(p.name || ''),
+        domain: String(p.domain || '').toLowerCase().replace(/^https?:\/\//, '').replace(/^www\./, '').replace(/\/.*$/, ''),
+      })).filter((p) => p.name),
+    };
+  }).filter((a) => a.label);
+  // Guarantee the exact-match angle is present + floated to the top, even if the
+  // model didn't emit it (players empty → the Tier-2 fan-out still finds them).
+  if (!out.some((a) => a.product)) {
+    out.unshift({
+      key: 'product_named', product: true,
+      label: `Companies with a product named “${word}”`,
+      concept: `Companies whose product, app, or service is literally named “${word}” — exact-match buyers for the domain.`,
+      industries: [], buyer_potential: 'high', rationale: 'Exact-match product holders are the highest-intent buyers.', players: [],
+    });
+  } else {
+    out.sort((a, b) => (b.product === true) - (a.product === true));   // product angle first
+  }
+  return out;
 }
 
 // Tier 1 — verify the headline company per angle with one firmographics lookup

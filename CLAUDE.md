@@ -267,6 +267,14 @@ Find companies that would BUY a domain we're selling. UI at **research.snagged.c
   the `sales*` helpers in app.js, `.sr-*` styles).
 - **Keyword path is Phase 1B (design-only):** additive — `category`/`angle` columns +
   mode-agnostic spine already in place, so it adds rows, not a fork.
+- **Product-named angle (2026-06):** `enumerateAngles` (`discovery/angles.js`) always
+  emits a special `product_named` angle (flagged `product:true`, floated first, auto-
+  checked) — companies whose PRODUCT/app/service is literally named the seed (the
+  company itself is usually named something else, e.g. playmaker.com → a company whose
+  product is "Playmaker"). When selected, `expandAngle` (`discovery/keyword.js`) branches
+  on `angle.product` to hunt by product name, not industry. These ride the angle-research
+  path (`api/sales.js` `handleResearchAngles`), which does NOT run `gateRelevance` — so a
+  product holder with an unrelated company name isn't wrongly demoted.
 - **Permission:** `research.sales` in snagged-admin `dashboard/lib/permissions.ts`
   (MODULES + CATALOG; stored flat as `sales`). Grant per-user in the Users editor.
 

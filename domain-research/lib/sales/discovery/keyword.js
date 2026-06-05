@@ -29,7 +29,22 @@ const FIT_SCORE = { high: 2.5, medium: 1.5, low: 0.5 };
 async function expandAngle(seed, angle, env, limit) {
   const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY });
   const model = env.SALES_ANGLE_MODEL || env.OUTREACH_MODEL || 'claude-sonnet-4-6';
-  const prompt = `We are selling the premium domain "${seed}". For the buyer angle below, list up to ${limit} REAL companies who could plausibly want it. For EACH, give: its primary website domain, a FIT rating, and a one-line WHY.
+  const word = String(seed).split('.')[0];
+  // The exact-match "product named X" angle hunts by PRODUCT, not industry — find
+  // companies whose product/app/service is literally named the seed word, even when
+  // the company itself is named something else entirely (the highest-intent buyers).
+  const prompt = angle.product
+    ? `We are selling the premium domain "${seed}". List up to ${limit} REAL companies that have a PRODUCT, app, service, or feature literally NAMED "${word}" — the COMPANY usually has a DIFFERENT name (find them by the product, not the company name). For EACH, give the company's primary website domain, a FIT rating, and a one-line WHY naming the product.
+
+FIT = how strong a buyer they'd be for "${seed}":
+  "high"   = the product named "${word}" is a flagship/major product AND the company is well-capitalized
+  "medium" = a real but secondary product, or a mid-size company
+  "low"    = a minor/legacy product or a company too small to pay
+
+Return JSON only:
+{"companies":[{"name":"Company","domain":"company.com","fit":"high|medium|low","why":"product \\"${word}\\" is their ..."}]}
+Real companies with a genuinely named-"${word}" product only — do NOT pad with companies that merely operate in a related space. Order best fit first. No placeholders.`
+    : `We are selling the premium domain "${seed}". For the buyer angle below, list up to ${limit} REAL companies who could plausibly want it. For EACH, give: its primary website domain, a FIT rating, and a one-line WHY.
 
 ANGLE: ${angle.label} — ${angle.concept || ''}
 
