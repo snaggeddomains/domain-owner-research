@@ -23,6 +23,10 @@ import { pathToFileURL } from 'node:url';
 export const PREFIXES = [
   'try', 'use', 'get', 'the', 'meet', 'open', 'hi', 'hello',
   'go', 'my', 'join', 'with', 'build', 'make', 'we', 'run',
+  // Common product-brand modifiers — these form real "<word>+seed" brands
+  // (videoask→VideoAsk, easyask→EasyAsk, salesask, smartask…) that the LLM
+  // operator pass keeps missing; autocomplete resolves them deterministically.
+  'video', 'sales', 'easy', 'smart', 'quick', 'voice', 'chat', 'snap',
 ];
 export const SUFFIXES = [
   'app', 'labs', 'hub', 'hq', 'ly', 'fy', 'ify', 'now', 'pro', 'base', 'kit', 'flow',

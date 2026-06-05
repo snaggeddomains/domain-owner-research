@@ -35,19 +35,20 @@ export async function gateRelevance(seedDomain, rows, env = process.env) {
     return `${i}. ${r.company} (${r.domain})${bits ? ` — ${bits}` : ''}`;
   }).join('\n');
 
-  const prompt = `We are selling the premium domain "${seedDomain}". For EACH company below, decide whether it is a REALISTIC, HIGH-QUALITY BUYER for "${seedDomain}" — a real commercial company whose brand/product/market fits the domain AND who could plausibly pay for and use a premium generic .com.
+  const seedWord = String(seedDomain).split('.')[0];
+  const prompt = `We are selling the premium domain "${seedDomain}". For EACH company below, decide whether it is a genuine, on-target prospect — a real commercial company/product whose BRAND is deliberately built on the word "${seedWord}" (or whose business clearly fits the domain's meaning).
 
-Mark as NOT relevant (relevant:false):
-  • Coincidental matches — the word is in their name or they own a similar domain, but the business (a school, a souvenir shop, a local services firm, a task/other-product app) has nothing to do with the domain's meaning.
-  • Low-quality / non-acquirer entities even if topically on-theme: personal brands or individual professionals (a doctor, a coach), content blogs / media sites, nonprofits / .org community projects, forums or Q&A community properties, and tiny 1–3 person hobby sites.
-Only mark relevant:true for a genuine company/product that would be a credible buyer.
+Mark as NOT relevant (relevant:false) ONLY when:
+  • The match is COINCIDENTAL or a different word — the letters appear by accident (e.g. "task", "mask", "flask"), or the word is in the name but the business has nothing to do with the domain's meaning (a school, a souvenir shop, a skincare brand, an unrelated local services firm).
+  • It is NOT a real commercial buyer you could sell to: an individual person's site / personal brand (a named doctor or coach), a content blog or media site, a nonprofit or .org community/Q&A project, a dead or parked page.
+
+IMPORTANT: do NOT mark a company irrelevant just for being SMALL, early-stage, or low-revenue. A small or young company whose brand is built on "${seedWord}" is a PRIME buyer (they'd most want the clean .com) — keep those relevant:true.
 
 Companies:
 ${list}
 
 Return JSON only — an array, one entry per number:
-{"verdicts":[{"i":0,"relevant":true,"reason":"3-5 words"}]}
-Be strict: irrelevant-or-low-quality, even if large, counts as NOT relevant.`;
+{"verdicts":[{"i":0,"relevant":true,"reason":"3-5 words"}]}`;
 
   let parsed = null;
   try {
