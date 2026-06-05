@@ -17,6 +17,7 @@
 // pagination is stable and cheap.
 import { getZoneDb, isZoneDbConfigured } from '../db/supabase-zone.js';
 import { runTool } from '../sources/index.js';
+import { fetchJson } from '../util.js';
 import { classifyPair } from './context.js';
 
 const TABLE = 'zone_domains';
@@ -122,9 +123,60 @@ export async function domainsByNameservers({ nameservers, mode = 'all', tld = ''
   return { rows, hasMore };
 }
 
+// IANA's RDAP bootstrap maps each TLD to its authoritative registry RDAP base
+// URL. rdap.org is a convenience aggregator that mishandles some TLDs (e.g. it
+// 404s `.io`, whose registry endpoint rdap.identitydigital.services answers
+// fine), so when rdap.org fails we resolve the real base ourselves and query it
+// directly. Cached at module scope — the bootstrap file changes rarely.
+// ccTLDs that operate an RDAP server but DON'T register it in IANA's bootstrap
+// (the bootstrap only requires gTLDs). Without these the bootstrap lookup returns
+// nothing for them — e.g. `.io` is backed by Identity Digital but absent from
+// dns.json. Bases are the RDAP root (we append `domain/<d>`).
+const CCTLD_RDAP = {
+  io: 'https://rdap.identitydigital.services/rdap',
+  sh: 'https://rdap.identitydigital.services/rdap',
+  ac: 'https://rdap.identitydigital.services/rdap',
+};
+let _rdapBootstrap = null;
+async function rdapBaseForTld(tld) {
+  const t = String(tld || '').toLowerCase();
+  if (!t) return null;
+  if (CCTLD_RDAP[t]) return CCTLD_RDAP[t];
+  if (!_rdapBootstrap) {
+    _rdapBootstrap = (async () => {
+      const m = new Map();
+      const j = await fetchJson('https://data.iana.org/rdap/dns.json');
+      for (const svc of (j && j.services) || []) {
+        const tlds = svc[0] || [];
+        const urls = svc[1] || [];
+        const base = urls.find((u) => /^https:/i.test(u)) || urls[0];
+        if (base) for (const x of tlds) m.set(String(x).toLowerCase(), base.replace(/\/+$/, ''));
+      }
+      return m;
+    })().catch(() => new Map());
+  }
+  return (await _rdapBootstrap).get(t) || null;
+}
+
+// Pull a domain's delegation nameservers straight from its registry RDAP, via
+// the IANA bootstrap. Works for TLDs rdap.org can't bootstrap.
+async function registryRdapNameservers(domain) {
+  const d = String(domain || '').toLowerCase();
+  const dot = d.lastIndexOf('.');
+  const base = await rdapBaseForTld(dot > 0 ? d.slice(dot + 1) : '');
+  if (!base) return [];
+  try {
+    const j = await fetchJson(`${base}/domain/${encodeURIComponent(d)}`);
+    const arr = Array.isArray(j && j.nameservers) ? j.nameservers : [];
+    return [...new Set(arr.map((n) => normalizeNs((n && (n.ldhName || n.name)) || '')).filter((h) => h && !isJunkNs(h)))];
+  } catch { return []; }
+}
+
 // Resolve a domain's nameservers LIVE (when it isn't in our zone index — e.g. a
 // .com we haven't loaded). Live DNS NS records first (authoritative, fast), then
-// the RDAP registry nameservers as a fallback (works even if DNS isn't resolving).
+// RDAP via rdap.org, then the authoritative registry RDAP via IANA bootstrap (a
+// last resort for TLDs/domains the first two miss — e.g. a SERVFAIL .io whose
+// registry still publishes the delegation).
 export async function liveNameservers(domain, env = process.env) {
   const d = String(domain || '').trim().toLowerCase();
   if (!d) return [];
@@ -138,6 +190,10 @@ export async function liveNameservers(domain, env = process.env) {
     const r = await runTool('rdap_whois', { domain: d }, env);
     const arr = r && r.ok && Array.isArray(r.data && r.data.nameservers) ? r.data.nameservers : [];
     const clean = [...new Set(arr.map((n) => normalizeNs((n && (n.ldhName || n.name)) || '')).filter((h) => h && !isJunkNs(h)))];
+    if (clean.length) return clean;
+  } catch { /* fall through to registry RDAP */ }
+  try {
+    const clean = await registryRdapNameservers(d);
     if (clean.length) return clean;
   } catch { /* give up */ }
   return [];
