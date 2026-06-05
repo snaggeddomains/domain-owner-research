@@ -1300,6 +1300,9 @@ body.drawer-open { overflow: hidden; }
 
 /* ── Buyer cards (full-width, one card per company) ──────────────────────────*/
 .sr-cards { display: flex; flex-direction: column; gap: 14px; }
+.sr-section { margin-bottom: 22px; }
+.sr-section-head { font-size: 13px; font-weight: 800; text-transform: uppercase; letter-spacing: .04em; color: var(--navy-2); margin: 0 0 10px; padding-bottom: 7px; border-bottom: 2px solid var(--line); }
+.sr-section-n { color: var(--navy-3); font-weight: 600; }
 .sr-card { border: 1.5px solid var(--line); border-left-width: 5px; border-radius: var(--radius-sm); background: var(--cream-2); padding: 16px 18px 16px 20px; box-shadow: var(--shadow-sm); }
 /* Tier accent on the left edge so the ranking pops as you scan down the list. */
 .sr-card-strong { border-left-color: #2e9e57; }

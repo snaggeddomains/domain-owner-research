@@ -4978,7 +4978,7 @@ function renderSalesTable() {
       ${collapsed ? '' : `<div class="sr-contacts-grid">${list.map(contactCard).join('')}</div>`}
     </div>`;
   };
-  const body = rows.map((c) => {
+  const cardHtml = (c) => {
     const coLi = (c.firmographics && c.firmographics.linkedin) || '';
     const angleBadge = c.category === 'keyword' && c.angle
       ? `<span class="sr-angle-badge">${escapeHtml(String(c.angle).replace(/_/g, ' '))}</span>` : '';
@@ -5008,8 +5008,29 @@ function renderSalesTable() {
       ${qualifying}
       ${contactsBlock(c)}
     </div>`;
+  };
+  // Group into priority sections; stack-rank each by relevance (score) then size.
+  // Recommended = the highly-relevant, worth-pursuing buyers: ALL upgrades
+  // (already use the name — cheap + relevant) PLUS the best-fit keyword picks
+  // (score ≥ 2). Keyword expansions = the rest of the angle companies (tougher
+  // sell). Others = for-sale / inactive.
+  const byScore = (a, b) => ((Number(b.score) || 0) - (Number(a.score) || 0)) || ((b.employee_count || 0) - (a.employee_count || 0));
+  const sections = [
+    { label: 'Recommended — upgrades & best-fit buyers', rows: [] },
+    { label: 'Keyword expansions — adjacent industries', rows: [] },
+    { label: 'Others', rows: [] },
+  ];
+  for (const c of rows) {
+    if (c.status && c.status !== 'active') sections[2].rows.push(c);                 // for-sale / inactive
+    else if (c.category === 'upgrade' || Number(c.score) >= 2) sections[0].rows.push(c);  // upgrades + best-fit keyword
+    else if (c.category === 'keyword') sections[1].rows.push(c);                     // remaining angle companies
+    else sections[2].rows.push(c);
+  }
+  els.srTable.innerHTML = sections.filter((s) => s.rows.length).map((s) => {
+    s.rows.sort(byScore);
+    return `<div class="sr-section"><div class="sr-section-head">${escapeHtml(s.label)} <span class="sr-section-n">${s.rows.length}</span></div>`
+      + `<div class="sr-cards">${s.rows.map(cardHtml).join('')}</div></div>`;
   }).join('');
-  els.srTable.innerHTML = `<div class="sr-cards">${body}</div>`;
   els.srTable.querySelectorAll('.sr-cb').forEach((cb) => cb.addEventListener('change', updateSalesEnrichBtn));
   updateSalesEnrichBtn();
 }
