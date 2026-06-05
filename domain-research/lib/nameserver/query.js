@@ -74,11 +74,14 @@ function clampLimit(n) {
 export async function lookupDomain(domain) {
   const d = String(domain || '').trim().toLowerCase();
   if (!d) return null;
-  const { data, error } = await getZoneDb()
-    .from(TABLE)
-    .select('domain, tld, nameservers')
-    .eq('domain', d)
-    .limit(1);
+  // zone_domains is LIST-partitioned by tld, so filtering on tld lets the planner
+  // prune straight to the one partition instead of probing every partition's
+  // domain index (the .com partition has 163M rows — a missed prune is a timeout).
+  const dot = d.lastIndexOf('.');
+  const tld = dot > 0 ? d.slice(dot + 1) : '';
+  let q = getZoneDb().from(TABLE).select('domain, tld, nameservers').eq('domain', d);
+  if (tld) q = q.eq('tld', tld);
+  const { data, error } = await q.limit(1);
   if (error) rethrow(error);
   return (data && data[0]) || null;
 }
