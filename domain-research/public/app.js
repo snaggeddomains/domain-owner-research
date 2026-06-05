@@ -4963,21 +4963,30 @@ function renderSalesTable() {
   const monthsAgo = (d) => { if (!d) return null; const t = new Date(d); return isNaN(t) ? null : Math.round((Date.now() - t) / (1000 * 60 * 60 * 24 * 30.44)); };
   const relRaise = (d) => { const m = monthsAgo(d); if (m == null) return ''; if (m < 1) return 'this month'; if (m < 12) return `~${m}mo ago`; const y = m / 12; return `~${y % 1 ? y.toFixed(1) : y.toFixed(0)}y ago`; };
   const growthPct = (g) => (g == null || !isFinite(g)) ? '' : `${g >= 0 ? '+' : ''}${Math.round(g * 100)}%`;
-  const M = (k, v, cls = '') => { const blank = v == null || v === ''; return `<div class="sr-m"><div class="sr-m-k">${k}</div><div class="sr-m-v${blank ? ' sr-m-dim' : (cls ? ' ' + cls : '')}">${blank ? '—' : escapeHtml(String(v))}</div></div>`; };
+  const M = (k, v, cls = '') => `<div class="sr-m"><div class="sr-m-k">${k}</div><div class="sr-m-v${cls ? ' ' + cls : ''}">${escapeHtml(String(v))}</div></div>`;
+  // Build the metric list, dropping blanks. A card with 0 stats shows nothing; 1–2
+  // collapse to a one-line summary; 3+ get the labelled grid (only the cells we
+  // actually have — no rows of dashes).
   const metricsGrid = (c) => {
     const f = c.firmographics || {};
     const emp = f.employees != null ? f.employees : c.employee_count;
     const g = f.headcountGrowth && f.headcountGrowth.twelveMo;
-    // One tight row: dropped Rounds + Cash-on-hand; Founded rejoins the row.
-    return `<div class="sr-metrics">
-      ${M('Raised', f.funding || c.funding || '', (f.funding || c.funding) ? 'sr-m-raise' : '')}
-      ${M('Stage', f.fundingStage || '')}
-      ${M('Last raise', relRaise(f.latestFundingDate))}
-      ${M('Revenue', f.revenue || '')}
-      ${M('Employees', emp != null ? emp : '')}
-      ${M('Growth 12mo', growthPct(g), (g != null && g > 0) ? 'sr-m-pos' : '')}
-      ${M('Founded', f.foundedYear || '')}
-    </div>`;
+    const raised = f.funding || c.funding || '';
+    const growth = growthPct(g);
+    const cells = [
+      { k: 'Raised', v: raised, cls: raised ? 'sr-m-raise' : '', inline: raised ? `raised ${raised}` : '' },
+      { k: 'Stage', v: f.fundingStage || '', inline: f.fundingStage || '' },
+      { k: 'Last raise', v: relRaise(f.latestFundingDate), inline: relRaise(f.latestFundingDate) ? `last raise ${relRaise(f.latestFundingDate)}` : '' },
+      { k: 'Revenue', v: f.revenue || '', inline: f.revenue ? `${f.revenue} revenue` : '' },
+      { k: 'Employees', v: emp != null ? emp : '', inline: emp != null ? `${Number(emp).toLocaleString()} employees` : '' },
+      { k: 'Growth 12mo', v: growth, cls: (g != null && g > 0) ? 'sr-m-pos' : '', inline: growth ? `${growth} growth` : '' },
+      { k: 'Founded', v: f.foundedYear || '', inline: f.foundedYear ? `founded ${f.foundedYear}` : '' },
+    ].filter((m) => m.v !== '' && m.v != null);
+    if (!cells.length) return '';                                   // industry already shows in the header
+    if (cells.length <= 2) {                                        // thin data → one tidy line, no dash grid
+      return `<div class="sr-inline">${escapeHtml(cells.map((m) => m.inline).join(' · '))}</div>`;
+    }
+    return `<div class="sr-metrics">${cells.map((m) => M(m.k, m.v, m.cls)).join('')}</div>`;
   };
   // Location · industry — shown compactly under the name in the header (no longer
   // its own full-width row below the metrics).
@@ -5023,6 +5032,11 @@ function renderSalesTable() {
     const unq = !c.firmographics;   // keyword/angle company not yet Apollo-qualified
     const recommend = unq && c.category === 'keyword' && Number(c.score) >= 2
       ? '<span class="sr-rec-badge">★ recommended</span>' : '';
+    // Off-target (relevance gate) + low-confidence (wrong-looking firmographic match).
+    const offBadge = c.firmographics && c.firmographics.atp_relevant === false
+      ? `<span class="sr-off-badge" title="${escapeHtml(c.firmographics.atp_relevant_reason || 'not a fit for this domain')}">⚠ off-target</span>` : '';
+    const lowConfBadge = c.firmographics && c.firmographics.atp_lowconf
+      ? `<span class="sr-lowconf-badge" title="${escapeHtml(c.firmographics.atp_lowconf_reason || 'unverified match')}">⚠ unverified match</span>` : '';
     // The free LLM "why this company would want it" (for unqualified picks).
     const whyLine = unq && c.match_reason ? `<div class="sr-why-llm">${escapeHtml(c.match_reason)}</div>` : '';
     const qualifying = c._qualifying
@@ -5033,7 +5047,7 @@ function renderSalesTable() {
       <div class="sr-card-head">
         <label class="sr-card-check"><input type="checkbox" class="sr-cb" data-id="${escapeHtml(c.id)}"></label>
         <div class="sr-card-id">
-          <div class="sr-card-name">${escapeHtml(c.company || '—')}${recommend}${angleBadge}</div>
+          <div class="sr-card-name">${escapeHtml(c.company || '—')}${recommend}${angleBadge}${lowConfBadge}${offBadge}</div>
           <div class="sr-card-links">
             <a class="sr-card-domain" href="https://${escapeHtml(c.domain)}" target="_blank" rel="noopener">${escapeHtml(c.domain)}</a>
             ${coLi ? `<a class="sr-card-li" href="${escapeHtml(coLi)}" target="_blank" rel="noopener" title="Company LinkedIn" aria-label="Company LinkedIn">in</a>` : ''}
@@ -5058,8 +5072,10 @@ function renderSalesTable() {
     { label: 'Keyword expansions — adjacent industries', rows: [] },
     { label: 'Others', rows: [] },
   ];
+  const offTarget = (c) => (c.firmographics && c.firmographics.atp_relevant === false) || Number(c.score) < 0;
   for (const c of rows) {
     if (c.status && c.status !== 'active') sections[2].rows.push(c);                 // for-sale / inactive
+    else if (offTarget(c)) sections[2].rows.push(c);                                 // relevance-gated → Others
     else if (c.category === 'upgrade' || Number(c.score) >= 2) sections[0].rows.push(c);  // upgrades + best-fit keyword
     else if (c.category === 'keyword') sections[1].rows.push(c);                     // remaining angle companies
     else sections[2].rows.push(c);

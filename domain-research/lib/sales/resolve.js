@@ -20,11 +20,35 @@
 
 import { pathToFileURL } from 'node:url';
 import { fetchText, extractClues } from '../util.js';
-import { discoverUpgrade } from './discovery/upgrade.js';
+import { discoverUpgrade, seedParts } from './discovery/upgrade.js';
 import { firmographics, abilityToPay } from './enrich/firmographics.js';
 
 // Title fragments that are not a company name.
 const GENERIC_TITLE = /^(welcome|home ?page|home|index|untitled|404|not found|coming soon|under construction|domain (default|for sale)|account suspended)\b/i;
+
+// Parked / placeholder pages that slip past for-sale detection: registrar default
+// pages, "future home of", host parking, blank CMS installs. We DEMOTE these
+// (status for_sale → "Others") and never let their junk title become a company name.
+const PARKED_MARKERS = /\b(checkdomain|hostinger|unstoppable domains|parked (domain|page|free)|future home of|domain default page|this domain is parked|sedoparking|parking ?crew|courtesy of (the )?domain|buy this domain|domainmarket|this web ?site is parked|website coming soon|godaddy)\b/i;
+const PARKED_NAME = /^(it works!?|index of|apache2? (ubuntu )?(default|server)|welcome to nginx|my (blog|wordpress (blog|site))|future home of|parked( domain| page)?|checkdomain parking|parking page|unstoppable domains|domain default page|coming soon|test page|default web site page|hostinger)\b/i;
+function looksParked(resp) {
+  const head = String(resp.body || '').slice(0, 4000);
+  const title = (head.match(/<title[^>]*>([^<]{0,120})<\/title>/i) || [])[1] || '';
+  return PARKED_MARKERS.test(head) || PARKED_NAME.test(title.trim());
+}
+
+// Firmographic name↔domain mismatch: the provider returned a company whose name
+// shares nothing with the domain SLD (e.g. askubuntu.com → "Echo Val-Solution") —
+// almost certainly a wrong match, so we flag it low-confidence rather than assert it.
+function nameDomainMismatch(company, sld) {
+  const s = String(sld || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+  const nameNorm = String(company || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+  if (!s || !nameNorm) return false;
+  if (nameNorm.includes(s) || s.includes(nameNorm)) return false;
+  const tokens = String(company || '').toLowerCase().split(/[^a-z0-9]+/).filter((t) => t.length >= 4);
+  if (tokens.some((t) => s.includes(t) || t.includes(s))) return false;
+  return true;
+}
 
 // Marketplace / parking hosts a for-sale domain redirects to (a domainer, not a
 // buyer). extractClues misses GoDaddy's own landers, so we check these too.
@@ -58,7 +82,7 @@ function nameFromPage(html) {
     || h.match(/<meta[^>]+content=["']([^"']{1,80})["'][^>]*property=["']og:site_name["']/i) || [])[1];
   if (og && og.trim() && !GENERIC_TITLE.test(og.trim())) return og.trim();
   const { title } = extractClues(h);
-  if (!title || GENERIC_TITLE.test(title)) return null;
+  if (!title || GENERIC_TITLE.test(title) || PARKED_NAME.test(title.trim())) return null;
   // "The foundations of … - artificial." → segments; prefer the shortest non-generic
   // segment (brand is usually the terse one), but skip pure generic phrases.
   const segs = title.split(/\s*[|–—\-:·]\s*/).map((s) => s.trim())
@@ -76,7 +100,7 @@ async function classifyLive(domain) {
   try { resp = await fetchText(`https://${domain}/`); }
   catch { try { resp = await fetchText(`http://${domain}/`); } catch { return { status: 'inactive', page: null }; } }
   const clues = extractClues(resp.body || '');
-  if (clues.parking?.likely_parked || looksForSale(resp)) return { status: 'for_sale', page: clues, html: resp.body };
+  if (clues.parking?.likely_parked || looksForSale(resp) || looksParked(resp)) return { status: 'for_sale', page: clues, html: resp.body };
   if (!resp.ok) return { status: 'inactive', page: clues, html: resp.body };
   return { status: 'active', page: clues, html: resp.body };
 }
@@ -104,6 +128,15 @@ export async function resolveCandidate(cand, { env = process.env, enrich = true,
     out.location = firmo.location ?? out.location ?? null;
     out.funding = firmo.funding ?? out.funding ?? null;
     out.firmographics = firmo;
+    // Flag a wrong-looking provider match (name shares nothing with the domain).
+    // Trust it more when the candidate already carried a name from discovery.
+    if (firmo.company && !cand.company) {
+      const { sld } = seedParts(cand.domain);
+      if (nameDomainMismatch(firmo.company, sld)) {
+        out.firmographics.atp_lowconf = true;
+        out.firmographics.atp_lowconf_reason = 'company name doesn’t match the domain';
+      }
+    }
   }
   // Name fallback for still-unnamed ACTIVE rows (the bare tld_variant gap). Skip
   // for_sale/inactive — a parked page's title ("For Sale", broker name) is noise.

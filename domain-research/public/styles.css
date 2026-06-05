@@ -1370,6 +1370,12 @@ body.drawer-open { overflow: hidden; }
 .sr-m-raise { color: var(--coral-deep); }     /* amount raised pops coral */
 /* Location · industry — compact muted line tucked under the name in the header. */
 .sr-card-meta { font-size: 12.5px; color: var(--navy-3); margin-top: 4px; }
+/* Thin-data cards (1–2 stats) collapse to a single readable line instead of a grid. */
+.sr-inline { font-size: 14px; font-weight: 600; color: var(--navy); margin-top: 9px; padding-top: 9px; border-top: 1px solid var(--line); }
+/* Quality flags next to the name. */
+.sr-off-badge, .sr-lowconf-badge { display: inline-block; vertical-align: middle; margin-left: 8px; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 999px; white-space: nowrap; }
+.sr-off-badge { background: #f0f1f4; color: #6b7280; }
+.sr-lowconf-badge { background: #fdeede; color: #b06a14; }
 /* Contacts — collapsible header + responsive grid; email/phone/LinkedIn each
    on their own row (dimmed when absent) so who-has-what is obvious across cards. */
 .sr-contacts { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--line); }
@@ -1378,14 +1384,15 @@ body.drawer-open { overflow: hidden; }
 .sr-contacts-n { display: inline-flex; align-items: center; justify-content: center; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px; background: var(--cream); border: 1px solid var(--line); font-size: 11px; color: var(--navy-2); margin-left: 2px; }
 .sr-contacts-toggle { margin-left: auto; background: transparent; border: 1.5px solid var(--line); border-radius: 999px; color: var(--navy-2); font-size: 12px; font-weight: 700; padding: 3px 10px; cursor: pointer; }
 .sr-contacts-toggle:hover { border-color: var(--coral); color: var(--coral-deep); }
-.sr-contacts-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 10px; }
-.sr-contact-card { background: var(--cream); border: 1px solid var(--line); border-radius: 12px; padding: 11px 13px; }
-.sr-c-name { font-weight: 700; font-size: 14.5px; color: var(--navy); }
-.sr-c-title { font-size: 12.5px; color: var(--navy-3); margin-top: 1px; }
-.sr-c-rows { display: flex; flex-direction: column; gap: 4px; margin-top: 8px; }
-.sr-c-row { display: flex; align-items: baseline; gap: 7px; font-size: 13px; }
-.sr-c-ico { flex: 0 0 14px; text-align: center; color: var(--navy-3); font-size: 12px; font-weight: 700; }
-.sr-c-row-missing .sr-c-ico, .sr-c-dash { color: #c2c8cf; }
+.sr-contacts-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(252px, 1fr)); gap: 12px; }
+.sr-contact-card { background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 13px 15px; box-shadow: var(--shadow-sm); display: flex; flex-direction: column; }
+.sr-c-name { font-weight: 800; font-size: 15px; color: var(--navy); line-height: 1.2; }
+.sr-c-title { font-size: 12.5px; color: var(--navy-2); margin-top: 2px; }
+.sr-c-rows { display: flex; flex-direction: column; gap: 7px; margin-top: 11px; padding-top: 10px; border-top: 1px solid var(--line-2); }
+.sr-c-row { display: flex; align-items: center; gap: 9px; font-size: 13px; line-height: 1.3; }
+.sr-c-ico { flex: 0 0 18px; display: inline-flex; align-items: center; justify-content: center; height: 18px; border-radius: 5px; background: var(--cream); color: var(--navy-3); font-size: 11px; font-weight: 700; }
+.sr-c-row-missing .sr-c-ico { background: transparent; color: #c8cdd4; }
+.sr-c-dash { color: #c2c8cf; }
 .sr-c-link { color: var(--teal-deep); text-decoration: none; overflow-wrap: anywhere; }
 .sr-c-link:hover { text-decoration: underline; }
 .sr-contacts-note { font-size: 13px; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); }

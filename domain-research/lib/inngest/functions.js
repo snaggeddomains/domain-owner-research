@@ -10,6 +10,8 @@ import { sendEmail, isEmailConfigured } from '../email.js';
 import { reportUrl } from '../reportUrl.js';
 import { summarizeReport } from '../reportSummary.js';
 import { discoverUpgrade } from '../sales/discovery/upgrade.js';
+import { discoverOperators } from '../sales/discovery/operators.js';
+import { gateRelevance } from '../sales/relevance.js';
 import { resolveCandidates } from '../sales/resolve.js';
 import {
   setSalesProjectStatus, insertSalesCandidates, getSalesProject,
@@ -367,15 +369,34 @@ export const runSalesResearch = inngest.createFunction(
       const project = await step.run('load', () => getSalesProject(projectId));
       if (!project) return { projectId, ok: false, reason: 'not found' };
 
-      // DISCOVER — free. (classifyStatus:false; RESOLVE does the heavier classify.)
+      // DISCOVER — free. Affix/TLD enumeration + the branded-operator pass (real
+      // companies built around the seed word — the highest-intent upgrade buyers
+      // that the affix dictionary misses, e.g. VideoAsk / Ask-AI / EasyAsk).
       await step.run('mark-discover', () => setSalesProjectStatus(projectId, 'running', 'discover'));
-      const raw = await step.run('discover', () => discoverUpgrade(project.seed_domain, { classifyStatus: false }));
+      const raw = await step.run('discover', async () => {
+        const [upgrades, operators] = await Promise.all([
+          discoverUpgrade(project.seed_domain, { classifyStatus: false }),
+          discoverOperators(project.seed_domain, process.env).catch(() => []),
+        ]);
+        const byDomain = new Map();
+        for (const c of [...upgrades, ...operators]) {
+          const prev = byDomain.get(c.domain);
+          if (!prev) byDomain.set(c.domain, c);
+          else if (!prev.company && c.company) byDomain.set(c.domain, { ...prev, ...c });  // operator carries a real name
+        }
+        return [...byDomain.values()];
+      });
 
       // RESOLVE + CLASSIFY + RANK — enriches active candidates only.
       await step.run('mark-resolve', () => setSalesProjectStatus(projectId, 'running', 'resolve'));
       const resolved = await step.run('resolve', () => resolveCandidates(raw, { env: process.env, enrich: true }));
 
-      await step.run('persist', () => insertSalesCandidates(projectId, resolved));
+      // RELEVANCE GATE — demote big-but-off-target companies (a school / souvenir
+      // shop that coincidentally matches) to "Others" so they can't rank as strong.
+      await step.run('mark-relevance', () => setSalesProjectStatus(projectId, 'running', 'relevance'));
+      const gated = await step.run('relevance', () => gateRelevance(project.seed_domain, resolved, process.env));
+
+      await step.run('persist', () => insertSalesCandidates(projectId, gated));
       await step.run('mark-done', () => setSalesProjectStatus(projectId, 'done', 'done'));
       return { projectId, ok: true, candidates: resolved.length };
     } catch (err) {
