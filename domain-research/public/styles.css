@@ -1271,7 +1271,7 @@ body.drawer-open { overflow: hidden; }
 .ns-recent-clear { background: none; border: 0; color: var(--muted); font-size: 12px; cursor: pointer; text-decoration: underline; }
 
 /* ── Sales Research ────────────────────────────────────────────────────────── */
-.sr-form { display: flex; gap: 8px; max-width: 640px; }
+.sr-form { display: flex; gap: 8px; max-width: 640px; margin: 0 auto; }
 .sr-form input { flex: 1; }
 .sr-status { margin: 14px 0; color: var(--navy-3); font-size: 14px; }
 .sr-status-err { color: #c0392b; }
