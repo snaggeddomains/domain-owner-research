@@ -1337,7 +1337,7 @@ body.drawer-open { overflow: hidden; }
 .sr-section { margin-bottom: 22px; }
 .sr-section-head { font-size: 13px; font-weight: 800; text-transform: uppercase; letter-spacing: .04em; color: var(--navy-2); margin: 0 0 10px; padding-bottom: 7px; border-bottom: 2px solid var(--line); }
 .sr-section-n { color: var(--navy-3); font-weight: 600; }
-.sr-card { border: 1.5px solid var(--line); border-left-width: 5px; border-radius: var(--radius-sm); background: var(--cream-2); padding: 16px 18px 16px 20px; box-shadow: var(--shadow-sm); }
+.sr-card { border: 1.5px solid var(--line); border-left-width: 5px; border-radius: var(--radius-sm); background: var(--cream-2); padding: 13px 18px 14px 20px; box-shadow: var(--shadow-sm); }
 /* Tier accent on the left edge so the ranking pops as you scan down the list. */
 .sr-card-strong { border-left-color: #2e9e57; }
 .sr-card-medium { border-left-color: #e0a52e; }
@@ -1362,13 +1362,14 @@ body.drawer-open { overflow: hidden; }
 .sr-sum-strong { color: #2e9e57; }
 /* Labelled metric grid — fixed columns so the same stat sits in the same place
    on every card and you can scan/compare straight down the list. */
-.sr-metrics { display: grid; grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 11px 16px; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); }
-.sr-m-k { font-size: 10.5px; text-transform: uppercase; letter-spacing: .04em; color: var(--navy-3); font-weight: 700; white-space: nowrap; }
-.sr-m-v { font-size: 15px; font-weight: 600; color: var(--navy); margin-top: 2px; }
+.sr-metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(96px, 1fr)); gap: 7px 16px; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); }
+.sr-m-k { font-size: 10px; text-transform: uppercase; letter-spacing: .04em; color: var(--navy-3); font-weight: 700; white-space: nowrap; }
+.sr-m-v { font-size: 14.5px; font-weight: 600; color: var(--navy); margin-top: 1px; }
 .sr-m-dim { color: var(--navy-3); font-weight: 400; }
-.sr-m-pos { color: #2e9e57; }                 /* growth / cash-on-hand pop green */
+.sr-m-pos { color: #2e9e57; }                 /* growth pops green */
 .sr-m-raise { color: var(--coral-deep); }     /* amount raised pops coral */
-.sr-card-sub { font-size: 13px; color: var(--navy-3); margin-top: 10px; }
+/* Location · industry — compact muted line tucked under the name in the header. */
+.sr-card-meta { font-size: 12.5px; color: var(--navy-3); margin-top: 4px; }
 /* Contacts — collapsible header + responsive grid; email/phone/LinkedIn each
    on their own row (dimmed when absent) so who-has-what is obvious across cards. */
 .sr-contacts { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--line); }

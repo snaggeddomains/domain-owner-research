@@ -4967,25 +4967,24 @@ function renderSalesTable() {
   const metricsGrid = (c) => {
     const f = c.firmographics || {};
     const emp = f.employees != null ? f.employees : c.employee_count;
-    const ma = monthsAgo(f.latestFundingDate);
-    const cash = (ma != null && ma <= 24 && (f.fundingAmount || f.funding)) ? 'Likely' : '';
     const g = f.headcountGrowth && f.headcountGrowth.twelveMo;
+    // One tight row: dropped Rounds + Cash-on-hand; Founded rejoins the row.
     return `<div class="sr-metrics">
       ${M('Raised', f.funding || c.funding || '', (f.funding || c.funding) ? 'sr-m-raise' : '')}
       ${M('Stage', f.fundingStage || '')}
       ${M('Last raise', relRaise(f.latestFundingDate))}
-      ${M('Rounds', f.fundingRounds != null ? f.fundingRounds : '')}
-      ${M('Cash on hand', cash, cash ? 'sr-m-pos' : '')}
       ${M('Revenue', f.revenue || '')}
       ${M('Employees', emp != null ? emp : '')}
       ${M('Growth 12mo', growthPct(g), (g != null && g > 0) ? 'sr-m-pos' : '')}
       ${M('Founded', f.foundedYear || '')}
     </div>`;
   };
-  const subLine = (c) => {
+  // Location · industry — shown compactly under the name in the header (no longer
+  // its own full-width row below the metrics).
+  const metaLine = (c) => {
     const f = c.firmographics || {};
     const s = [c.location || f.location || '', f.industry || ''].filter(Boolean).join(' · ');
-    return s ? `<div class="sr-card-sub">${escapeHtml(s)}</div>` : '';
+    return s ? `<div class="sr-card-meta">${escapeHtml(s)}</div>` : '';
   };
   // One contact = one block. Email / phone / LinkedIn ALWAYS show as their own
   // row (dimmed dash when missing) so you can compare who-has-what across the row.
@@ -5039,11 +5038,11 @@ function renderSalesTable() {
             <a class="sr-card-domain" href="https://${escapeHtml(c.domain)}" target="_blank" rel="noopener">${escapeHtml(c.domain)}</a>
             ${coLi ? `<a class="sr-card-li" href="${escapeHtml(coLi)}" target="_blank" rel="noopener" title="Company LinkedIn" aria-label="Company LinkedIn">in</a>` : ''}
           </div>
+          ${metaLine(c)}
         </div>
         <div class="sr-card-badges">${statusBadge(c.status)}${tierBadge(c.tier)}</div>
       </div>
       ${c.firmographics ? metricsGrid(c) : ''}
-      ${subLine(c)}
       ${qualifying}
       ${contactsBlock(c)}
     </div>`;
