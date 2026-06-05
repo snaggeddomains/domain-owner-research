@@ -1351,6 +1351,10 @@ body.drawer-open { overflow: hidden; }
 .sr-c-link { color: var(--teal-deep); text-decoration: none; overflow-wrap: anywhere; }
 .sr-c-link:hover { text-decoration: underline; }
 .sr-contacts-note { font-size: 13px; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); }
+/* in-progress enrichment spinner */
+.sr-enriching { display: flex; align-items: center; gap: 8px; color: var(--coral-deep); font-weight: 600; }
+.sr-spin { display: inline-block; width: 14px; height: 14px; border: 2px solid var(--line); border-top-color: var(--coral-deep); border-radius: 50%; animation: sr-spin .7s linear infinite; }
+@keyframes sr-spin { to { transform: rotate(360deg); } }
 .sr-tier { display: inline-block; padding: 3px 11px; border-radius: 999px; font-size: 12.5px; font-weight: 700; text-transform: capitalize; }
 .sr-tier-strong { background: #e3f6e9; color: #1b7a3d; }
 .sr-tier-medium { background: #fff3da; color: #946200; }
@@ -1376,14 +1380,22 @@ body.drawer-open { overflow: hidden; }
 .sr-ag-cb { width: 18px; height: 18px; margin-top: 2px; flex: 0 0 auto; accent-color: var(--coral-deep); cursor: pointer; }
 .sr-ag-main { flex: 1; min-width: 0; }
 .sr-ag-l1 { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.sr-ag-label { font-weight: 700; font-size: 14.5px; color: var(--navy); }
-.sr-pot { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; padding: 2px 7px; border-radius: 999px; flex: 0 0 auto; }
+.sr-ag-row { padding: 12px 15px; }
+.sr-ag-label { font-weight: 800; font-size: 16px; color: var(--navy); }
+.sr-pot { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; padding: 3px 8px; border-radius: 999px; flex: 0 0 auto; }
 .sr-pot-high { background: #e3f6e9; color: #1b7a3d; }
 .sr-pot-medium { background: #fff3da; color: #946200; }
 .sr-pot-low { background: #f0f1f4; color: #6b7280; }
-.sr-ag-whale { margin-left: auto; font-size: 13px; color: var(--navy); white-space: nowrap; }
+/* verified headliner — right-aligned so you can scan the whales down the edge */
+.sr-ag-whale { margin-left: auto; font-size: 14px; color: var(--navy); white-space: nowrap; }
+.sr-ag-whale-lbl { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--navy-3); }
+.sr-ag-whale strong { font-weight: 800; }
 .sr-ag-whale-meta { color: var(--navy-3); }
-.sr-ag-l2 { font-size: 12px; color: var(--navy-3); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.sr-ag-l3 { font-size: 12px; color: var(--navy-2); margin-top: 3px; }
+/* description segment */
+.sr-ag-l2 { font-size: 13.5px; color: var(--navy-2); margin-top: 5px; line-height: 1.45; }
+/* notable-companies segment — each a distinct chip */
+.sr-ag-players { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 9px; }
+.sr-ag-co { font-size: 12.5px; color: var(--navy); background: var(--cream-2); border: 1px solid var(--line); border-radius: 999px; padding: 3px 10px; }
+.sr-ag-co.sr-ag-more { color: var(--navy-3); background: transparent; border-style: dashed; }
 .sr-ag-foot { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 14px; }
 .sr-ag-note { font-size: 12px; }

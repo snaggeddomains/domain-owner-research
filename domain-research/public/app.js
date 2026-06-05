@@ -4951,7 +4951,7 @@ function renderSalesTable() {
     </div>`;
   };
   const contactsBlock = (c) => {
-    if (c.enrich_status === 'pending') return '<div class="sr-contacts-note muted">Enriching contacts…</div>';
+    if (c.enrich_status === 'pending') return '<div class="sr-contacts-note sr-enriching"><span class="sr-spin"></span> Enriching contacts…</div>';
     if (c.enrich_status === 'failed') return '<div class="sr-contacts-note sr-status-err">Contact enrichment failed</div>';
     const list = c.contacts || [];
     if (c.enrich_status === 'done' && !list.length) return '<div class="sr-contacts-note muted">No contacts found</div>';
@@ -5077,16 +5077,18 @@ function renderAngleGate(angles) {
   const sorted = angles.slice().sort((a, b) => (order[a.buyer_potential] ?? 1) - (order[b.buyer_potential] ?? 1));
   const potClass = { high: 'sr-pot-high', medium: 'sr-pot-medium', low: 'sr-pot-low' };
   const fmt = (v) => (v == null || v === '' ? '' : String(v));
+  const money = (s) => { const x = fmt(s); return x ? (/^\$/.test(x) ? x : '$' + x) : ''; };
+  const num = (n) => (n == null || n === '' || isNaN(Number(n)) ? '' : Number(n).toLocaleString());
   const rows = sorted.map((a) => {
     const v = a.verified;
     const bits = v && v.matched
-      ? [fmt(v.revenue) && `${fmt(v.revenue)} rev`, fmt(v.employees) && `${fmt(v.employees)} staff`].filter(Boolean).join(' · ')
+      ? [money(v.revenue) && `${money(v.revenue)} rev`, num(v.employees) && `${num(v.employees)} staff`].filter(Boolean).join(' · ')
       : '';
     const whale = v && v.matched
-      ? `<span class="sr-ag-whale">✓ ${escapeHtml(v.name)} <span class="sr-tier sr-tier-${v.tier}">${escapeHtml(v.tier)}</span>${bits ? ` <span class="sr-ag-whale-meta">${escapeHtml(bits)}</span>` : ''}</span>`
-      : '';
-    const players = a.players.slice(0, 4).map((p) => escapeHtml(p.name)).join(' · ')
-      + (a.players.length > 4 ? ` +${a.players.length - 4}` : '');
+      ? `<div class="sr-ag-whale"><span class="sr-ag-whale-lbl">Top player</span> <strong>${escapeHtml(v.name)}</strong> <span class="sr-tier sr-tier-${v.tier}">${escapeHtml(v.tier)}</span>${bits ? ` <span class="sr-ag-whale-meta">${escapeHtml(bits)}</span>` : ''}</div>`
+      : (v ? `<div class="sr-ag-whale muted">top player ${escapeHtml(v.name)} — no match</div>` : '');
+    const players = a.players.slice(0, 6).map((p) => `<span class="sr-ag-co">${escapeHtml(p.name)}</span>`).join('')
+      + (a.players.length > 6 ? `<span class="sr-ag-co sr-ag-more">+${a.players.length - 6} more</span>` : '');
     return `<label class="sr-ag-row" data-key="${escapeHtml(a.key)}">
       <input type="checkbox" class="sr-ag-cb" data-key="${escapeHtml(a.key)}"${a.buyer_potential === 'high' ? ' checked' : ''}>
       <div class="sr-ag-main">
@@ -5096,7 +5098,7 @@ function renderAngleGate(angles) {
           ${whale}
         </div>
         <div class="sr-ag-l2">${escapeHtml(a.concept)}</div>
-        <div class="sr-ag-l3">${players}</div>
+        <div class="sr-ag-players">${players}</div>
       </div>
     </label>`;
   }).join('');
