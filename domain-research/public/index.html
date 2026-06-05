@@ -28,7 +28,7 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="apple-mobile-web-app-title" content="Snagged Research" />
     <meta name="theme-color" content="#254254" />
-    <link rel="stylesheet" href="styles.css?v=20260605f" />
+    <link rel="stylesheet" href="styles.css?v=20260605g" />
     <!-- Layout: horizontal tab nav (Admin-style), no sidebar. -->
   </head>
   <body>
@@ -519,6 +519,23 @@
             </div>
             <div id="sr-table" class="sr-table-wrap"></div>
           </section>
+
+          <!-- Recent runs (last 5) under the form, with a link to the full list. -->
+          <div id="sr-recent" class="sr-recent" hidden>
+            <div class="sr-recent-head">Recent sales research</div>
+            <ul id="sr-recent-list" class="sr-recent-list"></ul>
+            <a id="sr-recent-all" class="show-all" href="/research/sales/all">View all sales research &rarr;</a>
+          </div>
+        </section>
+
+        <!-- Past Sales Research runs — searchable list -->
+        <section id="view-sales-projects" hidden>
+          <h1 class="page-title">Past <span class="accent">Sales Research</span></h1>
+          <p class="sub">Open a previous run to revisit its ranked buyers and contacts.</p>
+          <div class="sales-projects-controls">
+            <input id="sr-projects-search" class="projects-search" type="text" placeholder="Search by seed domain…" autocomplete="off" />
+          </div>
+          <ul id="sr-projects-list" class="projects-list"></ul>
         </section>
 
         <!-- Naming exercise -->
@@ -737,6 +754,6 @@ The model parses it into structured filters (TLDs, length, budget, tone, etc.) a
     </aside>
 
     <!-- Bump ?v= on any public/app.js or styles.css change to bust caches. -->
-    <script src="app.js?v=20260605f"></script>
+    <script src="app.js?v=20260605g"></script>
   </body>
 </html>

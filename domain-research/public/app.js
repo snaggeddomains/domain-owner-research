@@ -197,6 +197,8 @@ const els = {
   srForm: $('sr-form'), srDomain: $('sr-domain'), srGo: $('sr-go'), srStatus: $('sr-status'),
   srResults: $('sr-results'), srSummary: $('sr-summary'), srShowAll: $('sr-show-all'),
   srEnrich: $('sr-enrich'), srCsv: $('sr-csv'), srTable: $('sr-table'),
+  srRecent: $('sr-recent'), srRecentList: $('sr-recent-list'), srRecentAll: $('sr-recent-all'),
+  srProjectsSearch: $('sr-projects-search'), srProjectsList: $('sr-projects-list'),
   nsModeToggle: $('ns-modetoggle'), nsMatchToggle: $('ns-matchtoggle'),
   nsDomainForm: $('ns-domain-form'), nsDomain: $('ns-domain'),
   nsNsForm: $('ns-ns-form'), nsNs: $('ns-ns'), nsTld: $('ns-tld'),
@@ -482,6 +484,12 @@ function route() {
     return;
   }
   if (tr && tr.tool === 'sales') {
+    if (tr.slug === 'all') {
+      showView('sales-projects');
+      loadSalesProjects('');
+      if (els.srProjectsSearch) els.srProjectsSearch.value = '';
+      return;
+    }
     showView('sales');
     if (tr.slug) openSalesProject(tr.slug);
     else resetSalesView();
@@ -2477,6 +2485,7 @@ const VIEWS = {
   dbsearch: { view: 'view-dbsearch', nav: 'nav-dbsearch' },
   nameserver: { view: 'view-nameserver', nav: 'nav-nameserver' },
   sales: { view: 'view-sales', nav: 'nav-sales' },
+  'sales-projects': { view: 'view-sales-projects', nav: 'nav-sales' },
   admin: { view: 'view-admin', nav: 'nav-admin' },
 };
 function showView(name) {
@@ -4697,6 +4706,45 @@ function resetSalesView() {
   if (els.srResults) els.srResults.hidden = true;
   if (els.srTable) els.srTable.innerHTML = '';
   setSalesStatus('');
+  loadSalesRecent();   // re-show the last-5 block under the form
+}
+
+// Recent runs (last 5) under the form + the "View all" link.
+async function loadSalesRecent() {
+  if (!els.srRecent) return;
+  try {
+    const res = await fetch('/research/api/sales?list=1&limit=5');
+    const data = await res.json().catch(() => ({}));
+    const projects = res.ok && Array.isArray(data.projects) ? data.projects : [];
+    els.srRecent.hidden = projects.length === 0;
+    if (els.srRecentList) els.srRecentList.innerHTML = projects.map(salesProjectRow).join('');
+  } catch { els.srRecent.hidden = true; }
+}
+
+// Past Sales Research runs — searchable full list.
+let salesProjectsTimer = null;
+async function loadSalesProjects(q = '') {
+  if (!els.srProjectsList) return;
+  els.srProjectsList.innerHTML = '<li class="muted">Loading…</li>';
+  try {
+    const res = await fetch(`/research/api/sales?list=1&q=${encodeURIComponent(q)}`);
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || `Failed (${res.status})`);
+    const projects = data.projects || [];
+    els.srProjectsList.innerHTML = projects.length
+      ? projects.map(salesProjectRow).join('')
+      : '<li class="muted">No sales research runs yet.</li>';
+  } catch (e) {
+    els.srProjectsList.innerHTML = `<li class="muted">${escapeHtml(String(e.message || e))}</li>`;
+  }
+}
+
+function salesProjectRow(p) {
+  const when = p.created_at ? new Date(p.created_at).toLocaleString() : '';
+  const st = p.status === 'done' ? '' : ` · ${escapeHtml(p.status || '')}`;
+  return `<li class="recent-run" data-id="${escapeHtml(p.id)}">`
+    + `<span class="recent-domain">${escapeHtml(p.seed_domain || '')}${st}</span>`
+    + `<span class="recent-when">${escapeHtml(when)}</span></li>`;
 }
 
 els.srForm?.addEventListener('submit', async (e) => {
@@ -4859,6 +4907,27 @@ els.srCsv?.addEventListener('click', () => {
   a.href = url; a.download = `${slug}-buyers-${stamp}.csv`;
   document.body.appendChild(a); a.click(); document.body.removeChild(a);
   URL.revokeObjectURL(url);
+});
+
+// Recent list / projects list — open a run on click; "view all" → projects page.
+function openSalesRunFromList(li) {
+  if (!li || !li.dataset.id) return;
+  history.pushState(null, '', `/research/sales/${encodeURIComponent(li.dataset.id)}`);
+  showView('sales');
+  openSalesProject(li.dataset.id);
+}
+els.srRecentList?.addEventListener('click', (e) => openSalesRunFromList(e.target.closest('.recent-run')));
+els.srProjectsList?.addEventListener('click', (e) => openSalesRunFromList(e.target.closest('.recent-run')));
+els.srRecentAll?.addEventListener('click', (e) => {
+  if (newTabClick(e)) return;
+  e.preventDefault();
+  history.pushState(null, '', '/research/sales/all');
+  showView('sales-projects');
+  loadSalesProjects('');
+});
+els.srProjectsSearch?.addEventListener('input', () => {
+  clearTimeout(salesProjectsTimer);
+  salesProjectsTimer = setTimeout(() => loadSalesProjects(els.srProjectsSearch.value.trim()), 200);
 });
 
 els.nsRecent?.addEventListener('click', (e) => {

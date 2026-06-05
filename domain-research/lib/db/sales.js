@@ -22,12 +22,14 @@ export async function getSalesProject(id) {
   return data || null;
 }
 
-export async function listSalesProjects({ limit = 50 } = {}) {
-  const { data, error } = await getDb()
+export async function listSalesProjects({ limit = 50, q = '' } = {}) {
+  let query = getDb()
     .from(PROJECTS)
     .select('id,seed_domain,status,stage,created_at')
     .order('created_at', { ascending: false })
     .limit(limit);
+  if (q) query = query.ilike('seed_domain', `%${q}%`);
+  const { data, error } = await query;
   if (error) throw new Error(`listSalesProjects: ${error.message}`);
   return data || [];
 }

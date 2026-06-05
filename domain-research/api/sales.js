@@ -15,13 +15,21 @@ import { inngest, SALES_RESEARCH_REQUESTED } from '../lib/inngest/client.js';
 import { seedParts } from '../lib/sales/discovery/upgrade.js';
 import { enrichCompany } from '../lib/sales/enrich/contacts.js';
 import {
-  createSalesProject, getSalesProject, listSalesCandidates, getSalesCandidate,
+  createSalesProject, getSalesProject, listSalesProjects, listSalesCandidates, getSalesCandidate,
   setSalesSelection, setCandidateEnrichStatus, replaceCandidateContacts, listContactsForCandidates,
 } from '../lib/db/sales.js';
 
 export const config = { maxDuration: 60 };
 
 async function handleGet(req, res) {
+  // List mode: recent / searchable past projects.
+  if (req.query.list != null) {
+    const q = String(req.query.q || '').trim();
+    const limit = Math.min(Number(req.query.limit) || 50, 100);
+    const projects = await listSalesProjects({ q, limit });
+    res.status(200).json({ projects });
+    return;
+  }
   const id = String(req.query.id || '').trim();
   if (!id) { res.status(400).json({ error: 'Missing id' }); return; }
   const project = await getSalesProject(id);
