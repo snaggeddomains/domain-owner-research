@@ -1443,6 +1443,11 @@ body.drawer-open { overflow: hidden; }
 .sr-ag-whale-lbl { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--navy-3); }
 .sr-ag-whale strong { font-weight: 800; }
 .sr-ag-whale-meta { color: var(--navy-3); }
+/* Mobile: the "TOP PLAYER … $322M rev · 1,400 staff" line ran off-screen (nowrap).
+   Drop it to its own full-width line and let it wrap. */
+@media (max-width: 560px) {
+  .sr-ag-whale { margin-left: 0; flex-basis: 100%; white-space: normal; }
+}
 /* description segment */
 .sr-ag-l2 { font-size: 13.5px; color: var(--navy-2); margin-top: 5px; line-height: 1.45; }
 /* notable-companies segment — each a distinct chip */

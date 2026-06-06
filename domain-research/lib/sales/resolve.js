@@ -19,10 +19,10 @@
 // Standalone:  node lib/sales/resolve.js artificial.com
 
 import { pathToFileURL } from 'node:url';
-import { fetchText, extractClues } from '../util.js';
+import { extractClues } from '../util.js';
 import { discoverUpgrade, seedParts } from './discovery/upgrade.js';
 import { firmographics, abilityToPay } from './enrich/firmographics.js';
-import { GENERIC_TITLE, PARKED_NAME, classifyResp } from './classify.js';
+import { GENERIC_TITLE, PARKED_NAME, classifyResp, fetchCapped } from './classify.js';
 
 // Firmographic name↔domain mismatch: the provider returned a company whose name
 // shares nothing with the domain SLD (e.g. askubuntu.com → "Echo Val-Solution") —
@@ -72,8 +72,8 @@ function nameFromPage(html) {
 // carries the fetched clues so RESOLVE can reuse them for the name fallback.
 async function classifyLive(domain) {
   let resp;
-  try { resp = await fetchText(`https://${domain}/`); }
-  catch { try { resp = await fetchText(`http://${domain}/`); } catch { return { status: 'inactive', page: null }; } }
+  try { resp = await fetchCapped(`https://${domain}/`); }
+  catch { try { resp = await fetchCapped(`http://${domain}/`); } catch { return { status: 'inactive', page: null }; } }
   const clues = extractClues(resp.body || '');
   return { status: classifyResp(resp), page: clues, html: resp.body };
 }

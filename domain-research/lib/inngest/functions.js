@@ -419,7 +419,12 @@ export const runSalesResearch = inngest.createFunction(
           if (!prev) byDomain.set(c.domain, c);
           else if (!prev.company && c.company) byDomain.set(c.domain, { ...prev, ...c });  // operator carries a real name
         }
-        return [...byDomain.values()];
+        // Safety cap: a generic seed ("gush") can balloon to ~200 candidates, and
+        // resolve fetches a full page per candidate — too many at once OOMed the
+        // step. Prioritize the high-value rows (a real company name from discovery,
+        // then exact-SLD tld_variants) over the ~100 bare affix probes, cap at 160.
+        const rank = (c) => (c.company ? 0 : c.subtype === 'tld_variant' ? 1 : 2);
+        return [...byDomain.values()].sort((a, b) => rank(a) - rank(b)).slice(0, 160);
       });
 
       // RESOLVE + CLASSIFY + RANK — enriches active candidates only.

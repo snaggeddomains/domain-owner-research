@@ -6,7 +6,45 @@
 // so a for-sale domain that happens to return HTTP 200 (e.g. graphicedge.com) is
 // never mislabeled "active" on one path while the other catches it.
 
-import { fetchText, extractClues } from '../util.js';
+import { extractClues } from '../util.js';
+
+// Byte-capped fetch: stream the body but stop after maxBytes so a single giant page
+// can't blow the function's memory. Discovery fetches a full page per candidate
+// (≈180 for a generic seed like "gush") at concurrency, so an uncapped res.text()
+// on a huge page OOMed the resolve step (FUNCTION_INVOCATION_FAILED). 768KB is
+// plenty for <title>/og:site_name/parking detection.
+export async function fetchCapped(url, { timeoutMs = 9000, maxBytes = 768 * 1024 } = {}) {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+  try {
+    const res = await fetch(url, {
+      redirect: 'follow',
+      signal: ctrl.signal,
+      headers: {
+        accept: 'text/html,application/xhtml+xml,*/*',
+        'user-agent': 'Mozilla/5.0 (compatible; domain-research/0.1; +https://research.snagged.com)',
+      },
+    });
+    let body = '';
+    if (res.body && typeof res.body.getReader === 'function') {
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let total = 0;
+      while (total < maxBytes) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        total += value.length;
+        body += decoder.decode(value, { stream: true });
+      }
+      try { await reader.cancel(); } catch { /* ignore */ }
+    } else {
+      body = (await res.text()).slice(0, maxBytes);
+    }
+    return { status: res.status, ok: res.ok, finalUrl: res.url, body };
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 // Title fragments that are not a company name (also used for the name fallback).
 export const GENERIC_TITLE = /^(welcome|home ?page|home|index|untitled|404|not found|coming soon|under construction|domain (default|for sale)|account suspended)\b/i;
@@ -56,7 +94,7 @@ export function classifyResp(resp) {
 // Fetch + classify (status only) — the lightweight entry point for discovery.
 export async function classifyDomain(domain) {
   let resp;
-  try { resp = await fetchText(`https://${domain}/`); }
-  catch { try { resp = await fetchText(`http://${domain}/`); } catch { return 'inactive'; } }
+  try { resp = await fetchCapped(`https://${domain}/`); }
+  catch { try { resp = await fetchCapped(`http://${domain}/`); } catch { return 'inactive'; } }
   return classifyResp(resp);
 }
