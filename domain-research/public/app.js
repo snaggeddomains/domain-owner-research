@@ -4850,6 +4850,24 @@ function salesProjectRow(p, runCount = 1) {
     + `<span class="recent-when">${escapeHtml(when)}</span></li>`;
 }
 
+// Create a run, retrying transient platform hiccups (a cold-start /
+// FUNCTION_INVOCATION_FAILED 5xx returns non-JSON, which we parse defensively).
+async function salesCreate(domain, tries = 3) {
+  let last;
+  for (let a = 0; a < tries; a++) {
+    const res = await fetch('/research/api/sales', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ action: 'create', domain }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (res.ok) return data;
+    last = new Error(data.error || `Failed (${res.status})`);
+    if (res.status >= 500 && a < tries - 1) { await new Promise((r) => setTimeout(r, 1500 * (a + 1))); continue; }
+    throw last;
+  }
+  throw last;
+}
+
 els.srForm?.addEventListener('submit', async (e) => {
   e.preventDefault();
   const domain = (els.srDomain.value || '').trim().toLowerCase();
@@ -4859,12 +4877,7 @@ els.srForm?.addEventListener('submit', async (e) => {
   if (els.srResults) els.srResults.hidden = true;
   setSalesMode('results', domain);   // collapse the hero/form right away
   try {
-    const res = await fetch('/research/api/sales', {
-      method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ action: 'create', domain }),
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || `Failed (${res.status})`);
+    const data = await salesCreate(domain);
     setToolUrl('sales', data.project_id);
     openSalesProject(data.project_id);
   } catch (err) {
@@ -4889,11 +4902,19 @@ function openSalesProject(id) {
   els.srGo.disabled = true;
   setSalesMode('results', '');   // collapse entry; seed filled in once the poll returns it
   setSalesStatus('Discovering candidates and qualifying ability-to-pay…');
+  let pollErrors = 0;
   const poll = async () => {
     try {
       const res = await fetch(`/research/api/sales?id=${encodeURIComponent(id)}`);
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || `Poll failed (${res.status})`);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        // The run keeps going server-side, so a transient platform 5xx
+        // (FUNCTION_INVOCATION_FAILED / cold start) shouldn't kill the poll —
+        // keep retrying; surface an error only if it persists.
+        if (res.status >= 500 && ++pollErrors < 8) { setSalesStatus('Reconnecting…'); return; }
+        throw new Error(data.error || `Poll failed (${res.status})`);
+      }
+      pollErrors = 0;
       if (data.project && data.project.seed_domain && els.srResheadSeed) els.srResheadSeed.textContent = data.project.seed_domain;
       const st = data.project.status;
       if (st === 'done') {
@@ -4908,6 +4929,8 @@ function openSalesProject(id) {
         setSalesStatus(`Working… (${data.project.stage || st})`);
       }
     } catch (err) {
+      // Network blip → keep trying a few rounds before giving up.
+      if (++pollErrors < 8) { setSalesStatus('Reconnecting…'); return; }
       clearSalesPoll();
       els.srGo.disabled = false;
       setSalesStatus(String(err.message || err), true);
