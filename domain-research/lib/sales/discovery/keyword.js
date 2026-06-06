@@ -43,8 +43,8 @@ FIT = how strong a buyer they'd be for "${seed}":
   "low"    = a minor/legacy product or a company too small to pay
 
 Return JSON only:
-{"companies":[{"name":"Company","domain":"company.com","fit":"high|medium|low","why":"product \\"${word}\\" is their ..."}]}
-Real companies with a genuinely named-"${word}" product only — do NOT pad with companies that merely operate in a related space. Order best fit first. No placeholders.`
+{"companies":[{"name":"Company","domain":"company.com","product":"the EXACT product name as they brand it","fit":"high|medium|low","why":"product \\"${word}\\" is their ..."}]}
+Real companies with a genuinely named-"${word}" product only — do NOT pad with companies that merely operate in a related space. Give the product name EXACTLY as the company writes it (so "${word}", "${word}s", "${word} Pro" etc. are distinguishable). Order best fit first. No placeholders.`
     : `We are selling the premium domain "${seed}". For the buyer angle below, list up to ${limit} REAL companies who could plausibly want it. For EACH, give: its primary website domain, a FIT rating, and a one-line WHY.
 
 ANGLE: ${angle.label} — ${angle.concept || ''}
@@ -66,6 +66,7 @@ Real companies + real domains only. Order best fit first. No placeholders.`;
     domain: cleanDomain(c.domain),
     fit: ['high', 'medium', 'low'].includes(c.fit) ? c.fit : 'medium',
     why: String(c.why || '').trim(),
+    product: String(c.product || '').trim(),
   })).filter((c) => c.name && c.domain);
 }
 
@@ -81,7 +82,8 @@ async function mapPool(items, limit, fn) {
 // Discover companies for the chosen angles → live, UNQUALIFIED candidates
 // (category 'keyword', tagged by angle, fit-scored, with a why). FREE — no Apollo.
 export async function discoverAngles(seedDomain, angles, env = process.env, { limitPerAngle = 15, cap = 80, concurrency = 30 } = {}) {
-  const { domain } = seedParts(seedDomain);
+  const { domain, sld } = seedParts(seedDomain);
+  const norm = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
   const lim = Math.max(1, Math.min(Number(limitPerAngle) || 15, 60));
   const seen = new Set([domain]);
   const raw = [];
@@ -95,7 +97,11 @@ export async function discoverAngles(seedDomain, angles, env = process.env, { li
     for (const c of [...expanded, ...gatePlayers]) {
       if (!c.domain || seen.has(c.domain)) continue;
       seen.add(c.domain);
-      raw.push({ ...c, angle: a.key || null });
+      // On the product angle, flag an EXACT product-name match (playmaker == "Playmaker",
+      // not "Playmaker's"/"PlayerMaker") — a much stronger, very-qualified signal.
+      const exact = !!(a.product && c.product && norm(c.product) === norm(sld));
+      const angleKey = a.product ? (exact ? 'product_named_exact' : 'product_named') : (a.key || null);
+      raw.push({ ...c, angle: angleKey, exact });
       if (++perAngle >= lim || raw.length >= cap) break;
     }
     if (raw.length >= cap) break;
@@ -116,7 +122,9 @@ export async function discoverAngles(seedDomain, angles, env = process.env, { li
     angle: c.angle,
     status,
     qualification: { tier: 'unknown', reasons: c.why ? [c.why] : [] },  // why-line shown in the card
-    score: FIT_SCORE[c.fit] ?? 1,                                       // LLM fit drives the sort
+    // LLM fit drives the sort; an EXACT product-name match gets a boost so it floats
+    // to the top of the Product section (and clears the "recommended" bar).
+    score: (FIT_SCORE[c.fit] ?? 1) + (c.exact ? 1.5 : 0),
   }));
 }
 

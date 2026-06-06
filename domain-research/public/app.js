@@ -4920,8 +4920,9 @@ function openSalesProject(id) {
 // A candidate's "path": upgrades (the seed name itself, a variant TLD/affix) vs
 // keyword/category (companies surfaced by Explore-by-category). Anything without
 // an explicit category counts as an upgrade (the original discovery path).
+function isProductAngle(c) { return c.angle === 'product_named' || c.angle === 'product_named_exact'; }
 function salesPath(c) {
-  if (c.angle === 'product_named') return 'product';        // exact product-name matches
+  if (isProductAngle(c)) return 'product';                  // product-name matches (exact + similar)
   return c.category === 'keyword' ? 'keyword' : 'upgrade';
 }
 
@@ -5037,7 +5038,9 @@ function renderSalesTable() {
     const coLi = (c.firmographics && c.firmographics.linkedin) || '';
     // The exact-match "product named X" angle gets its own callout; other angles
     // show the plain angle tag.
-    const angleBadge = c.angle === 'product_named'
+    const angleBadge = c.angle === 'product_named_exact'
+      ? '<span class="sr-exact-badge" title="This company has a product named EXACTLY this — a very qualified prospect">✓ exact product-name match</span>'
+      : c.angle === 'product_named'
       ? '<span class="sr-product-badge" title="Found because this company has a product/service with a similar name">🏷 product with similar name</span>'
       : (c.category === 'keyword' && c.angle
         ? `<span class="sr-angle-badge">${escapeHtml(String(c.angle).replace(/_/g, ' '))}</span>` : '');
@@ -5089,7 +5092,7 @@ function renderSalesTable() {
   for (const c of rows) {
     if (c.status && c.status !== 'active') sections[3].rows.push(c);                 // for-sale / inactive
     else if (offTarget(c)) sections[3].rows.push(c);                                 // relevance-gated → Others
-    else if (c.angle === 'product_named') sections[1].rows.push(c);                  // exact product-name matches, grouped
+    else if (isProductAngle(c)) sections[1].rows.push(c);                            // product-name matches, grouped
     else if (c.category === 'upgrade' || Number(c.score) >= 2) sections[0].rows.push(c);  // upgrades + best-fit keyword
     else if (c.category === 'keyword') sections[2].rows.push(c);                     // remaining angle companies
     else sections[3].rows.push(c);

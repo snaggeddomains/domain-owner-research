@@ -1317,6 +1317,13 @@ body.drawer-open { overflow: hidden; }
 .sr-pathfilter .sr-pf-btn:disabled { opacity: .35; cursor: default; }
 .sr-pf-n { margin-left: 6px; font-size: 11px; font-weight: 800; padding: 1px 7px; border-radius: 999px; background: var(--line); color: var(--navy-2); }
 .sr-pathfilter .sr-pf-btn.active .sr-pf-n { background: rgba(255,255,255,.22); color: #fff; }
+/* Mobile: the 4-way toggle overflowed (Keyword got clipped by overflow:hidden).
+   Make it a full-width 2×2 grid of pills so every option is visible + tappable. */
+@media (max-width: 560px) {
+  .sr-controls-left { width: 100%; }
+  .sr-pathfilter { width: 100%; flex-wrap: wrap; gap: 4px; overflow: visible; }
+  .sr-pathfilter .sr-pf-btn { flex: 1 1 calc(50% - 4px); padding: 9px 6px; font-size: 12.5px; text-align: center; }
+}
 
 /* Checkbox chips. */
 .sr-check { font-size: 13px; font-weight: 600; color: var(--navy-2); display: inline-flex; align-items: center; gap: 6px; cursor: pointer; user-select: none; }
@@ -1452,6 +1459,8 @@ a.sr-ag-co-link:hover { border-color: var(--coral); color: var(--coral-deep); ba
 .sr-card-unq.sr-card-unknown { border-left-color: #c9c7d6; border-left-style: dashed; }
 .sr-rec-badge { font-size: 10.5px; font-weight: 800; text-transform: uppercase; letter-spacing: .03em; color: #1b7a3d; background: #e3f6e9; border-radius: 999px; padding: 2px 9px; margin-left: 10px; vertical-align: middle; }
 .sr-product-badge { font-size: 10.5px; font-weight: 700; color: #7c3aed; background: #f1ebfd; border: 1px solid #e3d9fb; border-radius: 999px; padding: 2px 9px; margin-left: 10px; vertical-align: middle; white-space: nowrap; }
+/* Exact product-name match — a very qualified prospect; filled green to stand out. */
+.sr-exact-badge { font-size: 10.5px; font-weight: 800; color: #fff; background: #2e9e57; border-radius: 999px; padding: 2px 9px; margin-left: 10px; vertical-align: middle; white-space: nowrap; }
 .sr-why-llm { font-size: 13px; color: var(--navy-2); margin-top: 11px; padding-top: 11px; border-top: 1px dashed var(--line); line-height: 1.45; }
 .sr-unq { font-size: 12px; margin-top: 6px; }
 .sr-ag-note { font-size: 12px; }
