@@ -1275,7 +1275,7 @@ body.drawer-open { overflow: hidden; }
 .sr-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 10px; }
 .sr-summary { font-size: 14px; color: var(--navy); }
 .sr-actions { display: flex; align-items: center; gap: 10px; }
-.sr-show-inactive { font-size: 12px; color: var(--navy-3); display: flex; align-items: center; gap: 4px; }
+.sr-show-inactive { font-size: 13px; color: var(--navy-3); display: flex; align-items: center; gap: 6px; }
 .sr-btn { padding: 7px 12px; font-size: 13px; }
 .sr-btn:disabled { opacity: .5; cursor: default; }
 .sr-table-wrap { overflow-x: auto; }
@@ -1295,3 +1295,28 @@ body.drawer-open { overflow: hidden; }
 .sr-st-active { background: #e3f6e9; color: #1b7a3d; }
 .sr-st-for_sale { background: #fdeaea; color: #b23b3b; }
 .sr-st-inactive { background: #f0f1f4; color: #9aa0aa; }
+
+/* ── Form selectors — one consistent checkbox/radio everywhere ───────────────
+   iOS/Safari paints a native fill that ignores a CSS border (the "blue bleed");
+   appearance:none replaces the native control with a box we fully style. Brand
+   fill = coral. Applies app-wide (sales cards, db screen, nameserver, profile,
+   facets) so every selector looks identical. No checkbox is hidden anywhere, so
+   this is safe to apply globally. */
+input[type="checkbox"], input[type="radio"] {
+  appearance: none; -webkit-appearance: none;
+  flex: none; width: 18px; height: 18px; margin: 0;
+  display: inline-grid; place-content: center;
+  border: 1.5px solid var(--line, #c9cfd8); background-color: #fff;
+  cursor: pointer; transition: background-color .12s ease, border-color .12s ease;
+}
+input[type="checkbox"] { border-radius: 5px; }
+input[type="radio"]    { border-radius: 50%; }
+input[type="checkbox"]:checked {
+  background-color: var(--coral); border-color: var(--coral);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='white' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3.5 8.5l3 3 6-7'/%3E%3C/svg%3E");
+  background-size: 72%; background-position: center; background-repeat: no-repeat;
+}
+input[type="radio"]:checked { border-color: var(--coral); }
+input[type="radio"]:checked::before { content: ""; width: 9px; height: 9px; border-radius: 50%; background: var(--coral); }
+input[type="checkbox"]:focus-visible, input[type="radio"]:focus-visible { outline: 2px solid var(--coral); outline-offset: 2px; }
+input[type="checkbox"]:disabled, input[type="radio"]:disabled { opacity: .5; cursor: default; }
