@@ -4227,7 +4227,7 @@ els.dbForm?.addEventListener('submit', (e) => {
 // ── Nameserver Search ───────────────────────────────────────────────────────
 // Domain → its NS; NS set → domains (AND/OR); domain → siblings on the same
 // pairing; + an LLM "which siblings are related" pass. Server: /api/nameserver.
-const nsState = { mode: 'domain', match: 'all' };
+const nsState = { mode: 'domain', match: 'all', tld: '', nsRaw: '', facets: null };
 
 function nsSetMode(mode) {
   nsState.mode = mode === 'ns' ? 'ns' : 'domain';
@@ -4240,6 +4240,7 @@ function nsReset() {
   if (els.nsDomain) els.nsDomain.value = '';
   if (els.nsNs) els.nsNs.value = '';
   if (els.nsResult) { els.nsResult.hidden = true; els.nsResult.innerHTML = ''; }
+  nsState.tld = ''; nsState.nsRaw = ''; nsState.facets = null;
   setToolStatus(els.nsStatus, '');
   nsRenderRecent();
 }
@@ -4717,24 +4718,51 @@ async function runNsRelate(domain) {
   }
 }
 
-async function runNsList() {
+async function runNsList(opts = {}) {
   showView('nameserver');
-  const raw = (els.nsNs && els.nsNs.value || '').trim();
+  const fromChip = !!opts.fromChip;
+  // Fresh search reads the inputs and resets the TLD filter + facets; a facet-chip
+  // click reuses the stored nameserver/facets and only swaps the active TLD.
+  if (!fromChip) {
+    const raw = (els.nsNs && els.nsNs.value || '').trim();
+    if (!raw) return;
+    nsState.nsRaw = raw;
+    nsState.tld = (els.nsTld && els.nsTld.value || '').trim().toLowerCase().replace(/^\./, '');
+    nsState.facets = null;
+  }
+  const raw = nsState.nsRaw;
   if (!raw) return;
   setToolStatus(els.nsStatus, 'Searching…');
-  if (els.nsResult) els.nsResult.hidden = true;
+  if (!fromChip && els.nsResult) els.nsResult.hidden = true;
   try {
-    const tld = (els.nsTld && els.nsTld.value || '').trim();
+    const tld = nsState.tld || '';
     const params = `mode=ns&ns=${encodeURIComponent(raw)}&match=${nsState.match}${tld ? `&tld=${encodeURIComponent(tld)}` : ''}`;
     const data = await nsFetch(params);
+    if (Array.isArray(data.tlds)) nsState.facets = data.tlds; // facets come back only on the All (unfiltered) query
     setToolStatus(els.nsStatus, '');
     const more = data.hasMore ? ' <span class="muted">(showing first page)</span>' : '';
     const head = `Domains using ${nsState.match === 'all' ? 'ALL' : 'ANY'} of: ${(data.nameservers || []).map((n) => `<code>${escapeHtml(n)}</code>`).join(' ')}`;
-    els.nsResult.innerHTML = `<div class="ns-card"><p class="ns-nsrow">${head}</p><h3>${data.count} domain${data.count === 1 ? '' : 's'}${more}</h3>${nsRowsHtml(data.rows)}</div>`;
+    const bar = nsTldBarHtml(nsState.facets, tld);
+    const scope = tld ? ` <span class="muted">· .${escapeHtml(tld)} only</span>` : '';
+    els.nsResult.innerHTML = `<div class="ns-card"><p class="ns-nsrow">${head}</p>${bar}<h3>${data.count} domain${data.count === 1 ? '' : 's'}${scope}${more}</h3>${nsRowsHtml(data.rows)}</div>`;
     els.nsResult.hidden = false;
   } catch (e) {
     setToolStatus(els.nsStatus, String((e && e.message) || e), true);
   }
+}
+
+// Clickable TLD facet bar above the NS results: "All (N) · .com (x) · .vc (y) …".
+// Clicking a chip narrows the result to that TLD server-side (partition-pruned),
+// so small-TLD matches that .com would crowd off the first page are reachable in
+// one click. Hidden when the match spans only a single TLD.
+function nsTldBarHtml(facets, activeTld) {
+  if (!Array.isArray(facets) || facets.length < 2) return '';
+  const total = facets.reduce((s, f) => s + (f.count || 0), 0);
+  const chip = (tld, label, n, active) =>
+    `<button type="button" class="ns-tld-chip${active ? ' active' : ''}" data-ns-tld="${escapeHtml(tld)}">${escapeHtml(label)} <span class="ns-tld-n">${(n || 0).toLocaleString()}</span></button>`;
+  const chips = [chip('', 'All', total, !activeTld)]
+    .concat(facets.map((f) => chip(f.tld, `.${f.tld}`, f.count, activeTld === f.tld)));
+  return `<div class="ns-tldbar" title="Filter these domains to one TLD">${chips.join('')}</div>`;
 }
 
 els.navNameserver?.addEventListener('click', (e) => { if (newTabClick(e)) return; e.preventDefault(); setToolUrl('nameserver', ''); route(); });
@@ -5465,6 +5493,12 @@ els.nsMatchToggle?.addEventListener('click', (e) => {
   const b = e.target.closest('button[data-match]'); if (!b) return;
   nsState.match = b.dataset.match === 'any' ? 'any' : 'all';
   for (const x of els.nsMatchToggle.querySelectorAll('button')) x.classList.toggle('active', x === b);
+});
+// Click a TLD facet chip → narrow the NS results to that TLD (server-side).
+els.nsResult?.addEventListener('click', (e) => {
+  const c = e.target.closest('.ns-tld-chip'); if (!c) return;
+  nsState.tld = c.dataset.nsTld || '';
+  runNsList({ fromChip: true });
 });
 els.nsDomainForm?.addEventListener('submit', (e) => {
   e.preventDefault();

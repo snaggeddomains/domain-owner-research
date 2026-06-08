@@ -1270,6 +1270,14 @@ body.drawer-open { overflow: hidden; }
 .ns-recent-chip:hover { border-color: var(--coral); color: var(--coral); }
 .ns-recent-clear { background: none; border: 0; color: var(--muted); font-size: 12px; cursor: pointer; text-decoration: underline; }
 
+/* Nameserver Search — post-results TLD facet bar (click to narrow to one TLD) */
+.ns-tldbar { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0 12px; }
+.ns-tld-chip { background: #fff; border: 1px solid var(--line); border-radius: 999px; padding: 3px 11px; font-size: 12px; font-weight: 600; color: var(--navy); cursor: pointer; }
+.ns-tld-chip:hover { border-color: var(--coral); color: var(--coral); }
+.ns-tld-chip.active { background: var(--navy); color: #fff; border-color: var(--navy); }
+.ns-tld-n { opacity: 0.55; font-variant-numeric: tabular-nums; margin-left: 2px; }
+.ns-tld-chip.active .ns-tld-n { opacity: 0.85; }
+
 /* ── Generic tool report header (collapse hero+search once a result shows) ──── */
 .tool-reshead { display: none; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap; margin-bottom: 16px; }
 .report-open .tool-reshead { display: flex; }

@@ -236,6 +236,18 @@ owner · sweep · reports`. relate/sweep accept a `run_id` to pull report contex
 consolidated owner dossier, 🔑 lead / 🎯 match badges, background deep-research that
 consolidates back into the screen, and localStorage "recent lookups" chips.
 
+**TLD facet filter (2026-06).** An NS lookup returns a per-TLD breakdown so the results
+can be narrowed to one TLD with a click — a custom pair returns mostly `.com`, but the
+ownership signal is often the handful of small-TLD names on it (e.g. the 47 `.vc`), which
+`.com` would crowd off the first page. `query.js` `nsTldFacets({nameservers,mode})` →
+RPC **`ns_tld_counts(p_ns,p_match)`** (group-by-count with an internal 5s
+statement_timeout — exact for a selective NS, `→ []` graceful for a huge shared host);
+the `ns` API mode returns `tlds:[{tld,count}]` **only on the unfiltered (All) query**, and
+the UI's `.ns-tldbar` chips re-run the lookup with `&tld=<x>` (server-side, partition-
+pruned via the existing `domainsByNameservers` `.eq('tld')`). **One-time setup:** run
+`snagged-admin/scripts/ns_tld_counts.sql` on the `snagged-zone-index` project (without it
+the bar just doesn't render; results still work).
+
 **Open / next:** rotate the exposed zone DB password; give the 5 legacy TLDs their own
 partitions (independent refresh); write `update_<tld>.sh` + a cron for periodic refresh
 (esp. `.com`); the live-resolve path is now robust but only a fallback — loaded TLDs

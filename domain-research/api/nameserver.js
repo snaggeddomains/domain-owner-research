@@ -16,7 +16,7 @@ export const maxDuration = 60;
 import { currentUser, userCan } from '../lib/auth.js';
 import { normalizeDomain } from '../lib/util.js';
 import {
-  isConfigured, domainsByNameservers, samePairing, parseNsList, resolveNameservers,
+  isConfigured, domainsByNameservers, nsTldFacets, samePairing, parseNsList, resolveNameservers,
 } from '../lib/nameserver/query.js';
 import { analyzeRelated } from '../lib/nameserver/relate.js';
 import { freeOwnerLookup } from '../lib/nameserver/owner.js';
@@ -74,7 +74,10 @@ export default async function handler(req, res) {
       const limit = q.limit;
       const offset = q.offset;
       const { rows, hasMore } = await domainsByNameservers({ nameservers, mode: match, tld, limit, offset });
-      res.status(200).json({ mode, nameservers, match, tld: tld || null, rows, hasMore, count: rows.length });
+      // Facet the full match by TLD so the UI can offer a "narrow to .vc" bar —
+      // only when unfiltered (the All view); a narrowed query reuses the cached facets.
+      const tlds = tld ? undefined : await nsTldFacets({ nameservers, mode: match });
+      res.status(200).json({ mode, nameservers, match, tld: tld || null, rows, hasMore, count: rows.length, ...(tlds ? { tlds } : {}) });
       return;
     }
 

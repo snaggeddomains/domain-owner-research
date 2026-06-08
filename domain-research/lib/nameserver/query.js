@@ -123,6 +123,26 @@ export async function domainsByNameservers({ nameservers, mode = 'all', tld = ''
   return { rows, hasMore };
 }
 
+// TLD breakdown for an NS match — powers the post-results "filter to a TLD" bar
+// (a custom NS pair returns mostly .com, but you want to narrow to the 47 .vc
+// names on it; for a small TLD that correlation is the ownership signal). Backed
+// by the ns_tld_counts RPC (a group-by-count with an internal 5s statement_timeout),
+// so it's exact for a selective nameserver and bows out gracefully (→ []) on a
+// huge shared host where a full count would be slow. [{ tld, count }] desc; never
+// throws — no facet bar is a fine degradation.
+export async function nsTldFacets({ nameservers, mode = 'all' } = {}) {
+  const ns = (nameservers || []).map(normalizeNs).filter(Boolean);
+  if (!ns.length) return [];
+  try {
+    const { data, error } = await getZoneDb()
+      .rpc('ns_tld_counts', { p_ns: ns, p_match: mode === 'any' ? 'any' : 'all' });
+    if (error) return [];
+    return (data || []).map((r) => ({ tld: r.tld, count: Number(r.n) || 0 })).filter((x) => x.tld);
+  } catch {
+    return [];
+  }
+}
+
 // IANA's RDAP bootstrap maps each TLD to its authoritative registry RDAP base
 // URL. rdap.org is a convenience aggregator that mishandles some TLDs (e.g. it
 // 404s `.io`, whose registry endpoint rdap.identitydigital.services answers
