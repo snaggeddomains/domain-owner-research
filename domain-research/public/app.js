@@ -8,6 +8,7 @@ const els = {
   // Umbrella topbar — Admin link is admin-only; account block carries the
   // signed-in email. Log out is a plain <a href="/api/logout"> — no JS handler.
   topbarAdmin: $('topbar-admin'),
+  topbarReports: $('topbar-reports'),
   topbarAccount: $('topbar-account'),
   navAccountEmail: $('nav-account-email'),
   // Profile menu (avatar dropdown) — name, email-on-done toggle, change password.
@@ -1433,6 +1434,7 @@ async function checkAuth() {
       // checking only is_admin||admin hid the chrome from granular admins (e.g. a
       // user with just admin.imports couldn't reach the dashboard from here).
       if (els.topbarAdmin) els.topbarAdmin.hidden = !canEnterAdmin(u);
+      if (els.topbarReports) els.topbarReports.hidden = !canEnterReports(u);
       if (els.navAccount) els.navAccount.hidden = false;
       renderProfile(u);
       startNotifPolling();
@@ -1442,6 +1444,7 @@ async function checkAuth() {
     } else {
       if (els.topbarAccount) els.topbarAccount.hidden = true;
       if (els.topbarAdmin) els.topbarAdmin.hidden = true;
+      if (els.topbarReports) els.topbarReports.hidden = true;
       if (els.navAccount) els.navAccount.hidden = true;
     }
   } catch {
@@ -1449,6 +1452,7 @@ async function checkAuth() {
     els.app.hidden = false;
     if (els.topbarAccount) els.topbarAccount.hidden = true;
     if (els.topbarAdmin) els.topbarAdmin.hidden = true;
+    if (els.topbarReports) els.topbarReports.hidden = true;
     if (els.navAccount) els.navAccount.hidden = true;
   }
 }
@@ -1520,6 +1524,16 @@ function canEnterAdmin(user) {
   const perms = user.permissions || {};
   if (perms.admin === true) return true;
   return ADMIN_TAB_PERMS.some((k) => perms[k] === true);
+}
+// Mirror of permissions.ts#canEnterReports: Reports is its own top-level module,
+// independent of the admin umbrella. The owner, the `reports` grant, or either
+// granular report can open it.
+const REPORTS_PERMS = ['reports', 'reports.analytics', 'reports.cost'];
+function canEnterReports(user) {
+  if (!user) return false;
+  if (user.is_admin) return true;
+  const perms = user.permissions || {};
+  return REPORTS_PERMS.some((k) => perms[k] === true);
 }
 // Generic module gate matching gateNavByPermissions' `can()` — used to HIDE a
 // deep-linked tool view from a user without the permission (fall through to the
