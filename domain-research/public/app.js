@@ -5062,16 +5062,34 @@ function openSalesProject(id) {
 // keyword/category (companies surfaced by Explore-by-category). Anything without
 // an explicit category counts as an upgrade (the original discovery path).
 function isProductAngle(c) { return c.angle === 'product_named' || c.angle === 'product_named_exact'; }
-function salesPath(c) {
-  if (isProductAngle(c)) return 'product';                  // product-name matches (exact + similar)
-  return c.category === 'keyword' ? 'keyword' : 'upgrade';
+// A candidate's domain SLD is an affix-variant of the seed (hoss → hosstools,
+// gethoss) — i.e. structurally an "upgrade" target even if it was discovered via
+// the product/keyword angle. So an exact product-name match like hosstools.com
+// (Hoss Tools, product "Hoss") is ALSO an upgrade prospect, not just a product hit.
+function isUpgradeShape(c) {
+  const s = (String(salesSeed).split('.')[0] || '').toLowerCase();
+  const sld = (String(c.domain || '').split('.')[0] || '').toLowerCase();
+  if (!s || !sld || sld === s) return false;
+  return sld.startsWith(s) || sld.endsWith(s);
+}
+
+// Path membership is a SET — a candidate can live under more than one tab (e.g.
+// product-name match that's also an affix-upgrade shows under both Product and
+// Upgrades). The 'all' tab still renders each card once (single section below).
+function salesPaths(c) {
+  const set = new Set();
+  if (isProductAngle(c)) set.add('product');
+  if (c.category === 'keyword' && !isProductAngle(c)) set.add('keyword');
+  if (c.category === 'upgrade' || isUpgradeShape(c)) set.add('upgrade');
+  if (!set.size) set.add('upgrade');
+  return set;
 }
 
 function salesVisible() {
   const showAll = els.srShowAll && els.srShowAll.checked;
   return salesCandidates.filter((c) =>
     (showAll || c.status === 'active') &&
-    (salesPathFilter === 'all' || salesPath(c) === salesPathFilter));
+    (salesPathFilter === 'all' || salesPaths(c).has(salesPathFilter)));
 }
 
 function renderSalesResults(data) {
@@ -5230,6 +5248,20 @@ function renderSalesTable() {
     { label: 'Others', rows: [] },
   ];
   const offTarget = (c) => (c.firmographics && c.firmographics.atp_relevant === false) || Number(c.score) < 0;
+  // When a specific path tab is active, show one flat sorted list — a card can
+  // belong to several tabs (e.g. an affix-upgrade product match), so the multi-
+  // section headers (which are keyed off the primary angle) would otherwise file
+  // it under a mismatched header on the filtered tab.
+  if (salesPathFilter !== 'all') {
+    const flat = rows.slice().sort(byScore);
+    els.srTable.innerHTML = `<div class="sr-section"><div class="sr-cards">${flat.map(cardHtml).join('')}</div></div>`;
+    els.srTable.querySelectorAll('.sr-cb').forEach((cb) => cb.addEventListener('change', () => {
+      if (cb.checked) salesSelected.add(cb.dataset.id); else salesSelected.delete(cb.dataset.id);
+      updateSalesEnrichBtn();
+    }));
+    updateSalesEnrichBtn();
+    return;
+  }
   for (const c of rows) {
     if (c.status && c.status !== 'active') sections[3].rows.push(c);                 // for-sale / inactive
     else if (offTarget(c)) sections[3].rows.push(c);                                 // relevance-gated → Others
@@ -5335,7 +5367,7 @@ function updatePathFilter() {
   if (!els.srPathfilter) return;
   const pool = salesCandidates.filter((c) => (els.srShowAll && els.srShowAll.checked) || c.status === 'active');
   const counts = { all: pool.length, upgrade: 0, product: 0, keyword: 0 };
-  for (const c of pool) counts[salesPath(c)]++;
+  for (const c of pool) for (const p of salesPaths(c)) counts[p]++;
   if (salesPathFilter !== 'all' && !counts[salesPathFilter]) salesPathFilter = 'all';
   const LABELS = { all: 'All', upgrade: 'Upgrades', product: 'Product', keyword: 'Keyword' };
   els.srPathfilter.querySelectorAll('.sr-pf-btn').forEach((b) => {
