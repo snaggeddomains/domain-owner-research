@@ -16,7 +16,7 @@ export const maxDuration = 60;
 import { currentUser, userCan } from '../lib/auth.js';
 import { normalizeDomain } from '../lib/util.js';
 import {
-  isConfigured, domainsByNameservers, nsTldFacets, samePairing, parseNsList, resolveNameservers,
+  isConfigured, domainsByNameservers, nsTldFacets, samePairing, parseNsList, resolveNameservers, EXPORT_MAX,
 } from '../lib/nameserver/query.js';
 import { analyzeRelated } from '../lib/nameserver/relate.js';
 import { freeOwnerLookup } from '../lib/nameserver/owner.js';
@@ -71,12 +71,13 @@ export default async function handler(req, res) {
       if (!nameservers.length) { res.status(400).json({ error: 'Enter at least one nameserver.' }); return; }
       const match = (q.match || 'all').toString() === 'any' ? 'any' : 'all';
       const tld = (q.tld || '').toString();
-      const limit = q.limit;
+      const full = (q.full || '').toString() === '1'; // CSV export: one big page, no facets
+      const limit = full ? EXPORT_MAX : q.limit;
       const offset = q.offset;
-      const { rows, hasMore } = await domainsByNameservers({ nameservers, mode: match, tld, limit, offset });
+      const { rows, hasMore } = await domainsByNameservers({ nameservers, mode: match, tld, limit, offset, max: full ? EXPORT_MAX : undefined });
       // Facet the full match by TLD so the UI can offer a "narrow to .vc" bar —
       // only when unfiltered (the All view); a narrowed query reuses the cached facets.
-      const tlds = tld ? undefined : await nsTldFacets({ nameservers, mode: match });
+      const tlds = (tld || full) ? undefined : await nsTldFacets({ nameservers, mode: match });
       res.status(200).json({ mode, nameservers, match, tld: tld || null, rows, hasMore, count: rows.length, ...(tlds ? { tlds } : {}) });
       return;
     }
@@ -84,7 +85,8 @@ export default async function handler(req, res) {
     if (mode === 'pairing') {
       const domain = normalizeDomain((q.domain || '').toString());
       if (!domain) { res.status(400).json({ error: 'Enter a domain to find its pairing.' }); return; }
-      const out = await samePairing(domain, { limit: q.limit, offset: q.offset, tld: (q.tld || '').toString() });
+      const full = (q.full || '').toString() === '1'; // CSV export: one big page
+      const out = await samePairing(domain, { limit: full ? EXPORT_MAX : q.limit, offset: q.offset, tld: (q.tld || '').toString(), max: full ? EXPORT_MAX : undefined });
       res.status(200).json({
         mode, ...out, count: out.rows.length,
         pair: out.pair ? out.pair.kind : null,

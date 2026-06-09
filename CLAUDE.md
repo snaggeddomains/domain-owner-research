@@ -245,7 +245,10 @@ statement_timeout — exact for a selective NS, `→ []` graceful for a huge sha
 both the `ns` AND `pairing` API modes return `tlds:[{tld,count}]` **only on the unfiltered
 (All) query**, and the UI's `.ns-tldbar` chips (a `data-ns-scope` routes the re-run to the
 NS-search list vs the domain→same-pairing siblings) re-run the lookup with `&tld=<x>`
-(server-side, partition-pruned via the existing `domainsByNameservers` `.eq('tld')`). **One-time setup:** run
+(server-side, partition-pruned via the existing `domainsByNameservers` `.eq('tld')`).
+**CSV export** pulls the FULL match (not just the loaded first page) via `&full=1` →
+`EXPORT_MAX=50000` cap, respecting the active TLD filter (`nsExportPairingCsv` re-fetches
+when `listHasMore`). **One-time setup:** run
 `snagged-admin/scripts/ns_tld_counts.sql` on the `snagged-zone-index` project (without it
 the bar just doesn't render; results still work).
 

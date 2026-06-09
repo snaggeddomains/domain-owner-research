@@ -23,6 +23,10 @@ import { classifyPair } from './context.js';
 const TABLE = 'zone_domains';
 export const MAX_LIMIT = 500;
 export const DEFAULT_LIMIT = 200;
+// A single big page for CSV export ("get everything"). Selective pairings return
+// far fewer; the GIN scan stops at this cap (a generic host that would blow past
+// it is short-circuited upstream, so this never runs on a millions-row match).
+export const EXPORT_MAX = 50000;
 
 export function isConfigured() {
   return isZoneDbConfigured();
@@ -73,10 +77,10 @@ export function parseNsList(raw) {
   return out;
 }
 
-function clampLimit(n) {
+function clampLimit(n, max = MAX_LIMIT) {
   const v = Number(n);
   if (!Number.isFinite(v) || v <= 0) return DEFAULT_LIMIT;
-  return Math.min(Math.floor(v), MAX_LIMIT);
+  return Math.min(Math.floor(v), max);
 }
 
 // domain → { domain, tld, nameservers[] } | null
@@ -98,10 +102,10 @@ export async function lookupDomain(domain) {
 // NS set → domains using them. mode 'all' = must have every NS (AND, @>);
 // mode 'any' = has at least one (OR, &&). Optional bare-tld scope. Returns
 // { rows, hasMore }.
-export async function domainsByNameservers({ nameservers, mode = 'all', tld = '', limit, offset = 0 } = {}) {
+export async function domainsByNameservers({ nameservers, mode = 'all', tld = '', limit, offset = 0, max } = {}) {
   const ns = (nameservers || []).map(normalizeNs).filter(Boolean);
   if (!ns.length) return { rows: [], hasMore: false };
-  const lim = clampLimit(limit);
+  const lim = clampLimit(limit, max);
   const off = Math.max(0, Number(offset) || 0);
 
   let q = getZoneDb().from(TABLE).select('domain, tld, nameservers');
@@ -234,7 +238,7 @@ export async function resolveNameservers(domain, env = process.env) {
 // domain's NS from our index OR live, then does an AND (@>) over that whole set,
 // excluding the domain itself. Returns { domain, nameservers[], rows, hasMore,
 // source }. Works even when the domain/TLD isn't loaded (source 'live').
-export async function samePairing(domain, { limit, offset = 0, tld = '', env = process.env } = {}) {
+export async function samePairing(domain, { limit, offset = 0, tld = '', max, env = process.env } = {}) {
   const self = String(domain || '').toLowerCase();
   const { nameservers, source } = await resolveNameservers(self, env);
   if (!nameservers.length) {
@@ -248,7 +252,7 @@ export async function samePairing(domain, { limit, offset = 0, tld = '', env = p
     return { domain: self, nameservers, rows: [], hasMore: false, found: true, source, pair, tooGeneric: true };
   }
   const t = String(tld || '').trim().toLowerCase().replace(/^\./, '');
-  const { rows, hasMore } = await domainsByNameservers({ nameservers, mode: 'all', tld: t, limit, offset });
+  const { rows, hasMore } = await domainsByNameservers({ nameservers, mode: 'all', tld: t, limit, offset, max });
   const filtered = rows.filter((r) => r.domain !== self);
   // Facet the pairing by TLD (unfiltered view only) so the UI can narrow the
   // siblings to one TLD — the small-TLD names on a custom pair are the signal.

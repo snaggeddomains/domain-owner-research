@@ -4227,7 +4227,7 @@ els.dbForm?.addEventListener('submit', (e) => {
 // ── Nameserver Search ───────────────────────────────────────────────────────
 // Domain → its NS; NS set → domains (AND/OR); domain → siblings on the same
 // pairing; + an LLM "which siblings are related" pass. Server: /api/nameserver.
-const nsState = { mode: 'domain', match: 'all', tld: '', nsRaw: '', facets: null, pairDomain: '', pairTld: '', pairFacets: null };
+const nsState = { mode: 'domain', match: 'all', tld: '', nsRaw: '', facets: null, pairDomain: '', pairTld: '', pairFacets: null, listKind: '', listHasMore: false };
 
 function nsSetMode(mode) {
   nsState.mode = mode === 'ns' ? 'ns' : 'domain';
@@ -4308,10 +4308,26 @@ function nsDownloadCsv(filename, header, rows) {
   a.href = url; a.download = filename; a.click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
-function nsExportPairingCsv() {
-  const rows = nsState.csvRows || [];
+async function nsExportPairingCsv() {
+  let rows = nsState.csvRows || [];
+  const tldF = (nsState.listKind === 'pairing' ? nsState.pairTld : nsState.tld) || '';
+  // The on-screen list is only the first page. If there's more, pull the FULL
+  // match for the current view (respecting the active TLD filter) before exporting.
+  if (nsState.listHasMore) {
+    const params = nsState.listKind === 'pairing'
+      ? `mode=pairing&domain=${encodeURIComponent(nsState.pairDomain)}${tldF ? `&tld=${encodeURIComponent(tldF)}` : ''}&full=1`
+      : `mode=ns&ns=${encodeURIComponent(nsState.nsRaw)}&match=${nsState.match}${tldF ? `&tld=${encodeURIComponent(tldF)}` : ''}&full=1`;
+    setToolStatus(els.nsStatus, 'Building full CSV…');
+    try {
+      const data = await nsFetch(params);
+      if (Array.isArray(data.rows) && data.rows.length) rows = data.rows;
+      setToolStatus(els.nsStatus, '');
+    } catch (e) {
+      setToolStatus(els.nsStatus, 'Couldn’t fetch the full list — exporting the loaded page only.', true);
+    }
+  }
   if (!rows.length) return;
-  nsDownloadCsv(`pairing-${nsState.seed || 'domains'}.csv`, ['domain', 'tld', 'nameservers'],
+  nsDownloadCsv(`pairing-${nsState.seed || 'domains'}${tldF ? `-${tldF}` : ''}.csv`, ['domain', 'tld', 'nameservers'],
     rows.map((r) => [r.domain, r.tld || '', (r.nameservers || []).join(' ')]));
 }
 function nsExportOwnerCsv() {
@@ -4669,6 +4685,7 @@ async function runNsPairing(domain, opts = {}) {
       return;
     }
     if (Array.isArray(data.tlds)) nsState.pairFacets = data.tlds; // returned on the All (unfiltered) query only
+    nsState.listKind = 'pairing'; nsState.listHasMore = !!data.hasMore;
     const more = data.hasMore ? ' <span class="muted">(first page — many matches; likely a shared host)</span>' : '';
     const bar = nsTldBarHtml(nsState.pairFacets, tld, 'pairing');
     const scope = tld ? ` <span class="muted">· .${escapeHtml(tld)} only</span>` : '';
@@ -4747,6 +4764,7 @@ async function runNsList(opts = {}) {
     const params = `mode=ns&ns=${encodeURIComponent(raw)}&match=${nsState.match}${tld ? `&tld=${encodeURIComponent(tld)}` : ''}`;
     const data = await nsFetch(params);
     if (Array.isArray(data.tlds)) nsState.facets = data.tlds; // facets come back only on the All (unfiltered) query
+    nsState.listKind = 'ns'; nsState.listHasMore = !!data.hasMore;
     setToolStatus(els.nsStatus, '');
     const more = data.hasMore ? ' <span class="muted">(showing first page)</span>' : '';
     const head = `Domains using ${nsState.match === 'all' ? 'ALL' : 'ANY'} of: ${(data.nameservers || []).map((n) => `<code>${escapeHtml(n)}</code>`).join(' ')}`;
