@@ -4960,6 +4960,54 @@ function hideAngleGate() {
   els.srAnglegate.innerHTML = '';
   delete els.srAnglegate.dataset.seed;
   salesAngles = [];
+  setAnglesBtnMode(false);
+}
+
+// The top "Explore by category" button doubles as "Research selected categories"
+// once the gate is open, so you can kick off the research from the top toolbar
+// without scrolling down to the gate's footer button.
+function setAnglesBtnMode(researching) {
+  if (!els.srAngles) return;
+  els.srAngles.dataset.mode = researching ? 'research' : 'explore';
+  els.srAngles.textContent = researching
+    ? '🔬 Research selected categories'
+    : '✨ Explore by category';
+}
+
+// Dispatch the chosen buyer categories for the free company fan-out. Shared by
+// the top toolbar button (research mode) and the gate's footer button.
+async function researchSelectedAngles() {
+  if (!els.srAnglegate) return;
+  const keys = new Set([...els.srAnglegate.querySelectorAll('.sr-ag-cb:checked')].map((c) => c.dataset.key));
+  const chosen = salesAngles.filter((a) => keys.has(a.key));
+  if (!chosen.length || !salesProjectId) return;
+  const limit = Number(document.getElementById('sr-ag-lim')?.value) || 15;
+  const note = els.srAnglegate.querySelector('.sr-ag-note');
+  const footBtn = document.getElementById('sr-ag-go');
+  const n = chosen.length;
+  const catWord = n === 1 ? 'category' : 'categories';
+  if (footBtn) footBtn.disabled = true;
+  if (els.srAngles) els.srAngles.disabled = true;
+  if (note) note.innerHTML = `<span class="sr-spin"></span> Finding companies across ${n} ${catWord}…`;
+  try {
+    const res = await fetch('/research/api/sales', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ action: 'research_angles', project_id: salesProjectId, angles: chosen, limit }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(apiErrText(data, res));
+    // Runs async in the background now (was timing out the request on mobile).
+    els.srAnglegate.hidden = true;
+    setAnglesBtnMode(false);
+    const before = salesCandidates.length;
+    setSalesStatus(`Researching ${n} ${catWord}… this runs in the background — you can keep working.`);
+    pollAnglesUntilDone(n, catWord, before);
+  } catch (err) {
+    if (note) note.innerHTML = `<span class="sr-status-err">${escapeHtml(String(err.message || err))}</span>`;
+  } finally {
+    if (footBtn) footBtn.disabled = false;
+    if (els.srAngles) els.srAngles.disabled = false;
+  }
 }
 
 function openSalesProject(id) {
@@ -5344,8 +5392,8 @@ els.srCsv?.addEventListener('click', () => {
 // headline player) → pick angles (checkboxes) → research the chosen ones.
 els.srAngles?.addEventListener('click', async () => {
   if (!salesSeed || !els.srAnglegate) return;
-  const open = !els.srAnglegate.hidden && els.srAnglegate.dataset.seed === salesSeed;
-  if (open) { els.srAnglegate.hidden = true; return; }   // toggle off
+  // Gate already open → the button is in "research" mode; dispatch the picks.
+  if (els.srAngles.dataset.mode === 'research') { researchSelectedAngles(); return; }
   els.srAnglegate.hidden = false;
   els.srAnglegate.dataset.seed = salesSeed;
   els.srAnglegate.innerHTML = '<div class="sr-ag-loading sr-enriching"><span class="sr-spin"></span> Mapping buyer categories and verifying the top player in each…</div>';
@@ -5407,34 +5455,7 @@ function renderAngleGate(angles) {
       </label>
       <span class="sr-ag-note muted">Free — finds the companies (no Apollo). You then tick which to <strong>Qualify</strong> (the paid step).</span>
     </div>`;
-  document.getElementById('sr-ag-go')?.addEventListener('click', async () => {
-    const keys = new Set([...els.srAnglegate.querySelectorAll('.sr-ag-cb:checked')].map((c) => c.dataset.key));
-    const chosen = salesAngles.filter((a) => keys.has(a.key));
-    if (!chosen.length || !salesProjectId) return;
-    const limit = Number(document.getElementById('sr-ag-lim')?.value) || 15;
-    const btn = document.getElementById('sr-ag-go');
-    const note = els.srAnglegate.querySelector('.sr-ag-note');
-    const n = chosen.length;
-    const catWord = n === 1 ? 'category' : 'categories';
-    btn.disabled = true;
-    note.innerHTML = `<span class="sr-spin"></span> Finding companies across ${n} ${catWord}…`;
-    try {
-      const res = await fetch('/research/api/sales', {
-        method: 'POST', headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ action: 'research_angles', project_id: salesProjectId, angles: chosen, limit }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(apiErrText(data, res));
-      // Runs async in the background now (was timing out the request on mobile).
-      els.srAnglegate.hidden = true;
-      const before = salesCandidates.length;
-      setSalesStatus(`Researching ${n} ${catWord}… this runs in the background — you can keep working.`);
-      pollAnglesUntilDone(n, catWord, before);
-    } catch (err) {
-      note.innerHTML = `<span class="sr-status-err">${escapeHtml(String(err.message || err))}</span>`;
-      btn.disabled = false;
-    }
-  });
+  document.getElementById('sr-ag-go')?.addEventListener('click', researchSelectedAngles);
 }
 
 // Poll the project after dispatching a category fan-out (async Inngest) and render
