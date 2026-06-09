@@ -3026,6 +3026,13 @@ function showEntry() {
   els.evidence.hidden = true;
   currentRunId = null;
   els.domain.value = '';
+  // Re-enable the search submit. A run sets els.go.disabled = true and relies on
+  // the polling completion handler to re-enable it — but coming back to the entry
+  // (back button or "+ New report") clears that timer, so the button would stay
+  // greyed out forever. Re-apply the permission gate (keeps it disabled only when
+  // the user genuinely lacks shallow+deep access).
+  if (currentUser) gateReportPhaseUI(currentUser);
+  else if (els.go) els.go.disabled = false;
   loadRecent();
 }
 
