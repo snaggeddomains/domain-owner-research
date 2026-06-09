@@ -119,10 +119,17 @@ export function extractClues(html) {
   const copyright = (text.match(/(?:©|&copy;|copyright)\s*[^.<\n]{0,80}/i) || [])[0]?.trim() || null;
 
   const lower = h.toLowerCase();
-  const PARKERS = ['above.com', 'afternic', 'sedo', 'bodis', 'parkingcrew', 'dan.com', 'uniregistry', 'hugedomains', 'domainmarket', 'efty'];
+  // Parker platforms must be matched as DOMAINS (with TLD), not bare brand words —
+  // a bare 'sedo'/'efty' substring-matches common minified-JS tokens (mouseDown →
+  // "mou·sedo·wn", purchasedOn → "purcha·sedo·n", hefty, parsedObj…), which falsely
+  // flagged live JS-heavy sites (modulate.ai, cycling74.com) as parked/for-sale.
+  const PARKERS = ['above.com', 'afternic.com', 'sedo.com', 'sedoparking.com', 'bodis.com', 'parkingcrew.net', 'dan.com', 'uniregistry.com', 'hugedomains.com', 'domainmarket.com', 'efty.com'];
   const platforms = PARKERS.filter((p) => lower.includes(p));
-  const FOR_SALE = ['buy this domain', 'domain is for sale', 'this domain is for sale', 'make offer', 'make an offer', 'inquire about this domain', 'domain for sale'];
-  const for_sale_signals = FOR_SALE.filter((p) => lower.includes(p));
+  // Match for-sale phrases against VISIBLE text only (not raw HTML/JSON/script) so a
+  // string buried in a script bundle can't trip it.
+  const lowerText = text.toLowerCase();
+  const FOR_SALE = ['buy this domain', 'domain is for sale', 'this domain is for sale', 'make an offer', 'inquire about this domain', 'domain for sale'];
+  const for_sale_signals = FOR_SALE.filter((p) => lowerText.includes(p));
 
   return {
     title,

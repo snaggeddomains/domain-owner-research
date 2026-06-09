@@ -4800,6 +4800,7 @@ let salesPollTimer = null;
 let salesCandidates = [];          // cached for render + CSV
 let salesSeed = '';
 const salesCollapsed = new Set();  // candidate ids whose contacts are collapsed
+const salesSelected = new Set();   // checked candidate ids — persist across path-filter tabs
 let salesAngles = [];              // angle objects from the last gate render
 let salesPathFilter = 'all';       // view filter: 'all' | 'upgrade' | 'product' | 'keyword'
 
@@ -4840,6 +4841,7 @@ function resetSalesView() {
   clearSalesPoll();
   hideAngleGate();
   salesProjectId = null; salesCandidates = []; salesSeed = ''; salesPathFilter = 'all';
+  salesSelected.clear();
   if (els.srDomain) els.srDomain.value = '';
   if (els.srResults) els.srResults.hidden = true;
   if (els.srTable) els.srTable.innerHTML = '';
@@ -5199,7 +5201,7 @@ function renderSalesTable() {
     return `
     <div class="sr-card sr-card-${escapeHtml(c.tier || 'unknown')}${unq ? ' sr-card-unq' : ''}" data-id="${escapeHtml(c.id)}">
       <div class="sr-card-head">
-        <label class="sr-card-check"><input type="checkbox" class="sr-cb" data-id="${escapeHtml(c.id)}"></label>
+        <label class="sr-card-check"><input type="checkbox" class="sr-cb" data-id="${escapeHtml(c.id)}"${salesSelected.has(c.id) ? ' checked' : ''}></label>
         <div class="sr-card-id">
           <div class="sr-card-name">${escapeHtml(c.company || '—')}${recommend}${angleBadge}${lowConfBadge}${offBadge}</div>
           <div class="sr-card-links">
@@ -5241,12 +5243,18 @@ function renderSalesTable() {
     return `<div class="sr-section"><div class="sr-section-head">${escapeHtml(s.label)} <span class="sr-section-n">${s.rows.length}</span></div>`
       + `<div class="sr-cards">${s.rows.map(cardHtml).join('')}</div></div>`;
   }).join('');
-  els.srTable.querySelectorAll('.sr-cb').forEach((cb) => cb.addEventListener('change', updateSalesEnrichBtn));
+  els.srTable.querySelectorAll('.sr-cb').forEach((cb) => cb.addEventListener('change', () => {
+    if (cb.checked) salesSelected.add(cb.dataset.id); else salesSelected.delete(cb.dataset.id);
+    updateSalesEnrichBtn();
+  }));
   updateSalesEnrichBtn();
 }
 
+// Selection persists across path-filter tabs (set-backed, not DOM-backed), so you
+// can tick rows on Upgrades, switch to Product/Keyword, tick more, then act on the
+// whole set. Drop ids that no longer exist (e.g. after a refresh).
 function selectedCandidateIds() {
-  return [...els.srTable.querySelectorAll('.sr-cb:checked')].map((cb) => cb.dataset.id);
+  return [...salesSelected].filter((id) => salesCandidates.some((c) => c.id === id));
 }
 function updateSalesEnrichBtn() {
   const ids = selectedCandidateIds();
@@ -5256,18 +5264,22 @@ function updateSalesEnrichBtn() {
   // Qualify is enabled when any SELECTED company is still unqualified (no firmographics).
   const anyUnqualified = ids.some((id) => { const c = salesCandidates.find((x) => x.id === id); return c && !c.firmographics; });
   if (els.srQualify) els.srQualify.disabled = !anyUnqualified;
-  // Keep the Select-all box in sync (checked when all visible rows are ticked).
+  // Keep the Select-all box in sync (checked when all VISIBLE rows are ticked).
   if (els.srSelectAll) {
-    const all = [...els.srTable.querySelectorAll('.sr-cb')];
-    els.srSelectAll.checked = all.length > 0 && ids.length === all.length;
-    els.srSelectAll.indeterminate = ids.length > 0 && ids.length < all.length;
+    const visIds = [...els.srTable.querySelectorAll('.sr-cb')].map((cb) => cb.dataset.id);
+    const visSel = visIds.filter((id) => salesSelected.has(id));
+    els.srSelectAll.checked = visIds.length > 0 && visSel.length === visIds.length;
+    els.srSelectAll.indeterminate = visSel.length > 0 && visSel.length < visIds.length;
   }
 }
 
-// Select all / none of the currently-visible cards.
+// Select all / none of the currently-visible cards (other tabs' picks are untouched).
 els.srSelectAll?.addEventListener('change', () => {
   const on = els.srSelectAll.checked;
-  els.srTable.querySelectorAll('.sr-cb').forEach((cb) => { cb.checked = on; });
+  els.srTable.querySelectorAll('.sr-cb').forEach((cb) => {
+    cb.checked = on;
+    if (on) salesSelected.add(cb.dataset.id); else salesSelected.delete(cb.dataset.id);
+  });
   updateSalesEnrichBtn();
 });
 
