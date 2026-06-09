@@ -5507,6 +5507,9 @@ function renderAngleGate(angles) {
       <span class="sr-ag-note muted">Free — finds the companies (no Apollo). You then tick which to <strong>Qualify</strong> (the paid step).</span>
     </div>`;
   document.getElementById('sr-ag-go')?.addEventListener('click', researchSelectedAngles);
+  // Gate is now open with categories → flip the top toolbar button to act as
+  // "Research selected categories" so it can be triggered from the top.
+  setAnglesBtnMode(true);
 }
 
 // Poll the project after dispatching a category fan-out (async Inngest) and render
