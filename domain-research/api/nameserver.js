@@ -84,7 +84,7 @@ export default async function handler(req, res) {
     if (mode === 'pairing') {
       const domain = normalizeDomain((q.domain || '').toString());
       if (!domain) { res.status(400).json({ error: 'Enter a domain to find its pairing.' }); return; }
-      const out = await samePairing(domain, { limit: q.limit, offset: q.offset });
+      const out = await samePairing(domain, { limit: q.limit, offset: q.offset, tld: (q.tld || '').toString() });
       res.status(200).json({
         mode, ...out, count: out.rows.length,
         pair: out.pair ? out.pair.kind : null,

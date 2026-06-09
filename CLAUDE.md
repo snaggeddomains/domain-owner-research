@@ -242,9 +242,10 @@ ownership signal is often the handful of small-TLD names on it (e.g. the 47 `.vc
 `.com` would crowd off the first page. `query.js` `nsTldFacets({nameservers,mode})` →
 RPC **`ns_tld_counts(p_ns,p_match)`** (group-by-count with an internal 5s
 statement_timeout — exact for a selective NS, `→ []` graceful for a huge shared host);
-the `ns` API mode returns `tlds:[{tld,count}]` **only on the unfiltered (All) query**, and
-the UI's `.ns-tldbar` chips re-run the lookup with `&tld=<x>` (server-side, partition-
-pruned via the existing `domainsByNameservers` `.eq('tld')`). **One-time setup:** run
+both the `ns` AND `pairing` API modes return `tlds:[{tld,count}]` **only on the unfiltered
+(All) query**, and the UI's `.ns-tldbar` chips (a `data-ns-scope` routes the re-run to the
+NS-search list vs the domain→same-pairing siblings) re-run the lookup with `&tld=<x>`
+(server-side, partition-pruned via the existing `domainsByNameservers` `.eq('tld')`). **One-time setup:** run
 `snagged-admin/scripts/ns_tld_counts.sql` on the `snagged-zone-index` project (without it
 the bar just doesn't render; results still work).
 

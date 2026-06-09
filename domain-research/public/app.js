@@ -4227,7 +4227,7 @@ els.dbForm?.addEventListener('submit', (e) => {
 // ── Nameserver Search ───────────────────────────────────────────────────────
 // Domain → its NS; NS set → domains (AND/OR); domain → siblings on the same
 // pairing; + an LLM "which siblings are related" pass. Server: /api/nameserver.
-const nsState = { mode: 'domain', match: 'all', tld: '', nsRaw: '', facets: null };
+const nsState = { mode: 'domain', match: 'all', tld: '', nsRaw: '', facets: null, pairDomain: '', pairTld: '', pairFacets: null };
 
 function nsSetMode(mode) {
   nsState.mode = mode === 'ns' ? 'ns' : 'domain';
@@ -4241,6 +4241,7 @@ function nsReset() {
   if (els.nsNs) els.nsNs.value = '';
   if (els.nsResult) { els.nsResult.hidden = true; els.nsResult.innerHTML = ''; }
   nsState.tld = ''; nsState.nsRaw = ''; nsState.facets = null;
+  nsState.pairDomain = ''; nsState.pairTld = ''; nsState.pairFacets = null;
   setToolStatus(els.nsStatus, '');
   nsRenderRecent();
 }
@@ -4653,18 +4654,25 @@ async function nsCtxSearch(term) {
   }
 }
 
-async function runNsPairing(domain) {
+async function runNsPairing(domain, opts = {}) {
+  const fromChip = !!opts.fromChip;
+  // Fresh pairing run resets the TLD filter + facets; a facet-chip click reuses them.
+  if (!fromChip) { nsState.pairDomain = domain; nsState.pairTld = ''; nsState.pairFacets = null; }
   const sub = document.getElementById('ns-sub');
-  if (sub) sub.innerHTML = '<div class="ns-running">⏳ Finding siblings on the same nameserver set…</div>';
+  if (sub && !fromChip) sub.innerHTML = '<div class="ns-running">⏳ Finding siblings on the same nameserver set…</div>';
   try {
-    const data = await nsFetch(`mode=pairing&domain=${encodeURIComponent(domain)}`);
+    const tld = nsState.pairTld || '';
+    const data = await nsFetch(`mode=pairing&domain=${encodeURIComponent(domain)}${tld ? `&tld=${encodeURIComponent(tld)}` : ''}`);
     if (!sub) return;
     if (data.generic) {
       sub.innerHTML = `<p class="ns-pairnote muted">⚠ ${escapeHtml(data.genericNote || 'Generic/parking nameservers — shared by huge numbers of unrelated domains, so this pairing is not an ownership signal.')} Skipping the lookup.</p>`;
       return;
     }
+    if (Array.isArray(data.tlds)) nsState.pairFacets = data.tlds; // returned on the All (unfiltered) query only
     const more = data.hasMore ? ' <span class="muted">(first page — many matches; likely a shared host)</span>' : '';
-    const head = `<h3>${data.count}${data.hasMore ? '+' : ''} other domain${data.count === 1 ? '' : 's'} on this exact pairing${more}</h3>`;
+    const bar = nsTldBarHtml(nsState.pairFacets, tld, 'pairing');
+    const scope = tld ? ` <span class="muted">· .${escapeHtml(tld)} only</span>` : '';
+    const head = `${bar}<h3>${data.count}${data.hasMore ? '+' : ''} other domain${data.count === 1 ? '' : 's'} on this exact pairing${scope}${more}</h3>`;
     if (!data.rows.length) { sub.innerHTML = head + '<p class="muted">None.</p>'; return; }
     const items = data.rows.map((r) => ({
       domain: r.domain,
@@ -4742,7 +4750,7 @@ async function runNsList(opts = {}) {
     setToolStatus(els.nsStatus, '');
     const more = data.hasMore ? ' <span class="muted">(showing first page)</span>' : '';
     const head = `Domains using ${nsState.match === 'all' ? 'ALL' : 'ANY'} of: ${(data.nameservers || []).map((n) => `<code>${escapeHtml(n)}</code>`).join(' ')}`;
-    const bar = nsTldBarHtml(nsState.facets, tld);
+    const bar = nsTldBarHtml(nsState.facets, tld, 'ns');
     const scope = tld ? ` <span class="muted">· .${escapeHtml(tld)} only</span>` : '';
     els.nsResult.innerHTML = `<div class="ns-card"><p class="ns-nsrow">${head}</p>${bar}<h3>${data.count} domain${data.count === 1 ? '' : 's'}${scope}${more}</h3>${nsRowsHtml(data.rows)}</div>`;
     els.nsResult.hidden = false;
@@ -4755,11 +4763,11 @@ async function runNsList(opts = {}) {
 // Clicking a chip narrows the result to that TLD server-side (partition-pruned),
 // so small-TLD matches that .com would crowd off the first page are reachable in
 // one click. Hidden when the match spans only a single TLD.
-function nsTldBarHtml(facets, activeTld) {
+function nsTldBarHtml(facets, activeTld, scope = 'ns') {
   if (!Array.isArray(facets) || facets.length < 2) return '';
   const total = facets.reduce((s, f) => s + (f.count || 0), 0);
   const chip = (tld, label, n, active) =>
-    `<button type="button" class="ns-tld-chip${active ? ' active' : ''}" data-ns-tld="${escapeHtml(tld)}">${escapeHtml(label)} <span class="ns-tld-n">${(n || 0).toLocaleString()}</span></button>`;
+    `<button type="button" class="ns-tld-chip${active ? ' active' : ''}" data-ns-scope="${scope}" data-ns-tld="${escapeHtml(tld)}">${escapeHtml(label)} <span class="ns-tld-n">${(n || 0).toLocaleString()}</span></button>`;
   const chips = [chip('', 'All', total, !activeTld)]
     .concat(facets.map((f) => chip(f.tld, `.${f.tld}`, f.count, activeTld === f.tld)));
   return `<div class="ns-tldbar" title="Filter these domains to one TLD">${chips.join('')}</div>`;
@@ -5494,11 +5502,14 @@ els.nsMatchToggle?.addEventListener('click', (e) => {
   nsState.match = b.dataset.match === 'any' ? 'any' : 'all';
   for (const x of els.nsMatchToggle.querySelectorAll('button')) x.classList.toggle('active', x === b);
 });
-// Click a TLD facet chip → narrow the NS results to that TLD (server-side).
-els.nsResult?.addEventListener('click', (e) => {
+// Click a TLD facet chip → narrow the results to that TLD (server-side). Works in
+// both surfaces: the NS-search list and the domain→same-pairing siblings (the chip
+// carries data-ns-scope to route the re-run).
+document.addEventListener('click', (e) => {
   const c = e.target.closest('.ns-tld-chip'); if (!c) return;
-  nsState.tld = c.dataset.nsTld || '';
-  runNsList({ fromChip: true });
+  const tld = c.dataset.nsTld || '';
+  if (c.dataset.nsScope === 'pairing') { nsState.pairTld = tld; runNsPairing(nsState.pairDomain, { fromChip: true }); }
+  else { nsState.tld = tld; runNsList({ fromChip: true }); }
 });
 els.nsDomainForm?.addEventListener('submit', (e) => {
   e.preventDefault();

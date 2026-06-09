@@ -234,7 +234,7 @@ export async function resolveNameservers(domain, env = process.env) {
 // domain's NS from our index OR live, then does an AND (@>) over that whole set,
 // excluding the domain itself. Returns { domain, nameservers[], rows, hasMore,
 // source }. Works even when the domain/TLD isn't loaded (source 'live').
-export async function samePairing(domain, { limit, offset = 0, env = process.env } = {}) {
+export async function samePairing(domain, { limit, offset = 0, tld = '', env = process.env } = {}) {
   const self = String(domain || '').toLowerCase();
   const { nameservers, source } = await resolveNameservers(self, env);
   if (!nameservers.length) {
@@ -247,7 +247,11 @@ export async function samePairing(domain, { limit, offset = 0, env = process.env
   if (pair.generic) {
     return { domain: self, nameservers, rows: [], hasMore: false, found: true, source, pair, tooGeneric: true };
   }
-  const { rows, hasMore } = await domainsByNameservers({ nameservers, mode: 'all', limit, offset });
+  const t = String(tld || '').trim().toLowerCase().replace(/^\./, '');
+  const { rows, hasMore } = await domainsByNameservers({ nameservers, mode: 'all', tld: t, limit, offset });
   const filtered = rows.filter((r) => r.domain !== self);
-  return { domain: self, nameservers, rows: filtered, hasMore, found: true, source, pair };
+  // Facet the pairing by TLD (unfiltered view only) so the UI can narrow the
+  // siblings to one TLD — the small-TLD names on a custom pair are the signal.
+  const tlds = t ? undefined : await nsTldFacets({ nameservers, mode: 'all' });
+  return { domain: self, nameservers, rows: filtered, hasMore, found: true, source, pair, tld: t || null, ...(tlds ? { tlds } : {}) };
 }
