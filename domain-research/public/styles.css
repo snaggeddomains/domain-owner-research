@@ -1290,8 +1290,15 @@ body.drawer-open { overflow: hidden; }
 .report-open .ns-modetoggle,
 .report-open .ns-form,
 .report-open .ns-recent,
-.report-open .naming-form,
 .report-open .naming-recent-five { display: none !important; }
+
+/* Naming results view: keep the brief + filters editable (just compact — the
+   big hero above is still hidden), so you can tweak the brief or the filters
+   and re-run without starting a new report. The full .naming-form used to be
+   collapsed here, which hid the editable Filters panel + brief entirely. */
+.report-open .naming-form { margin-top: 4px; }
+.report-open .naming-title-input { display: none; }
+.report-open .naming-input { min-height: 88px; }
 
 /* ── Sales Research ────────────────────────────────────────────────────────── */
 .sr-form { display: flex; gap: 8px; max-width: 640px; margin: 0 auto; }
