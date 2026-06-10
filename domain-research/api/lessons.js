@@ -1,4 +1,4 @@
-import { isAuthed, currentUser, requirePermission, userCan } from '../lib/auth.js';
+import { isAuthed, requirePermission, requireAdmin } from '../lib/auth.js';
 import { isDbConfigured } from '../lib/db/supabase.js';
 import { createLesson, listLessons, updateLesson, deleteLesson } from '../lib/db/lessons.js';
 import { distillLesson } from '../lib/llm/distill.js';
@@ -93,7 +93,7 @@ async function route(req, res) {
   const method = req.method;
 
   if (method === 'GET') {
-    const admin = await requirePermission(req, res, 'admin.lessons.approve');
+    const admin = await requireAdmin(req, res); // approve/reject/list = super admin only
     if (!admin) return;
     const status = typeof req.query.status === 'string' ? req.query.status : 'all';
     const lessons = await listLessons({ status });
@@ -111,7 +111,7 @@ async function route(req, res) {
   }
 
   if (method === 'PATCH') {
-    const admin = await requirePermission(req, res, 'admin.lessons.approve');
+    const admin = await requireAdmin(req, res); // approve/reject/list = super admin only
     if (!admin) return;
     const body = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : req.body || {};
     if (!body.id) { res.status(400).json({ error: 'id required' }); return; }
@@ -121,7 +121,7 @@ async function route(req, res) {
   }
 
   if (method === 'DELETE') {
-    const admin = await requirePermission(req, res, 'admin.lessons.approve');
+    const admin = await requireAdmin(req, res); // approve/reject/list = super admin only
     if (!admin) return;
     const id = req.query.id || (req.body && req.body.id);
     if (!id) { res.status(400).json({ error: 'id required' }); return; }
@@ -134,6 +134,9 @@ async function route(req, res) {
 }
 
 async function handleDistill(req, res, body) {
+  // "Save as lesson" distill is part of submitting — gate on research access.
+  const user = await requirePermission(req, res, 'domain_owner');
+  if (!user) return;
   const runId = body.run_id;
   const messageId = body.message_id;
   if (!runId || !messageId) {
@@ -173,10 +176,11 @@ async function handleDistill(req, res, body) {
 }
 
 async function handleCreate(req, res, body) {
-  const user = await currentUser(req);
-  // Only curators (admins or `admin.lessons.approve`) can self-approve on create;
-  // everyone else submits as 'pending' for review.
-  const canApprove = Boolean(user && userCan(user, 'admin.lessons.approve'));
+  // Submitting a tip is open to anyone with Domain Owner Research access.
+  const user = await requirePermission(req, res, 'domain_owner');
+  if (!user) return;
+  // Only a super admin can self-approve on create; everyone else submits 'pending'.
+  const canApprove = Boolean(user && user.is_admin);
   const status = canApprove && body.status === 'approved' ? 'approved' : 'pending';
   try {
     const lesson = await createLesson({

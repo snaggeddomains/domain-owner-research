@@ -181,6 +181,8 @@ const els = {
   lessonModalError: $('lesson-modal-error'),
   lessonModalSubmit: $('lesson-modal-submit'),
   lessonModalCancel: $('lesson-modal-cancel'),
+  lessonModalSub: $('lesson-modal-sub'),
+  navTip: $('nav-tip'),
   navToggle: $('nav-toggle'),
   nav: $('nav'),
   tmForm: $('tm-form'),
@@ -1505,12 +1507,9 @@ let currentUser = null;
 // the namespaced spelling too. Used to HIDE the Lessons/admin view entirely
 // from users without the permission, rather than show it then deny.
 function canAdminLessons(user) {
-  if (!user) return false;
-  if (user.is_admin) return true;
-  const perms = user.permissions || {};
-  // The umbrella `admin` grant is full access (all tabs), so it covers lessons too.
-  if (perms.admin === true) return true;
-  return perms['admin.lessons.approve'] === true || perms['research.admin.lessons.approve'] === true;
+  // Approving/rejecting lessons is SUPER ADMIN only — matches the API
+  // (requireAdmin = is_admin). Submitting a tip is separate (domain_owner).
+  return Boolean(user && user.is_admin);
 }
 // Mirror of permissions.ts#canEnterAdmin: the owner, the umbrella `admin` grant,
 // or ANY single granular admin tab can open the admin dashboard.
@@ -1587,6 +1586,9 @@ function gateNavByPermissions(user) {
   if (els.navDbsearch) els.navDbsearch.hidden = !can('dbsearch');
   if (els.navNameserver) els.navNameserver.hidden = !can('nameserver');
   if (els.navSales) els.navSales.hidden = !can('sales');
+  // "Suggest a tip" — anyone with Domain Owner Research access can submit a
+  // playbook tip (a super admin approves it before it goes live).
+  if (els.navTip) els.navTip.hidden = !can('domain_owner');
   // Owner outreach is a report-page feature (not a nav module); cache whether
   // this user may use it so renderReport can show/hide the launcher button.
   canOutreach = can('outreach');
@@ -1600,6 +1602,8 @@ els.navAdmin?.addEventListener('click', () => {
   if (!canAdminLessons(currentUser)) { showEntry(); closeNav(); return; }
   history.pushState(null, '', '/research/admin'); showView('admin'); closeNav();
 });
+
+els.navTip?.addEventListener('click', () => { closeNav(); openTipModal(); });
 
 // ── Profile menu (avatar dropdown) ──────────────────────────────────────────
 // Avatar shows the first letter of the first name (or email). The dropdown
@@ -3039,6 +3043,7 @@ async function openLessonModal(messageId) {
   if (!currentRunId || !messageId) return;
   lessonModalContext = { runId: currentRunId, messageId };
   resetLessonModal();
+  if (els.lessonModalSub) els.lessonModalSub.textContent = 'Distilling the rule from this exchange. Edit before submitting — a super admin reviews and approves before it goes live.';
   showLessonModal(true);
   setLessonModalBusy(true, 'Distilling the rule…');
   try {
@@ -3063,6 +3068,14 @@ async function openLessonModal(messageId) {
   } finally {
     setLessonModalBusy(false);
   }
+}
+
+// Standalone "Suggest a tip" — open a blank lesson form (no chat distill).
+function openTipModal() {
+  lessonModalContext = { runId: null, messageId: null };
+  resetLessonModal();
+  if (els.lessonModalSub) els.lessonModalSub.textContent = 'Write a tip for the research playbook. A super admin reviews and approves before it goes live.';
+  showLessonModal(true);
 }
 
 function resetLessonModal() {
@@ -3092,7 +3105,7 @@ function setLessonModalError(text) {
 }
 
 async function submitLessonModal() {
-  if (!lessonModalContext) return;
+  const ctx = lessonModalContext || {};
   const title = (els.lessonModalTitle?.value || '').trim();
   const body = (els.lessonModalBody?.value || '').trim();
   const tagsRaw = (els.lessonModalTags?.value || '').trim();
@@ -3106,8 +3119,8 @@ async function submitLessonModal() {
       body: JSON.stringify({
         action: 'create',
         title, body, tags,
-        source_run_id: lessonModalContext.runId,
-        source_chat_message_id: lessonModalContext.messageId,
+        source_run_id: ctx.runId || null,
+        source_chat_message_id: ctx.messageId || null,
       }),
     });
     const data = await res.json().catch(() => ({}));
