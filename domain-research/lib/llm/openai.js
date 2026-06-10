@@ -20,11 +20,12 @@ export async function runAgent({ system, history, userPrompt, toolSpecs, env, ma
 
   const trace = [...seedTrace];
 
-  // Soft time budget — stop starting new research steps before the function's
-  // Vercel maxDuration so a heavy run forces its final write-up instead of being
-  // hard-killed mid-step (see the Anthropic adapter for the full rationale).
-  const SOFT_MS = Number(env.AGENT_SOFT_DEADLINE_MS || 190000);
-  const HARD_MS = Number(env.AGENT_HARD_DEADLINE_MS || 255000);
+  // Soft time budget — keep researching as long as the budget allows, then stop
+  // starting new steps and force the final write-up so a heavy run is thorough
+  // but never hard-killed mid-step (see the Anthropic adapter for full rationale).
+  // Defaults tuned to the 800s api/inngest.js maxDuration; tunable via env.
+  const SOFT_MS = Number(env.AGENT_SOFT_DEADLINE_MS || 660000);
+  const HARD_MS = Number(env.AGENT_HARD_DEADLINE_MS || 725000);
   const startedAt = Date.now();
   const elapsed = () => Date.now() - startedAt;
 

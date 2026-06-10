@@ -13,18 +13,18 @@ export async function runAgent({ system, history, userPrompt, toolSpecs, env, ma
   const maxTokens = Number(env.ANTHROPIC_MAX_TOKENS || 16000);
 
   // Soft time budget. Each research step is a slow Opus call (high effort +
-  // adaptive thinking, 60-120s each); MAX_STEPS of them routinely overran
-  // Vercel's 300s function ceiling and the process was HARD-KILLED mid-call
-  // (FUNCTION_INVOCATION_TIMEOUT), losing the whole report. Instead, stop
-  // starting new research steps once we approach the budget and force the final
-  // write-up from the evidence already gathered — so a run always returns a
+  // adaptive thinking, 60-120s each); enough of them overran the Vercel function
+  // ceiling and the process was HARD-KILLED mid-call (FUNCTION_INVOCATION_TIMEOUT),
+  // losing the whole report. Instead, keep researching for as long as the budget
+  // allows, then stop starting new steps and force the final write-up from the
+  // evidence already gathered — so a run is always thorough AND always returns a
   // report within its function budget. SOFT stops the loop; HARD caps the
-  // finalize request itself so even that can't overrun. Tunable via env.
-  // Defaults leave ~45s headroom under Vercel's 300s ceiling for the
-  // deterministic seed tools that run in this same invocation BEFORE runAgent,
-  // plus step/Inngest overhead.
-  const SOFT_MS = Number(env.AGENT_SOFT_DEADLINE_MS || 190000);
-  const HARD_MS = Number(env.AGENT_HARD_DEADLINE_MS || 255000);
+  // finalize request itself so even that can't overrun. Defaults are tuned to the
+  // 800s api/inngest.js maxDuration (leaving headroom for the deterministic seed
+  // tools that run in the same invocation before runAgent); keep them in sync if
+  // that ceiling changes. Tunable via env.
+  const SOFT_MS = Number(env.AGENT_SOFT_DEADLINE_MS || 660000);
+  const HARD_MS = Number(env.AGENT_HARD_DEADLINE_MS || 725000);
   const startedAt = Date.now();
   const elapsed = () => Date.now() - startedAt;
 
@@ -87,9 +87,9 @@ export async function runAgent({ system, history, userPrompt, toolSpecs, env, ma
 
   // Hit the step ceiling OR the soft deadline — force a final summary. No tools
   // and no thinking so the model writes the report straight from the evidence
-  // gathered. A request timeout (remaining budget) guarantees this can't itself
-  // overrun the function ceiling; if it does fail, salvage any text already
-  // written so the run still saves a report instead of hard-failing.
+  // gathered. A request timeout (remaining budget, no retries) guarantees this
+  // can't itself overrun the function ceiling; if it does fail, salvage any text
+  // already written so the run still saves a report instead of hard-failing.
   messages.push({ role: 'user', content: 'Stop researching and write your final report now from the evidence gathered.' });
   const finalizeTimeout = Math.min(120000, Math.max(20000, HARD_MS - elapsed()));
   try {
