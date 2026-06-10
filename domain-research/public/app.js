@@ -202,6 +202,12 @@ const els = {
   navDbsearch: $('nav-dbsearch'),
   navNameserver: $('nav-nameserver'),
   navSales: $('nav-sales'),
+  navBeeper: $('nav-beeper'),
+  beeperForm: $('beeper-form'),
+  beeperDomain: $('beeper-domain'),
+  beeperAdd: $('beeper-add'),
+  beeperList: $('beeper-list'),
+  beeperStatus: $('beeper-status'),
   srForm: $('sr-form'), srDomain: $('sr-domain'), srGo: $('sr-go'), srStatus: $('sr-status'),
   srResults: $('sr-results'), srSummary: $('sr-summary'), srShowAll: $('sr-show-all'), srSelectAll: $('sr-select-all'),
   srEnrich: $('sr-enrich'), srCsv: $('sr-csv'), srTable: $('sr-table'),
@@ -407,7 +413,7 @@ function clearHash() {
 // the SPA): Domain DB Screen at /dbscreen, DB Search at /dbsearch.
 const VANITY_TOOLS = ['dbscreen', 'dbsearch'];
 function currentToolRoute() {
-  let m = location.pathname.match(/^\/research\/(trademark|appraisal|naming|dbscreen|dbsearch|nameserver|sales|admin)(?:\/(.+?))?\/?$/);
+  let m = location.pathname.match(/^\/research\/(trademark|appraisal|naming|dbscreen|dbsearch|nameserver|sales|beeper|admin)(?:\/(.+?))?\/?$/);
   if (!m) m = location.pathname.match(/^\/(dbscreen|dbsearch)(?:\/(.+?))?\/?$/);
   if (!m) return null;
   return { tool: m[1], slug: m[2] ? decodeURIComponent(m[2]) : '' };
@@ -429,6 +435,7 @@ const TOOL_PERMISSION = {
   dbscreen: 'dbscreen',
   dbsearch: 'dbsearch',
   nameserver: 'nameserver',
+  beeper: 'beeper',
 };
 // Collapse a tool's hero+search into the compact "<seed> <label>" header once a
 // result is showing (CSS .report-open); restore the entry when off.
@@ -505,6 +512,11 @@ function route() {
     if (tr.slug) { nsSetMode('domain'); if (els.nsDomain) els.nsDomain.value = tr.slug; runNsDomain(tr.slug); }
     else nsReset();
     toolReport('view-nameserver', tr.slug || '', !!tr.slug);
+    return;
+  }
+  if (tr && tr.tool === 'beeper') {
+    showView('beeper');
+    loadBeeper();
     return;
   }
   if (tr && tr.tool === 'sales') {
@@ -1620,6 +1632,7 @@ function gateNavByPermissions(user) {
   if (els.navDbscreen) els.navDbscreen.hidden = !can('dbscreen');
   if (els.navDbsearch) els.navDbsearch.hidden = !can('dbsearch');
   if (els.navNameserver) els.navNameserver.hidden = !can('nameserver');
+  if (els.navBeeper) els.navBeeper.hidden = !can('beeper');
   if (els.navSales) els.navSales.hidden = !can('sales');
   // "Suggest a Strategy" — anyone with Domain Owner Research access can submit a
   // playbook strategy (a super admin approves it). Lives on the Domain Owner page
@@ -2595,6 +2608,7 @@ const VIEWS = {
   dbscreen: { view: 'view-dbscreen', nav: 'nav-dbscreen' },
   dbsearch: { view: 'view-dbsearch', nav: 'nav-dbsearch' },
   nameserver: { view: 'view-nameserver', nav: 'nav-nameserver' },
+  beeper: { view: 'view-beeper', nav: 'nav-beeper' },
   sales: { view: 'view-sales', nav: 'nav-sales' },
   'sales-projects': { view: 'view-sales-projects', nav: 'nav-sales' },
   admin: { view: 'view-admin', nav: 'nav-admin' },
@@ -2612,6 +2626,62 @@ function showView(name) {
   // Exercise) so the space isn't wasted by a narrow centered column.
   const wrap = document.querySelector('.content > .wrap');
   if (wrap) wrap.classList.add('wrap--wide');
+}
+
+// ── Beeper — RDAP drop watcher ──────────────────────────────────────────────
+async function loadBeeper() {
+  if (!els.beeperList) return;
+  els.beeperList.innerHTML = '<li class="muted">Loading…</li>';
+  try {
+    const res = await fetch('/research/api/beeper');
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed to load watches');
+    renderBeeper(data.watches || []);
+  } catch (e) {
+    els.beeperList.innerHTML = `<li class="muted">${escapeHtml(e.message || String(e))}</li>`;
+  }
+}
+function beeperStateLabel(w) {
+  if (w.status === 'dropped' || w.last_http === 404) return '🎯 AVAILABLE — dropped!';
+  const s = Array.isArray(w.last_status) ? w.last_status : [];
+  if (s.length) return s.join(', ');
+  if (w.last_checked) return 'registered';
+  return 'checking…';
+}
+function renderBeeper(watches) {
+  if (!watches.length) { els.beeperList.innerHTML = '<li class="muted">No domains watched yet — add one above.</li>'; return; }
+  els.beeperList.innerHTML = watches.map((w) => {
+    const dropped = w.status === 'dropped' || w.last_http === 404;
+    const when = w.last_checked ? `checked ${agoLabel(w.last_checked)}` : 'not checked yet';
+    return `<li class="beeper-row${dropped ? ' beeper-dropped' : ''}">`
+      + `<div><strong>${escapeHtml(w.domain)}</strong> — <span class="beeper-state">${escapeHtml(beeperStateLabel(w))}</span><div class="muted beeper-meta">${escapeHtml(when)}</div></div>`
+      + `<button type="button" class="beeper-stop" data-id="${escapeHtml(w.id)}">Stop</button>`
+      + `</li>`;
+  }).join('');
+  els.beeperList.querySelectorAll('.beeper-stop').forEach((b) => b.addEventListener('click', () => stopBeeperWatch(b.getAttribute('data-id'))));
+}
+async function addBeeperWatch() {
+  const domain = (els.beeperDomain.value || '').trim();
+  if (!domain) return;
+  setToolStatus(els.beeperStatus, `Adding ${domain}…`);
+  try {
+    const res = await fetch('/research/api/beeper', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ domain }) });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || `Failed (${res.status})`);
+    els.beeperDomain.value = '';
+    const s = data.status;
+    setToolStatus(els.beeperStatus, s && s.ok ? `Now watching — current status: ${s.available ? 'AVAILABLE' : (s.statuses.join(', ') || 'registered')}` : 'Now watching.');
+    loadBeeper();
+  } catch (e) {
+    setToolStatus(els.beeperStatus, e.message || String(e), true);
+  }
+}
+async function stopBeeperWatch(id) {
+  if (!id) return;
+  try {
+    await fetch('/research/api/beeper', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ action: 'stop', id }) });
+    loadBeeper();
+  } catch { /* ignore */ }
 }
 
 // ── Standalone tools (Trademark, Appraisal) ─────────────────────────────────
@@ -4891,6 +4961,8 @@ function nsTldBarHtml(facets, activeTld, scope = 'ns') {
 
 els.navNameserver?.addEventListener('click', (e) => { if (newTabClick(e)) return; e.preventDefault(); setToolUrl('nameserver', ''); route(); });
 els.navSales?.addEventListener('click', (e) => { if (newTabClick(e)) return; e.preventDefault(); setToolUrl('sales', ''); route(); });
+els.navBeeper?.addEventListener('click', (e) => { if (newTabClick(e)) return; e.preventDefault(); setToolUrl('beeper', ''); route(); });
+els.beeperForm?.addEventListener('submit', (e) => { e.preventDefault(); addBeeperWatch(); });
 
 // ── Sales Research ───────────────────────────────────────────────────────────
 let salesProjectId = null;

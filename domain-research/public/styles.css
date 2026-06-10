@@ -1515,3 +1515,16 @@ a.sr-ag-co-link:hover { border-color: var(--coral); color: var(--coral-deep); ba
 .sr-why-llm { font-size: 13px; color: var(--navy-2); margin-top: 11px; padding-top: 11px; border-top: 1px dashed var(--line); line-height: 1.45; }
 .sr-unq { font-size: 12px; margin-top: 6px; }
 .sr-ag-note { font-size: 12px; }
+
+/* Beeper — RDAP drop watcher */
+.beeper-form { display:flex; gap:8px; margin:12px 0; flex-wrap:wrap; }
+.beeper-form input { flex:1 1 260px; max-width:360px; padding:10px 12px; border:1.5px solid var(--line); border-radius:10px; font-size:1rem; }
+.beeper-form button { padding:10px 18px; border:0; border-radius:10px; background:var(--coral-deep,#c0492f); color:#fff; font-weight:700; cursor:pointer; }
+.beeper-list { list-style:none; margin:14px 0 0; padding:0; max-width:680px; }
+.beeper-row { display:flex; align-items:center; gap:12px; padding:12px 14px; border:1.5px solid var(--line); border-radius:12px; margin-bottom:8px; }
+.beeper-row .beeper-state { font-weight:600; color:var(--navy); }
+.beeper-row .beeper-meta { font-size:.8rem; margin-top:2px; }
+.beeper-row.beeper-dropped { border-color:#2f7d4f; background:#e9f7ec; }
+.beeper-row.beeper-dropped .beeper-state { color:#176a2b; }
+.beeper-stop { margin-left:auto; padding:6px 12px; border:1.5px solid var(--line); border-radius:8px; background:transparent; color:var(--navy); cursor:pointer; font-size:.85rem; }
+.beeper-stop:hover { background:var(--cream-2); }

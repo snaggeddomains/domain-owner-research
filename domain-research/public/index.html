@@ -182,6 +182,8 @@
         <!-- Nameserver Search — domain↔nameserver lookups over the zone index.
              Gated by the `nameserver` permission; shown by JS. -->
         <a id="nav-nameserver" class="nav-btn" href="/research/nameserver" hidden>Nameserver</a>
+        <!-- Beeper — RDAP drop watcher. Gated by the `beeper` permission. -->
+        <a id="nav-beeper" class="nav-btn" href="/research/beeper" hidden>Beeper</a>
         <!-- Sales Research — find companies that would buy a domain we're selling.
              Gated by the `sales` permission; shown by JS. -->
         <a id="nav-sales" class="nav-btn" href="/research/sales" hidden>Sales Research</a>
@@ -531,6 +533,18 @@
           <div id="ns-recent" class="ns-recent" hidden></div>
           <section id="ns-status" class="status" hidden></section>
           <div id="ns-result" class="ns-result" hidden></div>
+        </section>
+
+        <!-- Beeper — watch a domain's RDAP status; alert on change / drop -->
+        <section id="view-beeper" hidden>
+          <h1 class="page-title">Beeper <span class="accent">drop watch</span></h1>
+          <p class="sub">Watch a domain's registry status via the free RDAP API and get an <strong>email + bell alert the instant it changes</strong> — especially the drop to <strong>available</strong>. For names heading into delete/expiry that are hard to backorder or drop-catch. Checked every minute.</p>
+          <form id="beeper-form" class="beeper-form">
+            <input id="beeper-domain" type="text" placeholder="e.g. thru.id" autocomplete="off" autocapitalize="off" spellcheck="false" />
+            <button id="beeper-add" type="submit">Watch</button>
+          </form>
+          <div id="beeper-status" class="tool-status" hidden></div>
+          <ul id="beeper-list" class="beeper-list"></ul>
         </section>
 
         <!-- Sales Research — companies that would buy a domain we're selling -->
