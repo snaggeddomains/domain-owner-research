@@ -182,7 +182,9 @@ const els = {
   lessonModalSubmit: $('lesson-modal-submit'),
   lessonModalCancel: $('lesson-modal-cancel'),
   lessonModalSub: $('lesson-modal-sub'),
-  navTip: $('nav-tip'),
+  lessonModalHeading: $('lesson-modal-heading'),
+  suggestStrategy: $('suggest-strategy'),
+  suggestStrategyBtn: $('suggest-strategy-btn'),
   navToggle: $('nav-toggle'),
   nav: $('nav'),
   tmForm: $('tm-form'),
@@ -1586,9 +1588,10 @@ function gateNavByPermissions(user) {
   if (els.navDbsearch) els.navDbsearch.hidden = !can('dbsearch');
   if (els.navNameserver) els.navNameserver.hidden = !can('nameserver');
   if (els.navSales) els.navSales.hidden = !can('sales');
-  // "Suggest a tip" — anyone with Domain Owner Research access can submit a
-  // playbook tip (a super admin approves it before it goes live).
-  if (els.navTip) els.navTip.hidden = !can('domain_owner');
+  // "Suggest a Strategy" — anyone with Domain Owner Research access can submit a
+  // playbook strategy (a super admin approves it). Lives on the Domain Owner page
+  // + bottom of every report (inside #view-research), so it's scoped to that tool.
+  if (els.suggestStrategy) els.suggestStrategy.hidden = !can('domain_owner');
   // Owner outreach is a report-page feature (not a nav module); cache whether
   // this user may use it so renderReport can show/hide the launcher button.
   canOutreach = can('outreach');
@@ -1603,7 +1606,7 @@ els.navAdmin?.addEventListener('click', () => {
   history.pushState(null, '', '/research/admin'); showView('admin'); closeNav();
 });
 
-els.navTip?.addEventListener('click', () => { closeNav(); openTipModal(); });
+els.suggestStrategyBtn?.addEventListener('click', () => openTipModal());
 
 // ── Profile menu (avatar dropdown) ──────────────────────────────────────────
 // Avatar shows the first letter of the first name (or email). The dropdown
@@ -3050,6 +3053,7 @@ async function openLessonModal(messageId) {
   if (!currentRunId || !messageId) return;
   lessonModalContext = { runId: currentRunId, messageId };
   resetLessonModal();
+  if (els.lessonModalHeading) els.lessonModalHeading.textContent = 'Save as playbook strategy';
   if (els.lessonModalSub) els.lessonModalSub.textContent = 'Distilling the rule from this exchange. Edit before submitting — a super admin reviews and approves before it goes live.';
   showLessonModal(true);
   setLessonModalBusy(true, 'Distilling the rule…');
@@ -3079,9 +3083,12 @@ async function openLessonModal(messageId) {
 
 // Standalone "Suggest a tip" — open a blank lesson form (no chat distill).
 function openTipModal() {
-  lessonModalContext = { runId: null, messageId: null };
+  // Anchor the strategy to the current report when one is open (so the curator
+  // sees what prompted it), else a free-standing submission.
+  lessonModalContext = { runId: currentRunId || null, messageId: null };
   resetLessonModal();
-  if (els.lessonModalSub) els.lessonModalSub.textContent = 'Write a tip for the research playbook. A super admin reviews and approves before it goes live.';
+  if (els.lessonModalHeading) els.lessonModalHeading.textContent = 'Suggest a Strategy';
+  if (els.lessonModalSub) els.lessonModalSub.textContent = 'Share a research tactic for the playbook. A super admin reviews and approves before it goes live.';
   showLessonModal(true);
 }
 

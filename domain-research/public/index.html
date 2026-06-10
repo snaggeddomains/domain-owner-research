@@ -183,9 +183,6 @@
         <!-- Lessons (playbook curation) is admin-only and now lives in the
              umbrella Admin module; reachable directly at /research/admin. -->
         <button id="nav-admin" class="nav-btn nav-btn-admin" type="button" hidden style="display:none">Lessons</button>
-        <!-- Suggest a tip — anyone with Domain Owner Research access can submit a
-             playbook tip; a super admin approves it. Shown by JS (domain_owner). -->
-        <button id="nav-tip" class="nav-btn" type="button" hidden>💡 Suggest a tip</button>
         <!-- "Email me when reports finish" moved into the profile menu (avatar,
              top-right). Mobile keeps email + Log out here in the dropdown nav. -->
         <div class="nav-account" id="nav-account" hidden>
@@ -284,6 +281,14 @@
               <ul id="trace"></ul>
             </details>
           </section>
+
+          <!-- Suggest a Strategy — submit a research-playbook strategy/tip.
+               Lives on the Domain Owner page + bottom of every report. Gated to
+               domain_owner; a super admin approves before it goes live. -->
+          <div id="suggest-strategy" class="suggest-strategy" hidden style="margin:28px 0 8px;padding-top:18px;border-top:1px solid var(--line,#e3ddcf);text-align:center">
+            <button id="suggest-strategy-btn" type="button" class="nav-btn">💡 Suggest a Strategy</button>
+            <p class="muted" style="font-size:12px;margin:8px 0 0">Spotted a tactic that helped crack an owner? Send it to the playbook.</p>
+          </div>
         </section>
 
         <!-- Projects view -->
@@ -734,7 +739,7 @@ The model parses it into structured filters (TLDs, length, budget, tone, etc.) a
     <!-- Save-lesson modal (filled from /api/lessons distill) -->
     <div id="lesson-modal" class="lesson-modal" hidden>
       <div class="lesson-modal-card">
-        <h3 class="lesson-modal-title">Save as playbook lesson</h3>
+        <h3 id="lesson-modal-heading" class="lesson-modal-title">Save as playbook lesson</h3>
         <p id="lesson-modal-sub" class="lesson-modal-sub">Distilling the rule from this exchange. Edit before submitting — a super admin reviews and approves before it goes live.</p>
         <label class="lesson-field">
           <span class="lesson-field-label">Title</span>
