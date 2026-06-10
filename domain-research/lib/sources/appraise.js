@@ -39,6 +39,10 @@ function errString(o) {
 }
 // fetchJson with: (a) detection of a 200-with-error body, (b) retry+backoff on
 // any transient upstream failure (their DB overload is transient).
+// Cloudflare "Just a moment…" / managed-challenge interstitial — Appraise.net
+// occasionally challenges our datacenter IP even though we hold valid API
+// credentials (their bot/under-attack protection misfiring on server traffic).
+const isChallenge = (s) => /just a moment|cf-mitigated|challenge-platform|attention required|enable javascript and cookies|cloudflare/i.test(s);
 async function fetchAppraise(url, opts) {
   let last = '';
   for (let attempt = 0; attempt < 4; attempt++) {
@@ -47,14 +51,17 @@ async function fetchAppraise(url, opts) {
       const err = errString(body);
       if (!err) return body;
       last = err;
-      if (TRANSIENT.test(err) && attempt < 3) { await sleep(800 * 2 ** attempt); continue; }
+      if ((TRANSIENT.test(err) || isChallenge(err)) && attempt < 3) { await sleep(800 * 2 ** attempt); continue; }
+      if (isChallenge(err)) throw new Error('Appraise.net is temporarily blocking automated requests (Cloudflare challenge). This is on their end — our API access is valid. Please try again shortly.');
       throw new Error(`Appraise.net: ${err.slice(0, 160)}`);
     } catch (e) {
       const m = String((e && e.message) || e);
-      if (TRANSIENT.test(m) && attempt < 3) { last = m; await sleep(800 * 2 ** attempt); continue; }
+      if ((TRANSIENT.test(m) || isChallenge(m)) && attempt < 3) { last = m; await sleep(800 * 2 ** attempt); continue; }
+      if (isChallenge(m)) throw new Error('Appraise.net is temporarily blocking automated requests (Cloudflare challenge). This is on their end — our API access is valid. Please try again shortly.');
       throw e;
     }
   }
+  if (isChallenge(last)) throw new Error('Appraise.net is temporarily blocking automated requests (Cloudflare challenge). This is on their end — our API access is valid. Please try again shortly.');
   throw new Error(`Appraise.net unavailable: ${String(last).slice(0, 160)}`);
 }
 
