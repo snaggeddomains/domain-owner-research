@@ -804,7 +804,18 @@ function renderMarkdown(md) {
       .replace(/\*([^*]+)\*/g, '<em>$1</em>')
       .replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>')
       // Bare URLs → clickable (skip ones already inside a markdown link's href/text).
-      .replace(/(?<![">])(https?:\/\/[^\s<)]*[^\s<).,;:!?])/g, '<a href="$1" target="_blank" rel="noopener">$1</a>');
+      .replace(/(?<![">])(https?:\/\/[^\s<)]*[^\s<).,;:!?])/g, '<a href="$1" target="_blank" rel="noopener">$1</a>')
+      // Scheme-less URLs the agent writes as plain text (e.g.
+      // mediaoptions.com/brokered-domains/roundtable-com/) → clickable. The
+      // lookbehind skips hosts already inside an <a> (after / " > ) or an email
+      // (after @) or mid-word/after a dot; the 2+-letter-TLD requirement leaves
+      // prose abbreviations ("Inc.", "U.S.") and decimals ("3.14") alone. Trailing
+      // sentence punctuation is excluded from the link.
+      .replace(/(?<![/">@\w.])((?:[a-z0-9][a-z0-9-]*\.)+[a-z]{2,}(?:\/[^\s<)]*)?)/g, (m) => {
+        const t = m.match(/[.,;:!?]+$/);
+        const url = t ? m.slice(0, -t[0].length) : m;
+        return `<a href="https://${url}" target="_blank" rel="noopener">${url}</a>${t ? t[0] : ''}`;
+      });
 
   for (const raw of lines) {
     const line = raw.trimEnd();
