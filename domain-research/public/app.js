@@ -2974,11 +2974,12 @@ async function pollAppraisal(domain, jobId) {
     try {
       const res = await fetch(`/research/api/lookup?source=appraise_lookup&job_id=${encodeURIComponent(jobId)}&domain=${encodeURIComponent(domain)}`);
       const data = await res.json();
+      if (data && data.ok === false) { setToolStatus(els.apStatus, data.error || 'Appraisal service error.', true); return; }
       const st = (data && data.data) || {};
       const statusStr = String(st.status || st.state || '');
       const v = digAppraisal(st);
-      const ready = (v && v !== st) || appraisalRange(v) || /complete|done|success|finished/i.test(statusStr);
-      if (ready) {
+      const ready = (v && typeof v === 'object' && v !== st) || appraisalRange(v) || /complete|done|success|finished/i.test(statusStr);
+      if (ready && v && typeof v === 'object') {
         finishAppraisal(domain, v, st.definition);
         return;
       }
@@ -3002,9 +3003,21 @@ async function runAppraisal(domainInput, opts) {
     const data = await res.json();
     if (!data.ok) throw new Error(data.error || `Failed (${res.status})`);
     const d = data.data || {};
-    if (d.appraisal) finishAppraisal(domain, digAppraisal(d.appraisal), d.definition);
-    else if (d.job_id) await pollAppraisal(domain, d.job_id);
-    else finishAppraisal(domain, digAppraisal(d), d.definition);
+    // A real valuation is always an OBJECT. Appraise.net occasionally returns an
+    // error as a 200-with-string (e.g. their DB "Too many connections"); guard so
+    // that never renders as an empty "No value fields recognized" appraisal.
+    const okVal = (v) => v && typeof v === 'object';
+    if (d.appraisal != null) {
+      const v = digAppraisal(d.appraisal);
+      if (okVal(v)) finishAppraisal(domain, v, d.definition);
+      else throw new Error('The appraisal service is temporarily unavailable — please try again shortly.');
+    } else if (d.job_id) {
+      await pollAppraisal(domain, d.job_id);
+    } else {
+      const v = digAppraisal(d);
+      if (okVal(v)) finishAppraisal(domain, v, d.definition);
+      else throw new Error('The appraisal service is temporarily unavailable — please try again shortly.');
+    }
   } catch (e) {
     setToolStatus(els.apStatus, e.message || String(e), true);
   }

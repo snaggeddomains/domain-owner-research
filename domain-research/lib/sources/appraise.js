@@ -21,6 +21,43 @@ const unwrap = (o) => {
 const hasResult = (o) =>
   o && (o.valuation || (Array.isArray(o.results) && o.results.length) || o.appraisal || o.result || o.value != null || o.estimated_value != null || o.estimatedValue || o.range);
 
+// Appraise.net sometimes returns an ERROR as a 200-with-string body (e.g.
+// "Database connection failed: SQLSTATE[HY000] [1040] Too many connections")
+// or an error-shaped object. A real valuation is always an object with value
+// content — so a bare string, or an error object with no valuation, is a failure
+// we must surface (not render as an empty appraisal).
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const TRANSIENT = /too many connections|database connection failed|sqlstate|temporarily unavailable|try again|service unavailable|bad gateway|gateway time|timeout|throttle|rate limit|\b(429|502|503|504)\b/i;
+function errString(o) {
+  if (o == null) return null;
+  if (typeof o === 'string') return o; // a valid valuation is never a bare string
+  if (typeof o === 'object') {
+    const msg = o.error || o.detail || o.message || o.errors;
+    if (msg && !hasResult(o)) return typeof msg === 'string' ? msg : JSON.stringify(msg);
+  }
+  return null;
+}
+// fetchJson with: (a) detection of a 200-with-error body, (b) retry+backoff on
+// any transient upstream failure (their DB overload is transient).
+async function fetchAppraise(url, opts) {
+  let last = '';
+  for (let attempt = 0; attempt < 4; attempt++) {
+    try {
+      const body = await fetchJson(url, opts);
+      const err = errString(body);
+      if (!err) return body;
+      last = err;
+      if (TRANSIENT.test(err) && attempt < 3) { await sleep(800 * 2 ** attempt); continue; }
+      throw new Error(`Appraise.net: ${err.slice(0, 160)}`);
+    } catch (e) {
+      const m = String((e && e.message) || e);
+      if (TRANSIENT.test(m) && attempt < 3) { last = m; await sleep(800 * 2 ** attempt); continue; }
+      throw e;
+    }
+  }
+  throw new Error(`Appraise.net unavailable: ${String(last).slice(0, 160)}`);
+}
+
 // Premium (paid) — Appraise.net AI valuation. Tries an existing/cached appraisal,
 // else creates one; async jobs return a job_id that the caller polls (pass
 // job_id back to fetch status). Valuation is supporting context, not ownership.
@@ -43,7 +80,7 @@ export default {
 
     // Poll an in-progress job's status (raw — caller detects completion).
     if (job_id) {
-      const st = await fetchJson(`${BASE}/appraisal/status/${encodeURIComponent(job_id)}`, { headers: h });
+      const st = await fetchAppraise(`${BASE}/appraisal/status/${encodeURIComponent(job_id)}`, { headers: h });
       return { job_id, ...st };
     }
 
@@ -55,15 +92,18 @@ export default {
     const wantsForce = force === true || force === 'true' || force === 1 || force === '1';
     if (!wantsForce) {
       try {
-        const existing = await fetchJson(`${BASE}/appraisal/${encodeURIComponent(d)}`, { headers: h });
+        const existing = await fetchAppraise(`${BASE}/appraisal/${encodeURIComponent(d)}`, { headers: h });
         if (existing) return { domain: d, cached: true, appraisal: unwrap(existing) };
       } catch (e) {
-        /* 404 = none yet; fall through to create */
+        // A genuine "not found" means no cached appraisal yet → create one.
+        // Any other failure (e.g. their DB outage) must SURFACE, not be silently
+        // swallowed into a confusing empty result.
+        if (!/404|not found/i.test(String((e && e.message) || e))) throw e;
       }
     }
 
     // Create a new appraisal — sync result or an async job to poll.
-    const created = await fetchJson(`${BASE}/appraisal`, { method: 'POST', headers: h, body: JSON.stringify({ domain: d }) });
+    const created = await fetchAppraise(`${BASE}/appraisal`, { method: 'POST', headers: h, body: JSON.stringify({ domain: d }) });
     if (hasResult(created)) return { domain: d, cached: false, appraisal: unwrap(created) };
     const jobId = created && (created.job_id || created.jobId || created.id);
     if (jobId) return { domain: d, status: 'pending', job_id: jobId };
