@@ -474,7 +474,7 @@ function route() {
     showView('appraisal');
     refreshToolRecent(els.apRecent, 'ap');
     if (tr.slug) openToolSlug('ap', tr.slug);
-    else { els.apResult.hidden = true; els.apResult.innerHTML = ''; els.apDomain.value = ''; setToolStatus(els.apStatus, ''); }
+    else { els.apResult.hidden = true; els.apResult.innerHTML = ''; els.apDomain.value = ''; setToolStatus(els.apStatus, ''); if (els.apNamebio) { els.apNamebio.hidden = true; els.apNamebio.innerHTML = ''; els.apNamebio.dataset.domain = ''; } }
     toolReport('view-appraisal', tr.slug || '', !!tr.slug);
     return;
   }
@@ -2986,6 +2986,9 @@ async function runAppraisal(domainInput, opts) {
   const force = !!(opts && opts.force);
   els.apResult.hidden = true;
   els.apResult.innerHTML = '';
+  // Clear the prior domain's NameBio panel so it doesn't linger while the new
+  // appraisal runs (renderAppraisal reloads it for the new domain).
+  if (els.apNamebio) { els.apNamebio.hidden = true; els.apNamebio.innerHTML = ''; els.apNamebio.dataset.domain = ''; }
   setToolStatus(els.apStatus, force ? `Re-appraising ${domain}…` : `Appraising ${domain}…`);
   try {
     const qs = `source=appraise_lookup&domain=${encodeURIComponent(domain)}${force ? '&force=1' : ''}`;
