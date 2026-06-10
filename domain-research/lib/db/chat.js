@@ -8,17 +8,24 @@ const TABLE = 'domain_research_chat';
 const tableMissing = (e) =>
   /relation .* does not exist|does not exist|schema cache|PGRST205|42P01/i.test(String(e?.message || e?.code || e));
 
-export async function appendChat(runId, domain, role, content, status = 'done') {
+const missingCol = (e) => /author|could not find|column|PGRST204|42703|schema cache/i.test(String(e?.message || e?.code || e));
+
+export async function appendChat(runId, domain, role, content, status = 'done', author = null) {
   if (!isDbConfigured() || !runId) return null;
-  try {
-    const { data, error } = await getDb()
-      .from(TABLE)
-      .insert({ run_id: runId, domain: domain || null, role, content: String(content || '').slice(0, 12000), status })
-      .select('id')
-      .single();
+  const base = { run_id: runId, domain: domain || null, role, content: String(content || '').slice(0, 12000), status };
+  const row = author ? { ...base, author: String(author).slice(0, 120) } : base;
+  const insert = async (r) => {
+    const { data, error } = await getDb().from(TABLE).insert(r).select('id').single();
     if (error) throw error;
     return data?.id || null;
+  };
+  try {
+    return await insert(row);
   } catch (e) {
+    // The `author` column may not exist yet (pre-migration) — retry without it.
+    if (author && missingCol(e)) {
+      try { return await insert(base); } catch (e2) { if (!tableMissing(e2)) console.error('appendChat:', e2?.message || e2); return null; }
+    }
     if (!tableMissing(e)) console.error('appendChat:', e?.message || e);
     return null;
   }
@@ -29,7 +36,7 @@ export async function getChat(runId, limit = 50) {
   try {
     const { data, error } = await getDb()
       .from(TABLE)
-      .select('id,role,content,status,created_at')
+      .select('*') // '*' so the optional `author` column rides along when present
       .eq('run_id', runId)
       .order('created_at', { ascending: true })
       .limit(limit);

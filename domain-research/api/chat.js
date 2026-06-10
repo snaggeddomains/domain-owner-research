@@ -57,8 +57,10 @@ export default async function handler(req, res) {
   }
   const domain = run.domain || '';
 
-  // Persist the user message + a pending assistant row, then enqueue the turn.
-  await appendChat(runId, domain, 'user', message, 'done');
+  // Persist the user message (tagged with WHO sent it, so a shared report's chat
+  // is attributable) + a pending assistant row, then enqueue the turn.
+  const author = _user && _user.email && _user.email !== 'legacy-admin' ? (_user.name || _user.email) : null;
+  await appendChat(runId, domain, 'user', message, 'done', author);
   const turnId = await appendChat(runId, domain, 'assistant', '', 'pending');
   if (!turnId) {
     res.status(500).json({ error: 'Chat storage not configured — run the domain_research_chat table SQL.' });

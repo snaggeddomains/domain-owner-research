@@ -945,7 +945,9 @@ function setReportMeta(createdAt, phase, opts) {
     return;
   }
   const deepIncomplete = !!(opts && opts.deepIncomplete);
-  const typeLabel = phase === 'deep' ? 'Deep research' : phase === 'shallow' ? 'Free report' : 'Report';
+  const regenerated = !!(opts && opts.regenerated);
+  const isRegenPhase = /^regenerate/.test(String(phase || ''));
+  const typeLabel = phase === 'deep' ? 'Deep research' : phase === 'shallow' ? 'Free report' : isRegenPhase ? 'Regenerated report' : 'Report';
   const when = new Date(createdAt).toLocaleString();
   // Offer to re-run the deep pass when it's the one that didn't finish; otherwise
   // refresh matches whatever phase we have.
@@ -954,8 +956,10 @@ function setReportMeta(createdAt, phase, opts) {
   const warn = deepIncomplete
     ? `<span class="rm-incomplete">⚠ Deep research did not complete — showing the free pre-flight report only</span> · `
     : '';
+  // Loud, unmistakable confirmation right after a regenerate completes.
+  const regen = regenerated ? `<span class="rm-regen">✓ Just regenerated from chat</span> · ` : '';
   els.reportMeta.innerHTML =
-    warn +
+    warn + regen +
     `<span class="rm-type">${escapeHtml(typeLabel)}</span> · ` +
     `<span class="rm-when">${escapeHtml(when)}</span> · ` +
     `<a href="#" class="report-refresh" data-deep="${refreshDeep}">${deepIncomplete ? 'Re-run deep' : 'Refresh'}</a>`;
@@ -1009,7 +1013,19 @@ function chatBubble(m) {
   const saveLink = (m.role === 'assistant' && !pending && !err && m.id)
     ? `<button type="button" class="chat-save-lesson" data-msg-id="${escapeHtml(m.id)}">Save as lesson</button>`
     : '';
-  return `<div class="chat-msg ${cls}${pending ? ' pending' : ''}${err ? ' chat-err' : ''}"${idAttr}>${body}${saveLink}</div>`;
+  // Tag user messages with who sent them — a report (and its chat) can be shared,
+  // so "was this me or a teammate?" should be answerable at a glance.
+  const authorLabel = (m.role === 'user' && m.author)
+    ? `<span class="chat-author">${escapeHtml(chatAuthorName(m.author))}</span>`
+    : '';
+  return `<div class="chat-msg ${cls}${pending ? ' pending' : ''}${err ? ' chat-err' : ''}"${idAttr}>${authorLabel}${body}${saveLink}</div>`;
+}
+// Short display name from a stored author (email → capitalized local part).
+function chatAuthorName(a) {
+  const s = String(a || '').trim();
+  if (!s) return '';
+  const local = s.includes('@') ? s.split('@')[0] : s;
+  return local.charAt(0).toUpperCase() + local.slice(1);
 }
 function renderChatMessages(messages) {
   if (!els.chatThread) return;
@@ -1031,7 +1047,9 @@ async function sendChat(message) {
   chatBusy = true;
   if (els.chatSend) els.chatSend.disabled = true;
   const thread = els.chatThread;
-  thread.insertAdjacentHTML('beforeend', `<div class="chat-msg me">${renderMarkdown(message)}</div>`);
+  const myName = chatAuthorName((currentUser && (currentUser.name || currentUser.email)) || '');
+  const meLabel = myName ? `<span class="chat-author">${escapeHtml(myName)}</span>` : '';
+  thread.insertAdjacentHTML('beforeend', `<div class="chat-msg me">${meLabel}${renderMarkdown(message)}</div>`);
   thread.insertAdjacentHTML('beforeend', `<div class="chat-msg bot pending">Researching… this can take up to a couple of minutes.</div>`);
   thread.scrollTop = thread.scrollHeight;
   const pending = thread.querySelector('.chat-msg.pending:last-child') || thread.querySelector('.chat-msg.pending');
@@ -2019,7 +2037,7 @@ async function regenerateFromChat(mode) {
     setRegenStatus('');
     // Hand off to the existing polling loop — it owns the live clock,
     // stage updates, and the final renderReport() / setReportMeta() call.
-    startPolling(currentRunId, mode === 'deep' ? 'Regenerating (deep)' : 'Regenerating');
+    startPolling(currentRunId, mode === 'deep' ? 'Regenerating (deep)' : 'Regenerating', { regenerated: true });
   } catch (e) {
     setRegenStatus(`⚠️ ${e.message || e}`, true);
   } finally {
@@ -2052,7 +2070,8 @@ function detectRegenMarker(text) {
   return { cleaned: text.slice(m[0].length), mode: m[1].toLowerCase() };
 }
 
-function startPolling(runId, label) {
+function startPolling(runId, label, opts = {}) {
+  const regenerated = !!opts.regenerated;
   currentRunId = runId;
   els.go.disabled = true;
   if (els.runControls) els.runControls.hidden = false;
@@ -2089,7 +2108,8 @@ function startPolling(runId, label) {
         if (els.runControls) els.runControls.hidden = true;
         if (r.domain) setReportTitle(r.domain);
         renderReport(r.report);
-        setReportMeta(r.created_at, r.report && r.report.phase);
+        setReportMeta(r.created_at, r.report && r.report.phase, regenerated ? { regenerated: true } : undefined);
+        if (regenerated && els.report) els.report.scrollIntoView({ behavior: 'smooth', block: 'start' });
         els.go.disabled = false;
         // The report-done notification is created server-side at this exact
         // moment (same step as the email) — refresh the bell now instead of
