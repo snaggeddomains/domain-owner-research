@@ -20,7 +20,16 @@ export async function runAgent({ system, history, userPrompt, toolSpecs, env, ma
 
   const trace = [...seedTrace];
 
+  // Soft time budget — stop starting new research steps before the function's
+  // Vercel maxDuration so a heavy run forces its final write-up instead of being
+  // hard-killed mid-step (see the Anthropic adapter for the full rationale).
+  const SOFT_MS = Number(env.AGENT_SOFT_DEADLINE_MS || 190000);
+  const HARD_MS = Number(env.AGENT_HARD_DEADLINE_MS || 255000);
+  const startedAt = Date.now();
+  const elapsed = () => Date.now() - startedAt;
+
   for (let step = 0; step < maxSteps; step++) {
+    if (elapsed() > SOFT_MS) break;
     const completion = await client.chat.completions.create({
       model,
       messages,
@@ -64,11 +73,34 @@ export async function runAgent({ system, history, userPrompt, toolSpecs, env, ma
     messages.push(...results);
   }
 
-  // Hit the step ceiling — force a final summary from what we have.
-  const finalize = await client.chat.completions.create({
-    model,
-    messages: [...messages, { role: 'user', content: 'Stop researching and write your final report now from the evidence gathered.' }],
-    temperature: 0.2,
-  });
-  return { report: finalize.choices[0].message.content, trace };
+  // Hit the step ceiling OR the soft deadline — force a final summary from what
+  // we have. A request timeout caps the call to the remaining budget; on failure
+  // salvage any answer the model already wrote so the run still saves a report.
+  const finalizeTimeout = Math.min(120000, Math.max(20000, HARD_MS - elapsed()));
+  try {
+    const finalize = await client.chat.completions.create(
+      {
+        model,
+        messages: [...messages, { role: 'user', content: 'Stop researching and write your final report now from the evidence gathered.' }],
+        temperature: 0.2,
+      },
+      { timeout: finalizeTimeout, maxRetries: 0 },
+    );
+    const text = finalize.choices[0].message.content;
+    if (text && text.trim()) return { report: text, trace };
+    return { report: salvageText(messages), trace };
+  } catch (err) {
+    console.error('[openai runAgent] finalize failed:', err && err.message);
+    return { report: salvageText(messages), trace };
+  }
+}
+
+// Last-resort report when the finalize call can't complete: the most recent
+// assistant text written during the loop.
+function salvageText(messages) {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const m = messages[i];
+    if (m.role === 'assistant' && typeof m.content === 'string' && m.content.trim()) return m.content.trim();
+  }
+  return 'Research did not finish in time to compose a full report. The evidence gathered is in the trace below — re-run to complete it.';
 }
