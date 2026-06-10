@@ -47,6 +47,11 @@ const PAID = new Set([
   'namepros_search',
 ]);
 
+// Paid sources we nonetheless run on the FREE pre-flight pass (still cost-metered
+// via PAID, just not deep-only). DomainIQ's historical-WHOIS is valuable enough on
+// the first pass to justify the per-search credit.
+const FREE_PAID = new Set(['domainiq_lookup']);
+
 // Recap grouping — each source's category, used to break the "Sources checked"
 // panel into labeled sections.
 const CATEGORY = {
@@ -99,7 +104,7 @@ function isEnabled(source, env) {
 // Returns a provider-neutral spec; each LLM adapter converts it to that
 // provider's tool format.
 export function getToolSpecs(env, { tier = 'all' } = {}) {
-  return ALL.filter((s) => isEnabled(s, env) && (tier === 'all' || !PAID.has(s.name))).map((s) => ({
+  return ALL.filter((s) => isEnabled(s, env) && (tier === 'all' || !PAID.has(s.name) || FREE_PAID.has(s.name))).map((s) => ({
     name: s.name,
     description: s.description,
     parameters: s.parameters,

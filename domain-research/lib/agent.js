@@ -111,8 +111,11 @@ export async function chatTurn({ domain, reportMarkdown, history = [], message, 
 function deriveTooling(env, tier) {
   const toolSpecs = getToolSpecs(env, { tier });
   const available = new Set(toolSpecs.map((t) => t.name));
-  const preRun = ['masterlist_lookup', 'universe_ownership'];
-  if (tier === 'all') preRun.push('whoisxml_lookup', 'domainiq_lookup', 'bigdomaindata_lookup', 'whoxy_history');
+  // DomainIQ runs on BOTH passes now (moved to the free pre-flight) — its
+  // historical-WHOIS eras anchor the report early. The other premium history
+  // sources stay deep-only.
+  const preRun = ['masterlist_lookup', 'universe_ownership', 'domainiq_lookup'];
+  if (tier === 'all') preRun.push('whoisxml_lookup', 'bigdomaindata_lookup', 'whoxy_history');
   const toRun = preRun.filter((n) => available.has(n));
   const agentToolSpecs = toolSpecs.filter((t) => !toRun.includes(t.name));
   return { toolSpecs, agentToolSpecs, toRun };
