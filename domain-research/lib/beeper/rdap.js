@@ -76,6 +76,14 @@ export async function rdapStatus(domain) {
   return { ok: false, code: null, available: null, statuses: [], expiration: null, source: null };
 }
 
+// Is the domain IN the deletion/expiry pipeline (heading toward a possible drop)?
+// While true, it's worth watching; once it leaves this set to a clean registered
+// state, it renewed and won't drop — so the watch can stop.
+const LIFECYCLE = /(pending delete|pendingdelete|redemption|pending restore|pendingrestore|auto.?renew|renew period|renewperiod)/i;
+export function inDeletionLifecycle(statuses) {
+  return (statuses || []).some((s) => LIFECYCLE.test(String(s)));
+}
+
 // Human one-liner for alerts/UI from a status result.
 export function describeStatus(s) {
   if (!s || !s.ok) return 'status unavailable';

@@ -1,5 +1,5 @@
 import { activeWatches, updateWatch } from '../../lib/db/beeper.js';
-import { rdapStatus, describeStatus } from '../../lib/beeper/rdap.js';
+import { rdapStatus, describeStatus, inDeletionLifecycle } from '../../lib/beeper/rdap.js';
 import { getUser } from '../../lib/db/users.js';
 import { createNotification } from '../../lib/db/notifications.js';
 import { sendEmail, isEmailConfigured } from '../../lib/email.js';
@@ -13,10 +13,13 @@ export const config = { maxDuration: 60 };
 
 const statusKey = (available, statuses) => (available ? 'AVAILABLE' : (statuses || []).join('|'));
 
-async function notify(watch, s) {
+// kind: 'dropped' | 'resolved' | 'changed' | 'expired'
+async function notify(watch, s, kind) {
   const domain = watch.domain;
-  const headline = s.available
-    ? `${domain} just DROPPED — it's available now 🎯`
+  const headline =
+    kind === 'dropped' ? `${domain} just DROPPED — it's available now 🎯`
+    : kind === 'resolved' ? `${domain} renewed / re-registered — it's no longer heading to drop. Watch stopped.`
+    : kind === 'expired' ? `Stopped watching ${domain} after the max watch window. Re-add it if you still want alerts.`
     : `${domain} status changed → ${describeStatus(s)}`;
   // Bell notification (best-effort; table may be absent).
   try {
@@ -24,7 +27,10 @@ async function notify(watch, s) {
       await createNotification({
         user_id: watch.user_id, kind: 'beeper',
         title: headline,
-        body: s.available ? 'RDAP now returns NOT FOUND — go grab/backorder it.' : `New RDAP status: ${describeStatus(s)}`,
+        body: kind === 'dropped' ? 'RDAP now returns NOT FOUND — go grab/backorder it.'
+          : kind === 'resolved' ? 'It left the deletion lifecycle (renewed/registered).'
+          : kind === 'expired' ? 'Auto-stopped after the max watch window.'
+          : `New RDAP status: ${describeStatus(s)}`,
         link: `/research/beeper`,
       });
     }
@@ -37,7 +43,10 @@ async function notify(watch, s) {
         const text = `Beeper alert for ${domain}\n\n${headline}\n\nCurrent RDAP status: ${describeStatus(s)}${s.expiration ? `\nExpiration: ${s.expiration}` : ''}\n\nManage your watches: https://research.snagged.com/research/beeper`;
         await sendEmail({
           to: u.email,
-          subject: s.available ? `🎯 ${domain} dropped — available now` : `🔔 ${domain} status changed`,
+          subject: kind === 'dropped' ? `🎯 ${domain} dropped — available now`
+            : kind === 'resolved' ? `${domain} renewed — Beeper stopped`
+            : kind === 'expired' ? `Beeper stopped watching ${domain}`
+            : `🔔 ${domain} status changed`,
           text,
           html: `<p style="font-size:15px;font-weight:700">${headline}</p><p>Current RDAP status: <strong>${describeStatus(s)}</strong>${s.expiration ? `<br>Expiration: ${s.expiration}` : ''}</p><p><a href="https://research.snagged.com/research/beeper">Manage your watches</a></p>`,
         });
@@ -70,12 +79,23 @@ export default async function handler(req, res) {
         last_http: s.code,
         last_checked: new Date().toISOString(),
       };
+      let kind = null;
       if (hadBaseline && newKey !== prevKey) {
         changed++;
         patch.triggered_at = new Date().toISOString();
-        if (s.available) patch.status = 'dropped'; // terminal — stop polling a dropped name
-        await notify(w, s);
+        const wasInLifecycle = w.last_http === 404 ? false : inDeletionLifecycle(w.last_status || []);
+        const nowInLifecycle = s.available ? false : inDeletionLifecycle(s.statuses);
+        if (s.available) { patch.status = 'dropped'; kind = 'dropped'; }            // dropped → stop
+        else if (wasInLifecycle && !nowInLifecycle) { patch.status = 'resolved'; kind = 'resolved'; } // renewed → stop
+        else kind = 'changed';                                                       // still in pipeline → keep watching
       }
+      // Safety cap — never poll a watch forever (tunable via BEEPER_MAX_WATCH_DAYS).
+      const capDays = Number(process.env.BEEPER_MAX_WATCH_DAYS || 60);
+      if (!patch.status && w.created_at && Date.now() - Date.parse(w.created_at) > capDays * 86400000) {
+        patch.status = 'expired';
+        if (!kind) kind = 'expired';
+      }
+      if (kind) await notify(w, s, kind);
       await updateWatch(w.id, patch);
     }
   }

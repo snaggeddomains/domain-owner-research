@@ -2643,6 +2643,8 @@ async function loadBeeper() {
 }
 function beeperStateLabel(w) {
   if (w.status === 'dropped' || w.last_http === 404) return '🎯 AVAILABLE — dropped!';
+  if (w.status === 'resolved') return 'renewed / registered — watch stopped';
+  if (w.status === 'expired') return 'auto-stopped (max watch window)';
   const s = Array.isArray(w.last_status) ? w.last_status : [];
   if (s.length) return s.join(', ');
   if (w.last_checked) return 'registered';
