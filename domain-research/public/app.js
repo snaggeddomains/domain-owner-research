@@ -35,6 +35,7 @@ const els = {
   notifBtn: $('notif-btn'),
   refreshBtn: $('refresh-btn'),
   backBtn: $('back-btn'),
+  shareBtn: $('share-btn'),
   notifCount: $('notif-count'),
   notifMenu: $('notif-menu'),
   notifList: $('notif-list'),
@@ -1842,6 +1843,20 @@ els.refreshBtn?.addEventListener('click', () => {
 });
 // In-app back navigation (PWA has no browser back button).
 els.backBtn?.addEventListener('click', () => history.back());
+// Share — copy the current report's URL to the clipboard with a brief confirmation.
+els.shareBtn?.addEventListener('click', async () => {
+  const b = els.shareBtn;
+  try {
+    await navigator.clipboard.writeText(window.location.href);
+    b.classList.add('copied');
+    const prev = b.getAttribute('title');
+    b.setAttribute('title', 'Link copied!');
+    setTimeout(() => { b.classList.remove('copied'); b.setAttribute('title', prev || 'Share'); }, 1600);
+  } catch {
+    // Clipboard blocked — fall back to a prompt the user can copy from.
+    window.prompt('Copy this link to share the report:', window.location.href);
+  }
+});
 
 // "+ New report" on any collapsed tool header → back to that tool's entry.
 document.addEventListener('click', (e) => {

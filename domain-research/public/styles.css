@@ -843,6 +843,7 @@ body.modal-open { overflow: hidden; }
 .notif-bell:hover { background:var(--cream-2); color:var(--navy); }
 .topbar-refresh { width:34px; height:34px; border-radius:50%; border:0; background:transparent; color:var(--navy-2); cursor:pointer; display:inline-flex; align-items:center; justify-content:center; padding:0; }
 .topbar-refresh:hover { background:var(--cream-2); color:var(--navy); }
+.topbar-refresh.copied { color:#176a2b; background:#d1f0d6; }
 .topbar-refresh.spinning svg { animation: tb-spin .7s linear infinite; }
 @keyframes tb-spin { to { transform: rotate(360deg); } }
 .notif-count { position:absolute; top:-1px; right:-1px; min-width:16px; height:16px; padding:0 4px; border-radius:999px; background:#d64545; color:#fff; font-size:10px; font-weight:800; line-height:16px; text-align:center; box-sizing:border-box; }
