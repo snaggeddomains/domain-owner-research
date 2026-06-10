@@ -160,8 +160,15 @@ export default async function handler(req, res) {
   // synthesis still uses the SYSTEM_PROMPT + tools + LLM budget.
   if (body.regenerate_from_chat) {
     const mode = body.regenerate_from_chat === 'deep' ? 'deep' : 'synth';
-    if (_userForPerm && !userCanReportPhase(_userForPerm, 'deep')) {
-      res.status(403).json({ error: "You don't have access to regenerate reports — ask an admin to enable deep research." });
+    // Regenerating is part of Domain Owner research, not a separate privilege:
+    // the fast "from chat" (synth) re-synthesis rides base domain_owner access.
+    // Only the paid "deep re-research" (same cost class as a fresh deep run)
+    // keeps the deep-report permission.
+    const needPhase = mode === 'deep' ? 'deep' : 'shallow';
+    if (_userForPerm && !userCanReportPhase(_userForPerm, needPhase)) {
+      res.status(403).json({ error: mode === 'deep'
+        ? "You don't have access to deep re-research — ask an admin to enable deep research."
+        : "You don't have access to Domain Owner research — ask an admin to enable it." });
       return;
     }
     const run = await getRun(body.id);
@@ -174,11 +181,14 @@ export default async function handler(req, res) {
       return;
     }
     const phase = mode === 'deep' ? 'regenerate-deep' : 'regenerate-synth';
+    // A synth regenerate by a user WITHOUT deep access runs at the FREE tier — so
+    // "anyone with Domain Owner can regenerate" never quietly spends paid credits.
+    const tierOverride = (mode === 'synth' && !(_userForPerm && userCanReportPhase(_userForPerm, 'deep'))) ? 'free' : undefined;
     await setRunStatus(run.id, 'queued', 'queued');
     try {
       await inngest.send({
         name: RUN_REQUESTED,
-        data: { runId: run.id, domain: run.domain, question: run.question || '', phase },
+        data: { runId: run.id, domain: run.domain, question: run.question || '', phase, ...(tierOverride ? { tier: tierOverride } : {}) },
       });
     } catch (e) {
       await failRun(run.id, `Failed to enqueue regeneration: ${e?.message || e}`);

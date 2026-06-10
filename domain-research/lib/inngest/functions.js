@@ -236,12 +236,14 @@ export const runResearch = inngest.createFunction(
   },
   { event: RUN_REQUESTED },
   async ({ event, step }) => {
-    const { runId, domain, question, phase = 'shallow' } = event.data;
+    const { runId, domain, question, phase = 'shallow', tier: tierOverride } = event.data;
     const deep = phase === 'deep';
     const isRegenSynth = phase === 'regenerate-synth';
     const isRegenDeep = phase === 'regenerate-deep';
     const isRegen = isRegenSynth || isRegenDeep;
-    const tier = (deep || isRegen) ? 'all' : 'free';
+    // `tier` may be overridden by the caller — a synth regenerate by a non-deep
+    // user runs at the FREE tier so it never spends paid credits.
+    const tier = tierOverride || ((deep || isRegen) ? 'all' : 'free');
 
     await step.run('mark-running', () =>
       setRunStatus(runId, 'running', isRegen ? 'regenerating' : (deep ? 'deepening' : 'gathering')),

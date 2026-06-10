@@ -1579,6 +1579,9 @@ function gateReportPhaseUI(user) {
   // but pre-set the disabled state so any in-flight render is consistent.
   if (els.deepenTopBtn) els.deepenTopBtn.disabled = !canDeep;
   if (els.deepenBtn) els.deepenBtn.disabled = !canDeep;
+  // The fast "From chat" regenerate rides base domain_owner access (any user with
+  // a report can regenerate); only the paid "Deep re-research" needs deep.
+  if (els.chatRegenDeep) els.chatRegenDeep.hidden = !canDeep;
   // If the user has neither phase, lock the search submit + message it.
   if (els.go) els.go.disabled = !canShallow && !canDeep;
   if (els.domain && !canShallow && !canDeep) {
