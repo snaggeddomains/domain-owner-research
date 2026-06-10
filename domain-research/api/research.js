@@ -36,8 +36,11 @@ export default async function handler(req, res) {
   // ── List past runs (Projects view) ─────────────────────────────────────────
   if (req.method === 'GET' && req.query.list !== undefined) {
     const q = typeof req.query.q === 'string' ? req.query.q.slice(0, 200) : '';
-    // Show completed runs plus any actively-researching ones (skip transient queued).
-    const runs = await listRuns({ q, limit: 100, statuses: ['done', 'running'] });
+    // Show completed runs plus any actively-researching ones (skip transient
+    // queued). Also surface errored runs that DID save a report — a deep pass
+    // that timed out still leaves a usable free pre-flight report; without this
+    // they'd vanish from Recent even though the report opens fine.
+    const runs = await listRuns({ q, limit: 100, statuses: ['done', 'running'], reportStatuses: ['error'] });
     res.status(200).json({ runs });
     return;
   }
@@ -235,7 +238,7 @@ export default async function handler(req, res) {
   // "Researched X ago · Refresh" affordance to spend credits on demand.
   const force = body.force === true || body.force === 'true';
   if (!force) {
-    const recents = await listRuns({ q: domain, limit: 10, statuses: ['done'] });
+    const recents = await listRuns({ q: domain, limit: 10, statuses: ['done'], reportStatuses: ['error'] });
     const match = recents.find((r) => String(r.domain).toLowerCase() === domain.toLowerCase());
     if (match) {
       res.status(200).json({ run_id: match.id, domain, existing: true, created_at: match.created_at });

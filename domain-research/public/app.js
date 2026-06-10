@@ -2392,9 +2392,15 @@ async function run({ domain, deep, force }) {
       applyHash({ id: data.run_id, domain: r.domain, created_at: r.created_at });
       setStatus('');
       if (r.domain) setReportTitle(r.domain);
-      renderReport(r.report);
-      setReportMeta(r.created_at, r.report && r.report.phase);
+      // Set currentRunId BEFORE renderReport — it gates the report-chat (and the
+      // outreach launcher) on currentRunId, so rendering first would hide the chat.
       currentRunId = data.run_id;
+      renderReport(r.report);
+      // A reused run can be an errored deep pass that still saved a free
+      // pre-flight — mark it incomplete (and offer re-deepen) instead of letting
+      // the partial report look complete, mirroring openProject().
+      const deepIncomplete = r.status === 'error' && r.report && r.report.phase !== 'deep';
+      setReportMeta(r.created_at, r.report && r.report.phase, deepIncomplete ? { deepIncomplete: true } : undefined);
       els.go.disabled = false;
       return;
     }

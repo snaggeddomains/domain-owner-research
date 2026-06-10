@@ -18,13 +18,23 @@ export async function getRun(id) {
 
 // Lightweight list for the Projects view (no heavy report payload). Optional
 // case-insensitive domain filter.
-export async function listRuns({ q = '', limit = 100, statuses = null } = {}) {
+//
+// `statuses` are matched unconditionally. `reportStatuses` are matched ONLY when
+// a report exists — this is how an errored deep pass that nonetheless saved a
+// free pre-flight report (deep-pass timeout) still shows up in Recent and stays
+// reusable, instead of silently disappearing.
+export async function listRuns({ q = '', limit = 100, statuses = null, reportStatuses = null } = {}) {
   let query = getDb()
     .from(RUNS)
     .select('id,domain,status,stage,created_at,finished_at')
     .order('created_at', { ascending: false })
     .limit(limit);
-  if (statuses && statuses.length) query = query.in('status', statuses);
+  const ors = [];
+  if (statuses && statuses.length) ors.push(...statuses.map((s) => `status.eq.${s}`));
+  if (reportStatuses && reportStatuses.length) {
+    for (const s of reportStatuses) ors.push(`and(status.eq.${s},report.not.is.null)`);
+  }
+  if (ors.length) query = query.or(ors.join(','));
   if (q) query = query.ilike('domain', `%${q}%`);
   const { data, error } = await query;
   if (error) throw new Error(`listRuns: ${error.message}`);
