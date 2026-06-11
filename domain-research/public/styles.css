@@ -1532,3 +1532,21 @@ a.sr-ag-co-link:hover { border-color: var(--coral); color: var(--coral-deep); ba
 .beeper-row.beeper-dropped .beeper-state { color:#176a2b; }
 .beeper-stop { margin-left:auto; padding:6px 12px; border:1.5px solid var(--line); border-radius:8px; background:transparent; color:var(--navy); cursor:pointer; font-size:.85rem; }
 .beeper-stop:hover { background:var(--cream-2); }
+
+/* ── Corporate Portfolios ──────────────────────────────────────────────────── */
+.cp-form { margin-top: 18px; }
+.cp-filter { margin-top: 14px; font-size: .9rem; }
+.cp-filter > summary { cursor: pointer; color: var(--navy-3); font-weight: 600; }
+.cp-filter-grid { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 12px; align-items: end; }
+.cp-field { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--navy-3); }
+.cp-field input { padding: 7px 9px; border: 1.5px solid var(--line); border-radius: 8px; font-size: .9rem; }
+.cp-field input[type=number] { width: 90px; }
+.cp-check { display: flex; align-items: center; gap: 6px; font-size: .9rem; color: var(--navy); }
+.cp-warn { color: #9a6b00; font-weight: 600; font-size: .85rem; }
+.cp-table { width: 100%; border-collapse: collapse; font-size: .92rem; }
+.cp-table th { text-align: left; padding: 8px 10px; border-bottom: 2px solid var(--line); font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--navy-3); }
+.cp-table td { padding: 7px 10px; border-bottom: 1px solid var(--line); }
+.cp-table tr:hover td { background: var(--cream-2); }
+.cp-dom { font-weight: 600; font-variant-numeric: tabular-nums; }
+.cp-len { text-align: center; color: var(--navy-3); font-variant-numeric: tabular-nums; }
+.cp-reason { color: var(--navy-3); font-size: .85rem; }

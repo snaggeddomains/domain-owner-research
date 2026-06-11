@@ -1,4 +1,4 @@
-import { inngest, RUN_REQUESTED, CHAT_REQUESTED, RUN_CANCELLED, SALES_RESEARCH_REQUESTED, SALES_ANGLES_REQUESTED } from './client.js';
+import { inngest, RUN_REQUESTED, CHAT_REQUESTED, RUN_CANCELLED, SALES_RESEARCH_REQUESTED, SALES_ANGLES_REQUESTED, PORTFOLIO_REQUESTED } from './client.js';
 import { gather, critique, chatTurn } from '../agent.js';
 import { setRunStatus, saveRunReport, failRun, getRun } from '../db/runs.js';
 import { getChat, updateTurn } from '../db/chat.js';
@@ -17,6 +17,12 @@ import { resolveCandidates } from '../sales/resolve.js';
 import {
   setSalesProjectStatus, insertSalesCandidates, getSalesProject, listSalesCandidates,
 } from '../db/sales.js';
+import {
+  getPortfolioRun, setPortfolioRunStatus, insertPortfolioDomains,
+} from '../db/portfolio.js';
+import { reverseWhoisAll } from '../whoxy.js';
+import { selectPremium, wordsNeedingDictionary } from '../portfolio/premium.js';
+import { filterDictionaryWords } from '../db/dictionary.js';
 
 // Format the refine-chat history as a single corrections block the agent can
 // treat as authoritative. Only the user-assistant pairs that contain actual
@@ -483,4 +489,58 @@ export const runSalesAngles = inngest.createFunction(
   },
 );
 
-export const functions = [runResearch, runChat, runSalesResearch, runSalesAngles];
+// Corporate Portfolios — reverse-WHOIS pull of a company's registered domains,
+// filtered to "premium" names. Async because a large registrant paginates across
+// many Whoxy pages (0.5s apart), past the API function's 60s cap.
+export const runCorporatePortfolio = inngest.createFunction(
+  {
+    id: 'run-corporate-portfolio',
+    retries: 1,
+    onFailure: async ({ event, step }) => {
+      const runId = event?.data?.event?.data?.runId;
+      const message = String(event?.data?.error?.message || 'failed').slice(0, 500);
+      if (runId) await step.run('mark-failed', () => setPortfolioRunStatus(runId, 'failed', { error: message }));
+    },
+  },
+  { event: PORTFOLIO_REQUESTED },
+  async ({ event, step }) => {
+    const { runId } = event.data;
+    try {
+      const run = await step.run('load', () => getPortfolioRun(runId));
+      if (!run) return { runId, ok: false, reason: 'not found' };
+
+      // PULL — paginate the whole reverse-WHOIS result set (credit-capped).
+      await step.run('mark-pull', () => setPortfolioRunStatus(runId, 'running', { stage: 'pull' }));
+      const pull = await step.run('pull', () => reverseWhoisAll(
+        { [run.search_type]: run.query },
+        { env: process.env },
+      ));
+
+      // FILTER — keep premium names. 5+ char SLDs need a dictionary check; batch
+      // it in one DB pass against english_words, then classify purely.
+      await step.run('mark-filter', () => setPortfolioRunStatus(runId, 'running', { stage: 'filter' }));
+      const premium = await step.run('filter', async () => {
+        const filter = run.filter || undefined;
+        const need = wordsNeedingDictionary(pull.domains, filter);
+        const dict = need.length ? await filterDictionaryWords(need) : new Set();
+        return selectPremium(pull.domains, filter, (sld) => dict.has(sld));
+      });
+
+      await step.run('persist', () => insertPortfolioDomains(runId, premium));
+      await step.run('mark-done', () => setPortfolioRunStatus(runId, 'done', {
+        stage: 'done',
+        premium_count: premium.length,
+        total_results: pull.total_results,
+        credits_used: pull.credits_used,
+        capped: pull.capped,
+      }));
+      return { runId, ok: true, premium: premium.length, scanned: pull.total_results };
+    } catch (err) {
+      const message = String(err?.message || err);
+      await step.run('mark-error', () => setPortfolioRunStatus(runId, 'failed', { error: message }));
+      throw err;
+    }
+  },
+);
+
+export const functions = [runResearch, runChat, runSalesResearch, runSalesAngles, runCorporatePortfolio];

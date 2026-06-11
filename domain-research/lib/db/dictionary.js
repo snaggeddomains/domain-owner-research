@@ -26,6 +26,34 @@ export async function getDefinition(word) {
   }
 }
 
+// Batch existence check: given a list of candidate words, return the Set of
+// those that ARE in our english_words table. Read-only, chunked .in() lookups
+// on the primary key. Fail-open — if the naming DB isn't configured or the
+// query errors, return an empty Set (caller treats everything as "not a word",
+// matching the script's behaviour when NLTK is unavailable).
+export async function filterDictionaryWords(words) {
+  const cleaned = [...new Set(
+    (words || [])
+      .map((w) => String(w || '').toLowerCase().trim())
+      .filter((w) => /^[a-z]+$/.test(w)),
+  )];
+  const found = new Set();
+  if (!cleaned.length || !isNamingDbConfigured()) return found;
+  const db = getNamingDb();
+  const CHUNK = 500;
+  try {
+    for (let i = 0; i < cleaned.length; i += CHUNK) {
+      const chunk = cleaned.slice(i, i + CHUNK);
+      const { data, error } = await db.from('english_words').select('word').in('word', chunk);
+      if (error) return found; // fail-open with whatever we have
+      for (const r of data || []) found.add(r.word);
+    }
+  } catch {
+    return found;
+  }
+  return found;
+}
+
 // Extract the SLD (the part before the first dot) from a domain string.
 // Lowercased, ASCII-only validation — anything weird returns null so the
 // caller falls through to "no definition available" without an error.

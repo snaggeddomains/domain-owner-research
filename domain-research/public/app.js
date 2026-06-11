@@ -202,6 +202,7 @@ const els = {
   navDbsearch: $('nav-dbsearch'),
   navNameserver: $('nav-nameserver'),
   navSales: $('nav-sales'),
+  navPortfolio: $('nav-portfolio'),
   navBeeper: $('nav-beeper'),
   beeperForm: $('beeper-form'),
   beeperDomain: $('beeper-domain'),
@@ -216,6 +217,12 @@ const els = {
   srRecent: $('sr-recent'), srRecentList: $('sr-recent-list'), srRecentAll: $('sr-recent-all'),
   srProjectsSearch: $('sr-projects-search'), srProjectsList: $('sr-projects-list'),
   srEntry: $('sr-entry'), srReshead: $('sr-reshead'), srResheadSeed: $('sr-reshead-seed'), srNew: $('sr-new'),
+  cpForm: $('cp-form'), cpQuery: $('cp-query'), cpGo: $('cp-go'), cpError: $('cp-error'),
+  cpTlds: $('cp-tlds'), cpMin: $('cp-min'), cpMax: $('cp-max'), cpDict: $('cp-dict'), cpHyphens: $('cp-hyphens'),
+  cpEntry: $('cp-entry'), cpReshead: $('cp-reshead'), cpResheadQ: $('cp-reshead-q'), cpNew: $('cp-new'),
+  cpStatus: $('cp-status'), cpResults: $('cp-results'), cpSummary: $('cp-summary'), cpTable: $('cp-table'), cpCsv: $('cp-csv'),
+  cpRecent: $('cp-recent'), cpRecentList: $('cp-recent-list'), cpRecentAll: $('cp-recent-all'),
+  cpRunsSearch: $('cp-runs-search'), cpRunsList: $('cp-runs-list'),
   nsModeToggle: $('ns-modetoggle'), nsMatchToggle: $('ns-matchtoggle'),
   nsDomainForm: $('ns-domain-form'), nsDomain: $('ns-domain'),
   nsNsForm: $('ns-ns-form'), nsNs: $('ns-ns'), nsTld: $('ns-tld'),
@@ -447,7 +454,7 @@ function clearHash() {
 // the SPA): Domain DB Screen at /dbscreen, DB Search at /dbsearch.
 const VANITY_TOOLS = ['dbscreen', 'dbsearch'];
 function currentToolRoute() {
-  let m = location.pathname.match(/^\/research\/(trademark|appraisal|naming|dbscreen|dbsearch|nameserver|sales|beeper|admin)(?:\/(.+?))?\/?$/);
+  let m = location.pathname.match(/^\/research\/(trademark|appraisal|naming|dbscreen|dbsearch|nameserver|sales|portfolio|beeper|admin)(?:\/(.+?))?\/?$/);
   if (!m) m = location.pathname.match(/^\/(dbscreen|dbsearch)(?:\/(.+?))?\/?$/);
   if (!m) return null;
   return { tool: m[1], slug: m[2] ? decodeURIComponent(m[2]) : '' };
@@ -470,6 +477,7 @@ const TOOL_PERMISSION = {
   dbsearch: 'dbsearch',
   nameserver: 'nameserver',
   beeper: 'beeper',
+  portfolio: 'portfolio',
 };
 // Collapse a tool's hero+search into the compact "<seed> <label>" header once a
 // result is showing (CSS .report-open); restore the entry when off.
@@ -563,6 +571,18 @@ function route() {
     showView('sales');
     if (tr.slug) openSalesProject(tr.slug);
     else resetSalesView();
+    return;
+  }
+  if (tr && tr.tool === 'portfolio') {
+    if (tr.slug === 'all') {
+      showView('portfolio-runs');
+      loadPortfolioRuns('');
+      if (els.cpRunsSearch) els.cpRunsSearch.value = '';
+      return;
+    }
+    showView('portfolio');
+    if (tr.slug) openPortfolioRun(tr.slug);
+    else resetPortfolioView();
     return;
   }
   if (tr && tr.tool === 'admin') {
@@ -1668,6 +1688,7 @@ function gateNavByPermissions(user) {
   if (els.navNameserver) els.navNameserver.hidden = !can('nameserver');
   if (els.navBeeper) els.navBeeper.hidden = !can('beeper');
   if (els.navSales) els.navSales.hidden = !can('sales');
+  if (els.navPortfolio) els.navPortfolio.hidden = !can('portfolio');
   // "Suggest a Strategy" — anyone with Domain Owner Research access can submit a
   // playbook strategy (a super admin approves it). Lives on the Domain Owner page
   // + bottom of every report (inside #view-research), so it's scoped to that tool.
@@ -2668,6 +2689,8 @@ const VIEWS = {
   beeper: { view: 'view-beeper', nav: 'nav-beeper' },
   sales: { view: 'view-sales', nav: 'nav-sales' },
   'sales-projects': { view: 'view-sales-projects', nav: 'nav-sales' },
+  portfolio: { view: 'view-portfolio', nav: 'nav-portfolio' },
+  'portfolio-runs': { view: 'view-portfolio-runs', nav: 'nav-portfolio' },
   admin: { view: 'view-admin', nav: 'nav-admin' },
 };
 function showView(name) {
@@ -5813,6 +5836,225 @@ els.srTable?.addEventListener('click', (e) => {
 els.srProjectsSearch?.addEventListener('input', () => {
   clearTimeout(salesProjectsTimer);
   salesProjectsTimer = setTimeout(() => loadSalesProjects(els.srProjectsSearch.value.trim()), 200);
+});
+
+// ── Corporate Portfolios ────────────────────────────────────────────────────
+// Reverse-WHOIS a company (or registrant email) → premium domains. Create kicks
+// off an async Inngest pull; we poll the run until done, then render the table.
+let cpRunId = null;
+let cpPollTimer = null;
+let cpRunsTimer = null;
+function clearCpPoll() { if (cpPollTimer) { clearInterval(cpPollTimer); cpPollTimer = null; } }
+function setCpStatus(msg, isErr = false) {
+  if (!els.cpStatus) return;
+  els.cpStatus.hidden = !msg;
+  els.cpStatus.textContent = msg || '';
+  els.cpStatus.classList.toggle('error', !!isErr);
+}
+function setCpMode(mode, q = '') {
+  const view = document.getElementById('view-portfolio');
+  if (view) view.classList.toggle('report-open', mode === 'results');
+  if (els.cpEntry) els.cpEntry.hidden = mode === 'results';
+  if (els.cpReshead) els.cpReshead.hidden = mode !== 'results';
+  if (mode === 'results' && els.cpResheadQ) els.cpResheadQ.textContent = q || '';
+}
+function resetPortfolioView() {
+  clearCpPoll();
+  cpRunId = null;
+  if (els.cpQuery) els.cpQuery.value = '';
+  if (els.cpError) els.cpError.hidden = true;
+  if (els.cpResults) els.cpResults.hidden = true;
+  if (els.cpTable) els.cpTable.innerHTML = '';
+  if (els.cpCsv) els.cpCsv.disabled = true;
+  setCpStatus('');
+  setCpMode('entry');
+  loadPortfolioRecent();
+}
+
+// Read the premium-filter knobs into the API's filter shape (or undefined for
+// the defaults, so the server applies DEFAULT_FILTER).
+function cpReadFilter() {
+  const tlds = String(els.cpTlds?.value || '').split(',').map((t) => t.trim().replace(/^\./, '')).filter(Boolean);
+  return {
+    tlds,
+    minShort: Number(els.cpMin?.value) || 2,
+    maxShort: Number(els.cpMax?.value) || 4,
+    requireDictionary: !!(els.cpDict && els.cpDict.checked),
+    allowHyphens: !!(els.cpHyphens && els.cpHyphens.checked),
+  };
+}
+
+function cpRecentRow(r) {
+  const when = r.created_at ? new Date(r.created_at).toLocaleString() : '';
+  const st = r.status === 'done' ? (r.premium_count != null ? ` · ${r.premium_count} premium` : '') : ` · ${escapeHtml(r.status || '')}`;
+  return `<li class="recent-run" data-id="${escapeHtml(r.id)}">`
+    + `<span class="recent-domain">${escapeHtml(r.query || '')}${st}</span>`
+    + `<span class="recent-when">${escapeHtml(when)}</span></li>`;
+}
+async function loadPortfolioRecent() {
+  if (!els.cpRecent) return;
+  try {
+    const res = await fetch('/research/api/portfolio?list=1&limit=5');
+    const data = await res.json().catch(() => ({}));
+    const runs = res.ok && Array.isArray(data.runs) ? data.runs : [];
+    els.cpRecent.hidden = runs.length === 0;
+    if (els.cpRecentList) els.cpRecentList.innerHTML = runs.slice(0, 5).map(cpRecentRow).join('');
+  } catch { els.cpRecent.hidden = true; }
+}
+async function loadPortfolioRuns(q = '') {
+  if (!els.cpRunsList) return;
+  els.cpRunsList.innerHTML = '<li class="muted">Loading…</li>';
+  try {
+    const res = await fetch(`/research/api/portfolio?list=1&q=${encodeURIComponent(q)}`);
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || `Failed (${res.status})`);
+    const runs = data.runs || [];
+    if (!runs.length) { els.cpRunsList.innerHTML = '<li class="muted">No portfolio pulls yet.</li>'; return; }
+    els.cpRunsList.innerHTML = runs.map((r) => {
+      const when = r.created_at ? new Date(r.created_at).toLocaleString() : '';
+      const running = r.status && r.status !== 'done';
+      const cnt = r.premium_count != null ? ` · ${r.premium_count} premium` : '';
+      const meta = running ? `${escapeHtml(r.status)}…` : `${escapeHtml(when)}${cnt}`;
+      return `<li class="project-group"><div class="project-group-title">${escapeHtml(r.query || '(unknown)')}</div>`
+        + `<ul class="project-runs"><li class="project-run${running ? ' active' : ''}" data-id="${escapeHtml(r.id)}">${meta}</li></ul></li>`;
+    }).join('');
+  } catch (e) {
+    els.cpRunsList.innerHTML = `<li class="muted">${escapeHtml(String(e.message || e))}</li>`;
+  }
+}
+
+async function portfolioCreate(query, filter, tries = 3) {
+  // Email vs company: an '@' means a registrant email (the precise match).
+  const body = { action: 'create', filter };
+  if (query.includes('@')) body.email = query; else body.company = query;
+  let last;
+  for (let a = 0; a < tries; a++) {
+    const res = await fetch('/research/api/portfolio', {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (res.ok) return data;
+    last = new Error(data.error || `Failed (${res.status})`);
+    if (res.status >= 500 && a < tries - 1) { await new Promise((r) => setTimeout(r, 1500 * (a + 1))); continue; }
+    throw last;
+  }
+  throw last;
+}
+
+function openPortfolioRun(id) {
+  clearCpPoll();
+  cpRunId = id;
+  if (els.cpGo) els.cpGo.disabled = true;
+  setCpMode('results', '');
+  setCpStatus('Pulling the portfolio from reverse-WHOIS…');
+  if (els.cpResults) els.cpResults.hidden = true;
+  let pollErrors = 0;
+  const poll = async () => {
+    try {
+      const res = await fetch(`/research/api/portfolio?id=${encodeURIComponent(id)}`);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        if (res.status >= 500 && ++pollErrors < 8) { setCpStatus('Reconnecting…'); return; }
+        throw new Error(data.error || `Poll failed (${res.status})`);
+      }
+      pollErrors = 0;
+      const run = data.run || {};
+      if (run.query && els.cpResheadQ) els.cpResheadQ.textContent = run.query;
+      if (run.status === 'done') {
+        clearCpPoll();
+        if (els.cpGo) els.cpGo.disabled = false;
+        renderPortfolio(data);
+      } else if (run.status === 'failed') {
+        clearCpPoll();
+        if (els.cpGo) els.cpGo.disabled = false;
+        setCpStatus(run.error || 'Pull failed', true);
+      } else {
+        setCpStatus(`Working… (${run.stage || run.status})`);
+      }
+    } catch (err) {
+      if (++pollErrors < 8) { setCpStatus('Reconnecting…'); return; }
+      clearCpPoll();
+      if (els.cpGo) els.cpGo.disabled = false;
+      setCpStatus(String(err.message || err), true);
+    }
+  };
+  poll();
+  cpPollTimer = setInterval(poll, 2500);
+}
+
+function renderPortfolio(data) {
+  const run = data.run || {};
+  const domains = data.domains || [];
+  setCpStatus('');
+  setCpMode('results', run.query || '');
+  if (els.cpResults) els.cpResults.hidden = false;
+  if (els.cpCsv) els.cpCsv.disabled = domains.length === 0;
+  els.cpCsv && (els.cpCsv.dataset.runId = run.id || '');
+  const capped = run.capped ? ' <span class="cp-warn">(page-capped — increase the cap to pull the rest)</span>' : '';
+  if (els.cpSummary) {
+    els.cpSummary.innerHTML = `<strong>${domains.length.toLocaleString()}</strong> premium of `
+      + `<strong>${Number(run.total_results || 0).toLocaleString()}</strong> registered`
+      + (run.credits_used ? ` · ${run.credits_used} credits` : '') + capped;
+  }
+  if (!domains.length) {
+    els.cpTable.innerHTML = '<p class="muted">No premium domains matched the filter. Loosen the filter (e.g. add TLDs, turn off the dictionary requirement) and try again.</p>';
+    return;
+  }
+  const rows = domains.map((d) => `<tr>`
+    + `<td class="cp-dom">${escapeHtml(d.domain)}</td>`
+    + `<td class="cp-len">${d.sld_length ?? ''}</td>`
+    + `<td class="cp-reason">${escapeHtml(d.premium_reason || '')}</td>`
+    + `<td>${escapeHtml(d.created || '')}</td>`
+    + `<td>${escapeHtml(d.registrar || '')}</td></tr>`).join('');
+  els.cpTable.innerHTML = `<table class="cp-table"><thead><tr>`
+    + `<th>Domain</th><th>Len</th><th>Why</th><th>Registered</th><th>Registrar</th>`
+    + `</tr></thead><tbody>${rows}</tbody></table>`;
+}
+
+els.cpForm?.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const query = String(els.cpQuery?.value || '').trim();
+  if (!query) return;
+  if (els.cpError) els.cpError.hidden = true;
+  if (els.cpGo) els.cpGo.disabled = true;
+  setCpMode('results', query);
+  setCpStatus('Starting the portfolio pull…');
+  if (els.cpResults) els.cpResults.hidden = true;
+  try {
+    const data = await portfolioCreate(query, cpReadFilter());
+    setToolUrl('portfolio', data.run_id);
+    openPortfolioRun(data.run_id);
+  } catch (err) {
+    setCpStatus(String(err.message || err), true);
+    if (els.cpGo) els.cpGo.disabled = false;
+  }
+});
+els.cpCsv?.addEventListener('click', () => {
+  const id = els.cpCsv.dataset.runId;
+  if (id) window.location.href = `/research/api/portfolio?id=${encodeURIComponent(id)}&format=csv`;
+});
+function openPortfolioFromList(li) {
+  if (!li || !li.dataset.id) return;
+  history.pushState(null, '', `/research/portfolio/${encodeURIComponent(li.dataset.id)}`);
+  showView('portfolio');
+  openPortfolioRun(li.dataset.id);
+}
+els.cpRecentList?.addEventListener('click', (e) => openPortfolioFromList(e.target.closest('.recent-run')));
+els.cpRunsList?.addEventListener('click', (e) => openPortfolioFromList(e.target.closest('.project-run')));
+els.cpRecentAll?.addEventListener('click', (e) => {
+  if (newTabClick(e)) return;
+  e.preventDefault();
+  history.pushState(null, '', '/research/portfolio/all');
+  showView('portfolio-runs');
+  loadPortfolioRuns('');
+});
+els.cpNew?.addEventListener('click', () => {
+  history.pushState(null, '', '/research/portfolio');
+  resetPortfolioView();
+});
+els.cpRunsSearch?.addEventListener('input', () => {
+  clearTimeout(cpRunsTimer);
+  cpRunsTimer = setTimeout(() => loadPortfolioRuns(els.cpRunsSearch.value.trim()), 200);
 });
 
 els.nsRecent?.addEventListener('click', (e) => {

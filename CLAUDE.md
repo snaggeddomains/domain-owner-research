@@ -296,6 +296,54 @@ Find companies that would BUY a domain we're selling. UI at **research.snagged.c
 
 ---
 
+# Corporate Portfolios — reverse-WHOIS a company → its premium domains (2026-06-11)
+
+A Reports module that takes a **company name** (or registrant **email**) and pulls
+that entity's WHOLE registered-domain portfolio from Whoxy reverse-WHOIS, then
+skims off the **premium** names (short + dictionary-word .coms) for outreach.
+Productionizes Rob/Sam's `premium_portfolio_check_master.py` script (NLTK + a
+hardcoded API key) — same proven premium rules, but configurable, no bundled
+dictionary, no key in code. UI at **research.snagged.com/research/portfolio**,
+gated by the `research.portfolio` module permission.
+
+- **Shared Whoxy client** (`lib/whoxy.js`): `reverseWhoisAll({company|email|name|
+  keyword}, {env, maxPages, delayMs})` paginates EVERY page (the `whoxy_reverse`
+  source only grabs page 1), 0.5s apart, with a `maxPages` credit cap (default 100)
+  + a running credit count. Returns `{domains[], total_results, credits_used,
+  capped}`. One credit per page; ~$10/1000. Env: `WHOXY_API_KEY` (already set).
+- **Premium filter** (`lib/portfolio/premium.js`): `classifyPremium`/`selectPremium`
+  — pure, configurable (`DEFAULT_FILTER` = .com only, no hyphens, 2–4 char short OR
+  5+ char dictionary word — the script's exact rules). Knobs: `tlds[]` (blank=any),
+  `minShort`/`maxShort`, `requireDictionary`, `allowHyphens`. Dictionary check is a
+  caller-supplied predicate, NOT a bundled wordlist.
+- **Dictionary reuse** (`lib/db/dictionary.js`): new `filterDictionaryWords(slds[])`
+  — one batched `.in()` pass over the naming project's `english_words` table (the
+  same table the Appraisal definitions use). Fail-open → empty Set (then only shorts
+  qualify, mirroring the script's no-NLTK path). NO NLTK.
+- **Async pipeline** (`runCorporatePortfolio` Inngest fn, event `PORTFOLIO_REQUESTED`):
+  pull → filter (batch dict check + classify) → persist. Async because a big
+  registrant paginates past the 60s API cap.
+- **API** (`api/portfolio.js`, gated `research.portfolio`): `POST {action:'create',
+  company?|email?, filter?}` → `{run_id}`; `GET ?id=` → `{run, domains}`; `GET
+  ?id=&format=csv` → CSV; `GET ?list=1&q=` → recent runs. An `@` in the query ⇒
+  email (precise) else company.
+- **Storage** (`supabase/schema.sql`): `domain_research_portfolio_{runs,domains}`
+  (RLS auto-enabled by the trailing `domain_research_%` loop). **One-time migration:
+  run the two new tables on the research project before first use.**
+- **UI**: `/research/portfolio` tab (`#view-portfolio` + `#view-portfolio-runs`;
+  the `cp*` helpers in app.js; `.cp-*` styles). Company/email box, a collapsible
+  premium-filter `<details>`, polled run, results table, **Download CSV**, recent
+  + searchable past-runs list. Nav `#nav-portfolio` gated by `can('portfolio')`.
+- **Still TODO in snagged-admin (separate repo):** add catalog/module key
+  `research.portfolio` to `dashboard/lib/permissions.ts` (MODULES + CATALOG; stored
+  flat as `portfolio`) so it's grantable in the Users editor, and (optional) a hub
+  tile in `app/page.tsx`. Admins auto-pass without it.
+- **Future (Sam's full ask):** "pull emails for execs" — wire the existing
+  RocketReach enrichment (`lib/sales/enrich/contacts.js`) as an on-demand second
+  step per company. Not in v1 (portfolio-only).
+
+---
+
 ## Session handoff — 2026-06-02 (lessons notifications + permissions)
 
 - **Lesson submitted → notify curators.** `api/lessons.js` `notifyAdminsOfLesson`
