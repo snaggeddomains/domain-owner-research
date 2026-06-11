@@ -167,10 +167,15 @@ export default {
         if (ej) return (await pollJob(d, ej, h)) || { domain: d, status: 'pending', job_id: ej };
         if (existing) return { domain: d, cached: true, appraisal: unwrap(existing) };
       } catch (e) {
-        // A genuine "not found" means no cached appraisal yet → create one.
-        // Any other failure (e.g. their DB outage) must SURFACE, not be silently
-        // swallowed into a confusing empty result.
-        if (!/404|not found/i.test(String((e && e.message) || e))) throw e;
+        // Fall through to CREATE when there's no viewable cached appraisal:
+        //   • 404 / not found  → none exists yet
+        //   • 403 "Access denied. Purchase this appraisal to view details."
+        //     → one exists but is locked; Appraise.net's own response tells us to
+        //       POST /api/v1/appraisal (cost 1) to get a fresh, viewable result.
+        // Any OTHER failure (e.g. their DB outage) must SURFACE, not be swallowed
+        // into a confusing empty result.
+        const m = String((e && e.message) || e);
+        if (!/404|not found|403|access denied|purchase this appraisal/i.test(m)) throw e;
       }
     }
 
