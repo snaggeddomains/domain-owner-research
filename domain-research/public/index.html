@@ -187,6 +187,9 @@
         <!-- Sales Research — find companies that would buy a domain we're selling.
              Gated by the `sales` permission; shown by JS. -->
         <a id="nav-sales" class="nav-btn" href="/research/sales" hidden>Sales Research</a>
+        <!-- Corporate Portfolios — reverse-WHOIS a company to pull its premium
+             domains. Gated by the `portfolio` permission; shown by JS. -->
+        <a id="nav-portfolio" class="nav-btn" href="/research/portfolio" hidden>Corporate Portfolios</a>
         <!-- Lessons (playbook curation) is admin-only and now lives in the
              umbrella Admin module; reachable directly at /research/admin. -->
         <button id="nav-admin" class="nav-btn nav-btn-admin" type="button" hidden style="display:none">Lessons</button>
@@ -614,6 +617,67 @@
             <input id="sr-projects-search" class="projects-search" type="text" placeholder="Search by seed domain…" autocomplete="off" />
           </div>
           <ul id="sr-projects-list" class="projects-list"></ul>
+        </section>
+
+        <!-- Corporate Portfolios — reverse-WHOIS a company to its premium domains -->
+        <section id="view-portfolio" hidden>
+          <div id="cp-entry">
+            <div class="hero tool-hero">
+              <h1 class="hero-title">Corporate <span class="accent">Portfolios</span></h1>
+              <p class="hero-sub">Enter a company (or a registrant email) and I'll pull every domain registered to it from reverse-WHOIS, then skim off the premium names — short and dictionary-word .coms — ready for outreach.</p>
+            </div>
+            <form id="cp-form" class="search cp-form" autocomplete="off">
+              <input id="cp-query" type="text" placeholder="Company name, e.g. Red Bull GmbH — or a registrant email" />
+              <button id="cp-go" type="submit">Pull portfolio</button>
+            </form>
+            <!-- Premium filter knobs (collapsed defaults match the proven script). -->
+            <details id="cp-filter" class="cp-filter">
+              <summary>Premium filter</summary>
+              <div class="cp-filter-grid">
+                <label class="cp-field"><span>TLDs (comma-sep, blank = any)</span>
+                  <input id="cp-tlds" type="text" value="com" placeholder="com, io, net" /></label>
+                <label class="cp-field"><span>Short SLD min</span>
+                  <input id="cp-min" type="number" min="1" value="2" /></label>
+                <label class="cp-field"><span>Short SLD max</span>
+                  <input id="cp-max" type="number" min="1" value="4" /></label>
+                <label class="cp-check"><input id="cp-dict" type="checkbox" checked /> Keep 5+ char dictionary words</label>
+                <label class="cp-check"><input id="cp-hyphens" type="checkbox" /> Allow hyphens</label>
+              </div>
+            </details>
+            <div id="cp-recent" class="sr-recent" hidden>
+              <div class="sr-recent-head">Recent portfolios</div>
+              <ul id="cp-recent-list" class="sr-recent-list"></ul>
+              <a id="cp-recent-all" class="show-all" href="/research/portfolio/all">View all portfolios &rarr;</a>
+            </div>
+            <p id="cp-error" class="login-error" hidden></p>
+          </div>
+
+          <div id="cp-reshead" class="sr-reshead" hidden>
+            <h1 class="sr-reshead-title"><span id="cp-reshead-q"></span> <span class="accent">portfolio</span></h1>
+            <button id="cp-new" type="button" class="sr-new-btn">+ New pull</button>
+          </div>
+
+          <div id="cp-status" class="sr-status" hidden></div>
+
+          <section id="cp-results" class="sr-results" hidden>
+            <div class="sr-toolbar">
+              <div class="sr-summary" id="cp-summary"></div>
+              <div class="sr-actions">
+                <button id="cp-csv" type="button" class="sr-btn sr-btn-ghost" title="Download the full premium list as CSV.">Download CSV</button>
+              </div>
+            </div>
+            <div id="cp-table" class="sr-table-wrap"></div>
+          </section>
+        </section>
+
+        <!-- Past Corporate Portfolio runs — searchable list -->
+        <section id="view-portfolio-runs" hidden>
+          <h1 class="page-title">Past <span class="accent">Portfolios</span></h1>
+          <p class="sub">Open a previous pull to revisit its premium domains.</p>
+          <div class="sales-projects-controls">
+            <input id="cp-runs-search" class="projects-search" type="text" placeholder="Search by company / email…" autocomplete="off" />
+          </div>
+          <ul id="cp-runs-list" class="projects-list"></ul>
         </section>
 
         <!-- Naming exercise -->
