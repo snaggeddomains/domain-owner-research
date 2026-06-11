@@ -2654,7 +2654,7 @@ function renderBeeper(watches) {
   if (!watches.length) { els.beeperList.innerHTML = '<li class="muted">No domains watched yet — add one above.</li>'; return; }
   els.beeperList.innerHTML = watches.map((w) => {
     const dropped = w.status === 'dropped' || w.last_http === 404;
-    const when = w.last_checked ? `checked ${agoLabel(w.last_checked)}` : 'not checked yet';
+    const when = w.last_checked ? `last checked: ${new Date(w.last_checked).toLocaleString()}` : 'not checked yet';
     return `<li class="beeper-row${dropped ? ' beeper-dropped' : ''}">`
       + `<div><strong>${escapeHtml(w.domain)}</strong> — <span class="beeper-state">${escapeHtml(beeperStateLabel(w))}</span><div class="muted beeper-meta">${escapeHtml(when)}</div></div>`
       + `<button type="button" class="beeper-stop" data-id="${escapeHtml(w.id)}">Stop</button>`
