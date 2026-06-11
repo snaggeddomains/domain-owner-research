@@ -2076,6 +2076,10 @@ async function regenerateFromChat(mode) {
 }
 
 let regenInFlight = false;
+// "Skip to deep" should still show the FREE pre-flight report first (fast), then
+// auto-chain into the deep pass. Bound to a specific run id so it can only deepen
+// THAT run (never a different report the user happens to open later).
+let autoDeepenForRunId = null;
 function setRegenStatus(text, isErr = false) {
   if (!els.chatRegenStatus) return;
   if (!text) { els.chatRegenStatus.hidden = true; els.chatRegenStatus.textContent = ''; return; }
@@ -2143,6 +2147,13 @@ function startPolling(runId, label, opts = {}) {
         // moment (same step as the email) — refresh the bell now instead of
         // waiting up to a full poll interval.
         if (typeof loadNotifications === 'function') loadNotifications();
+        // "Skip to deep": the FREE pass for THIS run just finished and is on screen
+        // — now automatically chain into the deep pass (fast report first, then the
+        // paid enrichment replaces it).
+        if (autoDeepenForRunId === runId && r.report && r.report.phase !== 'deep') {
+          autoDeepenForRunId = null;
+          deepen();
+        }
       } else if (r.status === 'error') {
         clearTimers();
         if (els.runControls) els.runControls.hidden = true;
@@ -2430,11 +2441,19 @@ async function run({ domain, deep, force }) {
   enterResultMode(domain);
   // First action: check the marketplaces in parallel with the free LLM pass.
   runMarketStrip(domain);
-  setStatus(deep
+  // "Skip to deep" still runs the FREE pre-flight FIRST (fast result), then
+  // auto-deepens — as long as the user can run the free pass. Only a user without
+  // free access goes straight to deep.
+  const freeFirst = !!deep && canPhase(currentUser, 'shallow');
+  const effectiveDeep = !!deep && !freeFirst;
+  autoDeepenForRunId = null; // set once we have the run id (below)
+  setStatus(effectiveDeep
     ? `Researching ${domain} (deep, paid sources)… this can take a few minutes.`
-    : `Researching ${domain}… this can take a few minutes.`);
+    : freeFirst
+      ? `Researching ${domain} — free pre-flight first, then deep…`
+      : `Researching ${domain}… this can take a few minutes.`);
   try {
-    const data = await enqueue({ domain, deep, force });
+    const data = await enqueue({ domain, deep: effectiveDeep, force });
     // Server returned a cached completed run — open it directly instead of
     // re-running. Shows "Researched X ago · Refresh" so the user can re-run
     // on demand if the cached data is stale.
@@ -2453,12 +2472,16 @@ async function run({ domain, deep, force }) {
       const deepIncomplete = r.status === 'error' && r.report && r.report.phase !== 'deep';
       setReportMeta(r.created_at, r.report && r.report.phase, deepIncomplete ? { deepIncomplete: true } : undefined);
       els.go.disabled = false;
+      // Asked for deep but got a cached free report → deepen it now.
+      if (freeFirst && r.report && r.report.phase !== 'deep') deepen();
       return;
     }
     const runId = data.run_id;
     applyHash({ id: runId, domain, created_at: new Date().toISOString() });
-    startPolling(runId, deep ? `Researching ${domain} (deep)` : `Researching ${domain}`);
+    if (freeFirst) autoDeepenForRunId = runId; // deepen this run once its free report lands
+    startPolling(runId, effectiveDeep ? `Researching ${domain} (deep)` : `Researching ${domain}`);
   } catch (err) {
+    autoDeepenForRunId = null;
     setStatus(err.message || String(err), true);
     els.go.disabled = false;
   }
