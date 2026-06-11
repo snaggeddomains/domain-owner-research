@@ -255,6 +255,40 @@ function saveRecent(kind, key, data) {
   saveRecentLocal(kind, key, data);
   serverSaveTool(kind, key, data);
 }
+
+// Scrub a user-typed domain before it's submitted: strip the bits that aren't
+// part of the domain (scheme, leading www., wrapping quotes/whitespace, a port,
+// trailing slashes/dots). THROW a clear error (so the form can prompt re-entry)
+// when the input is ambiguous — a path/query/fragment or user@host means we
+// can't tell WHICH domain is meant (e.g. https://www.afternic.com/domain/
+// satiate.com → afternic.com or satiate.com?), and we must not silently guess.
+// With { requireValid:false } a bare word passes through (Trademark reduces it to
+// an SLD); otherwise the result must be a valid domain.
+function cleanDomainInput(raw, { requireValid = true } = {}) {
+  const shown = String(raw == null ? '' : raw).trim();
+  const bad = () => new Error(
+    `Couldn't read a domain from "${shown}". Enter just the domain — e.g. example.com (no https://, no www, no path).`,
+  );
+  let s = String(raw == null ? '' : raw)
+    .normalize('NFKC')
+    .replace(/[ ​-‏⁠﻿]/g, '') // nbsp + zero-width
+    .trim()
+    .replace(/^[<"'“”‘’\s]+|[>"'“”‘’\s]+$/g, '')        // wrapping quotes/brackets
+    .trim();
+  if (!s) throw new Error('Enter a domain — e.g. example.com');
+  s = s.replace(/^[a-z][a-z0-9+.-]*:\/\//i, '');        // scheme://
+  if (s.includes('@')) throw bad();                     // user@host / email
+  const cut = s.search(/[/?#]/);
+  let host = cut === -1 ? s : s.slice(0, cut);
+  const after = cut === -1 ? '' : s.slice(cut);
+  // A bare trailing slash is fine; a real path / query / fragment is ambiguous.
+  if (after && after.replace(/\/+$/, '') !== '') throw bad();
+  host = host.replace(/^www\./i, '').replace(/:\d+$/, '').replace(/\.+$/, '').toLowerCase();
+  if (!host || /[\s/]/.test(host)) throw bad();
+  if (requireValid &&
+      !/^(?=.{1,253}$)(?!-)[a-z0-9-]{1,63}(?<!-)(\.(?!-)[a-z0-9-]{1,63}(?<!-))+$/i.test(host)) throw bad();
+  return host;
+}
 const TOOL_PATH = { tm: 'trademark', ap: 'appraisal' };
 const TOOL_LABEL = { tm: 'trademark searches', ap: 'appraisals' };
 // Per-tool history view state (collapsed recent-5 vs expanded searchable list).
@@ -4054,8 +4088,11 @@ async function sendNamingChat(message) {
 // ── Wiring ──────────────────────────────────────────────────────────────────
 els.form?.addEventListener('submit', (e) => {
   e.preventDefault();
-  const domain = els.domain.value.trim();
-  if (!domain) return;
+  if (!els.domain.value.trim()) return;
+  let domain;
+  try { domain = cleanDomainInput(els.domain.value); }
+  catch (err) { setStatus(String(err.message || err)); return; }
+  els.domain.value = domain;
   // Choose phase against the user's permissions. The checkbox is the user's
   // explicit ask; otherwise default to shallow. When the user has ONLY deep
   // (admin disabled free reports), force deep so the server doesn't 403 them.
@@ -4411,8 +4448,11 @@ els.navDbscreen?.addEventListener('click', (e) => { if (newTabClick(e)) return; 
 els.navDbsearch?.addEventListener('click', (e) => { if (newTabClick(e)) return; e.preventDefault(); setToolUrl('dbsearch', ''); route(); });
 els.dbForm?.addEventListener('submit', (e) => {
   e.preventDefault();
-  const d = (els.dbDomain.value || '').trim();
-  if (!d) return;
+  if (!(els.dbDomain.value || '').trim()) return;
+  let d;
+  try { d = cleanDomainInput(els.dbDomain.value); }
+  catch (err) { setToolStatus(els.dbStatus, String(err.message || err), true); return; }
+  els.dbDomain.value = d;
   setToolUrl('dbscreen', d);
   runDbScreen(d);
 });
@@ -5135,8 +5175,11 @@ async function salesCreate(domain, tries = 3) {
 
 els.srForm?.addEventListener('submit', async (e) => {
   e.preventDefault();
-  const domain = (els.srDomain.value || '').trim().toLowerCase();
-  if (!domain) return;
+  if (!(els.srDomain.value || '').trim()) return;
+  let domain;
+  try { domain = cleanDomainInput(els.srDomain.value); }
+  catch (err) { setSalesStatus(String(err.message || err), true); return; }
+  els.srDomain.value = domain;
   els.srGo.disabled = true;
   setSalesStatus('Starting discovery…');
   if (els.srResults) els.srResults.hidden = true;
@@ -5794,8 +5837,11 @@ document.addEventListener('click', (e) => {
 });
 els.nsDomainForm?.addEventListener('submit', (e) => {
   e.preventDefault();
-  const d = (els.nsDomain.value || '').trim();
-  if (!d) return;
+  if (!(els.nsDomain.value || '').trim()) return;
+  let d;
+  try { d = cleanDomainInput(els.nsDomain.value); }
+  catch (err) { setToolStatus(els.nsStatus, String(err.message || err), true); return; }
+  els.nsDomain.value = d;
   setToolUrl('nameserver', d);
   runNsDomain(d);
 });
@@ -6028,8 +6074,25 @@ els.reportMeta?.addEventListener('click', (e) => {
   const deep = link.dataset.deep === 'true';
   run({ domain, deep, force: true });
 });
-els.tmForm?.addEventListener('submit', (e) => { e.preventDefault(); const q = els.tmQuery.value.trim(); if (q) runTrademark(q); });
-els.apForm?.addEventListener('submit', (e) => { e.preventDefault(); const v = els.apDomain.value.trim(); if (v) runAppraisal(v); });
+els.tmForm?.addEventListener('submit', (e) => {
+  e.preventDefault();
+  if (!els.tmQuery.value.trim()) return;
+  let q;
+  // Lenient: a bare brand word is valid for a trademark search, but a pasted URL
+  // with a path is still ambiguous → error.
+  try { q = cleanDomainInput(els.tmQuery.value, { requireValid: false }); }
+  catch (err) { setToolStatus(els.tmStatus, String(err.message || err), true); return; }
+  if (q) runTrademark(q);
+});
+els.apForm?.addEventListener('submit', (e) => {
+  e.preventDefault();
+  if (!els.apDomain.value.trim()) return;
+  let v;
+  try { v = cleanDomainInput(els.apDomain.value); }
+  catch (err) { setToolStatus(els.apStatus, String(err.message || err), true); return; }
+  els.apDomain.value = v;
+  runAppraisal(v);
+});
 els.namingGo?.addEventListener('click', runNaming);
 els.namingApply?.addEventListener('click', runNaming);
 

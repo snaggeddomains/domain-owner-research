@@ -12,7 +12,7 @@
 import { isAuthed, currentUser, userCan, moduleForSource } from '../lib/auth.js';
 import { runTool } from '../lib/sources/index.js';
 import { withCategory } from '../lib/db/usage.js';
-import { normalizeDomain } from '../lib/util.js';
+import { cleanDomainInput } from '../lib/util.js';
 import { saveToolLookup, listToolLookups, getToolLookup } from '../lib/db/tools.js';
 import { getDefinitionWithFallback, sldOf } from '../lib/db/dictionary.js';
 
@@ -39,7 +39,14 @@ async function handleRunTool(req, res, source) {
   const { source: _omit, ...rest } = req.query;
   const args = {};
   for (const [k, v] of Object.entries(rest)) args[k] = Array.isArray(v) ? v[0] : v;
-  if (args.domain) args.domain = normalizeDomain(args.domain);
+  if (args.domain) {
+    try {
+      args.domain = cleanDomainInput(args.domain);
+    } catch (e) {
+      res.status(400).json({ error: String((e && e.message) || e) });
+      return;
+    }
+  }
 
   // Tag cost to the module this tool belongs to (trademark_search → 'trademark',
   // appraise_lookup → 'appraisal', the rest → 'domain_owner').

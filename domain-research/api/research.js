@@ -1,5 +1,5 @@
 import { inngest, RUN_REQUESTED, RUN_CANCELLED } from '../lib/inngest/client.js';
-import { isValidDomain, normalizeDomain } from '../lib/util.js';
+import { cleanDomainInput } from '../lib/util.js';
 import { checkRateLimit, clientIp } from '../lib/ratelimit.js';
 import { isAuthed, currentUser, userCan, userCanReportPhase } from '../lib/auth.js';
 import { isDbConfigured } from '../lib/db/supabase.js';
@@ -226,9 +226,11 @@ export default async function handler(req, res) {
   }
 
   // ── New run (free pre-flight pass) ──────────────────────────────────────────
-  const domain = normalizeDomain(body.domain);
-  if (!isValidDomain(domain)) {
-    res.status(400).json({ error: 'Please provide a valid domain, e.g. example.com' });
+  let domain;
+  try {
+    domain = cleanDomainInput(body.domain);
+  } catch (e) {
+    res.status(400).json({ error: String((e && e.message) || e) });
     return;
   }
   const question = typeof body.question === 'string' ? body.question.slice(0, 1000) : '';

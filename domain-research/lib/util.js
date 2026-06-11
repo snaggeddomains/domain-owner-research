@@ -26,6 +26,35 @@ export function isValidDomain(domain) {
   );
 }
 
+// Strict, user-facing scrub for a submitted domain (server backstop to the same
+// client check). Like normalizeDomain it strips scheme / www / trailing junk, but
+// it THROWS on an AMBIGUOUS input — a path, query, fragment, or user@host — instead
+// of silently keeping the host. That stops a pasted marketplace URL like
+// https://www.afternic.com/domain/satiate.com from quietly resolving to the WRONG
+// domain (afternic.com). Returns a validated bare domain.
+export function cleanDomainInput(raw) {
+  const shown = String(raw == null ? '' : raw).trim();
+  const bad = () =>
+    new Error(`Couldn't read a domain from "${shown}". Enter just the domain — e.g. example.com (no https://, no path).`);
+  let s = String(raw == null ? '' : raw)
+    .normalize('NFKC')
+    .replace(/[\s ​-‏⁠﻿]/g, '')
+    .replace(/^["'<]+|[">']+$/g, '')
+    .replace(/^[a-z][a-z0-9+.-]*:\/\//i, ''); // scheme://
+  if (!s) throw new Error('Enter a domain — e.g. example.com');
+  if (s.includes('@')) throw bad(); // user@host / email
+  const cut = s.search(/[/?#]/);
+  const after = cut === -1 ? '' : s.slice(cut);
+  if (after && after.replace(/\/+$/, '') !== '') throw bad(); // real path/query/fragment
+  const host = (cut === -1 ? s : s.slice(0, cut))
+    .replace(/^www\./i, '')
+    .replace(/:\d+$/, '')
+    .replace(/\.+$/, '')
+    .toLowerCase();
+  if (!isValidDomain(host)) throw bad();
+  return host;
+}
+
 // fetch + JSON parse with a hard timeout, so one slow API can't hang the function.
 export async function fetchJson(url, opts = {}, timeoutMs = 12000) {
   const ctrl = new AbortController();
