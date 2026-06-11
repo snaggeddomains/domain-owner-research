@@ -27,6 +27,7 @@ import trademark from './trademark.js';
 import appraise from './appraise.js';
 import namebio from './namebio.js';
 import namepros from './namepros.js';
+import nsSiblings from './ns_siblings.js';
 import { recordUsage } from '../db/usage.js';
 
 // To add a new data source: create a module exporting { name, description,
@@ -34,7 +35,7 @@ import { recordUsage } from '../db/usage.js';
 const ALL = [
   rdap, whois, dns, wayback, livesite, marketplace, cluster, masterlist, universeOwnership, rocketreach, readurl, analytics,
   whoisxml, domainiq, bigdomaindata, reversewhois, reversens, reverseip, websearch, bravesearch, trademark, appraise,
-  rocketreachLookup, fullenrich, whoxyHistory, whoxyReverse, identify, namebio, namepros,
+  rocketreachLookup, fullenrich, whoxyHistory, whoxyReverse, identify, namebio, namepros, nsSiblings,
 ];
 
 // Paid sources spend external API credits. They are withheld from the free
@@ -70,6 +71,7 @@ const CATEGORY = {
   livesite_inspect: 'Live site',
   analytics_footprint: 'Live site',
   registration_cluster: 'Registration cluster',
+  ns_siblings: 'Registration cluster',
   marketplace_check: 'Marketplace',
   masterlist_lookup: 'Internal list',
   universe_ownership: 'Internal list',
