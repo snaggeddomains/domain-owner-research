@@ -1559,6 +1559,30 @@ a.sr-ag-co-link:hover { border-color: var(--coral); color: var(--coral-deep); ba
 .wi-src { font-size:.78rem; }
 .wi-avail { border-color:#2f7d4f; background:#e9f7ec; }
 
+/* Cross-module action bar — carry the active domain to another tool in one tap */
+.domain-bar { position:sticky; top:0; z-index:30; display:flex; align-items:center; gap:10px;
+  margin:0 0 14px; padding:9px 12px; background:var(--cream-2,#f3efe5); border:1.5px solid var(--line);
+  border-radius:12px; }
+.domain-bar-label { font-size:.85rem; color:var(--navy-2); white-space:nowrap; flex:0 0 auto; }
+.domain-bar-label strong { color:var(--navy); }
+.domain-bar-chips { display:flex; gap:8px; overflow-x:auto; flex:1 1 auto; scrollbar-width:thin; -webkit-overflow-scrolling:touch; }
+.domain-chip { white-space:nowrap; padding:6px 12px; border:1.5px solid #d9d2c2; border-radius:999px;
+  background:#fff; color:var(--navy); font-size:13px; font-weight:700; cursor:pointer; flex:0 0 auto; }
+.domain-chip:hover { background:var(--coral,#e08a6f); color:#fff; border-color:var(--coral,#e08a6f); }
+.domain-bar-k { flex:0 0 auto; padding:5px 9px; border:1.5px solid #d9d2c2; border-radius:8px; background:#fff;
+  color:var(--navy-2); font-size:12px; font-weight:700; cursor:pointer; }
+.domain-bar-k:hover { background:var(--cream,#faf6ec); }
+@media (max-width:640px) { .domain-bar-label { flex-basis:100%; } .domain-bar { flex-wrap:wrap; } .domain-bar-k { display:none; } }
+
+/* ⌘K quick-switch palette */
+.cmdk { position:fixed; inset:0; z-index:200; background:rgba(20,24,33,.45); display:flex; align-items:flex-start; justify-content:center; padding-top:14vh; }
+.cmdk-box { width:min(440px,92vw); background:#fff; border:1.5px solid var(--line); border-radius:14px; box-shadow:0 18px 50px rgba(0,0,0,.25); overflow:hidden; }
+.cmdk-domain { width:100%; box-sizing:border-box; border:none; border-bottom:1.5px solid var(--line); padding:14px 16px; font-size:1rem; color:var(--navy); outline:none; }
+.cmdk-list { list-style:none; margin:0; padding:6px; max-height:50vh; overflow-y:auto; }
+.cmdk-item { padding:10px 12px; border-radius:9px; cursor:pointer; font-weight:600; color:var(--navy); }
+.cmdk-item.active, .cmdk-item:hover { background:var(--cream-2,#f3efe5); }
+.cmdk-hint { padding:8px 14px; font-size:.74rem; color:var(--navy-3); border-top:1px solid var(--line); }
+
 /* ── Corporate Portfolios ──────────────────────────────────────────────────── */
 .cp-form { margin-top: 18px; }
 .cp-filter { margin-top: 14px; font-size: .9rem; }

@@ -207,6 +207,13 @@
 
       <div class="content">
       <div class="wrap">
+        <!-- Cross-module action bar — carries the active domain to another tool in
+             one click (rendered by renderDomainBar(); chips from DOMAIN_MODULES). -->
+        <div id="domain-bar" class="domain-bar" hidden>
+          <span class="domain-bar-label">Use <strong id="domain-bar-d"></strong> in:</span>
+          <div id="domain-bar-chips" class="domain-bar-chips"></div>
+          <button type="button" id="domain-bar-k" class="domain-bar-k" title="Quick switch (⌘K / Ctrl-K)">⌘K</button>
+        </div>
         <!-- Research view -->
         <section id="view-research">
           <div class="hero" id="hero">
@@ -935,7 +942,17 @@ The model parses it into structured filters (TLDs, length, budget, tone, etc.) a
       </div>
     </aside>
 
+    <!-- Quick-switch command palette (⌘K / Ctrl-K): run any domain tool on a
+         domain without navigating + retyping. Populated by DOMAIN_MODULES. -->
+    <div id="cmdk" class="cmdk" hidden>
+      <div class="cmdk-box" role="dialog" aria-modal="true" aria-label="Quick switch">
+        <input id="cmdk-domain" class="cmdk-domain" type="text" placeholder="domain (e.g. example.com)" autocomplete="off" autocapitalize="off" spellcheck="false" />
+        <ul id="cmdk-list" class="cmdk-list"></ul>
+        <div class="cmdk-hint">↑↓ to move · Enter to open · Esc to close</div>
+      </div>
+    </div>
+
     <!-- Bump ?v= on any public/app.js or styles.css change to bust caches. -->
-    <script src="app.js?v=20260605ak"></script>
+    <script src="app.js?v=20260605al"></script>
   </body>
 </html>

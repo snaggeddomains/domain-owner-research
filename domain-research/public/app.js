@@ -206,6 +206,8 @@ const els = {
   navBeeper: $('nav-beeper'),
   navWhois: $('nav-whois'),
   whoisForm: $('whois-form'), whoisDomain: $('whois-domain'), whoisStatus: $('whois-status'), whoisResult: $('whois-result'),
+  domainBar: $('domain-bar'), domainBarD: $('domain-bar-d'), domainBarChips: $('domain-bar-chips'), domainBarK: $('domain-bar-k'),
+  cmdk: $('cmdk'), cmdkDomain: $('cmdk-domain'), cmdkList: $('cmdk-list'),
   beeperForm: $('beeper-form'),
   beeperDomain: $('beeper-domain'),
   beeperAdd: $('beeper-add'),
@@ -482,6 +484,87 @@ const TOOL_PERMISSION = {
   whois: 'whois',
   portfolio: 'portfolio',
 };
+
+// ── Cross-module domain context (action bar + ⌘K palette; workspace-ready) ──
+// Single source of truth for the domain-centric tools. Each entry knows how to
+// load ITSELF for a domain, so the action bar, the ⌘K palette, and (later) a
+// Domain Workspace of stacked cards all drive off this one list — adding the
+// workspace is then just "render these as cards" instead of "navigate".
+function runOwnerFor(domain) {
+  if (history.pushState) history.pushState(null, '', '/research');
+  showEntry();                                   // Domain Owner is the home view
+  if (els.deepToggle) els.deepToggle.checked = false; // free pre-flight, not paid deep
+  if (els.domain) els.domain.value = domain;
+  setActiveDomain(domain);
+  if (els.form) { els.form.requestSubmit ? els.form.requestSubmit() : els.form.dispatchEvent(new Event('submit', { cancelable: true })); }
+}
+const DOMAIN_MODULES = [
+  { tool: 'research',   label: 'Owner',      icon: '✉',  perm: 'domain_owner', run: (d) => runOwnerFor(d) },
+  { tool: 'whois',      label: 'Whois',      icon: '🔎', perm: 'whois',        run: (d) => { setToolUrl('whois', d); route(); } },
+  { tool: 'appraisal',  label: 'Appraise',   icon: '💲', perm: 'appraisal',    run: (d) => { setToolUrl('appraisal', d); route(); } },
+  { tool: 'trademark',  label: 'Trademark',  icon: '™',  perm: 'trademark',    run: (d) => { setToolUrl('trademark', d); route(); } },
+  { tool: 'dbscreen',   label: 'DB Screen',  icon: '📋', perm: 'dbscreen',     run: (d) => { setToolUrl('dbscreen', d); route(); } },
+  { tool: 'nameserver', label: 'Nameserver', icon: '🌐', perm: 'nameserver',   run: (d) => { setToolUrl('nameserver', d); route(); } },
+  { tool: 'beeper',     label: 'Watch',      icon: '🔔', perm: 'beeper',        run: (d) => { setToolUrl('beeper', d); route(); } },
+];
+let activeDomain = '';
+// Record the domain the user is currently working — drives the action bar + palette.
+function setActiveDomain(d) {
+  const v = (d || '').trim().toLowerCase();
+  if (v) activeDomain = v;
+  renderDomainBar();
+}
+// The domain tool currently in view (so we exclude it from the chips); null when
+// the current view isn't a domain tool (e.g. Naming, DB Search, Portfolios).
+function currentDomainTool() {
+  const tr = currentToolRoute();
+  if (tr) return DOMAIN_MODULES.some((m) => m.tool === tr.tool) ? tr.tool : null;
+  const rv = document.getElementById('view-research');
+  return (rv && !rv.hidden) ? 'research' : null;
+}
+function renderDomainBar() {
+  const bar = els.domainBar; if (!bar) return;
+  const here = currentDomainTool();
+  const mods = activeDomain && here
+    ? DOMAIN_MODULES.filter((m) => m.tool !== here && canModule(currentUser, m.perm))
+    : [];
+  if (!mods.length) { bar.hidden = true; return; }
+  if (els.domainBarD) els.domainBarD.textContent = activeDomain;
+  els.domainBarChips.innerHTML = mods.map((m) => `<button type="button" class="domain-chip" data-tool="${m.tool}">${m.icon} ${escapeHtml(m.label)}</button>`).join('');
+  els.domainBarChips.querySelectorAll('.domain-chip').forEach((b) => b.addEventListener('click', () => {
+    const m = DOMAIN_MODULES.find((x) => x.tool === b.dataset.tool);
+    if (m) m.run(activeDomain);
+  }));
+  bar.hidden = false;
+}
+
+// ── ⌘K / Ctrl-K quick-switch palette ──
+let cmdkIdx = 0;
+function cmdkMods() { return DOMAIN_MODULES.filter((m) => canModule(currentUser, m.perm)); }
+function renderCmdkList() {
+  const mods = cmdkMods();
+  cmdkIdx = Math.max(0, Math.min(cmdkIdx, mods.length - 1));
+  els.cmdkList.innerHTML = mods.map((m, i) => `<li class="cmdk-item${i === cmdkIdx ? ' active' : ''}" data-tool="${m.tool}">${m.icon} ${escapeHtml(m.label)}</li>`).join('');
+  els.cmdkList.querySelectorAll('.cmdk-item').forEach((li) => li.addEventListener('click', () => runCmdk(li.dataset.tool)));
+}
+function openCmdk() {
+  if (!els.cmdk) return;
+  els.cmdkDomain.value = activeDomain || '';
+  cmdkIdx = 0;
+  renderCmdkList();
+  els.cmdk.hidden = false;
+  els.cmdkDomain.focus(); els.cmdkDomain.select();
+}
+function closeCmdk() { if (els.cmdk) els.cmdk.hidden = true; }
+function runCmdk(tool) {
+  let d;
+  try { d = cleanDomainInput(els.cmdkDomain.value, { requireValid: false }); }
+  catch { d = (els.cmdkDomain.value || '').trim(); }
+  const m = DOMAIN_MODULES.find((x) => x.tool === tool);
+  if (!m || !d) return;
+  closeCmdk();
+  m.run(d);
+}
 // Collapse a tool's hero+search into the compact "<seed> <label>" header once a
 // result is showing (CSS .report-open); restore the entry when off.
 function toolReport(viewId, seed, on) {
@@ -561,6 +644,7 @@ function route() {
   }
   if (tr && tr.tool === 'beeper') {
     showView('beeper');
+    if (tr.slug && els.beeperDomain) { els.beeperDomain.value = tr.slug; setActiveDomain(tr.slug); } // carry a domain in (no silent add)
     loadBeeper();
     return;
   }
@@ -668,6 +752,7 @@ function renderDbResult(data) {
 }
 async function runDbScreen(domain) {
   showView('dbscreen');
+  setActiveDomain(domain);
   setToolStatus(els.dbStatus, 'Screening…');
   if (els.dbResult) els.dbResult.hidden = true;
   try {
@@ -2753,6 +2838,7 @@ function showView(name) {
   // Exercise) so the space isn't wasted by a narrow centered column.
   const wrap = document.querySelector('.content > .wrap');
   if (wrap) wrap.classList.add('wrap--wide');
+  renderDomainBar(); // refresh the cross-module action bar for the new view
 }
 
 // ── Beeper — RDAP drop watcher ──────────────────────────────────────────────
@@ -2849,6 +2935,7 @@ async function runWhois(domain) {
   if (!els.whoisResult) return;
   const d = (domain || '').trim();
   if (!d) return;
+  setActiveDomain(d);
   setToolStatus(els.whoisStatus, `Looking up ${escapeHtml(d)}…`);
   els.whoisResult.hidden = true;
   try {
@@ -3151,6 +3238,7 @@ function renderTmResults() {
   if (btn) btn.addEventListener('click', () => { tmActiveOnly = !tmActiveOnly; renderTmResults(); });
 }
 async function runTrademark(input) {
+  if (/\.[a-z]{2,}$/i.test(String(input || '').trim())) setActiveDomain(String(input).trim());
   const isAi = /\.ai$/i.test(String(input || '').trim());
   const q = toSld(input);
   els.tmResults.innerHTML = '';
@@ -3321,6 +3409,7 @@ async function pollAppraisal(domain, jobId) {
 }
 async function runAppraisal(domainInput, opts) {
   const domain = String(domainInput || '').trim();
+  if (domain) setActiveDomain(domain);
   const force = !!(opts && opts.force);
   els.apResult.hidden = true;
   els.apResult.innerHTML = '';
@@ -4280,6 +4369,7 @@ els.form?.addEventListener('submit', (e) => {
   try { domain = cleanDomainInput(els.domain.value); }
   catch (err) { setStatus(String(err.message || err)); return; }
   els.domain.value = domain;
+  setActiveDomain(domain);
   // Choose phase against the user's permissions. The checkbox is the user's
   // explicit ask; otherwise default to shallow. When the user has ONLY deep
   // (admin disabled free reports), force deep so the server doesn't 403 them.
@@ -5000,6 +5090,7 @@ async function nsFetch(params) {
 
 async function runNsDomain(domain) {
   showView('nameserver');
+  setActiveDomain(domain);
   setToolStatus(els.nsStatus, 'Looking up…');
   if (els.nsResult) els.nsResult.hidden = true;
   try {
@@ -5217,6 +5308,25 @@ els.navBeeper?.addEventListener('click', (e) => { if (newTabClick(e)) return; e.
 els.beeperForm?.addEventListener('submit', (e) => { e.preventDefault(); addBeeperWatch(); });
 els.navWhois?.addEventListener('click', (e) => { if (newTabClick(e)) return; e.preventDefault(); setToolUrl('whois', ''); showView('whois'); });
 els.whoisForm?.addEventListener('submit', (e) => { e.preventDefault(); const d = (els.whoisDomain.value || '').trim(); if (d) { setToolUrl('whois', d); runWhois(d); } });
+
+// Cross-module action bar + ⌘K quick-switch.
+els.domainBarK?.addEventListener('click', openCmdk);
+els.cmdk?.addEventListener('click', (e) => { if (e.target === els.cmdk) closeCmdk(); });
+els.cmdkDomain?.addEventListener('keydown', (e) => {
+  const mods = cmdkMods();
+  if (e.key === 'ArrowDown') { e.preventDefault(); cmdkIdx = Math.min(mods.length - 1, cmdkIdx + 1); renderCmdkList(); }
+  else if (e.key === 'ArrowUp') { e.preventDefault(); cmdkIdx = Math.max(0, cmdkIdx - 1); renderCmdkList(); }
+  else if (e.key === 'Enter') { e.preventDefault(); if (mods[cmdkIdx]) runCmdk(mods[cmdkIdx].tool); }
+});
+document.addEventListener('keydown', (e) => {
+  if ((e.metaKey || e.ctrlKey) && (e.key === 'k' || e.key === 'K')) {
+    if (els.app && els.app.hidden) return; // not logged in / app not ready
+    e.preventDefault();
+    (els.cmdk && !els.cmdk.hidden) ? closeCmdk() : openCmdk();
+  } else if (e.key === 'Escape' && els.cmdk && !els.cmdk.hidden) {
+    closeCmdk();
+  }
+});
 
 // ── Sales Research ───────────────────────────────────────────────────────────
 let salesProjectId = null;
