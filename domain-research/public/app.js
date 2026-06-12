@@ -236,7 +236,7 @@ const els = {
   dsNonum: $('ds-nonum'), dsFuzzy: $('ds-fuzzy'),
   dsSource: $('ds-source'), dsOwner: $('ds-owner'), dsKeyword: $('ds-keyword'),
   dsApply: $('ds-apply'), dsReset: $('ds-reset'),
-  dsDbToggle: $('ds-dbtoggle'), dsCount: $('ds-count'),
+  dsDbToggle: $('ds-dbtoggle'), dsCount: $('ds-count'), dsExport: $('ds-export'),
   dsStatus: $('ds-status'), dsTbody: $('ds-tbody'),
   dsPager: $('ds-pager'), dsPrev: $('ds-prev'), dsNext: $('ds-next'), dsPageinfo: $('ds-pageinfo'),
   dsTable: $('ds-table'),
@@ -832,6 +832,29 @@ async function fetchDbSearch() {
     els.dsPager.hidden = false;
   } catch (e) {
     setToolStatus(els.dsStatus, String((e && e.message) || e), true);
+  }
+}
+
+// Download the FULL matching set (all filters/sort/db applied) as CSV.
+async function dsExportCsv() {
+  const p = dsBuildParams();
+  p.set('format', 'csv'); p.delete('page'); p.delete('limit');
+  const btn = els.dsExport;
+  const orig = btn ? btn.textContent : '';
+  if (btn) { btn.disabled = true; btn.textContent = 'Preparing…'; }
+  try {
+    const res = await fetch(`/research/api/dbsearch?${p.toString()}`);
+    if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || `Export failed (${res.status})`); }
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `domain-search-${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+  } catch (e) {
+    setToolStatus(els.dsStatus, String((e && e.message) || e), true);
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = orig; }
   }
 }
 
@@ -6195,6 +6218,7 @@ els.nsResult?.addEventListener('input', (e) => {
 // DB Search interactions
 els.dsSearch?.addEventListener('submit', (e) => { e.preventDefault(); dsState.page = 0; fetchDbSearch(); });
 els.dsApply?.addEventListener('click', () => { dsState.page = 0; fetchDbSearch(); });
+els.dsExport?.addEventListener('click', dsExportCsv);
 els.dsReset?.addEventListener('click', () => {
   [els.dsQ, els.dsPriceMin, els.dsPriceMax, els.dsLenMin, els.dsLenMax, els.dsWordsMin, els.dsWordsMax,
    els.dsSource, els.dsOwner, els.dsKeyword].forEach((el) => { if (el) el.value = ''; });

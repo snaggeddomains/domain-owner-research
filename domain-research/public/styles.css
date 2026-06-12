@@ -976,6 +976,10 @@ body.modal-open { overflow: hidden; }
 .dbs-search { max-width: 100%; margin: 0 0 12px; }
 .dbs-toprow { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin: 0 0 16px; flex-wrap: wrap; }
 .dbs-count { font-size: .95rem; font-weight: 600; color: var(--navy-2); }
+.dbs-toprow-right { display: inline-flex; align-items: center; gap: 14px; }
+.dbs-export { padding: 6px 14px; border: 1.5px solid #d9d2c2; border-radius: 999px; background: #fff; color: var(--navy); font-size: 13px; font-weight: 700; cursor: pointer; white-space: nowrap; }
+.dbs-export:hover { background: var(--cream-2, #f3efe5); }
+.dbs-export:disabled { opacity: .6; cursor: default; }
 .dbs-dbtoggle { display: inline-flex; gap: 0; border: 1.5px solid #d9d2c2; border-radius: 999px; overflow: hidden; }
 .dbs-dbtoggle button { padding: 6px 16px; border: none; background: #fff; color: var(--navy); font-size: 13px; font-weight: 600; cursor: pointer; border-right: 1px solid #e3ddcf; }
 .dbs-dbtoggle button:last-child { border-right: none; }

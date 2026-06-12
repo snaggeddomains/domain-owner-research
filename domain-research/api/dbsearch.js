@@ -14,10 +14,15 @@ import { currentUser, userCan } from '../lib/auth.js';
 import { getNamingDb, isNamingDbConfigured } from '../lib/db/supabase-naming.js';
 import { getMasterlistDb, isMasterlistDbConfigured } from '../lib/db/masterlist.js';
 
+// CSV export can paginate well past a single page, so give it room.
+export const config = { maxDuration: 60 };
+
 const UNIVERSE = 'name_universe';
 const MASTER = 'Master Domain List';
 const MAX_LIMIT = 100;
 const MERGE_CAP = 1000; // max rows to pull per source in "both" mode
+const EXPORT_MAX = 50000; // hard cap on a CSV export
+const EXPORT_PAGE = 1000;  // rows per request when paginating an export
 
 const OWNER_BY_SOURCE = {
   snagged_snap_sheet: 'Snagged',
@@ -181,6 +186,54 @@ function sortRows(rows, sort, ascending) {
   });
 }
 
+// Pull EVERY matching row (not just one page) by paging through range() until a
+// short page or the export cap. `makeQuery` rebuilds the query per page.
+async function fetchAll(makeQuery) {
+  const out = [];
+  for (let start = 0; start < EXPORT_MAX; start += EXPORT_PAGE) {
+    const { data, error } = await makeQuery().range(start, Math.min(start + EXPORT_PAGE, EXPORT_MAX) - 1);
+    if (error) throw error;
+    const batch = data || [];
+    out.push(...batch);
+    if (batch.length < EXPORT_PAGE) break;
+  }
+  return out;
+}
+
+// Collect the FULL normalized result set for a CSV export (same db/filter/sort
+// semantics as the paged search, just uncapped to EXPORT_MAX).
+async function collectExport(p, db, ascending, ownerFilter) {
+  const posActive = !!csv(p.part_of_speech);
+  const wantU = (db === 'both' || db === 'universe') && isNamingDbConfigured();
+  const wantM = (db === 'both' || db === 'master') && isMasterlistDbConfigured() && !(posActive && db === 'both');
+  let rows = [];
+  if (wantU) rows = rows.concat((await fetchAll(() => buildUniverse(p, ascending, undefined))).map(normUniverse));
+  if (wantM) {
+    const masterRows = (await fetchAll(() => buildMaster(p, ascending, undefined))).map(normMaster);
+    if (db === 'both') {
+      const md = new Set(masterRows.map((r) => (r.domain || '').toLowerCase()));
+      rows = rows.filter((r) => !md.has((r.domain || '').toLowerCase()));
+    }
+    rows = rows.concat(masterRows);
+  }
+  if (ownerFilter) rows = rows.filter((r) => (r.owner || '').toLowerCase().includes(ownerFilter));
+  rows = sortRows(rows, p.sort || 'domain', ascending);
+  return rows.slice(0, EXPORT_MAX);
+}
+
+const csvCell = (v) => {
+  const s = v == null ? '' : String(v);
+  return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+};
+function toCsv(rows) {
+  const lines = ['domain,price,source,owner,category,db'];
+  for (const r of rows) {
+    const src = r.best_price_source || (Array.isArray(r.sources) && r.sources[0]) || '';
+    lines.push([r.domain, r.best_price ?? '', src, r.owner ?? '', r.category ?? '', r.db].map(csvCell).join(','));
+  }
+  return lines.join('\r\n');
+}
+
 export default async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store');
   if (req.method !== 'GET') { res.status(405).json({ error: 'Use GET' }); return; }
@@ -205,6 +258,16 @@ export default async function handler(req, res) {
   const countMode = hasActiveFilters(p) ? 'exact' : 'estimated';
 
   try {
+    // ── CSV export: the FULL matching set (uncapped to EXPORT_MAX), same filters ──
+    if (str(p.format) === 'csv') {
+      const rows = await collectExport(p, db, ascending, ownerFilter);
+      const stamp = new Date().toISOString().slice(0, 10);
+      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+      res.setHeader('Content-Disposition', `attachment; filename="domain-search-${stamp}.csv"`);
+      res.status(200).send(toCsv(rows));
+      return;
+    }
+
     // ── Single-DB modes: clean server-side pagination via range() ──
     if (db === 'universe' || db === 'master') {
       const start = page * limit;
