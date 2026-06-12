@@ -47,7 +47,7 @@ const tldVariants = (arr) => bareTlds(arr).flatMap((t) => [t, '.' + t]);
 // corpus is wasteful — use the fast planner estimate. Once filtered, the set is
 // small enough that an exact count is cheap AND the accuracy matters.
 const FILTER_KEYS = ['q', 'price_min', 'price_max', 'tld', 'len_exact', 'len_min', 'len_max',
-  'single_word', 'dict_word', 'words_min', 'words_max', 'no_numbers', 'source', 'category', 'emotion', 'connotation', 'industry', 'owner', 'keyword'];
+  'single_word', 'dict_word', 'words_min', 'words_max', 'no_numbers', 'source', 'category', 'emotion', 'connotation', 'industry', 'part_of_speech', 'owner', 'keyword'];
 function hasActiveFilters(p) {
   return FILTER_KEYS.some((k) => str(p[k]));
 }
@@ -59,7 +59,7 @@ const MASTER_SORT = { domain: 'domain', price: 'price', source: 'source' };
 function buildUniverse(p, ascending, countMode) {
   let q = getNamingDb()
     .from(UNIVERSE)
-    .select('domain, sld, tld, sld_length, num_words, is_dictionary_word, best_price, best_price_source, sources, category, emotions, keywords', { count: countMode });
+    .select('domain, sld, tld, sld_length, num_words, is_dictionary_word, best_price, best_price_source, sources, category, emotions, keywords, part_of_speech', { count: countMode });
   const text = str(p.q);
   if (text) {
     const t = text.toLowerCase();
@@ -99,6 +99,10 @@ function buildUniverse(p, ascending, countMode) {
   const emo = csv(p.emotion); if (emo) q = q.overlaps('emotions', emo);
   const con = csv(p.connotation); if (con) q = q.in('connotation', con);
   const ind = csv(p.industry); if (ind) q = q.overlaps('industries', ind);
+  // Part-of-speech (universe-only enrichment): strict any-of overlap. Rows not
+  // yet POS-enriched have a null/empty array and won't match — coverage fills in
+  // as the structural backfill runs.
+  const pos = csv(p.part_of_speech); if (pos) q = q.overlaps('part_of_speech', pos);
   const kw = str(p.keyword); if (kw) q = q.or(`keywords.cs.{${kw.toLowerCase()}},sld.ilike.%${kw.toLowerCase()}%`);
   return q.order(UNIVERSE_SORT[p.sort] || 'domain', { ascending, nullsFirst: false });
 }
@@ -224,9 +228,15 @@ export default async function handler(req, res) {
     // ── Both: fetch a capped window from EACH source (not just the current
     // page's worth — otherwise dedupe of owned domains present in both DBs can
     // collapse a page and stop pagination), merge, dedupe, sort, then slice. ──
+    // Part-of-speech is a universe-only attribute; when it's filtered, Master
+    // can't be classified, so a "both" query restricts to Universe rather than
+    // padding the page with unfilterable Master rows.
+    const posActive = !!csv(p.part_of_speech);
     const [uRes, mRes] = await Promise.all([
       buildUniverse(p, ascending, countMode).range(0, MERGE_CAP - 1).then((r) => r).catch((e) => ({ error: e })),
-      buildMaster(p, ascending, countMode).range(0, MERGE_CAP - 1).then((r) => r).catch((e) => ({ error: e })),
+      posActive
+        ? Promise.resolve({ data: [], count: 0 })
+        : buildMaster(p, ascending, countMode).range(0, MERGE_CAP - 1).then((r) => r).catch((e) => ({ error: e })),
     ]);
     const errors = {};
     let merged = [];

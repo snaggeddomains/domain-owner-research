@@ -677,7 +677,7 @@ async function runDbScreen(domain) {
 const DS_LIMIT = 50;
 const dsState = {
   page: 0, sort: 'domain', dir: 'asc', activeTlds: new Set(), db: 'both',
-  category: new Set(), connotation: new Set(), industry: new Set(), emotion: new Set(),
+  category: new Set(), connotation: new Set(), industry: new Set(), emotion: new Set(), pos: new Set(),
 };
 
 // Controlled option lists (mirror tools/enrich.py). Industries/emotions are
@@ -695,6 +695,9 @@ const DS_CATEGORIES = [
   'Dating & Relationships', 'Lifestyle', 'General & Other',
 ];
 const DS_CONNOTATIONS = ['positive', 'somewhat positive', 'neutral', 'somewhat negative', 'negative'];
+// Part-of-speech tags (universe-only enrichment, from WordNet). All-selected = no
+// constraint (matches the Naming Exercise filter).
+const DS_POS = ['noun', 'verb', 'adjective', 'adverb'];
 
 // A collapsible checkbox dropdown backed by a Set in dsState[key]. Selections
 // apply on the existing "Apply filters" button (no live re-query).
@@ -737,8 +740,10 @@ async function dsEnsureFilters() {
   dsMulti.connotation = dsMultiSelect('connotation', 'connotation', false);
   dsMulti.industry = dsMultiSelect('industry', 'industry', true);
   dsMulti.emotion = dsMultiSelect('emotion', 'emotion', true);
+  dsMulti.pos = dsMultiSelect('pos', 'pos', false);
   dsMulti.category.setOptions(DS_CATEGORIES);
   dsMulti.connotation.setOptions(DS_CONNOTATIONS);
+  dsMulti.pos.setOptions(DS_POS);
   try {
     const res = await fetch('/research/api/dbsearch-facets');
     if (res.ok) {
@@ -769,6 +774,8 @@ function dsBuildParams() {
   if (dsState.industry.size) p.set('industry', [...dsState.industry].join(','));
   if (dsState.emotion.size) p.set('emotion', [...dsState.emotion].join(','));
   if (dsState.connotation.size) p.set('connotation', [...dsState.connotation].join(','));
+  // All POS selected = "Any" (no constraint), like the Naming Exercise.
+  if (dsState.pos.size && dsState.pos.size < DS_POS.length) p.set('part_of_speech', [...dsState.pos].join(','));
   if (v(els.dsOwner)) p.set('owner', v(els.dsOwner));
   if (v(els.dsKeyword)) p.set('keyword', v(els.dsKeyword));
   p.set('db', dsState.db);
@@ -6195,7 +6202,7 @@ els.dsReset?.addEventListener('click', () => {
   if (els.dsDict) els.dsDict.value = '';
   if (els.dsNonum) els.dsNonum.checked = false;
   if (els.dsFuzzy) els.dsFuzzy.checked = false;
-  ['category', 'connotation', 'industry', 'emotion'].forEach((k) => dsMulti[k] && dsMulti[k].clear());
+  ['category', 'connotation', 'industry', 'emotion', 'pos'].forEach((k) => dsMulti[k] && dsMulti[k].clear());
   dsState.activeTlds.clear();
   if (els.dsTlds) els.dsTlds.querySelectorAll('button').forEach((b) => b.classList.remove('active'));
   dsState.db = 'both';
