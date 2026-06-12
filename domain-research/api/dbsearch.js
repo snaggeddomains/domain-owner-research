@@ -52,7 +52,15 @@ const tldVariants = (arr) => bareTlds(arr).flatMap((t) => [t, '.' + t]);
 // corpus is wasteful — use the fast planner estimate. Once filtered, the set is
 // small enough that an exact count is cheap AND the accuracy matters.
 const FILTER_KEYS = ['q', 'price_min', 'price_max', 'tld', 'len_exact', 'len_min', 'len_max',
-  'single_word', 'dict_word', 'words_min', 'words_max', 'no_numbers', 'source', 'category', 'emotion', 'connotation', 'industry', 'part_of_speech', 'owner', 'keyword'];
+  'single_word', 'dict_word', 'words_min', 'words_max', 'no_numbers', 'source', 'category', 'emotion', 'connotation', 'industry', 'part_of_speech', 'exclude_forms', 'owner', 'keyword'];
+
+// Word-form exclusions (Plurals / Past tense / -ing / -ly): drop SLDs ending in
+// the form. Same heuristic as the Naming Exercise (plural = trailing 's' that
+// isn't ss/us/is/as/os), applied as a SQL POSIX-regex exclusion like the existing
+// "no numbers" filter so counts stay exact. Universe matches on `sld`; Master has
+// no sld column, so it matches the SLD right before the final .tld on `domain`.
+const FORM_SLD = { plural: '[^suaio]s$', past: 'ed$', ing: 'ing$', ly: 'ly$' };
+const FORM_DOMAIN = { plural: '[^suaio]s\\.[a-z]+$', past: 'ed\\.[a-z]+$', ing: 'ing\\.[a-z]+$', ly: 'ly\\.[a-z]+$' };
 function hasActiveFilters(p) {
   return FILTER_KEYS.some((k) => str(p[k]));
 }
@@ -108,6 +116,7 @@ function buildUniverse(p, ascending, countMode) {
   // yet POS-enriched have a null/empty array and won't match — coverage fills in
   // as the structural backfill runs.
   const pos = csv(p.part_of_speech); if (pos) q = q.overlaps('part_of_speech', pos);
+  const forms = csv(p.exclude_forms); if (forms) for (const f of forms) if (FORM_SLD[f]) q = q.not('sld', 'match', FORM_SLD[f]);
   const kw = str(p.keyword); if (kw) q = q.or(`keywords.cs.{${kw.toLowerCase()}},sld.ilike.%${kw.toLowerCase()}%`);
   return q.order(UNIVERSE_SORT[p.sort] || 'domain', { ascending, nullsFirst: false });
 }
@@ -163,6 +172,7 @@ function buildMaster(p, ascending, countMode) {
   const con = csv(p.connotation); if (con) q = q.in('connotation', con);
   const ind = csv(p.industry); if (ind) q = q.overlaps('industries', ind);
   const owner = str(p.owner); if (owner) q = q.ilike('owner', '%' + owner + '%');
+  const forms = csv(p.exclude_forms); if (forms) for (const f of forms) if (FORM_DOMAIN[f]) q = q.not('domain', 'match', FORM_DOMAIN[f]);
   return q.order(MASTER_SORT[p.sort] || 'domain', { ascending, nullsFirst: false });
 }
 
