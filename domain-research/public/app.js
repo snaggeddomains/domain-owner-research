@@ -3331,6 +3331,11 @@ function renderAppraisal(domain, a, meta) {
   const defBlock = (() => {
     if (!def || !Array.isArray(def.senses) || !def.senses.length) return '';
     const phonetic = def.phonetic ? ` <span class="ap-phonetic">${escapeHtml(def.phonetic)}</span>` : '';
+    // Consolidated part-of-speech set (every form the word can take) — surfaces
+    // the "ambiguous word, multiple POS" angle at a glance, e.g. venture → noun·verb.
+    const allPos = [...new Set(def.senses.map((s) => s && s.pos).filter(Boolean))];
+    const posSet = allPos.length
+      ? ` <span class="ap-pos-set">${allPos.map((p) => `<span class="ap-pos">${escapeHtml(p)}</span>`).join('')}</span>` : '';
     const senses = def.senses
       .map((s) => {
         const pos = s && s.pos ? `<span class="ap-pos">${escapeHtml(s.pos)}</span>` : '';
@@ -3342,7 +3347,7 @@ function renderAppraisal(domain, a, meta) {
       .filter(Boolean)
       .join('');
     if (!senses) return '';
-    return `<div class="ap-block ap-definition"><h3>Definition${phonetic}</h3>${senses}</div>`;
+    return `<div class="ap-block ap-definition"><h3>Definition${phonetic}${posSet}</h3>${senses}</div>`;
   })();
   const raw = escapeHtml(JSON.stringify(a, null, 2).slice(0, 4000));
   // "Last appraised <ago> · Refresh" line — lets the user see freshness and
