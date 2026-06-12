@@ -1530,6 +1530,7 @@ a.sr-ag-co-link:hover { border-color: var(--coral); color: var(--coral-deep); ba
 .beeper-list { list-style:none; margin:14px 0 0; padding:0; max-width:680px; }
 .beeper-row { display:flex; align-items:center; gap:12px; padding:12px 14px; border:1.5px solid var(--line); border-radius:12px; margin-bottom:8px; }
 .beeper-row .beeper-state { font-weight:600; color:var(--navy); }
+.beeper-who { display:inline-block; font-size:.7rem; font-weight:700; color:var(--teal-deep,#1f6f7a); background:rgba(31,111,122,.12); border:1px solid rgba(31,111,122,.35); border-radius:999px; padding:1px 8px; vertical-align:middle; }
 .beeper-row .beeper-meta { font-size:.8rem; margin-top:2px; }
 .beeper-row.beeper-dropped { border-color:#2f7d4f; background:#e9f7ec; }
 .beeper-row.beeper-dropped .beeper-state { color:#176a2b; }

@@ -21,7 +21,9 @@ export default async function handler(req, res) {
   const userId = (user && user.id) || null;
 
   if (req.method === 'GET') {
-    res.status(200).json({ watches: await listWatches(userId) });
+    // Universal view — everyone with Beeper access sees the whole team watchlist
+    // (each row carries `submitted_by` for the who-added-it chip).
+    res.status(200).json({ watches: await listWatches() });
     return;
   }
   if (req.method !== 'POST') { res.status(405).json({ error: 'Method not allowed' }); return; }
@@ -30,7 +32,8 @@ export default async function handler(req, res) {
 
   if (body.action === 'stop') {
     if (!body.id) { res.status(400).json({ error: 'Missing id' }); return; }
-    await stopWatch(body.id, userId);
+    // Shared list → any Beeper user can stop any watch (not just their own).
+    await stopWatch(body.id);
     res.status(200).json({ ok: true });
     return;
   }

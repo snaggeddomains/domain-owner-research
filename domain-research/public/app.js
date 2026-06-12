@@ -2735,8 +2735,9 @@ function renderBeeper(watches) {
   els.beeperList.innerHTML = watches.map((w) => {
     const dropped = w.status === 'dropped' || w.last_http === 404;
     const when = w.last_checked ? `last checked: ${new Date(w.last_checked).toLocaleString()}` : 'not checked yet';
+    const who = w.submitted_by ? ` <span class="beeper-who" title="Added by ${escapeHtml(w.submitted_by)}">${escapeHtml(w.submitted_by)}</span>` : '';
     return `<li class="beeper-row${dropped ? ' beeper-dropped' : ''}">`
-      + `<div><strong>${escapeHtml(w.domain)}</strong> — <span class="beeper-state">${escapeHtml(beeperStateLabel(w))}</span><div class="muted beeper-meta">${escapeHtml(when)}</div></div>`
+      + `<div><strong>${escapeHtml(w.domain)}</strong>${who} — <span class="beeper-state">${escapeHtml(beeperStateLabel(w))}</span><div class="muted beeper-meta">${escapeHtml(when)}</div></div>`
       + `<button type="button" class="beeper-stop" data-id="${escapeHtml(w.id)}">Stop</button>`
       + `</li>`;
   }).join('');

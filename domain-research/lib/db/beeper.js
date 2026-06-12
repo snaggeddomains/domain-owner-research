@@ -27,14 +27,34 @@ export async function addWatch({ domain, userId, note = null, seed = null }) {
   }
 }
 
-export async function listWatches(userId) {
+// Short label for who started a watch — capitalized email local-part
+// (rob@snagged.com → "Rob"). Null when unknown (legacy/seeded rows).
+function submitterLabel(email) {
+  const e = String(email || '').trim();
+  if (!e || e === 'legacy-admin') return null;
+  const local = e.split('@')[0];
+  return local ? local.charAt(0).toUpperCase() + local.slice(1) : null;
+}
+
+// UNIVERSAL list — every user's watches (it's a shared team watchlist), each
+// decorated with `submitted_by` (who started it) for the UI chip.
+export async function listWatches() {
   if (!isDbConfigured()) return [];
   try {
-    let q = getDb().from(T).select('*').order('created_at', { ascending: false }).limit(200);
-    if (userId) q = q.eq('user_id', userId);
-    const { data, error } = await q;
+    const { data, error } = await getDb().from(T).select('*')
+      .order('created_at', { ascending: false }).limit(200);
     if (error) throw error;
-    return data || [];
+    const watches = data || [];
+    // Resolve submitter labels in one batched lookup over the user ids present.
+    const ids = [...new Set(watches.map((w) => w.user_id).filter(Boolean))];
+    const labelById = {};
+    if (ids.length) {
+      try {
+        const { data: us } = await getDb().from('domain_research_users').select('id,email').in('id', ids);
+        for (const u of us || []) labelById[u.id] = submitterLabel(u.email);
+      } catch { /* best-effort — chips just stay blank if the lookup fails */ }
+    }
+    return watches.map((w) => ({ ...w, submitted_by: w.user_id ? (labelById[w.user_id] || null) : null }));
   } catch (e) {
     if (!tableMissing(e)) console.error('listWatches:', e?.message || e);
     return [];
