@@ -3521,6 +3521,16 @@ const NM_EXCLUDE_OPTS = [
   { value: 'ing', label: '-ing' },
   { value: 'ly', label: '-ly' },
 ];
+// Part of speech: default ALL (= "Any", no constraint). A narrowed subset is sent
+// and keeps names that CAN be one of the chosen parts of speech (WordNet multi-tags
+// e.g. venture = noun+verb). Universe-only enrichment; populated by the POS backfill.
+const NM_POS_OPTS = [
+  { value: 'noun', label: 'Noun' },
+  { value: 'verb', label: 'Verb' },
+  { value: 'adjective', label: 'Adjective' },
+  { value: 'adverb', label: 'Adverb' },
+];
+const namingPosSet = new Set(NM_POS_OPTS.map((o) => o.value));
 // TLDs: default ALL checked. We only send a tlds override when the user narrows
 // to a proper subset; otherwise the brief decides (a brief-specified TLD wins;
 // a silent brief = all TLDs). After each search we sync the dropdown to the
@@ -3532,6 +3542,7 @@ let namingTldCtl = null;
 function initNamingFilters() {
   const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
   initNamingMulti('con', namingConSet, DS_CONNOTATIONS.map((c) => ({ value: c, label: cap(c) })), { allLabel: 'Any' });
+  initNamingMulti('pos', namingPosSet, NM_POS_OPTS, { allLabel: 'Any' });
   initNamingMulti('exc', namingExcludeSet, NM_EXCLUDE_OPTS, { noneLabel: 'None' });
   namingTldCtl = initNamingMulti('tld', namingTldSet, NM_TLD_OPTS, { allLabel: 'All' });
 }
@@ -3550,6 +3561,8 @@ function numOrNull(v) {
 function namingFilterPayload() {
   return {
     connotation: [...namingConSet],
+    // Only send a POS override when narrowed to a proper subset; all/none = "Any".
+    part_of_speech: (namingPosSet.size === 0 || namingPosSet.size >= NM_POS_OPTS.length) ? null : [...namingPosSet],
     exclude: [...namingExcludeSet],
     // TLD override only when narrowed to a proper subset; all/none = no override.
     tlds: (namingTldSet.size === 0 || namingTldSet.size >= NM_TLD_OPTS.length) ? null : [...namingTldSet],
