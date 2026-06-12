@@ -3768,8 +3768,16 @@ function renderNamingTable(rows /* , bucketLabel */) {
     return `<p class="naming-empty">No matches for this brief.</p>`;
   }
   const cards = rows.map((r) => {
-    const price = r.best_price == null ? 'TBD' : `$${Number(r.best_price).toLocaleString()}`;
-    const priceClass = r.best_price == null ? 'naming-card-price is-tbd' : 'naming-card-price';
+    // Monthly-lease listings (e.g. venture.com): the price is per-MONTH, not a buy,
+    // so label it "/mo" and badge it so the number isn't read as a purchase price.
+    const lease = !!r.is_lease;
+    const price = r.best_price == null
+      ? 'TBD'
+      : (lease ? `$${Number(r.best_price).toLocaleString()}/mo` : `$${Number(r.best_price).toLocaleString()}`);
+    const priceClass = r.best_price == null ? 'naming-card-price is-tbd' : (lease ? 'naming-card-price is-lease' : 'naming-card-price');
+    const leaseBadge = lease
+      ? `<span class="naming-card-lease" title="Monthly lease (via venture.com) — price shown is per month, not a purchase">Lease&nbsp;· monthly</span>`
+      : '';
     const source = r.source_label ? escapeHtml(r.source_label) : '—';
     const matched = Array.isArray(r.matched_keywords) ? r.matched_keywords : [];
     const chips = matched.length
@@ -3793,7 +3801,9 @@ function renderNamingTable(rows /* , bucketLabel */) {
             domain +
             `<div class="naming-card-meta">` +
               originBadge +
-              `<span class="naming-card-forsale">For sale</span>` +
+              (lease
+                ? leaseBadge
+                : `<span class="naming-card-forsale">For sale</span>`) +
               `<span class="naming-card-source">${source}</span>` +
             `</div>` +
             chips +

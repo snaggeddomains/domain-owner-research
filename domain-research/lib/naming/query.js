@@ -40,6 +40,11 @@ const MASTER_SELECT_COLS =
   'domain, price, owner, source, category, tld, sld_length, number_of_words, ' +
   'is_single_word, dictionary_word, connotation, keywords, industries, emotions, quality_score';
 
+// Owners whose Master listings are MONTHLY LEASES (via venture.com), not buys —
+// their `price` is the monthly lease amount, so the UI tags them + labels "/mo".
+// Lowercased for case-insensitive matching; extend as new lease entities appear.
+const LEASE_OWNERS = new Set(['blue nova']);
+
 export async function searchUniverse(filters) {
   const db = getNamingDb();
   const kw = sanitizeKeywords(filters.semantic_keywords);
@@ -437,6 +442,12 @@ function normalizeMasterRow(r) {
     keywords: Array.isArray(r.keywords) ? r.keywords : [],
     industries: Array.isArray(r.industries) ? r.industries : [],
     emotions: Array.isArray(r.emotions) ? r.emotions : [],
+    owner: r.owner || null,
+    // Monthly-LEASE listing flag. Some Master rows are leased (not bought) via a
+    // marketplace (e.g. venture.com) — their `price` is the MONTHLY lease, not a
+    // buy price, so showing "$700" is misleading. Identified by lease-owner
+    // (e.g. Blue Nova). The UI badges these + labels the price "/mo".
+    is_lease: LEASE_OWNERS.has(String(r.owner || '').trim().toLowerCase()),
     _origin: 'master', // corpus tag → "M" badge in the UI (universe rows have none)
   };
 }
@@ -555,6 +566,8 @@ function shapeRow(r, keywords, filters) {
     relevance: matched_semantic.length * 2 + matched_sld.length + boost,
     // Which corpus this came from — "M" = Master Domain List, "U" = name_universe.
     origin: r._origin === 'master' ? 'M' : 'U',
+    // Monthly-lease listing (price is per-month, not a buy) — UI badges it + "/mo".
+    is_lease: !!r.is_lease,
   };
 }
 

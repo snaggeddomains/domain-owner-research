@@ -348,6 +348,9 @@ button:disabled { opacity: .55; cursor: progress; }
 a.naming-card-domain:hover { color: var(--coral-deep); text-decoration: underline; }
 .naming-card-meta { display: flex; align-items: center; gap: 10px; margin-top: 5px; flex-wrap: wrap; }
 .naming-card-forsale { font-size: .68rem; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: #1f7a4d; background: rgba(47,163,107,.12); border: 1px solid rgba(47,163,107,.35); border-radius: 999px; padding: 1px 8px; }
+/* Monthly-lease listing (venture.com): amber, to distinguish from green "For sale". */
+.naming-card-lease { font-size: .68rem; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: #9a3412; background: rgba(234,88,12,.12); border: 1px solid rgba(234,88,12,.4); border-radius: 999px; padding: 1px 8px; }
+.naming-card-price.is-lease { color: #9a3412; }
 .naming-card-source { font-size: .82rem; color: var(--navy-3); }
 .naming-card-origin { font-size: .66rem; font-weight: 800; line-height: 1; width: 16px; height: 16px; display: inline-flex; align-items: center; justify-content: center; border-radius: 4px; }
 .naming-card-origin.origin-m { color: #6b3fa0; background: rgba(107,63,160,.12); border: 1px solid rgba(107,63,160,.4); }
