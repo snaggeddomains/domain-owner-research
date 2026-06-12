@@ -62,6 +62,8 @@
     { "source": "/research/sales/:slug*", "destination": "/index.html" },
     { "source": "/research/beeper", "destination": "/index.html" },
     { "source": "/research/beeper/:slug*", "destination": "/index.html" },
+    { "source": "/research/whois", "destination": "/index.html" },
+    { "source": "/research/whois/:slug*", "destination": "/index.html" },
     { "source": "/research/portfolio", "destination": "/index.html" },
     { "source": "/research/portfolio/:slug*", "destination": "/index.html" },
     { "source": "/research/api/:fn*", "destination": "/api/:fn*" },

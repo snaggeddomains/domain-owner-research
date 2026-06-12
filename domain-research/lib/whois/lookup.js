@@ -1,0 +1,208 @@
+// Whois module — a basic, free domain lookup.
+//
+// RDAP-first (the modern, structured, free replacement for port-43 WHOIS): one
+// call returns registrar + IANA id, registration/expiry/updated dates, EPP status
+// codes, nameservers and DNSSEC. Registry RDAP is resolved via IANA's bootstrap
+// (authoritative) with an rdap.org fallback. We ALSO run the legacy port-43 WHOIS
+// (lib/sources/whois.js) in parallel and merge in the public registrant contact,
+// which thin registries (.com/.net) omit from RDAP — so the result is as complete
+// as a free lookup gets. No API key, no cost.
+
+import { fetchJson, normalizeDomain, isValidDomain } from '../util.js';
+import whoisSource from '../sources/whois.js';
+
+// ccTLDs that run RDAP but aren't in IANA's gTLD bootstrap (same list Beeper uses).
+const CCTLD_RDAP = {
+  io: 'https://rdap.identitydigital.services/rdap',
+  sh: 'https://rdap.identitydigital.services/rdap',
+  ac: 'https://rdap.identitydigital.services/rdap',
+};
+let _bootstrap = null;
+async function rdapBaseForTld(tld) {
+  const t = String(tld || '').toLowerCase();
+  if (!t) return null;
+  if (CCTLD_RDAP[t]) return CCTLD_RDAP[t];
+  if (!_bootstrap) {
+    _bootstrap = (async () => {
+      const m = new Map();
+      const j = await fetchJson('https://data.iana.org/rdap/dns.json');
+      for (const svc of (j && j.services) || []) {
+        const base = (svc[1] || []).find((u) => /^https:/i.test(u)) || (svc[1] || [])[0];
+        if (base) for (const x of svc[0] || []) m.set(String(x).toLowerCase(), base.replace(/\/+$/, ''));
+      }
+      return m;
+    })().catch(() => new Map());
+  }
+  return (await _bootstrap).get(t) || null;
+}
+
+async function fetchRdap(url) {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 12000);
+  try {
+    const res = await fetch(url, { signal: ctrl.signal, headers: { accept: 'application/rdap+json', 'user-agent': 'snagged-whois/1.0 (+https://research.snagged.com)' } });
+    let data = null;
+    try { data = await res.json(); } catch { /* may be empty / non-JSON */ }
+    return { code: res.status, data };
+  } catch {
+    return { code: null, data: null };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+// Flatten an RDAP jCard (vcardArray) into the fields we care about.
+function parseVcard(vcardArray) {
+  const out = { fn: '', org: '', email: '', tel: '', country: '', region: '' };
+  const items = Array.isArray(vcardArray) && Array.isArray(vcardArray[1]) ? vcardArray[1] : [];
+  for (const it of items) {
+    if (!Array.isArray(it)) continue;
+    const [name, , , value] = it;
+    if (name === 'fn' && typeof value === 'string') out.fn = value;
+    else if (name === 'org') out.org = Array.isArray(value) ? value.filter(Boolean).join(' ') : String(value || '');
+    else if (name === 'email' && typeof value === 'string') out.email = value;
+    else if (name === 'tel' && typeof value === 'string') out.tel = value.replace(/^tel:/i, '');
+    else if (name === 'adr') {
+      // adr value is a 7-part array: [pobox, ext, street, locality, region, postcode, country]
+      const parts = Array.isArray(value) ? value : [];
+      out.region = out.region || (parts[4] || '');
+      out.country = out.country || (parts[6] || '');
+    }
+  }
+  return out;
+}
+
+const roleOf = (e, role) => Array.isArray(e.roles) && e.roles.includes(role);
+function findEntity(entities, role) {
+  for (const e of entities || []) {
+    if (roleOf(e, role)) return e;
+    const nested = findEntity(e.entities, role);
+    if (nested) return nested;
+  }
+  return null;
+}
+function eventDate(events, action) {
+  const e = (events || []).find((x) => x && x.eventAction === action);
+  return (e && e.eventDate) || null;
+}
+function contactFrom(entities, role) {
+  const e = findEntity(entities, role);
+  if (!e) return null;
+  const v = parseVcard(e.vcardArray);
+  const c = { name: v.fn || null, organization: v.org || null, email: v.email || null, phone: v.tel || null, country: v.country || null, region: v.region || null, handle: e.handle || null };
+  return Object.values(c).some(Boolean) ? c : null;
+}
+
+// → structured RDAP result, or { ok:false } / { available:true } when not found.
+async function rdapLookup(domain) {
+  const tld = domain.slice(domain.lastIndexOf('.') + 1);
+  const base = await rdapBaseForTld(tld);
+  const urls = [];
+  if (base) urls.push(`${base}/domain/${encodeURIComponent(domain)}`);
+  urls.push(`https://rdap.org/domain/${encodeURIComponent(domain)}`);
+
+  for (const url of urls) {
+    const r = await fetchRdap(url);
+    if (r.code === 404) return { ok: true, available: true, source: url };
+    if (r.code === 200 && r.data) {
+      const d = r.data;
+      const entities = d.entities || [];
+      const reg = findEntity(entities, 'registrar');
+      const regVcard = reg ? parseVcard(reg.vcardArray) : {};
+      const ianaId = reg && Array.isArray(reg.publicIds)
+        ? (reg.publicIds.find((p) => /iana/i.test(p.type || ''))?.identifier || null) : null;
+      const regUrl = reg && Array.isArray(reg.links)
+        ? (reg.links.find((l) => l && /^https?:/i.test(l.value || l.href || ''))?.href || null) : null;
+      const abuse = reg ? findEntity(reg.entities, 'abuse') : null;
+      const abuseVcard = abuse ? parseVcard(abuse.vcardArray) : {};
+      return {
+        ok: true,
+        available: false,
+        source: url,
+        unicodeName: d.unicodeName || null,
+        ldhName: d.ldhName || domain,
+        registrar: { name: regVcard.fn || (reg && reg.handle) || null, ianaId, url: regUrl },
+        abuse: { email: abuseVcard.email || null, phone: abuseVcard.tel || null },
+        dates: {
+          registered: eventDate(d.events, 'registration'),
+          expires: eventDate(d.events, 'expiration'),
+          updated: eventDate(d.events, 'last changed'),
+          rdapUpdated: eventDate(d.events, 'last update of RDAP database'),
+        },
+        statuses: [...new Set((d.status || []).map((s) => String(s)))],
+        nameservers: (d.nameservers || []).map((n) => String(n.ldhName || '').toLowerCase()).filter(Boolean),
+        dnssec: d.secureDNS ? !!d.secureDNS.delegationSigned : null,
+        contacts: {
+          registrant: contactFrom(entities, 'registrant'),
+          admin: contactFrom(entities, 'administrative'),
+          tech: contactFrom(entities, 'technical'),
+        },
+        raw: d,
+      };
+    }
+    // 429 / 5xx / network → try the next endpoint.
+  }
+  return { ok: false };
+}
+
+// Public entry: merge RDAP (structured core) + port-43 WHOIS (registrant contact
+// the thin registries hide), both best-effort. Either leg alone still returns.
+export async function whoisLookup(domainRaw) {
+  const domain = normalizeDomain(domainRaw);
+  if (!domain || !isValidDomain(domain)) throw new Error('Provide a valid domain (e.g. example.com).');
+
+  const [rdapR, whoisR] = await Promise.allSettled([
+    rdapLookup(domain),
+    whoisSource.run({ domain }).catch(() => null),
+  ]);
+  const rdap = rdapR.status === 'fulfilled' ? rdapR.value : { ok: false };
+  const whois = whoisR.status === 'fulfilled' ? whoisR.value : null;
+
+  if (rdap && rdap.available) {
+    return { domain, available: true, registrar: null, dates: {}, statuses: [], nameservers: [], contacts: {}, privacy: false, sources: { rdap: rdap.source, whois: null }, raw: {} };
+  }
+
+  // Prefer RDAP for the structured core; fall back to WHOIS field-by-field.
+  const registrar = (rdap.registrar && rdap.registrar.name) ? rdap.registrar
+    : (whois && whois.registrar) ? { name: whois.registrar, ianaId: null, url: null } : null;
+  const dates = {
+    registered: (rdap.dates && rdap.dates.registered) || (whois && whois.created) || null,
+    expires: (rdap.dates && rdap.dates.expires) || (whois && whois.expires) || null,
+    updated: (rdap.dates && rdap.dates.updated) || (whois && whois.updated) || null,
+  };
+  const statuses = (rdap.statuses && rdap.statuses.length) ? rdap.statuses : (whois ? whois.status || [] : []);
+  const nameservers = (rdap.nameservers && rdap.nameservers.length) ? rdap.nameservers : (whois ? whois.nameservers || [] : []);
+
+  // Registrant: RDAP rarely exposes it (GDPR); WHOIS often does. Merge per-field.
+  const rReg = (rdap.contacts && rdap.contacts.registrant) || {};
+  const wReg = (whois && whois.registrant) || {};
+  const registrant = {
+    name: rReg.name || wReg.name || null,
+    organization: rReg.organization || wReg.organization || null,
+    email: rReg.email || wReg.email || null,
+    phone: rReg.phone || wReg.phone || null,
+    country: rReg.country || wReg.country || null,
+    region: rReg.region || wReg.state || null,
+  };
+  const hasRegistrant = Object.values(registrant).some(Boolean);
+  const privacy = whois ? !!whois.privacy : !hasRegistrant;
+
+  return {
+    domain: rdap.unicodeName || domain,
+    available: false,
+    registrar,
+    abuse: rdap.abuse || null,
+    dates,
+    statuses,
+    nameservers,
+    dnssec: rdap.dnssec ?? null,
+    contacts: {
+      registrant: hasRegistrant ? registrant : null,
+      admin: (rdap.contacts && rdap.contacts.admin) || (whois && whois.admin && (whois.admin.name || whois.admin.email) ? whois.admin : null) || null,
+      tech: (rdap.contacts && rdap.contacts.tech) || (whois && whois.tech && (whois.tech.name || whois.tech.email) ? whois.tech : null) || null,
+    },
+    privacy,
+    sources: { rdap: rdap.ok ? rdap.source : null, whois: whois ? whois.whois_server : null },
+    raw: { rdap: rdap.raw || null, whois: whois ? whois.raw : null },
+  };
+}

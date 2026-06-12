@@ -1547,6 +1547,18 @@ a.sr-ag-co-link:hover { border-color: var(--coral); color: var(--coral-deep); ba
 .beeper-cadence { display:inline-block; font-size:.7rem; font-weight:700; color:#7a5a1f; background:rgba(122,90,31,.12); border:1px solid rgba(122,90,31,.3); border-radius:999px; padding:1px 8px; vertical-align:middle; }
 .beeper-cadence-live { color:#a3341f; background:rgba(163,52,31,.12); border-color:rgba(163,52,31,.35); }
 
+/* Whois lookup */
+.whois-result { margin-top:14px; display:flex; flex-direction:column; gap:12px; max-width:720px; }
+.wi-card { border:1.5px solid var(--line); border-radius:12px; padding:14px 16px; }
+.wi-card h4 { margin:0 0 10px; font-size:1rem; color:var(--navy); }
+.wi-row { display:flex; gap:12px; padding:4px 0; align-items:baseline; }
+.wi-k { flex:0 0 120px; font-size:.8rem; font-weight:700; color:var(--navy-2); text-transform:uppercase; letter-spacing:.03em; }
+.wi-v { flex:1; color:var(--navy); word-break:break-word; }
+.wi-tag { display:inline-block; font-size:.72rem; font-weight:600; color:var(--navy-2); background:var(--cream-2,#f3efe5); border:1px solid var(--line); border-radius:999px; padding:1px 8px; margin:1px 2px 1px 0; }
+.wi-note { font-size:.85rem; color:var(--navy-3); font-style:italic; }
+.wi-src { font-size:.78rem; }
+.wi-avail { border-color:#2f7d4f; background:#e9f7ec; }
+
 /* ── Corporate Portfolios ──────────────────────────────────────────────────── */
 .cp-form { margin-top: 18px; }
 .cp-filter { margin-top: 14px; font-size: .9rem; }

@@ -204,6 +204,8 @@ const els = {
   navSales: $('nav-sales'),
   navPortfolio: $('nav-portfolio'),
   navBeeper: $('nav-beeper'),
+  navWhois: $('nav-whois'),
+  whoisForm: $('whois-form'), whoisDomain: $('whois-domain'), whoisStatus: $('whois-status'), whoisResult: $('whois-result'),
   beeperForm: $('beeper-form'),
   beeperDomain: $('beeper-domain'),
   beeperAdd: $('beeper-add'),
@@ -454,7 +456,7 @@ function clearHash() {
 // the SPA): Domain DB Screen at /dbscreen, DB Search at /dbsearch.
 const VANITY_TOOLS = ['dbscreen', 'dbsearch'];
 function currentToolRoute() {
-  let m = location.pathname.match(/^\/research\/(trademark|appraisal|naming|dbscreen|dbsearch|nameserver|sales|portfolio|beeper|admin)(?:\/(.+?))?\/?$/);
+  let m = location.pathname.match(/^\/research\/(trademark|appraisal|naming|dbscreen|dbsearch|nameserver|sales|portfolio|beeper|whois|admin)(?:\/(.+?))?\/?$/);
   if (!m) m = location.pathname.match(/^\/(dbscreen|dbsearch)(?:\/(.+?))?\/?$/);
   if (!m) return null;
   return { tool: m[1], slug: m[2] ? decodeURIComponent(m[2]) : '' };
@@ -477,6 +479,7 @@ const TOOL_PERMISSION = {
   dbsearch: 'dbsearch',
   nameserver: 'nameserver',
   beeper: 'beeper',
+  whois: 'whois',
   portfolio: 'portfolio',
 };
 // Collapse a tool's hero+search into the compact "<seed> <label>" header once a
@@ -559,6 +562,11 @@ function route() {
   if (tr && tr.tool === 'beeper') {
     showView('beeper');
     loadBeeper();
+    return;
+  }
+  if (tr && tr.tool === 'whois') {
+    showView('whois');
+    if (tr.slug) { if (els.whoisDomain) els.whoisDomain.value = tr.slug; runWhois(tr.slug); }
     return;
   }
   if (tr && tr.tool === 'sales') {
@@ -1724,6 +1732,7 @@ function gateNavByPermissions(user) {
   if (els.navDbsearch) els.navDbsearch.hidden = !can('dbsearch');
   if (els.navNameserver) els.navNameserver.hidden = !can('nameserver');
   if (els.navBeeper) els.navBeeper.hidden = !can('beeper');
+  if (els.navWhois) els.navWhois.hidden = !can('whois');
   if (els.navSales) els.navSales.hidden = !can('sales');
   if (els.navPortfolio) els.navPortfolio.hidden = !can('portfolio');
   // "Suggest a Strategy" — anyone with Domain Owner Research access can submit a
@@ -2724,6 +2733,7 @@ const VIEWS = {
   dbsearch: { view: 'view-dbsearch', nav: 'nav-dbsearch' },
   nameserver: { view: 'view-nameserver', nav: 'nav-nameserver' },
   beeper: { view: 'view-beeper', nav: 'nav-beeper' },
+  whois: { view: 'view-whois', nav: 'nav-whois' },
   sales: { view: 'view-sales', nav: 'nav-sales' },
   'sales-projects': { view: 'view-sales-projects', nav: 'nav-sales' },
   portfolio: { view: 'view-portfolio', nav: 'nav-portfolio' },
@@ -2832,6 +2842,69 @@ async function stopBeeperWatch(id) {
     await fetch('/research/api/beeper', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ action: 'stop', id }) });
     loadBeeper();
   } catch { /* ignore */ }
+}
+
+// ── Whois — basic free domain lookup (RDAP + WHOIS) ─────────────────────────
+async function runWhois(domain) {
+  if (!els.whoisResult) return;
+  const d = (domain || '').trim();
+  if (!d) return;
+  setToolStatus(els.whoisStatus, `Looking up ${escapeHtml(d)}…`);
+  els.whoisResult.hidden = true;
+  try {
+    const res = await fetch(`/research/api/whois?domain=${encodeURIComponent(d)}`);
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || `Lookup failed (${res.status})`);
+    setToolStatus(els.whoisStatus, '');
+    renderWhois(data);
+  } catch (e) {
+    setToolStatus(els.whoisStatus, String((e && e.message) || e), true);
+  }
+}
+function whoisDate(s) {
+  if (!s) return null;
+  const t = Date.parse(s);
+  return Number.isNaN(t) ? escapeHtml(String(s)) : new Date(t).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+}
+function whoisRow(label, val) {
+  return val ? `<div class="wi-row"><span class="wi-k">${label}</span><span class="wi-v">${val}</span></div>` : '';
+}
+function whoisContact(title, c) {
+  if (!c) return '';
+  const rows = [['Name', c.name], ['Org', c.organization], ['Email', c.email], ['Phone', c.phone], ['Country', c.country], ['Region', c.region]]
+    .filter((x) => x[1])
+    .map((x) => `<div class="wi-row"><span class="wi-k">${x[0]}</span><span class="wi-v">${escapeHtml(String(x[1]))}</span></div>`).join('');
+  return rows ? `<div class="wi-card"><h4>${title}</h4>${rows}</div>` : '';
+}
+function renderWhois(w) {
+  if (w.available) {
+    els.whoisResult.innerHTML = `<div class="wi-card wi-avail"><strong>${escapeHtml(w.domain)}</strong> appears <strong>AVAILABLE</strong> — no current registration record (RDAP returned not-found).</div>`;
+    els.whoisResult.hidden = false;
+    return;
+  }
+  const r = w.registrar || {};
+  const reg = r.name
+    ? escapeHtml(r.name) + (r.ianaId ? ` <span class="muted">(IANA ${escapeHtml(String(r.ianaId))})</span>` : '') + (r.url ? ` · <a href="${escapeHtml(r.url)}" target="_blank" rel="noopener">site</a>` : '')
+    : null;
+  const statuses = (w.statuses || []).length ? w.statuses.map((s) => `<span class="wi-tag">${escapeHtml(s)}</span>`).join(' ') : null;
+  const ns = (w.nameservers || []).length ? w.nameservers.map((n) => `<div>${escapeHtml(n)}</div>`).join('') : null;
+  const ab = w.abuse && (w.abuse.email || w.abuse.phone) ? [w.abuse.email, w.abuse.phone].filter(Boolean).map((x) => escapeHtml(String(x))).join(' · ') : null;
+  const core = `<div class="wi-card"><h4>${escapeHtml(w.domain)}</h4>`
+    + whoisRow('Registrar', reg)
+    + whoisRow('Registered', whoisDate(w.dates && w.dates.registered))
+    + whoisRow('Expires', whoisDate(w.dates && w.dates.expires))
+    + whoisRow('Updated', whoisDate(w.dates && w.dates.updated))
+    + whoisRow('Status', statuses)
+    + whoisRow('Nameservers', ns)
+    + whoisRow('DNSSEC', w.dnssec == null ? null : (w.dnssec ? 'signed' : 'unsigned'))
+    + whoisRow('Abuse', ab)
+    + `</div>`;
+  const c = w.contacts || {};
+  const cards = whoisContact('Registrant', c.registrant) + whoisContact('Admin', c.admin) + whoisContact('Tech', c.tech);
+  const note = (w.privacy && !cards) ? `<div class="wi-note">Registrant contact is privacy/proxy-protected or withheld (GDPR).</div>` : '';
+  const src = `<div class="wi-src muted">Source: ${[w.sources && w.sources.rdap ? 'RDAP' : null, w.sources && w.sources.whois ? `WHOIS (${escapeHtml(w.sources.whois)})` : null].filter(Boolean).join(' + ') || '—'}</div>`;
+  els.whoisResult.innerHTML = core + cards + note + src;
+  els.whoisResult.hidden = false;
 }
 
 // ── Standalone tools (Trademark, Appraisal) ─────────────────────────────────
@@ -5142,6 +5215,8 @@ els.navNameserver?.addEventListener('click', (e) => { if (newTabClick(e)) return
 els.navSales?.addEventListener('click', (e) => { if (newTabClick(e)) return; e.preventDefault(); setToolUrl('sales', ''); route(); });
 els.navBeeper?.addEventListener('click', (e) => { if (newTabClick(e)) return; e.preventDefault(); setToolUrl('beeper', ''); route(); });
 els.beeperForm?.addEventListener('submit', (e) => { e.preventDefault(); addBeeperWatch(); });
+els.navWhois?.addEventListener('click', (e) => { if (newTabClick(e)) return; e.preventDefault(); setToolUrl('whois', ''); showView('whois'); });
+els.whoisForm?.addEventListener('submit', (e) => { e.preventDefault(); const d = (els.whoisDomain.value || '').trim(); if (d) { setToolUrl('whois', d); runWhois(d); } });
 
 // ── Sales Research ───────────────────────────────────────────────────────────
 let salesProjectId = null;

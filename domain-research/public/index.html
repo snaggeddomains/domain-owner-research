@@ -184,6 +184,8 @@
         <a id="nav-nameserver" class="nav-btn" href="/research/nameserver" hidden>Nameserver</a>
         <!-- Beeper — RDAP drop watcher. Gated by the `beeper` permission. -->
         <a id="nav-beeper" class="nav-btn" href="/research/beeper" hidden>Beeper</a>
+        <!-- Whois — basic free RDAP/WHOIS lookup. Gated by the `whois` permission. -->
+        <a id="nav-whois" class="nav-btn" href="/research/whois" hidden>Whois</a>
         <!-- Sales Research — find companies that would buy a domain we're selling.
              Gated by the `sales` permission; shown by JS. -->
         <a id="nav-sales" class="nav-btn" href="/research/sales" hidden>Sales Research</a>
@@ -565,6 +567,18 @@
           </form>
           <div id="beeper-status" class="tool-status" hidden></div>
           <ul id="beeper-list" class="beeper-list"></ul>
+        </section>
+
+        <!-- Whois — basic free domain lookup (RDAP + legacy WHOIS) -->
+        <section id="view-whois" hidden>
+          <h1 class="page-title">Whois <span class="accent">lookup</span></h1>
+          <p class="sub">A basic, free domain lookup via <strong>RDAP</strong> (with legacy WHOIS merged in) — registrar, registration / expiry / updated dates, status codes, nameservers, DNSSEC, and the registrant contact when it's public. No credits used.</p>
+          <form id="whois-form" class="beeper-form">
+            <input id="whois-domain" type="text" placeholder="e.g. example.com" autocomplete="off" autocapitalize="off" spellcheck="false" />
+            <button id="whois-add" type="submit">Look up</button>
+          </form>
+          <div id="whois-status" class="tool-status" hidden></div>
+          <div id="whois-result" class="whois-result" hidden></div>
         </section>
 
         <!-- Sales Research — companies that would buy a domain we're selling -->
