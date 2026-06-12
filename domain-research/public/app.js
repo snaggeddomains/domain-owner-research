@@ -394,6 +394,10 @@ const POLL_MS = 2500;
 let pollTimer = null;
 let clockTimer = null;
 let currentRunId = null;
+// Session memory of the latest research run per domain, so switching back to
+// Domain Owner (via the action bar / ⌘K) RESUMES the existing call — clock and
+// all — instead of firing a duplicate run.
+const domainRuns = new Map();
 let canOutreach = false;
 // On-demand phone enhance (FullEnrich, premium) is gated like the deep pass.
 let canEnhance = false;
@@ -491,11 +495,20 @@ const TOOL_PERMISSION = {
 // Domain Workspace of stacked cards all drive off this one list — adding the
 // workspace is then just "render these as cards" instead of "navigate".
 function runOwnerFor(domain) {
+  const d = (domain || '').trim().toLowerCase();
+  setActiveDomain(d);
+  // Already holding this domain's run (in-flight or loaded this session)? Re-open
+  // it so we resume the SAME call — openProject re-anchors the elapsed clock to
+  // the run's real start — rather than enqueuing a duplicate research run.
+  const existing = (currentRunId && currentReportDomain && currentReportDomain.toLowerCase() === d)
+    ? currentRunId
+    : domainRuns.get(d);
+  if (existing) { openProject(existing); return; }
+  // No prior run this session → start a fresh free pre-flight.
   if (history.pushState) history.pushState(null, '', '/research');
   showEntry();                                   // Domain Owner is the home view
   if (els.deepToggle) els.deepToggle.checked = false; // free pre-flight, not paid deep
-  if (els.domain) els.domain.value = domain;
-  setActiveDomain(domain);
+  if (els.domain) els.domain.value = d;
   if (els.form) { els.form.requestSubmit ? els.form.requestSubmit() : els.form.dispatchEvent(new Event('submit', { cancelable: true })); }
 }
 const DOMAIN_MODULES = [
@@ -2658,6 +2671,7 @@ async function run({ domain, deep, force }) {
       // Set currentRunId BEFORE renderReport — it gates the report-chat (and the
       // outreach launcher) on currentRunId, so rendering first would hide the chat.
       currentRunId = data.run_id;
+      domainRuns.set(domain.toLowerCase(), data.run_id);
       renderReport(r.report);
       // A reused run can be an errored deep pass that still saved a free
       // pre-flight — mark it incomplete (and offer re-deepen) instead of letting
@@ -2670,6 +2684,7 @@ async function run({ domain, deep, force }) {
       return;
     }
     const runId = data.run_id;
+    domainRuns.set(domain.toLowerCase(), runId);
     applyHash({ id: runId, domain, created_at: new Date().toISOString() });
     if (freeFirst) autoDeepenForRunId = runId; // deepen this run once its free report lands
     startPolling(runId, effectiveDeep ? `Researching ${domain} (deep)` : `Researching ${domain}`);
@@ -2780,6 +2795,7 @@ async function openProject(id) {
   try {
     const r = await pollRun(id);
     currentRunId = id;
+    if (r.domain) domainRuns.set(r.domain.toLowerCase(), id);
     applyHash({ id, domain: r.domain, created_at: r.created_at });
     setReportTitle(r.domain);
     if (r.domain) runMarketStrip(r.domain);
