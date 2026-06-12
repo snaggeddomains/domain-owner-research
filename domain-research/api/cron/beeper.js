@@ -1,5 +1,6 @@
 import { activeWatches, updateWatch } from '../../lib/db/beeper.js';
 import { rdapStatus, describeStatus, inDeletionLifecycle } from '../../lib/beeper/rdap.js';
+import { isDue } from '../../lib/beeper/cadence.js';
 import { getUser } from '../../lib/db/users.js';
 import { createNotification } from '../../lib/db/notifications.js';
 import { sendEmail, isEmailConfigured } from '../../lib/email.js';
@@ -63,8 +64,13 @@ export default async function handler(req, res) {
   }
 
   const watches = await activeWatches();
+  // Adaptive cadence — only poll the watches that are DUE this tick. A name on
+  // the cusp (delete pipeline / hours-to-expiry) is due every minute; a name
+  // months out is due weekly/daily. Keeps RDAP load proportional to imminence.
+  const now = Date.now();
+  const due = watches.filter((w) => isDue(w, now));
   let checked = 0, changed = 0;
-  const queue = [...watches];
+  const queue = [...due];
   async function worker() {
     while (queue.length) {
       const w = queue.shift();
@@ -78,6 +84,9 @@ export default async function handler(req, res) {
         last_status: s.available ? [] : s.statuses,
         last_http: s.code,
         last_checked: new Date().toISOString(),
+        // Persist the expiration date so the cadence can taper toward it (best-
+        // effort column; updateWatch drops it gracefully if not yet migrated).
+        ...(s.expiration ? { expiration: s.expiration } : {}),
       };
       let kind = null;
       if (hadBaseline && newKey !== prevKey) {
@@ -99,6 +108,6 @@ export default async function handler(req, res) {
       await updateWatch(w.id, patch);
     }
   }
-  await Promise.all(Array.from({ length: Math.min(4, watches.length) || 1 }, worker));
-  res.status(200).json({ ok: true, checked, changed });
+  await Promise.all(Array.from({ length: Math.min(4, due.length) || 1 }, worker));
+  res.status(200).json({ ok: true, watching: watches.length, due: due.length, checked, changed });
 }

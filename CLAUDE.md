@@ -259,6 +259,34 @@ answer from the index.
 
 ---
 
+# Beeper — RDAP drop watcher (adaptive cadence, 2026-06-12)
+
+UI at **research.snagged.com/research/beeper** (gated by the `beeper` module permission).
+Watches a domain's RDAP status and alerts (bell + email) the instant it changes —
+especially the drop to available. **Universal team watchlist** (`listWatches()` returns
+every user's watches; each row carries `submitted_by` for the who-added-it chip;
+`stopWatch(id)` lets any Beeper user stop any watch).
+
+- **Adaptive cadence** (`lib/beeper/cadence.js`) — the cron still fires every minute
+  (`vercel.json`), but a watch is only actually hit when it's **DUE** (`isDue`).
+  `checkIntervalMs(watch)` is a pure function of the watch's `expiration` + current EPP
+  `last_status`: **pending-delete → 1 min**, redemption/restore/auto-renew → 1h, else
+  taper by days-to-expiry (>14d weekly · >7d daily · >2d 12h · >1d 6h · day-of hourly ·
+  past-but-clean 6h · unknown 6h). So a name on the cusp is polled every minute; a name
+  months out is polled occasionally and tightens as the date nears. The cron filters to
+  due watches and persists `expiration` from RDAP each check; `listWatches` attaches a
+  `cadence` summary (`cadenceInfo`: tier/label/days_to_expiry/next_check) for the UI,
+  which groups rows into **🎯 Drop watch — live** / **🕒 Long-term** / **✓ Finished** with a
+  per-row cadence chip.
+- **`expiration` column** is a later add — `addWatch`/`updateWatch` write it best-effort
+  and **strip+retry on a column-missing error**, so the app degrades gracefully (cadence
+  falls back to a 6h default) before the migration runs. **One-time migration:**
+  `supabase/migrations/0010_beeper_expiration.sql` (`alter table beeper_watches add column
+  if not exists expiration timestamptz`) on the research project.
+- **Safety cap** still applies (`BEEPER_MAX_WATCH_DAYS`, default 60) → auto-stops a watch.
+
+---
+
 # Sales Research Agent (Phase 1A — Upgrade) — 2026-06-05
 
 Find companies that would BUY a domain we're selling. UI at **research.snagged.com/research/sales**

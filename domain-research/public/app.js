@@ -2730,17 +2730,47 @@ function beeperStateLabel(w) {
   if (w.last_checked) return 'registered';
   return 'checking…';
 }
+// Which display group a watch belongs to: finished (terminal), live (minute /
+// hourly cadence — on the cusp), or scheduled (long-term tapered toward expiry).
+function beeperBucket(w) {
+  if (w.status === 'dropped' || w.status === 'resolved' || w.status === 'expired') return 'done';
+  const tier = (w.cadence && w.cadence.tier) || 'scheduled';
+  return (tier === 'live' || tier === 'hourly') ? 'live' : 'scheduled';
+}
+// "daily · exp in 92d" — the current poll cadence + how far the expiration is.
+function beeperCadenceChip(w) {
+  const c = w.cadence;
+  if (!c) return '';
+  const bits = [c.label];
+  if (c.days_to_expiry != null) {
+    const d = c.days_to_expiry;
+    bits.push(d < 0 ? `exp ${Math.abs(Math.round(d))}d ago` : d < 1 ? 'exp today' : `exp in ${Math.round(d)}d`);
+  }
+  const live = c.tier === 'live';
+  return ` <span class="beeper-cadence${live ? ' beeper-cadence-live' : ''}" title="Polling cadence">${escapeHtml(bits.join(' · '))}</span>`;
+}
+function beeperRowHtml(w) {
+  const dropped = w.status === 'dropped' || w.last_http === 404;
+  const when = w.last_checked ? `last checked: ${new Date(w.last_checked).toLocaleString()}` : 'not checked yet';
+  const who = w.submitted_by ? ` <span class="beeper-who" title="Added by ${escapeHtml(w.submitted_by)}">${escapeHtml(w.submitted_by)}</span>` : '';
+  const terminal = w.status === 'dropped' || w.status === 'resolved' || w.status === 'expired';
+  const cadence = terminal ? '' : beeperCadenceChip(w);
+  return `<li class="beeper-row${dropped ? ' beeper-dropped' : ''}">`
+    + `<div><strong>${escapeHtml(w.domain)}</strong>${who}${cadence} — <span class="beeper-state">${escapeHtml(beeperStateLabel(w))}</span><div class="muted beeper-meta">${escapeHtml(when)}</div></div>`
+    + `<button type="button" class="beeper-stop" data-id="${escapeHtml(w.id)}">Stop</button>`
+    + `</li>`;
+}
 function renderBeeper(watches) {
   if (!watches.length) { els.beeperList.innerHTML = '<li class="muted">No domains watched yet — add one above.</li>'; return; }
-  els.beeperList.innerHTML = watches.map((w) => {
-    const dropped = w.status === 'dropped' || w.last_http === 404;
-    const when = w.last_checked ? `last checked: ${new Date(w.last_checked).toLocaleString()}` : 'not checked yet';
-    const who = w.submitted_by ? ` <span class="beeper-who" title="Added by ${escapeHtml(w.submitted_by)}">${escapeHtml(w.submitted_by)}</span>` : '';
-    return `<li class="beeper-row${dropped ? ' beeper-dropped' : ''}">`
-      + `<div><strong>${escapeHtml(w.domain)}</strong>${who} — <span class="beeper-state">${escapeHtml(beeperStateLabel(w))}</span><div class="muted beeper-meta">${escapeHtml(when)}</div></div>`
-      + `<button type="button" class="beeper-stop" data-id="${escapeHtml(w.id)}">Stop</button>`
-      + `</li>`;
-  }).join('');
+  const groups = { live: [], scheduled: [], done: [] };
+  for (const w of watches) groups[beeperBucket(w)].push(w);
+  const section = (title, hint, rows) => rows.length
+    ? `<li class="beeper-group"><span class="beeper-group-title">${title}</span> <span class="muted">${hint}</span></li>` + rows.map(beeperRowHtml).join('')
+    : '';
+  els.beeperList.innerHTML =
+      section('🎯 Drop watch — live', 'on the cusp — checked every minute / hourly', groups.live)
+    + section('🕒 Long-term', 'far from expiry — checked occasionally, tightening as the date nears', groups.scheduled)
+    + section('✓ Finished', 'dropped / renewed / stopped', groups.done);
   els.beeperList.querySelectorAll('.beeper-stop').forEach((b) => b.addEventListener('click', () => stopBeeperWatch(b.getAttribute('data-id'))));
 }
 async function addBeeperWatch() {

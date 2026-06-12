@@ -1,8 +1,12 @@
 import { getDb, isDbConfigured } from './supabase.js';
+import { cadenceInfo } from '../beeper/cadence.js';
 
 // Beeper watches — one row per (domain, user). The cron polls 'watching' rows.
 const T = 'beeper_watches';
 const tableMissing = (e) => /relation .* does not exist|does not exist|schema cache|PGRST205|42P01/i.test(String(e?.message || e?.code || e));
+// The `expiration` column is a later addition — detect "column not found" so a
+// write can retry without it before the one-time migration is run.
+const columnMissing = (e) => /could not find the .* column|column .* does not exist|PGRST204|42703/i.test(String(e?.message || e?.code || e));
 
 export function beeperConfigured() { return isDbConfigured(); }
 
@@ -16,12 +20,26 @@ export async function addWatch({ domain, userId, note = null, seed = null }) {
     last_status: seed && seed.ok ? seed.statuses : null,
     last_http: seed && seed.ok ? seed.code : null,
     last_checked: seed && seed.ok ? new Date().toISOString() : null,
+    // Seed the expiration so the adaptive cadence can classify this watch
+    // immediately (best-effort column — stripped + retried if not yet migrated).
+    ...(seed && seed.ok && seed.expiration ? { expiration: seed.expiration } : {}),
   };
   try {
     const { data, error } = await getDb().from(T).upsert(row, { onConflict: 'domain,user_id' }).select('*').single();
     if (error) throw error;
     return data || null;
   } catch (e) {
+    if (columnMissing(e) && 'expiration' in row) {
+      const { expiration, ...rest } = row;
+      try {
+        const { data, error } = await getDb().from(T).upsert(rest, { onConflict: 'domain,user_id' }).select('*').single();
+        if (error) throw error;
+        return data || null;
+      } catch (e2) {
+        if (!tableMissing(e2)) console.error('addWatch:', e2?.message || e2);
+        return null;
+      }
+    }
     if (!tableMissing(e)) console.error('addWatch:', e?.message || e);
     return null;
   }
@@ -54,7 +72,13 @@ export async function listWatches() {
         for (const u of us || []) labelById[u.id] = submitterLabel(u.email);
       } catch { /* best-effort — chips just stay blank if the lookup fails */ }
     }
-    return watches.map((w) => ({ ...w, submitted_by: w.user_id ? (labelById[w.user_id] || null) : null }));
+    const now = Date.now();
+    return watches.map((w) => ({
+      ...w,
+      submitted_by: w.user_id ? (labelById[w.user_id] || null) : null,
+      // Adaptive-cadence summary for the UI (tier / label / next check / days-to-expiry).
+      cadence: cadenceInfo(w, now),
+    }));
   } catch (e) {
     if (!tableMissing(e)) console.error('listWatches:', e?.message || e);
     return [];
@@ -80,6 +104,12 @@ export async function updateWatch(id, patch) {
     const { error } = await getDb().from(T).update(patch).eq('id', id);
     if (error) throw error;
   } catch (e) {
+    if (columnMissing(e) && 'expiration' in patch) {
+      // Pre-migration: drop the new column and still persist last_checked/status.
+      const { expiration, ...rest } = patch;
+      try { const { error } = await getDb().from(T).update(rest).eq('id', id); if (error) throw error; return; }
+      catch (e2) { if (!tableMissing(e2)) console.error('updateWatch:', e2?.message || e2); return; }
+    }
     if (!tableMissing(e)) console.error('updateWatch:', e?.message || e);
   }
 }
