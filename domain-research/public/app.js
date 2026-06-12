@@ -2815,8 +2815,26 @@ async function openProject(id) {
         setStatus(r.error || 'This run failed.', true);
       }
     } else {
-      // Still running. If a free (shallow) report was already saved (e.g. a deep
-      // pass is now in progress), keep it on screen instead of a blank page.
+      // Still "running" server-side. If a report was already saved AND the run is
+      // older than the stall threshold, it's an orphaned run (e.g. a deep pass that
+      // died without finalizing the status) — show its saved report CALMLY as
+      // deep-incomplete rather than resuming a doomed poll that immediately blasts
+      // the alarming "likely stalled" banner over a perfectly good report.
+      const ageMs = r.created_at ? Date.now() - Date.parse(r.created_at) : 0;
+      if (r.report && ageMs > STALL_MS) {
+        if (r.domain) setReportTitle(r.domain);
+        renderReport(r.report);
+        els.deepenTop.hidden = true;
+        els.deepenBar.hidden = true;
+        if (els.reportFeedback) els.reportFeedback.hidden = true;
+        setReportMeta(r.created_at, r.report && r.report.phase, { deepIncomplete: r.report.phase !== 'deep' });
+        setStatus('');
+        if (els.runControls) els.runControls.hidden = true;
+        els.go.disabled = false;
+        return;
+      }
+      // Genuinely in-flight (recent). Keep any saved free report on screen and
+      // resume polling — the elapsed clock re-anchors to the run's real start.
       if (r.report) {
         renderReport(r.report);
         els.deepenTop.hidden = true;
