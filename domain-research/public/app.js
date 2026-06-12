@@ -525,13 +525,20 @@ function currentDomainTool() {
 function renderDomainBar() {
   const bar = els.domainBar; if (!bar) return;
   const here = currentDomainTool();
+  // Render the FULL accessible set (stable positions so a chip never shifts under
+  // a finger mid-tap) and mark the current tool as a non-clickable "you are here"
+  // chip rather than removing it.
   const mods = activeDomain && here
-    ? DOMAIN_MODULES.filter((m) => m.tool !== here && canModule(currentUser, m.perm))
+    ? DOMAIN_MODULES.filter((m) => canModule(currentUser, m.perm))
     : [];
-  if (!mods.length) { bar.hidden = true; return; }
+  if (!mods.length || (mods.length === 1 && mods[0].tool === here)) { bar.hidden = true; return; }
   if (els.domainBarD) els.domainBarD.textContent = activeDomain;
-  els.domainBarChips.innerHTML = mods.map((m) => `<button type="button" class="domain-chip" data-tool="${m.tool}">${m.icon} ${escapeHtml(m.label)}</button>`).join('');
-  els.domainBarChips.querySelectorAll('.domain-chip').forEach((b) => b.addEventListener('click', () => {
+  els.domainBarChips.innerHTML = mods.map((m) => {
+    const cur = m.tool === here;
+    return `<button type="button" class="domain-chip${cur ? ' current' : ''}" data-tool="${m.tool}"${cur ? ' disabled aria-current="page"' : ''}>${m.icon} ${escapeHtml(m.label)}</button>`;
+  }).join('');
+  els.domainBarChips.querySelectorAll('.domain-chip:not(.current)').forEach((b) => b.addEventListener('click', () => {
+    b.blur(); // drop focus so no highlight lingers after navigation
     const m = DOMAIN_MODULES.find((x) => x.tool === b.dataset.tool);
     if (m) m.run(activeDomain);
   }));

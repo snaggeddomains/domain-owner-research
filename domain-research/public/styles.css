@@ -1567,8 +1567,14 @@ a.sr-ag-co-link:hover { border-color: var(--coral); color: var(--coral-deep); ba
 .domain-bar-label strong { color:var(--navy); }
 .domain-bar-chips { display:flex; gap:8px; overflow-x:auto; flex:1 1 auto; scrollbar-width:thin; -webkit-overflow-scrolling:touch; }
 .domain-chip { white-space:nowrap; padding:6px 12px; border:1.5px solid #d9d2c2; border-radius:999px;
-  background:#fff; color:var(--navy); font-size:13px; font-weight:700; cursor:pointer; flex:0 0 auto; }
-.domain-chip:hover { background:var(--coral,#e08a6f); color:#fff; border-color:var(--coral,#e08a6f); }
+  background:#fff; color:var(--navy); font-size:13px; font-weight:700; cursor:pointer; flex:0 0 auto;
+  -webkit-tap-highlight-color:transparent; }
+/* Hover tint only where a real pointer can hover — otherwise mobile taps leave a
+   "stuck" highlight on whatever chip ends up under the finger after navigation. */
+@media (hover:hover) { .domain-chip:not(.current):hover { background:var(--coral,#e08a6f); color:#fff; border-color:var(--coral,#e08a6f); } }
+/* The tool you're currently on — a non-clickable "you are here" marker (keeps the
+   chip set in stable positions so nothing shifts mid-tap). */
+.domain-chip.current { background:var(--navy,#1f2a37); color:#fff; border-color:var(--navy,#1f2a37); cursor:default; opacity:.92; }
 .domain-bar-k { flex:0 0 auto; padding:5px 9px; border:1.5px solid #d9d2c2; border-radius:8px; background:#fff;
   color:var(--navy-2); font-size:12px; font-weight:700; cursor:pointer; }
 .domain-bar-k:hover { background:var(--cream,#faf6ec); }
