@@ -272,7 +272,8 @@ every user's watches; each row carries `submitted_by` for the who-added-it chip;
   `checkIntervalMs(watch)` is a pure function of the watch's `expiration` + current EPP
   `last_status`: **pending-delete → 1 min**, redemption/restore/auto-renew → 1h, else
   taper by days-to-expiry (>14d weekly · >7d daily · >2d 12h · >1d 6h · day-of hourly ·
-  past-but-clean 6h · unknown 6h). So a name on the cusp is polled every minute; a name
+  past-but-clean 6h · **unknown 1h** — bootstraps the date then tapers). So a name on
+  the cusp is polled every minute; a name
   months out is polled occasionally and tightens as the date nears. The cron filters to
   due watches and persists `expiration` from RDAP each check; `listWatches` attaches a
   `cadence` summary (`cadenceInfo`: tier/label/days_to_expiry/next_check) for the UI,

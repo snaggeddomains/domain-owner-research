@@ -38,7 +38,9 @@ export function checkIntervalMs(watch, now = Date.now()) {
   if (statuses.some((s) => IN_PIPELINE.test(String(s)))) return HOUR;
 
   const d = daysToExpiry(watch && watch.expiration, now);
-  if (d === null) return 6 * HOUR;   // unknown expiry → moderate keep-alive
+  if (d === null) return HOUR;       // unknown expiry → check hourly to LEARN the
+                                     // date (then it tapers); also the floor for
+                                     // TLDs whose RDAP never exposes expiration
   if (d > 14) return 7 * DAY;        // far out → weekly (also refreshes the date)
   if (d > 7) return DAY;             // ~2 weeks → daily
   if (d > 2) return 12 * HOUR;       // ~1 week → twice a day
