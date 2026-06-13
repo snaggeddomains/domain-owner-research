@@ -61,22 +61,24 @@ function harvestDomains(node, out) {
   if (typeof node === 'object') { for (const k of Object.keys(node)) harvestDomains(node[k], out); }
 }
 
-// DomainIQ key field → reverse `type`.
-const DIQ_TYPE = { company: 'org', name: 'name', email: 'email' };
+// DomainIQ owner→domains report service per key field (confirmed from /api_docs:
+// organization_report/email_report/name_report, param organization/email/name).
+const DIQ_SERVICE = { company: ['organization_report', 'organization'], name: ['name_report', 'name'], email: ['email_report', 'email'] };
 
 async function domainiqReverse(field, term, env) {
-  // Parked behind an explicit template: DomainIQ's owner→domains service/params
-  // vary by plan (domain_search is keyword-substring, not ownership; reverse_search
-  // returns aggregates). Until the exact endpoint is confirmed we DON'T call it —
-  // avoids burning DomainIQ credits / 400s on a wrong guess. Set
-  // DOMAINIQ_REVERSE_URL_TEMPLATE ({key},{term},{type}) to enable.
-  const tmpl = env && env.DOMAINIQ_REVERSE_URL_TEMPLATE && String(env.DOMAINIQ_REVERSE_URL_TEMPLATE);
-  if (!tmpl || !env.DOMAINIQ_API_KEY) return null;
-  const type = DIQ_TYPE[field] || 'org';
-  const url = tmpl
-    .replace('{key}', encodeURIComponent(env.DOMAINIQ_API_KEY))
-    .replace('{term}', encodeURIComponent(String(term).trim()))
-    .replace('{type}', encodeURIComponent(type));
+  if (!env || !env.DOMAINIQ_API_KEY) return null;
+  const key = env.DOMAINIQ_API_KEY;
+  const t = String(term).trim();
+  let url;
+  if (env.DOMAINIQ_REVERSE_URL_TEMPLATE) {
+    // Optional override ({key},{term},{type}); otherwise use the entity report.
+    const type = ({ company: 'org', name: 'name', email: 'email' })[field] || 'org';
+    url = String(env.DOMAINIQ_REVERSE_URL_TEMPLATE)
+      .replace('{key}', encodeURIComponent(key)).replace('{term}', encodeURIComponent(t)).replace('{type}', encodeURIComponent(type));
+  } else {
+    const [service, param] = DIQ_SERVICE[field] || DIQ_SERVICE.company;
+    url = `https://www.domainiq.com/api?key=${encodeURIComponent(key)}&service=${service}&${param}=${encodeURIComponent(t)}&output_mode=json`;
+  }
   // Route through the static-IP proxy when configured (DomainIQ IP allowlist);
   // fall back to a direct call if no proxy is set.
   const agent = proxyAgent();
