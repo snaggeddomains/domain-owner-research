@@ -6319,10 +6319,11 @@ function cpRenderTable() {
     + `<td class="cp-dom">${escapeHtml(d.domain)}${d.premium_reason ? ' <span class="cp-badge">★ premium</span>' : ''}</td>`
     + `<td class="cp-len">${d.sld_length ?? ''}</td>`
     + `<td class="cp-reason">${escapeHtml(d.premium_reason || '')}</td>`
+    + `<td class="cp-via">${escapeHtml(d.matched_via || '')}</td>`
     + `<td>${escapeHtml(d.created || '')}</td>`
     + `<td>${escapeHtml(d.registrar || '')}</td></tr>`).join('');
   els.cpTable.innerHTML = `<table class="cp-table"><thead><tr>`
-    + `<th>Domain</th><th>Len</th><th>Premium</th><th>Registered</th><th>Registrar</th>`
+    + `<th>Domain</th><th>Len</th><th>Premium</th><th>Matched on</th><th>Registered</th><th>Registrar</th>`
     + `</tr></thead><tbody>${rows}</tbody></table>`;
 }
 

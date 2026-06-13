@@ -39,6 +39,8 @@ export async function setPortfolioRunStatus(id, status, patch = {}) {
   if (error) throw new Error(`setPortfolioRunStatus: ${error.message}`);
 }
 
+const columnMissing = (e) => /could not find the .* column|column .* does not exist|PGRST204|42703/i.test(String(e?.message || e));
+
 export async function insertPortfolioDomains(runId, domains) {
   if (!domains.length) return;
   const rows = domains.map((d) => ({
@@ -46,24 +48,34 @@ export async function insertPortfolioDomains(runId, domains) {
     domain: d.domain,
     sld_length: d.domain ? d.domain.split('.')[0].length : null,
     premium_reason: d.premium_reason || null,
+    matched_via: d.matched_via || null, // provenance: registrant key(s) that linked it
     created: d.created || null,
     registrar: d.registrar || null,
   }));
   const CHUNK = 1000;
   for (let i = 0; i < rows.length; i += CHUNK) {
-    const { error } = await getDb().from(DOMAINS).insert(rows.slice(i, i + CHUNK));
+    const chunk = rows.slice(i, i + CHUNK);
+    let { error } = await getDb().from(DOMAINS).insert(chunk);
+    // matched_via is a later column — degrade gracefully before the migration runs.
+    if (error && columnMissing(error)) {
+      ({ error } = await getDb().from(DOMAINS).insert(chunk.map(({ matched_via, ...r }) => r)));
+    }
     if (error) throw new Error(`insertPortfolioDomains: ${error.message}`);
   }
 }
 
 export async function listPortfolioDomains(runId, { limit = 1000 } = {}) {
-  const { data, error } = await getDb()
+  const q = (sel) => getDb()
     .from(DOMAINS)
-    .select('domain,sld_length,premium_reason,created,registrar')
+    .select(sel)
     .eq('run_id', runId)
     .order('sld_length', { ascending: true, nullsFirst: false })
     .order('domain', { ascending: true })
     .limit(limit);
+  let { data, error } = await q('domain,sld_length,premium_reason,matched_via,created,registrar');
+  if (error && columnMissing(error)) {
+    ({ data, error } = await q('domain,sld_length,premium_reason,created,registrar')); // pre-migration
+  }
   if (error) throw new Error(`listPortfolioDomains: ${error.message}`);
   return data || [];
 }

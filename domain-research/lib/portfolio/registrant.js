@@ -11,6 +11,14 @@
 
 import whoisSource from '../sources/whois.js';
 
+// Registrant strings that are NOT a real owner — registrars, resellers, brand-
+// protection agents, and privacy/proxy/placeholder values. Reverse-searching any
+// of these returns the registrar's whole unrelated book (that's how aol.com/mp3.com
+// leaked into "Meta"), so they're rejected as search keys.
+const JUNK_REGISTRANT = /(markmonitor|csc\s|cscglobal|corporate domains|registrarsafe|godaddy|namecheap|network solutions|tucows|enom|publicdomainregistry|pdr ltd|key-?systems|gandi|ovh|appdetex|com laude|nom-iq|safenames|brandsight|fairwinds|101domain|webnic|internet\.bs|reg\.ru|bigrock|namebright|dynadot|porkbun|whois|privacy|redacted|data protected|perfect privacy|domains by proxy|contact privacy|registration private|withheld|not disclosed|statutory masking|identity protect|proxy|whoisguard|domain administrator|domain admin|dns admin|hostmaster|abuse|select request|http)/i;
+const isCleanEmail = (s) => /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(String(s || '').trim()) && !JUNK_REGISTRANT.test(s);
+const isCleanOrg = (s) => { const t = String(s || '').trim(); return t.length >= 3 && !JUNK_REGISTRANT.test(t); };
+
 // Classify the raw input.
 export function classifySeed(raw) {
   const s = String(raw || '').trim();
@@ -36,22 +44,22 @@ export async function deriveRegistrantKeys(raw, env) {
     terms.push({ field: 'name', term: seed.value });
     label = seed.value;
   } else {
-    // Domain seed — derive the registrant from live WHOIS, then add the brand.
+    // Domain seed — derive the registrant from live WHOIS. Only keep CLEAN keys
+    // (a real org/email, not a registrar/proxy/placeholder), so we don't reverse-
+    // search a shared registrar string and pull its whole unrelated book.
     label = seed.value;
     const brand = seed.value.split('.')[0];
     try {
       const w = await whoisSource.run({ domain: seed.value }, { env });
       const r = (w && w.registrant) || {};
       registrant = { organization: r.organization || '', email: r.email || '', name: r.name || '', privacy: !!(w && w.privacy) };
-      if (!registrant.privacy) {
-        if (registrant.organization) terms.push({ field: 'company', term: registrant.organization });
-        if (registrant.email) terms.push({ field: 'email', term: registrant.email });
-        if (registrant.name && registrant.name !== registrant.organization) terms.push({ field: 'name', term: registrant.name });
-      }
-    } catch { /* WHOIS failed → brand only */ }
-    // Always include the brand as a company term (covers masked registrants and
-    // catches sister domains the WHOIS org string might miss).
-    terms.push({ field: 'company', term: brand });
+      if (isCleanOrg(registrant.organization)) terms.push({ field: 'company', term: registrant.organization.trim() });
+      if (isCleanEmail(registrant.email)) terms.push({ field: 'email', term: registrant.email.trim() });
+      if (registrant.name && registrant.name !== registrant.organization && isCleanOrg(registrant.name)) terms.push({ field: 'name', term: registrant.name.trim() });
+    } catch { /* WHOIS failed */ }
+    // Brand fallback ONLY when WHOIS gave us nothing clean — the bare brand is a
+    // substring match (noisy: "meta" hits unrelated orgs), so it's last-resort.
+    if (!terms.length) terms.push({ field: 'company', term: brand, fallback: true });
   }
 
   // Dedupe (field+term, case-insensitive); drop empties.

@@ -40,8 +40,8 @@ async function handleGet(req, res) {
   const domains = await listPortfolioDomains(id, { limit: 50000 });
 
   if (String(req.query.format || '').toLowerCase() === 'csv') {
-    const header = 'domain,premium,premium_reason,sld_length,created,registrar';
-    const lines = domains.map((d) => [d.domain, d.premium_reason ? 'yes' : 'no', d.premium_reason, d.sld_length, d.created, d.registrar].map(csvEscape).join(','));
+    const header = 'domain,premium,premium_reason,matched_via,sld_length,created,registrar';
+    const lines = domains.map((d) => [d.domain, d.premium_reason ? 'yes' : 'no', d.premium_reason, d.matched_via, d.sld_length, d.created, d.registrar].map(csvEscape).join(','));
     const safe = String(run.query || 'portfolio').replace(/[^a-z0-9]+/gi, '_').slice(0, 40);
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename="portfolio_${safe}.csv"`);

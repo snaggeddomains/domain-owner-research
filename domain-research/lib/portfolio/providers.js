@@ -65,13 +65,14 @@ function harvestDomains(node, out) {
 const DIQ_TYPE = { company: 'org', name: 'name', email: 'email' };
 
 async function domainiqReverse(field, term, env) {
-  if (!env || !env.DOMAINIQ_API_KEY) return null;
+  // Parked behind an explicit template: DomainIQ's owner→domains service/params
+  // vary by plan (domain_search is keyword-substring, not ownership; reverse_search
+  // returns aggregates). Until the exact endpoint is confirmed we DON'T call it —
+  // avoids burning DomainIQ credits / 400s on a wrong guess. Set
+  // DOMAINIQ_REVERSE_URL_TEMPLATE ({key},{term},{type}) to enable.
+  const tmpl = env && env.DOMAINIQ_REVERSE_URL_TEMPLATE && String(env.DOMAINIQ_REVERSE_URL_TEMPLATE);
+  if (!tmpl || !env.DOMAINIQ_API_KEY) return null;
   const type = DIQ_TYPE[field] || 'org';
-  // Default to `domain_search` (returns domains with registrant info). Override
-  // with DOMAINIQ_REVERSE_URL_TEMPLATE ({key},{term},{type}) once the exact
-  // service/params for the account are confirmed.
-  const tmpl = (env.DOMAINIQ_REVERSE_URL_TEMPLATE && String(env.DOMAINIQ_REVERSE_URL_TEMPLATE))
-    || 'https://www.domainiq.com/api?key={key}&service=domain_search&search={term}&output_mode=json';
   const url = tmpl
     .replace('{key}', encodeURIComponent(env.DOMAINIQ_API_KEY))
     .replace('{term}', encodeURIComponent(String(term).trim()))
@@ -106,11 +107,12 @@ export async function pullPortfolio(terms, { env, maxPages = 100 } = {}) {
   const errors = [];
   let credits = 0;
 
-  const add = (domain, provider, meta) => {
+  const add = (domain, provider, term, meta) => {
     const d = lc(domain);
     if (!d || !d.includes('.')) return;
-    const cur = byDomain.get(d) || { domain: d, providers: new Set(), created: undefined, registrar: undefined };
+    const cur = byDomain.get(d) || { domain: d, providers: new Set(), terms: new Set(), created: undefined, registrar: undefined };
     cur.providers.add(provider);
+    if (term) cur.terms.add(term); // the registrant key that linked this domain to the seed (provenance)
     if (meta) { if (meta.created && !cur.created) cur.created = meta.created; if (meta.registrar && !cur.registrar) cur.registrar = meta.registrar; }
     byDomain.set(d, cur);
     providerCounts[provider] += 1;
@@ -122,11 +124,13 @@ export async function pullPortfolio(terms, { env, maxPages = 100 } = {}) {
   const paidTerms = new Set(terms.slice(0, 2).map((t) => `${t.field}:${t.term}`));
 
   for (const t of terms) {
+    const label = t.fallback ? `${t.term} (brand)` : t.term; // provenance label
+
     // Whoxy (paginated, credit-counted).
     try {
       const r = await reverseWhoisAll({ [t.field]: t.term }, { env, maxPages });
       credits += r.credits_used || 0;
-      for (const it of r.domains) add(it.domain, 'whoxy', it);
+      for (const it of r.domains) add(it.domain, 'whoxy', label, it);
     } catch (e) { errors.push(`whoxy(${t.field}=${t.term}): ${String(e.message || e)}`); }
 
     // WhoisXML reverse — current + historic (capped to the strongest terms).
@@ -134,18 +138,18 @@ export async function pullPortfolio(terms, { env, maxPages = 100 } = {}) {
       for (const st of ['current', 'historic']) {
         try {
           const list = await whoisxmlReverse(t.term, env, st);
-          if (list) for (const d of list) add(d, 'whoisxml');
+          if (list) for (const d of list) add(d, 'whoisxml', label);
         } catch (e) { errors.push(`whoisxml/${st}(${t.field}=${t.term}): ${String(e.message || e)}`); }
       }
     }
 
-    // DomainIQ — best-effort (no-op unless DOMAINIQ_API_KEY set).
+    // DomainIQ — best-effort (no-op unless a reverse template is configured).
     try {
       const list = await domainiqReverse(t.field, t.term, env);
-      if (list) for (const d of list) add(d, 'domainiq');
+      if (list) for (const d of list) add(d, 'domainiq', label);
     } catch (e) { errors.push(`domainiq(${t.field}=${t.term}): ${String(e.message || e)}`); }
   }
 
-  const domains = [...byDomain.values()].map((d) => ({ domain: d.domain, providers: [...d.providers], created: d.created, registrar: d.registrar }));
+  const domains = [...byDomain.values()].map((d) => ({ domain: d.domain, providers: [...d.providers], matched_via: [...d.terms].join(' · '), created: d.created, registrar: d.registrar }));
   return { domains, total_results: domains.length, provider_counts: providerCounts, credits_used: credits, errors };
 }
