@@ -11,7 +11,10 @@ import { fetchJson } from '../util.js';
 import { fetch as undiciFetch, ProxyAgent } from 'undici';
 
 const lc = (s) => String(s || '').toLowerCase().trim();
-const isDomain = (s) => /^[a-z0-9-]+(\.[a-z0-9-]+)+$/.test(lc(s));
+// A real domain: dot-separated labels ending in an ALPHABETIC TLD (≥2 letters).
+// The alpha-TLD requirement rejects IPv4 / IP ranges (e.g. 52.19.255.255,
+// 13.52.32.4-13.52.32) that DomainIQ's org report returns alongside domains.
+const isDomain = (s) => /^([a-z0-9-]+\.)+[a-z]{2,}$/.test(lc(s));
 
 // Fixie (or DOMAINIQ_PROXY_URL) static-IP proxy — DomainIQ allowlists by IP and
 // Vercel has no static egress, so its reverse call MUST route through the proxy.
