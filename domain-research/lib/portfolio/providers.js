@@ -52,10 +52,30 @@ async function whoisxmlReverse(term, env, searchType) {
 // static egress), so it needs the Fixie proxy AND the correct reverse service;
 // set DOMAINIQ_REVERSE_URL_TEMPLATE ({key},{term}) to enable. Until then this is
 // a no-op so it can't break the pull.
-async function domainiqReverse(term, env) {
-  const tmpl = env && env.DOMAINIQ_REVERSE_URL_TEMPLATE;
-  if (!tmpl || !env.DOMAINIQ_API_KEY) return null;
-  const url = tmpl.replace('{key}', encodeURIComponent(env.DOMAINIQ_API_KEY)).replace('{term}', encodeURIComponent(String(term).trim()));
+// Recursively harvest every domain-looking string from an arbitrary JSON blob —
+// resilient to DomainIQ's exact response field names (which vary by service/plan).
+function harvestDomains(node, out) {
+  if (node == null) return;
+  if (typeof node === 'string') { if (isDomain(node)) out.add(lc(node)); return; }
+  if (Array.isArray(node)) { for (const x of node) harvestDomains(x, out); return; }
+  if (typeof node === 'object') { for (const k of Object.keys(node)) harvestDomains(node[k], out); }
+}
+
+// DomainIQ key field → reverse `type`.
+const DIQ_TYPE = { company: 'org', name: 'name', email: 'email' };
+
+async function domainiqReverse(field, term, env) {
+  if (!env || !env.DOMAINIQ_API_KEY) return null;
+  const type = DIQ_TYPE[field] || 'org';
+  // Default to `domain_search` (returns domains with registrant info). Override
+  // with DOMAINIQ_REVERSE_URL_TEMPLATE ({key},{term},{type}) once the exact
+  // service/params for the account are confirmed.
+  const tmpl = (env.DOMAINIQ_REVERSE_URL_TEMPLATE && String(env.DOMAINIQ_REVERSE_URL_TEMPLATE))
+    || 'https://www.domainiq.com/api?key={key}&service=domain_search&search={term}&output_mode=json';
+  const url = tmpl
+    .replace('{key}', encodeURIComponent(env.DOMAINIQ_API_KEY))
+    .replace('{term}', encodeURIComponent(String(term).trim()))
+    .replace('{type}', encodeURIComponent(type));
   // Route through the static-IP proxy when configured (DomainIQ IP allowlist);
   // fall back to a direct call if no proxy is set.
   const agent = proxyAgent();
@@ -72,10 +92,10 @@ async function domainiqReverse(term, env) {
   } else {
     data = await fetchJson(url);
   }
-  // Tolerant extraction: DomainIQ reverse responses vary by plan/service.
-  const list = (data && (data.domains || data.result || data.data || data.search_result)) || [];
-  const arr = Array.isArray(list) ? list : [];
-  return arr.map((d) => lc(typeof d === 'string' ? d : d.domain || d.domain_name || d.name)).filter(isDomain);
+  // Harvest domains from whatever shape comes back (best-effort, schema-agnostic).
+  const out = new Set();
+  harvestDomains(data, out);
+  return [...out];
 }
 
 // Pull the union portfolio for a set of derived keys.
@@ -119,9 +139,9 @@ export async function pullPortfolio(terms, { env, maxPages = 100 } = {}) {
       }
     }
 
-    // DomainIQ — best-effort (no-op unless configured).
+    // DomainIQ — best-effort (no-op unless DOMAINIQ_API_KEY set).
     try {
-      const list = await domainiqReverse(t.term, env);
+      const list = await domainiqReverse(t.field, t.term, env);
       if (list) for (const d of list) add(d, 'domainiq');
     } catch (e) { errors.push(`domainiq(${t.field}=${t.term}): ${String(e.message || e)}`); }
   }
