@@ -6246,9 +6246,9 @@ async function loadPortfolioRuns(q = '') {
 }
 
 async function portfolioCreate(query, filter, tries = 3) {
-  // Email vs company: an '@' means a registrant email (the precise match).
-  const body = { action: 'create', filter };
-  if (query.includes('@')) body.email = query; else body.company = query;
+  // One seed field — the server classifies it (domain → derive registrant from
+  // WHOIS · company name · registrant email) and derives the reverse-WHOIS keys.
+  const body = { action: 'create', filter, seed: query };
   let last;
   for (let a = 0; a < tries; a++) {
     const res = await fetch('/research/api/portfolio', {
@@ -6304,33 +6304,47 @@ function openPortfolioRun(id) {
   cpPollTimer = setInterval(poll, 2500);
 }
 
-function renderPortfolio(data) {
-  const run = data.run || {};
-  const domains = data.domains || [];
-  setCpStatus('');
-  setCpMode('results', run.query || '');
-  if (els.cpResults) els.cpResults.hidden = false;
-  if (els.cpCsv) els.cpCsv.disabled = domains.length === 0;
-  els.cpCsv && (els.cpCsv.dataset.runId = run.id || '');
-  const capped = run.capped ? ' <span class="cp-warn">(page-capped — increase the cap to pull the rest)</span>' : '';
-  if (els.cpSummary) {
-    els.cpSummary.innerHTML = `<strong>${domains.length.toLocaleString()}</strong> premium of `
-      + `<strong>${Number(run.total_results || 0).toLocaleString()}</strong> registered`
-      + (run.credits_used ? ` · ${run.credits_used} credits` : '') + capped;
-  }
-  if (!domains.length) {
-    els.cpTable.innerHTML = '<p class="muted">No premium domains matched the filter. Loosen the filter (e.g. add TLDs, turn off the dictionary requirement) and try again.</p>';
+let cpDomains = [];     // last run's full domain list (premium + the rest)
+let cpPremiumOnly = false;
+
+function cpRenderTable() {
+  const all = cpDomains;
+  const list = cpPremiumOnly ? all.filter((d) => d.premium_reason) : all;
+  if (!all.length) {
+    els.cpTable.innerHTML = '<p class="muted">No domains found for this company/registrant. If you searched a name, try the parent <strong>domain</strong> (e.g. meta.com) so I can read its WHOIS — or a registrant email. Big corporates often register behind MarkMonitor/CSC privacy, which thins reverse-WHOIS coverage.</p>';
     return;
   }
-  const rows = domains.map((d) => `<tr>`
-    + `<td class="cp-dom">${escapeHtml(d.domain)}</td>`
+  if (!list.length) { els.cpTable.innerHTML = '<p class="muted">No premium names in this portfolio — untick “Premium only” to see all owned domains.</p>'; return; }
+  const rows = list.map((d) => `<tr>`
+    + `<td class="cp-dom">${escapeHtml(d.domain)}${d.premium_reason ? ' <span class="cp-badge">★ premium</span>' : ''}</td>`
     + `<td class="cp-len">${d.sld_length ?? ''}</td>`
     + `<td class="cp-reason">${escapeHtml(d.premium_reason || '')}</td>`
     + `<td>${escapeHtml(d.created || '')}</td>`
     + `<td>${escapeHtml(d.registrar || '')}</td></tr>`).join('');
   els.cpTable.innerHTML = `<table class="cp-table"><thead><tr>`
-    + `<th>Domain</th><th>Len</th><th>Why</th><th>Registered</th><th>Registrar</th>`
+    + `<th>Domain</th><th>Len</th><th>Premium</th><th>Registered</th><th>Registrar</th>`
     + `</tr></thead><tbody>${rows}</tbody></table>`;
+}
+
+function renderPortfolio(data) {
+  const run = data.run || {};
+  cpDomains = data.domains || [];
+  setCpStatus('');
+  setCpMode('results', run.query || '');
+  if (els.cpResults) els.cpResults.hidden = false;
+  if (els.cpCsv) els.cpCsv.disabled = cpDomains.length === 0;
+  els.cpCsv && (els.cpCsv.dataset.runId = run.id || '');
+  const owned = Number(run.total_results || cpDomains.length || 0);
+  const premium = Number(run.premium_count != null ? run.premium_count : cpDomains.filter((d) => d.premium_reason).length);
+  if (els.cpSummary) {
+    els.cpSummary.innerHTML = `<strong>${owned.toLocaleString()}</strong> owned · `
+      + `<strong>${premium.toLocaleString()}</strong> premium`
+      + (run.credits_used ? ` · ${run.credits_used} credits` : '')
+      + ` <label class="cp-toggle"><input type="checkbox" id="cp-premonly"${cpPremiumOnly ? ' checked' : ''}/> Premium only</label>`;
+    const t = document.getElementById('cp-premonly');
+    if (t) t.addEventListener('change', () => { cpPremiumOnly = t.checked; cpRenderTable(); });
+  }
+  cpRenderTable();
 }
 
 els.cpForm?.addEventListener('submit', async (e) => {

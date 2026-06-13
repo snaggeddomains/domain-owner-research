@@ -20,8 +20,9 @@ import {
 import {
   getPortfolioRun, setPortfolioRunStatus, insertPortfolioDomains,
 } from '../db/portfolio.js';
-import { reverseWhoisAll } from '../whoxy.js';
-import { selectPremium, wordsNeedingDictionary } from '../portfolio/premium.js';
+import { deriveRegistrantKeys } from '../portfolio/registrant.js';
+import { pullPortfolio } from '../portfolio/providers.js';
+import { classifyPremium, wordsNeedingDictionary } from '../portfolio/premium.js';
 import { filterDictionaryWords } from '../db/dictionary.js';
 
 // Format the refine-chat history as a single corrections block the agent can
@@ -509,32 +510,45 @@ export const runCorporatePortfolio = inngest.createFunction(
       const run = await step.run('load', () => getPortfolioRun(runId));
       if (!run) return { runId, ok: false, reason: 'not found' };
 
-      // PULL — paginate the whole reverse-WHOIS result set (credit-capped).
-      await step.run('mark-pull', () => setPortfolioRunStatus(runId, 'running', { stage: 'pull' }));
-      const pull = await step.run('pull', () => reverseWhoisAll(
-        { [run.search_type]: run.query },
-        { env: process.env },
-      ));
+      // KEYS — turn the seed (domain / company / email) into reverse-WHOIS search
+      // terms (a domain seed derives the registrant org/email from live WHOIS).
+      await step.run('mark-keys', () => setPortfolioRunStatus(runId, 'running', { stage: 'keys' }));
+      const keys = await step.run('derive-keys', () => deriveRegistrantKeys(run.query, process.env));
 
-      // FILTER — keep premium names. 5+ char SLDs need a dictionary check; batch
-      // it in one DB pass against english_words, then classify purely.
-      await step.run('mark-filter', () => setPortfolioRunStatus(runId, 'running', { stage: 'filter' }));
-      const premium = await step.run('filter', async () => {
+      // PULL — union every reverse-WHOIS provider (Whoxy ∪ WhoisXML current+historic
+      // ∪ DomainIQ best-effort) across all derived terms.
+      await step.run('mark-pull', () => setPortfolioRunStatus(runId, 'running', { stage: 'pull' }));
+      const pull = await step.run('pull', () => pullPortfolio(keys.terms, { env: process.env }));
+
+      // CLASSIFY — keep the WHOLE portfolio; FLAG which names are premium (short or
+      // dictionary .com). 5+ char SLDs need a dictionary check; batch it in one DB
+      // pass against english_words, then classify purely.
+      await step.run('mark-classify', () => setPortfolioRunStatus(runId, 'running', { stage: 'classify' }));
+      const classified = await step.run('classify', async () => {
         const filter = run.filter || undefined;
         const need = wordsNeedingDictionary(pull.domains, filter);
         const dict = need.length ? await filterDictionaryWords(need) : new Set();
-        return selectPremium(pull.domains, filter, (sld) => dict.has(sld));
+        return pull.domains.map((d) => {
+          const { premium, reason } = classifyPremium(d.domain, filter, (sld) => dict.has(sld));
+          return { ...d, premium, premium_reason: premium ? reason : null };
+        }).sort((a, b) => {
+          // premium first, then shortest SLD, then alpha
+          if (a.premium !== b.premium) return a.premium ? -1 : 1;
+          const la = a.domain.split('.')[0].length, lb = b.domain.split('.')[0].length;
+          return la - lb || a.domain.localeCompare(b.domain);
+        });
       });
+      const premiumCount = classified.filter((d) => d.premium).length;
 
-      await step.run('persist', () => insertPortfolioDomains(runId, premium));
+      await step.run('persist', () => insertPortfolioDomains(runId, classified));
       await step.run('mark-done', () => setPortfolioRunStatus(runId, 'done', {
         stage: 'done',
-        premium_count: premium.length,
+        premium_count: premiumCount,
         total_results: pull.total_results,
         credits_used: pull.credits_used,
-        capped: pull.capped,
+        capped: false,
       }));
-      return { runId, ok: true, premium: premium.length, scanned: pull.total_results };
+      return { runId, ok: true, premium: premiumCount, scanned: pull.total_results, providers: pull.provider_counts };
     } catch (err) {
       const message = String(err?.message || err);
       await step.run('mark-error', () => setPortfolioRunStatus(runId, 'failed', { error: message }));

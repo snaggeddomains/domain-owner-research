@@ -13,6 +13,7 @@ import { isAuthed, requirePermission } from '../lib/auth.js';
 import { isDbConfigured } from '../lib/db/supabase.js';
 import { inngest, PORTFOLIO_REQUESTED } from '../lib/inngest/client.js';
 import { normalizeFilter, DEFAULT_FILTER } from '../lib/portfolio/premium.js';
+import { classifySeed } from '../lib/portfolio/registrant.js';
 import {
   createPortfolioRun, getPortfolioRun, listPortfolioRuns, listPortfolioDomains,
 } from '../lib/db/portfolio.js';
@@ -39,8 +40,8 @@ async function handleGet(req, res) {
   const domains = await listPortfolioDomains(id, { limit: 50000 });
 
   if (String(req.query.format || '').toLowerCase() === 'csv') {
-    const header = 'domain,sld_length,premium_reason,created,registrar';
-    const lines = domains.map((d) => [d.domain, d.sld_length, d.premium_reason, d.created, d.registrar].map(csvEscape).join(','));
+    const header = 'domain,premium,premium_reason,sld_length,created,registrar';
+    const lines = domains.map((d) => [d.domain, d.premium_reason ? 'yes' : 'no', d.premium_reason, d.sld_length, d.created, d.registrar].map(csvEscape).join(','));
     const safe = String(run.query || 'portfolio').replace(/[^a-z0-9]+/gi, '_').slice(0, 40);
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename="portfolio_${safe}.csv"`);
@@ -60,12 +61,12 @@ async function handleGet(req, res) {
 }
 
 async function handleCreate(body, res, user) {
-  const company = String(body.company || '').trim();
-  const email = String(body.email || '').trim();
-  // Email is the most precise registrant match; company is the common case.
-  const search_type = email ? 'email' : 'company';
-  const query = email || company;
-  if (!query) { res.status(400).json({ error: 'Provide a company name or registrant email.' }); return; }
+  // One seed field: a company DOMAIN (best — we derive the registrant org/email
+  // from its WHOIS), a company NAME, or a registrant EMAIL. (company/email kept
+  // for back-compat.) The async fn classifies + derives the reverse-WHOIS keys.
+  const query = String(body.seed || body.query || body.email || body.company || '').trim();
+  if (!query) { res.status(400).json({ error: 'Provide a company domain (e.g. meta.com), company name, or registrant email.' }); return; }
+  const search_type = classifySeed(query).type; // 'domain' | 'company' | 'email'
 
   const filter = body.filter ? normalizeFilter(body.filter) : { ...DEFAULT_FILTER };
   const runId = await createPortfolioRun({ query, search_type, filter, created_by: user?.id || null });

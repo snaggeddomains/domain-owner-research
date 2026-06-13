@@ -1609,3 +1609,6 @@ a.sr-ag-co-link:hover { border-color: var(--coral); color: var(--coral-deep); ba
 .cp-dom { font-weight: 600; font-variant-numeric: tabular-nums; }
 .cp-len { text-align: center; color: var(--navy-3); font-variant-numeric: tabular-nums; }
 .cp-reason { color: var(--navy-3); font-size: .85rem; }
+.cp-badge { display: inline-block; font-size: .68rem; font-weight: 700; color: #1f7a4d; background: rgba(47,163,107,.12); border: 1px solid rgba(47,163,107,.4); border-radius: 999px; padding: 0 7px; vertical-align: middle; }
+.cp-toggle { margin-left: 12px; font-size: .85rem; font-weight: 600; color: var(--navy-2); white-space: nowrap; cursor: pointer; }
+.cp-toggle input { vertical-align: middle; margin-right: 4px; }

@@ -28,7 +28,7 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="apple-mobile-web-app-title" content="Snagged Research" />
     <meta name="theme-color" content="#254254" />
-    <link rel="stylesheet" href="styles.css?v=20260605ap" />
+    <link rel="stylesheet" href="styles.css?v=20260605aq" />
     <!-- Layout: horizontal tab nav (Admin-style), no sidebar. -->
   </head>
   <body>
@@ -660,10 +660,10 @@
           <div id="cp-entry">
             <div class="hero tool-hero">
               <h1 class="hero-title">Corporate <span class="accent">Portfolios</span></h1>
-              <p class="hero-sub">Enter a company (or a registrant email) and I'll pull every domain registered to it from reverse-WHOIS, then skim off the premium names — short and dictionary-word .coms — ready for outreach.</p>
+              <p class="hero-sub">Enter a company <strong>domain</strong> (best — I read its WHOIS to find the registrant, e.g. <em>meta.com</em>), a company <strong>name</strong>, or a registrant <strong>email</strong>. I union every reverse-WHOIS provider to pull the whole registered portfolio and flag the premium names (short / dictionary .coms).</p>
             </div>
             <form id="cp-form" class="search cp-form" autocomplete="off">
-              <input id="cp-query" type="text" placeholder="Company name, e.g. Red Bull GmbH — or a registrant email" />
+              <input id="cp-query" type="text" placeholder="meta.com  ·  Meta Platforms, Inc.  ·  registrant@email.com" />
               <button id="cp-go" type="submit">Pull portfolio</button>
             </form>
             <!-- Premium filter knobs (collapsed defaults match the proven script). -->
@@ -953,6 +953,6 @@ The model parses it into structured filters (TLDs, length, budget, tone, etc.) a
     </div>
 
     <!-- Bump ?v= on any public/app.js or styles.css change to bust caches. -->
-    <script src="app.js?v=20260605ap"></script>
+    <script src="app.js?v=20260605aq"></script>
   </body>
 </html>

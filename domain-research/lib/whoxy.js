@@ -69,6 +69,12 @@ export async function reverseWhoisAll(query, { env, maxPages = DEFAULT_MAX_PAGES
     creditsUsed += 1;
 
     if (data && Number(data.status) === 0) {
+      // Whoxy returns status 0 "Invalid Page Number" when a query matches NO
+      // registrant records (0 pages) — that's an empty result, not a hard error.
+      const reason = String(data.status_reason || '').toLowerCase();
+      if (page === 1 && /invalid page number|no record|not found/.test(reason)) {
+        return { query: picked.term, field: picked.field, total_results: 0, domains: [], credits_used: creditsUsed, pages_fetched: creditsUsed, total_pages: 0, capped: false };
+      }
       throw new Error(`Whoxy reverse: ${data.status_reason || 'error'}`);
     }
     if (page === 1) {
