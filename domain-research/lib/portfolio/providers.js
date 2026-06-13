@@ -8,9 +8,27 @@
 
 import { reverseWhoisAll } from '../whoxy.js';
 import { fetchJson } from '../util.js';
+import { fetch as undiciFetch, ProxyAgent } from 'undici';
 
 const lc = (s) => String(s || '').toLowerCase().trim();
 const isDomain = (s) => /^[a-z0-9-]+(\.[a-z0-9-]+)+$/.test(lc(s));
+
+// Fixie (or DOMAINIQ_PROXY_URL) static-IP proxy — DomainIQ allowlists by IP and
+// Vercel has no static egress, so its reverse call MUST route through the proxy.
+let _proxy;
+function proxyAgent() {
+  if (_proxy !== undefined) return _proxy;
+  const raw = process.env.FIXIE_URL || process.env.DOMAINIQ_PROXY_URL || '';
+  if (!raw) { _proxy = null; return _proxy; }
+  const u = new URL(raw);
+  const opts = { uri: `${u.protocol}//${u.host}` };
+  if (u.username || u.password) {
+    const creds = `${decodeURIComponent(u.username)}:${decodeURIComponent(u.password)}`;
+    opts.token = `Basic ${Buffer.from(creds).toString('base64')}`;
+  }
+  _proxy = new ProxyAgent(opts);
+  return _proxy;
+}
 
 // WhoisXML Reverse WHOIS — current + historic, uncapped (mode: purchase returns
 // the full domainsList). Works from Vercel (key-based, no IP allowlist).
@@ -38,7 +56,22 @@ async function domainiqReverse(term, env) {
   const tmpl = env && env.DOMAINIQ_REVERSE_URL_TEMPLATE;
   if (!tmpl || !env.DOMAINIQ_API_KEY) return null;
   const url = tmpl.replace('{key}', encodeURIComponent(env.DOMAINIQ_API_KEY)).replace('{term}', encodeURIComponent(String(term).trim()));
-  const data = await fetchJson(url);
+  // Route through the static-IP proxy when configured (DomainIQ IP allowlist);
+  // fall back to a direct call if no proxy is set.
+  const agent = proxyAgent();
+  let data;
+  if (agent) {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 15000);
+    try {
+      const res = await undiciFetch(url, { dispatcher: agent, signal: ctrl.signal, headers: { accept: 'application/json', 'user-agent': 'domain-research/portfolio' } });
+      const text = await res.text();
+      if (!res.ok) throw new Error(`HTTP ${res.status} (via proxy): ${text.slice(0, 160)}`);
+      try { data = JSON.parse(text); } catch { data = text; }
+    } finally { clearTimeout(timer); }
+  } else {
+    data = await fetchJson(url);
+  }
   // Tolerant extraction: DomainIQ reverse responses vary by plan/service.
   const list = (data && (data.domains || data.result || data.data || data.search_result)) || [];
   const arr = Array.isArray(list) ? list : [];

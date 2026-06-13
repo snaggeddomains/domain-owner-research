@@ -547,6 +547,9 @@ export const runCorporatePortfolio = inngest.createFunction(
         total_results: pull.total_results,
         credits_used: pull.credits_used,
         capped: false,
+        // Per-provider breakdown for transparency (stashed in the filter jsonb to
+        // avoid a migration): { whoxy, whoisxml, domainiq } + the seed keys used.
+        filter: { ...(run.filter || {}), providers: pull.provider_counts, keys: keys.terms.map((t) => `${t.field}:${t.term}`), errors: (pull.errors || []).slice(0, 8) },
       }));
       return { runId, ok: true, premium: premiumCount, scanned: pull.total_results, providers: pull.provider_counts };
     } catch (err) {

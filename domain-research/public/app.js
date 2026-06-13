@@ -6337,9 +6337,14 @@ function renderPortfolio(data) {
   const owned = Number(run.total_results || cpDomains.length || 0);
   const premium = Number(run.premium_count != null ? run.premium_count : cpDomains.filter((d) => d.premium_reason).length);
   if (els.cpSummary) {
+    const pv = (run.filter && run.filter.providers) || null;
+    const prov = pv
+      ? ` · <span class="cp-prov">Whoxy ${Number(pv.whoxy || 0).toLocaleString()} · WhoisXML ${Number(pv.whoisxml || 0).toLocaleString()} · DomainIQ ${Number(pv.domainiq || 0).toLocaleString()}</span>`
+      : '';
     els.cpSummary.innerHTML = `<strong>${owned.toLocaleString()}</strong> owned · `
       + `<strong>${premium.toLocaleString()}</strong> premium`
-      + (run.credits_used ? ` · ${run.credits_used} credits` : '')
+      + (run.credits_used ? ` · ${run.credits_used} Whoxy pages` : '')
+      + prov
       + ` <label class="cp-toggle"><input type="checkbox" id="cp-premonly"${cpPremiumOnly ? ' checked' : ''}/> Premium only</label>`;
     const t = document.getElementById('cp-premonly');
     if (t) t.addEventListener('change', () => { cpPremiumOnly = t.checked; cpRenderTable(); });
