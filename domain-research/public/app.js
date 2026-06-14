@@ -2896,7 +2896,8 @@ async function loadBeeper() {
   }
 }
 function beeperStateLabel(w) {
-  if (w.status === 'dropped' || w.last_http === 404) return '🎯 AVAILABLE — dropped!';
+  if (w.status === 'dropped') return '🎯 AVAILABLE — dropped!';
+  if (w.status === 'pending_drop') return '⏳ not-found — confirming drop…';
   if (w.status === 'resolved') return 'renewed / registered — watch stopped';
   if (w.status === 'expired') return 'auto-stopped (max watch window)';
   const s = Array.isArray(w.last_status) ? w.last_status : [];
@@ -2924,7 +2925,7 @@ function beeperCadenceChip(w) {
   return ` <span class="beeper-cadence${live ? ' beeper-cadence-live' : ''}" title="Polling cadence">${escapeHtml(bits.join(' · '))}</span>`;
 }
 function beeperRowHtml(w) {
-  const dropped = w.status === 'dropped' || w.last_http === 404;
+  const dropped = w.status === 'dropped'; // confirmed only (pending_drop isn't green yet)
   const when = w.last_checked ? `last checked: ${new Date(w.last_checked).toLocaleString()}` : 'not checked yet';
   const who = w.submitted_by ? ` <span class="beeper-who" title="Added by ${escapeHtml(w.submitted_by)}">${escapeHtml(w.submitted_by)}</span>` : '';
   const terminal = w.status === 'dropped' || w.status === 'resolved' || w.status === 'expired';

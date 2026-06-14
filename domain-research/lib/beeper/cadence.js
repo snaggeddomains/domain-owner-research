@@ -31,6 +31,9 @@ export function daysToExpiry(expiration, now = Date.now()) {
 // watch's known expiration + current EPP statuses (so it re-evaluates every tick
 // as the date nears or the status moves into the delete pipeline).
 export function checkIntervalMs(watch, now = Date.now()) {
+  // Awaiting drop confirmation (saw one RDAP not-found) → re-check every minute so
+  // the second confirming check lands fast.
+  if (watch && watch.status === 'pending_drop') return MIN;
   const statuses = Array.isArray(watch && watch.last_status) ? watch.last_status : [];
   // Pipeline statuses override the date — a drop is imminent regardless of when
   // the original expiration was.

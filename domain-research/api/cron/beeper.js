@@ -77,26 +77,51 @@ export default async function handler(req, res) {
       const s = await rdapStatus(w.domain).catch(() => null);
       checked++;
       if (!s || !s.ok) { await updateWatch(w.id, { last_checked: new Date().toISOString() }); continue; }
-      const prevKey = w.last_http === 404 ? 'AVAILABLE' : (w.last_status || []).join('|');
-      const newKey = statusKey(s.available, s.statuses);
-      const hadBaseline = w.last_status !== null || w.last_http !== null;
+      const nowIso = new Date().toISOString();
       const patch = {
         last_status: s.available ? [] : s.statuses,
         last_http: s.code,
-        last_checked: new Date().toISOString(),
+        last_checked: nowIso,
         // Persist the expiration date so the cadence can taper toward it (best-
         // effort column; updateWatch drops it gracefully if not yet migrated).
         ...(s.expiration ? { expiration: s.expiration } : {}),
       };
       let kind = null;
-      if (hadBaseline && newKey !== prevKey) {
-        changed++;
-        patch.triggered_at = new Date().toISOString();
-        const wasInLifecycle = w.last_http === 404 ? false : inDeletionLifecycle(w.last_status || []);
-        const nowInLifecycle = s.available ? false : inDeletionLifecycle(s.statuses);
-        if (s.available) { patch.status = 'dropped'; kind = 'dropped'; }            // dropped → stop
-        else if (wasInLifecycle && !nowInLifecycle) { patch.status = 'resolved'; kind = 'resolved'; } // renewed → stop
-        else kind = 'changed';                                                       // still in pipeline → keep watching
+
+      if (s.available) {
+        // RDAP returned not-found. A SINGLE 404 during pendingDelete/redemption
+        // (or RDAP↔registry propagation lag) is frequently a FALSE drop — the name
+        // still shows registered in authoritative WHOIS and isn't registerable
+        // (this bit us on agent.computer). So require the not-found to PERSIST
+        // across two consecutive checks before declaring the drop.
+        if (w.status === 'dropped') {
+          await updateWatch(w.id, { last_checked: nowIso }); // already alerted
+          continue;
+        }
+        if (w.status === 'pending_drop') {
+          changed++;
+          patch.status = 'dropped';            // confirmed (2nd consecutive 404)
+          patch.triggered_at = nowIso;
+          kind = 'dropped';
+        } else {
+          patch.status = 'pending_drop';        // first 404 → hold, no alert yet
+        }
+      } else {
+        // Registered / in-pipeline. If we were mid-confirmation, RDAP found it
+        // again → it was a false 404; silently revert to watching (no alert).
+        const prevKey = w.last_http === 404 ? 'AVAILABLE' : (w.last_status || []).join('|');
+        const newKey = statusKey(s.available, s.statuses);
+        const hadBaseline = w.last_status !== null || w.last_http !== null;
+        if (w.status === 'pending_drop') {
+          patch.status = 'watching';
+        } else if (hadBaseline && newKey !== prevKey) {
+          changed++;
+          patch.triggered_at = nowIso;
+          const wasInLifecycle = w.last_http === 404 ? false : inDeletionLifecycle(w.last_status || []);
+          const nowInLifecycle = inDeletionLifecycle(s.statuses);
+          if (wasInLifecycle && !nowInLifecycle) { patch.status = 'resolved'; kind = 'resolved'; } // renewed → stop
+          else kind = 'changed';                                                                    // still in pipeline
+        }
       }
       // Safety cap — never poll a watch forever (tunable via BEEPER_MAX_WATCH_DAYS).
       const capDays = Number(process.env.BEEPER_MAX_WATCH_DAYS || 60);
