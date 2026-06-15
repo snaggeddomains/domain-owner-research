@@ -86,17 +86,28 @@ export async function listWatches() {
 }
 
 // All rows the cron should poll (active watches across all users). Includes the
-// two transient drop-confirmation states so they keep getting re-checked:
+// transient drop-confirmation states so they keep getting re-checked:
 //   'pending_drop'    — saw an RDAP not-found, fast-confirming (every minute)
 //   'held_registered' — RDAP says gone but WHOIS shows it still registered
 //                       (Identity-Digital pendingDelete); slow-polled until it
 //                       truly drops. Both MUST be polled or they freeze forever.
+// Also re-includes RECENTLY-'dropped' watches (within BEEPER_REHEAL_DAYS) so a
+// FALSE drop can auto-heal: the cron re-verifies via WHOIS and reverts to
+// held_registered if it's actually still registered. Older drops stay terminal.
 export async function activeWatches() {
   if (!isDbConfigured()) return [];
   try {
-    const { data, error } = await getDb().from(T).select('*').in('status', ['watching', 'pending_drop', 'held_registered']).limit(2000);
+    const { data, error } = await getDb().from(T).select('*')
+      .in('status', ['watching', 'pending_drop', 'held_registered', 'dropped']).limit(2000);
     if (error) throw error;
-    return data || [];
+    const rows = data || [];
+    const healMs = Number(process.env.BEEPER_REHEAL_DAYS || 21) * 86400000;
+    const cutoff = Date.now() - healMs;
+    return rows.filter((w) => {
+      if (w.status !== 'dropped') return true;
+      const t = Date.parse(w.triggered_at || w.last_checked || w.created_at || '');
+      return !Number.isNaN(t) && t >= cutoff;  // only re-verify recent drops
+    });
   } catch (e) {
     if (!tableMissing(e)) console.error('activeWatches:', e?.message || e);
     return [];
