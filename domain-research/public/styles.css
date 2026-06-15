@@ -1561,6 +1561,12 @@ a.sr-ag-co-link:hover { border-color: var(--coral); color: var(--coral-deep); ba
 .wi-note { font-size:.85rem; color:var(--navy-3); font-style:italic; }
 .wi-src { font-size:.78rem; }
 .wi-avail { border-color:#2f7d4f; background:#e9f7ec; }
+.wi-share-row { display:flex; align-items:center; gap:10px; margin:-2px 0 12px; }
+.wi-share { font-size:.78rem; font-weight:600; color:var(--navy-2); background:var(--cream-2,#f3efe5); border:1px solid var(--line); border-radius:999px; padding:3px 11px; cursor:pointer; transition:background .15s,color .15s,border-color .15s; }
+.wi-share:hover { border-color:var(--navy-3); }
+.wi-share.copied { background:var(--teal-deep,#1f7a4d); border-color:var(--teal-deep,#1f7a4d); color:#fff; }
+.wi-share-open { font-size:.78rem; color:var(--navy-3); text-decoration:none; }
+.wi-share-open:hover { text-decoration:underline; }
 
 /* Cross-module action bar — carry the active domain to another tool in one tap */
 .domain-bar { position:sticky; top:0; z-index:30; display:flex; align-items:center; gap:10px;
