@@ -28,7 +28,7 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="apple-mobile-web-app-title" content="Snagged Research" />
     <meta name="theme-color" content="#254254" />
-    <link rel="stylesheet" href="styles.css?v=20260605at" />
+    <link rel="stylesheet" href="styles.css?v=20260615hist" />
     <!-- Layout: horizontal tab nav (Admin-style), no sidebar. -->
   </head>
   <body>
@@ -942,6 +942,25 @@ The model parses it into structured filters (TLDs, length, budget, tone, etc.) a
       </div>
     </aside>
 
+    <!-- DomainIQ historical-WHOIS drawer (the "History" quick action). Runs
+         domainiq_lookup on demand and distills the ownership lineage. -->
+    <aside id="history-drawer" class="history-drawer" hidden>
+      <div class="hd-backdrop" id="history-backdrop"></div>
+      <div class="hd-panel" role="dialog" aria-modal="true" aria-labelledby="hd-title">
+        <div class="hd-head">
+          <div>
+            <div class="hd-title" id="hd-title">Ownership history</div>
+            <div class="hd-domain" id="hd-domain"></div>
+          </div>
+          <button id="history-close" class="hd-close" type="button" aria-label="Close">×</button>
+        </div>
+        <div id="hd-status" class="hd-status" hidden></div>
+        <div class="hd-scroll">
+          <div id="hd-body"></div>
+        </div>
+      </div>
+    </aside>
+
     <!-- Quick-switch command palette (⌘K / Ctrl-K): run any domain tool on a
          domain without navigating + retyping. Populated by DOMAIN_MODULES. -->
     <div id="cmdk" class="cmdk" hidden>
@@ -953,6 +972,6 @@ The model parses it into structured filters (TLDs, length, budget, tone, etc.) a
     </div>
 
     <!-- Bump ?v= on any public/app.js or styles.css change to bust caches. -->
-    <script src="app.js?v=20260605at"></script>
+    <script src="app.js?v=20260615hist"></script>
   </body>
 </html>

@@ -91,6 +91,12 @@ const els = {
   odStatus: $('od-status'),
   odRegen: $('od-regen'),
   odCopy: $('od-copy'),
+  historyDrawer: $('history-drawer'),
+  historyBackdrop: $('history-backdrop'),
+  historyClose: $('history-close'),
+  hdDomain: $('hd-domain'),
+  hdBody: $('hd-body'),
+  hdStatus: $('hd-status'),
   reportFeedback: $('report-feedback'),
   rfYes: $('rf-yes'),
   rfNo: $('rf-no'),
@@ -519,6 +525,11 @@ const DOMAIN_MODULES = [
   { tool: 'dbscreen',   label: 'DB Screen',  icon: '📋', perm: 'dbscreen',     run: (d) => { setToolUrl('dbscreen', d); route(); } },
   { tool: 'nameserver', label: 'Nameserver', icon: '🌐', perm: 'nameserver',   run: (d) => { setToolUrl('nameserver', d); route(); } },
   { tool: 'beeper',     label: 'Watch',      icon: '🔔', perm: 'beeper',        run: (d) => { setToolUrl('beeper', d); route(); } },
+  // History opens a lightweight drawer (no route/view) that runs DomainIQ's
+  // historical-WHOIS lookup on demand and distills the ownership lineage —
+  // gated by domain_owner (the module DomainIQ bills to). Premium: each click
+  // spends a DomainIQ credit.
+  { tool: 'history',    label: 'History',    icon: '📜', perm: 'domain_owner',  run: (d) => openHistory(d) },
 ];
 let activeDomain = '';
 // Record the domain the user is currently working — drives the action bar + palette.
@@ -4458,6 +4469,138 @@ function setOutreachStatus(msg, kind) {
   els.odStatus.className = 'od-status' + (kind ? ` od-status-${kind}` : '');
 }
 
+// ── DomainIQ historical-WHOIS drawer (the "History" quick action) ──
+// Runs domainiq_lookup on demand via /api/lookup and distills the ownership
+// lineage into a key-signals summary + a dated era timeline. Premium: each open
+// spends a DomainIQ credit, so results are cached per-domain for the session.
+const historyCache = {};
+let historySeq = 0;
+
+// A registrant value that is just a privacy/registrar/marketplace layer is NOT
+// an identified owner — used to decide which eras carry a "meaningful" name.
+const GENERIC_OWNER_RE = /\b(privacy|whoisguard|withheld for privacy|domains? by proxy|redacted|data protected|perfect privacy|contact privacy|private registration|namecheap|godaddy|dynadot|spaceship|porkbun|namebright|turncommerce|network solutions|tucows|opensrs|name\.com|enom|namesilo|ionos|register\.com|markmonitor|csc corporate|safenames|com laude|brandsight|afternic|sedo|atom|squadhelp|dan\.com|uniregistry|brandbucket|hugedomains|efty|epik|not disclosed|see privacyguardian|statutory masking)\b/i;
+
+function hdGeneric(v) { return !v || GENERIC_OWNER_RE.test(String(v)); }
+
+function setHistoryStatus(msg, kind = '') {
+  if (!els.hdStatus) return;
+  if (!msg) { els.hdStatus.hidden = true; els.hdStatus.textContent = ''; return; }
+  els.hdStatus.hidden = false;
+  els.hdStatus.textContent = msg;
+  els.hdStatus.className = 'hd-status' + (kind ? ` hd-status-${kind}` : '');
+}
+
+function openHistory(domain) {
+  const d = (domain || '').trim().toLowerCase();
+  if (!els.historyDrawer || !d) return;
+  setActiveDomain(d);
+  els.historyDrawer.hidden = false;
+  document.body.classList.add('drawer-open');
+  if (els.hdDomain) els.hdDomain.textContent = d;
+  loadHistory(d);
+}
+
+function closeHistory() {
+  if (!els.historyDrawer) return;
+  els.historyDrawer.hidden = true;
+  document.body.classList.remove('drawer-open');
+}
+
+async function loadHistory(domain, opts = {}) {
+  const seq = ++historySeq;
+  if (!opts.force && historyCache[domain]) { renderHistory(historyCache[domain]); return; }
+  if (els.hdBody) els.hdBody.innerHTML = '';
+  setHistoryStatus('Pulling historical WHOIS from DomainIQ…', 'busy');
+  try {
+    const res = await fetch(`/research/api/lookup?source=domainiq_lookup&domain=${encodeURIComponent(domain)}`);
+    const json = await res.json().catch(() => ({}));
+    if (seq !== historySeq) return; // a newer open superseded this one
+    if (!res.ok || json.ok === false) {
+      throw new Error((json && (json.error || (json.data && json.data.error))) || `Lookup failed (${res.status})`);
+    }
+    const data = json.data || json;
+    historyCache[domain] = data;
+    setHistoryStatus('');
+    renderHistory(data);
+  } catch (e) {
+    if (seq !== historySeq) return;
+    setHistoryStatus((e && e.message) || 'Lookup failed.', 'err');
+  }
+}
+
+function renderHistory(data) {
+  if (!els.hdBody) return;
+  const eras = Array.isArray(data && data.eras) ? data.eras : [];
+  if (!eras.length) {
+    els.hdBody.innerHTML = `<p class="hd-empty">No historical WHOIS records found for this domain via DomainIQ.</p>`;
+    return;
+  }
+
+  // Distill the "meaningful" owners: distinct named registrants (org/name) that
+  // are NOT just a privacy/registrar layer, newest era first, with their contact.
+  const seen = new Set();
+  const signals = [];
+  for (const e of [...eras].reverse()) {
+    const name = (e.registrant_name || '').trim();
+    const org = (e.registrant_org || '').trim();
+    const label = !hdGeneric(name) ? name : (!hdGeneric(org) ? org : '');
+    if (!label) continue;
+    const k = label.toLowerCase();
+    if (seen.has(k)) continue;
+    seen.add(k);
+    const email = !hdGeneric(e.registrant_email) ? (e.registrant_email || '').trim() : '';
+    const phone = (e.registrant_phone || '').trim();
+    signals.push({ label, org: org && org.toLowerCase() !== label.toLowerCase() ? org : '', email, phone, first: e.first_seen, last: e.last_seen });
+  }
+
+  const range = (a, b) => (a && b && a !== b) ? `${escapeHtml(a)} → ${escapeHtml(b)}` : escapeHtml(a || b || '');
+  const contactBits = (s) => [
+    s.org ? `<span class="hd-sub">${escapeHtml(s.org)}</span>` : '',
+    s.email ? `<a href="mailto:${escapeHtml(s.email)}" class="hd-link">${escapeHtml(s.email)}</a>` : '',
+    s.phone ? `<span class="hd-phone">${escapeHtml(s.phone)}</span>` : '',
+  ].filter(Boolean).join(' · ');
+
+  const summaryHtml = signals.length
+    ? `<div class="hd-section">
+         <div class="hd-h">Key ownership signals</div>
+         <p class="hd-note">Named registrants found in the WHOIS history (privacy/registrar layers excluded). The most recent named owner is usually the best lead.</p>
+         <ul class="hd-signals">
+           ${signals.map((s) => `<li class="hd-signal">
+             <div class="hd-signal-name">${escapeHtml(s.label)}</div>
+             <div class="hd-signal-meta">${contactBits(s) || '<span class="hd-muted">no contact in record</span>'}</div>
+             <div class="hd-signal-dates">${range(s.first, s.last)}</div>
+           </li>`).join('')}
+         </ul>
+       </div>`
+    : `<div class="hd-section">
+         <div class="hd-h">Key ownership signals</div>
+         <p class="hd-note hd-muted">Every historical record is privacy- or registrar-shielded — no named owner is exposed in the WHOIS history. Run a full Owner report to triangulate the holder another way.</p>
+       </div>`;
+
+  const timelineHtml = `<div class="hd-section">
+      <div class="hd-h">Ownership timeline <span class="hd-count">${eras.length} era${eras.length === 1 ? '' : 's'} · ${escapeHtml(String(data.total_snapshots || eras.length))} snapshots</span></div>
+      <ol class="hd-timeline">
+        ${[...eras].reverse().map((e) => {
+          const who = [e.registrant_name, e.registrant_org].map((x) => (x || '').trim()).filter(Boolean).join(' — ') || '<span class="hd-muted">no registrant in record</span>';
+          const meta = [
+            e.registrant_email ? `<a href="mailto:${escapeHtml(e.registrant_email)}" class="hd-link">${escapeHtml(e.registrant_email)}</a>` : '',
+            e.registrant_phone ? escapeHtml(e.registrant_phone) : '',
+            e.registrar ? `Registrar: ${escapeHtml(e.registrar)}` : '',
+          ].filter(Boolean).join(' · ');
+          const ns = Array.isArray(e.nameservers) && e.nameservers.length ? `<div class="hd-ns">NS: ${e.nameservers.map((n) => escapeHtml(n)).join(', ')}</div>` : '';
+          return `<li class="hd-era">
+            <div class="hd-era-dates">${range(e.first_seen, e.last_seen)}</div>
+            <div class="hd-era-who">${who}</div>
+            ${meta ? `<div class="hd-era-meta">${meta}</div>` : ''}
+            ${ns}
+          </li>`;
+        }).join('')}
+      </ol>
+    </div>`;
+
+  els.hdBody.innerHTML = summaryHtml + timelineHtml;
+}
+
 function openOutreach() {
   if (!els.outreachDrawer || !currentRunId) return;
   els.outreachDrawer.hidden = false;
@@ -4639,8 +4782,12 @@ async function saveOutreachTemplate() {
 els.outreachBtn?.addEventListener('click', openOutreach);
 els.outreachClose?.addEventListener('click', closeOutreach);
 els.outreachBackdrop?.addEventListener('click', closeOutreach);
+els.historyClose?.addEventListener('click', closeHistory);
+els.historyBackdrop?.addEventListener('click', closeHistory);
 document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape' && els.outreachDrawer && !els.outreachDrawer.hidden) closeOutreach();
+  if (e.key !== 'Escape') return;
+  if (els.historyDrawer && !els.historyDrawer.hidden) { closeHistory(); return; }
+  if (els.outreachDrawer && !els.outreachDrawer.hidden) closeOutreach();
 });
 els.odScenarioSel?.addEventListener('change', () => { if (outreachLoaded) loadOutreach(els.odScenarioSel.value); });
 els.odRegen?.addEventListener('click', () => {
