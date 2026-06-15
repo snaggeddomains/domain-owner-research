@@ -21,10 +21,12 @@ async function domainIqRegistered(domain) {
   const body = await domainIqCurrentWhois(domain);
   if (body == null) return null;
   const text = typeof body === 'string' ? body : JSON.stringify(body);
-  if (!text) return null;
-  if (DIQ_REGISTERED_RE.test(text)) return true;     // a real record is present → registered
-  if (DIQ_FREE_RE.test(text)) return false;          // explicitly no record → gone
-  return null;                                       // can't tell → caller decides
+  if (!text || text.length < 20) return null;        // empty / tiny → can't tell → HOLD
+  // An API error (bad key, rate limit, unknown service) must NEVER read as "available".
+  if (/"(error|errors|err|message|status)"\s*:\s*"?\s*(error|fail|invalid|unauthor|forbidden|denied|limit|not\s*authoriz)/i.test(text)) return null;
+  if (DIQ_REGISTERED_RE.test(text)) return true;     // a real record is present → registered (HOLD)
+  if (DIQ_FREE_RE.test(text)) return false;          // explicit registry no-match → really gone (DROP)
+  return null;                                       // can't tell → HOLD
 }
 
 // Confirm-a-drop oracle. RDAP not-found ALONE is unreliable: some registries
@@ -100,9 +102,18 @@ async function confirmDropOracle(domain) {
   // record, VETO the drop (this is the agent.computer fix). DomainIQ confirming
   // "gone", or being unavailable, falls through to the drop.
   if (x.registered === false || p === false) {
-    const diq = await domainIqRegistered(domain);
-    if (diq === true) return { registered: true, expiration: x.expiration };  // VETO — still registered
-    return { registered: false, expiration: x.expiration };
+    // The fast oracles think it's gone — but they're WRONG for Identity-Digital
+    // pendingDelete (RDAP 404 + WhoisXML "available"). Require DomainIQ to
+    // POSITIVELY confirm "no record" before we EVER alert. A record, an unknown
+    // result, OR an error all HOLD — a missed/late drop beats crying wolf (this is
+    // what false-dropped agent.computer three times). Only DomainIQ explicitly
+    // saying "no match" lets the drop through.
+    if (process.env.DOMAINIQ_API_KEY) {
+      const diq = await domainIqRegistered(domain);
+      if (diq === false) return { registered: false, expiration: x.expiration };  // DomainIQ CONFIRMS gone → drop
+      return { registered: true, expiration: x.expiration };                       // record / unknown / error → HOLD
+    }
+    return { registered: false, expiration: x.expiration };  // no DomainIQ configured → legacy fast-oracle drop
   }
   // All inconclusive → hold.
   return { registered: null, expiration: x.expiration };
