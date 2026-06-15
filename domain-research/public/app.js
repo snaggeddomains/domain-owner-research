@@ -3006,9 +3006,21 @@ function whoisContact(title, c) {
     .map((x) => `<div class="wi-row"><span class="wi-k">${x[0]}</span><span class="wi-v">${escapeHtml(String(x[1]))}</span></div>`).join('');
   return rows ? `<div class="wi-card"><h4>${title}</h4>${rows}</div>` : '';
 }
+// A shareable EXTERNAL whois link (whois.com) — free, public, no login — so a
+// lookup can be handed to someone who doesn't have access to this app.
+function whoisShareUrl(domain) {
+  return `https://www.whois.com/whois/${encodeURIComponent(String(domain || '').trim().toLowerCase())}`;
+}
+function whoisShareHtml(domain) {
+  const url = whoisShareUrl(domain);
+  return `<div class="wi-share-row">`
+    + `<button type="button" class="wi-share" data-share-url="${escapeHtml(url)}" title="Copy a public whois.com link to share">🔗 Copy share link</button>`
+    + `<a class="wi-share-open" href="${escapeHtml(url)}" target="_blank" rel="noopener">open ↗</a>`
+    + `</div>`;
+}
 function renderWhois(w) {
   if (w.available) {
-    els.whoisResult.innerHTML = `<div class="wi-card wi-avail"><strong>${escapeHtml(w.domain)}</strong> appears <strong>AVAILABLE</strong> — no current registration record (RDAP returned not-found).</div>`;
+    els.whoisResult.innerHTML = `<div class="wi-card wi-avail"><strong>${escapeHtml(w.domain)}</strong> appears <strong>AVAILABLE</strong> — no current registration record (RDAP returned not-found).${whoisShareHtml(w.domain)}</div>`;
     els.whoisResult.hidden = false;
     return;
   }
@@ -3020,6 +3032,7 @@ function renderWhois(w) {
   const ns = (w.nameservers || []).length ? w.nameservers.map((n) => `<div>${escapeHtml(n)}</div>`).join('') : null;
   const ab = w.abuse && (w.abuse.email || w.abuse.phone) ? [w.abuse.email, w.abuse.phone].filter(Boolean).map((x) => escapeHtml(String(x))).join(' · ') : null;
   const core = `<div class="wi-card"><h4>${escapeHtml(w.domain)}</h4>`
+    + whoisShareHtml(w.domain)
     + whoisRow('Registrar', reg)
     + whoisRow('Registered', whoisDate(w.dates && w.dates.registered))
     + whoisRow('Expires', whoisDate(w.dates && w.dates.expires))
@@ -5356,6 +5369,8 @@ els.navBeeper?.addEventListener('click', (e) => { if (newTabClick(e)) return; e.
 els.beeperForm?.addEventListener('submit', (e) => { e.preventDefault(); addBeeperWatch(); });
 els.navWhois?.addEventListener('click', (e) => { if (newTabClick(e)) return; e.preventDefault(); setToolUrl('whois', ''); showView('whois'); });
 els.whoisForm?.addEventListener('submit', (e) => { e.preventDefault(); const d = (els.whoisDomain.value || '').trim(); if (d) { setToolUrl('whois', d); runWhois(d); } });
+// Copy the public whois.com share link (delegated — the card is re-rendered each lookup).
+els.whoisResult?.addEventListener('click', (e) => { const b = e.target.closest('.wi-share'); if (b) copyText(b.getAttribute('data-share-url'), b); });
 
 // Cross-module action bar + ⌘K quick-switch.
 els.domainBarK?.addEventListener('click', openCmdk);
