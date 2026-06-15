@@ -4,6 +4,29 @@ import { isDue } from '../../lib/beeper/cadence.js';
 import { getUser } from '../../lib/db/users.js';
 import { createNotification } from '../../lib/db/notifications.js';
 import { sendEmail, isEmailConfigured } from '../../lib/email.js';
+import whoisSource from '../../lib/sources/whois.js';
+
+// Authoritative port-43 WHOIS cross-check used to CONFIRM a drop before alerting.
+// RDAP not-found alone is unreliable: some registries (notably Identity Digital —
+// .computer/.io/etc.) PURGE the RDAP record during pendingDelete while the domain
+// is still registered and NOT registerable, so a pure RDAP 404 cries wolf (this
+// is the agent.computer false drop). WHOIS still shows the registration in that
+// window, so it's the tiebreaker. Returns:
+//   true  → still registered (registrar/created/status present) → NOT dropped
+//   false → no registration found ("No match") → consistent with a real drop
+//   null  → WHOIS failed/inconclusive → caller falls back to RDAP (never delay a
+//           genuine .com drop just because WHOIS was momentarily flaky)
+const WHOIS_FREE_RE = /no match|not found|no data found|no entries found|no object found|status:\s*free|available for registration|domain not registered/i;
+async function whoisStillRegistered(domain) {
+  try {
+    const w = await whoisSource.run({ domain });
+    if (!w) return null;
+    if (WHOIS_FREE_RE.test(w.raw || '')) return false;
+    return Boolean(w.registrar || w.created || (w.status && w.status.length));
+  } catch {
+    return null;
+  }
+}
 
 // Beeper poller — runs every minute (vercel.json cron). For each active watch it
 // reads the domain's RDAP status and, the moment it CHANGES (new EPP status, or
@@ -99,10 +122,20 @@ export default async function handler(req, res) {
           continue;
         }
         if (w.status === 'pending_drop') {
-          changed++;
-          patch.status = 'dropped';            // confirmed (2nd consecutive 404)
-          patch.triggered_at = nowIso;
-          kind = 'dropped';
+          // 2nd consecutive RDAP not-found. Before declaring the drop, cross-check
+          // authoritative WHOIS — registries that purge RDAP during pendingDelete
+          // (Identity Digital: .computer/.io/…) would otherwise cry wolf. If WHOIS
+          // still shows it registered, it has NOT dropped → keep confirming, no
+          // alert. WHOIS inconclusive (null) → trust the RDAP confirmation.
+          const stillReg = await whoisStillRegistered(w.domain);
+          if (stillReg === true) {
+            patch.status = 'pending_drop';      // RDAP-404 contradicted by WHOIS → hold
+          } else {
+            changed++;
+            patch.status = 'dropped';           // confirmed (RDAP 404 ×2 + WHOIS not-registered)
+            patch.triggered_at = nowIso;
+            kind = 'dropped';
+          }
         } else {
           patch.status = 'pending_drop';        // first 404 → hold, no alert yet
         }
