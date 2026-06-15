@@ -85,14 +85,16 @@ export async function listWatches() {
   }
 }
 
-// All rows the cron should poll (active watches across all users). Includes
-// 'pending_drop' — a watch mid drop-confirmation (saw one RDAP not-found) MUST
-// stay in the polled set so the second, confirming check actually lands;
-// otherwise it freezes at "confirming drop…" forever and the drop never alerts.
+// All rows the cron should poll (active watches across all users). Includes the
+// two transient drop-confirmation states so they keep getting re-checked:
+//   'pending_drop'    — saw an RDAP not-found, fast-confirming (every minute)
+//   'held_registered' — RDAP says gone but WHOIS shows it still registered
+//                       (Identity-Digital pendingDelete); slow-polled until it
+//                       truly drops. Both MUST be polled or they freeze forever.
 export async function activeWatches() {
   if (!isDbConfigured()) return [];
   try {
-    const { data, error } = await getDb().from(T).select('*').in('status', ['watching', 'pending_drop']).limit(2000);
+    const { data, error } = await getDb().from(T).select('*').in('status', ['watching', 'pending_drop', 'held_registered']).limit(2000);
     if (error) throw error;
     return data || [];
   } catch (e) {

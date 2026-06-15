@@ -2898,6 +2898,7 @@ async function loadBeeper() {
 function beeperStateLabel(w) {
   if (w.status === 'dropped') return '🎯 AVAILABLE — dropped!';
   if (w.status === 'pending_drop') return '⏳ not-found — confirming drop…';
+  if (w.status === 'held_registered') return '⏳ in delete pipeline — WHOIS still shows it registered (holding for the real drop)';
   if (w.status === 'resolved') return 'renewed / registered — watch stopped';
   if (w.status === 'expired') return 'auto-stopped (max watch window)';
   const s = Array.isArray(w.last_status) ? w.last_status : [];
