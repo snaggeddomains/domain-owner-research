@@ -95,8 +95,8 @@ async function portWhoisRegistered(domain) {
   }
 }
 
-// → { registered: true|false|null, expiration }. A drop is declared ONLY when no
-// source can find a record. ANY source that still sees a registration → hold.
+// → { registered: true|false, expiration }. Called when RDAP says NOT-FOUND, to
+// decide drop vs hold. ANY source that still sees a record → hold.
 //
 // `trustRdapGone` distinguishes the TWO kinds of RDAP-404:
 //   • RDAP-reliable TLDs (.com, .id/PANDI, most ccTLDs) keep the record through the
@@ -104,24 +104,23 @@ async function portWhoisRegistered(domain) {
 //     can't confirm (DomainIQ may not even cover the ccTLD). Caller sets this true
 //     when it has seen a real RDAP record for the domain (e.g. an expiration date).
 //   • RDAP-purged TLDs (Identity Digital: .computer/.io/…) 404 DURING pendingDelete
-//     while still registered — there a 404 is NOT trustworthy, so we require DomainIQ
-//     to positively confirm "available" and HOLD on any doubt (the agent.computer fix).
+//     while still registered — there a 404 is NOT trustworthy, so DomainIQ must
+//     positively confirm "available" and we HOLD on any doubt (the agent.computer fix).
 async function confirmDropOracle(domain, { trustRdapGone = false } = {}) {
   const [x, p] = await Promise.all([whoisXmlRegistered(domain), portWhoisRegistered(domain)]);
-  // Registered per the fast (free) oracles → hold; no need to spend a DomainIQ call.
+  // A fast (free) oracle still sees a record → hold; no need to spend a DomainIQ call.
   if (x.registered === true || p === true) return { registered: true, expiration: x.expiration };
-  if (x.registered === false || p === false) {
-    if (process.env.DOMAINIQ_API_KEY) {
-      const diq = await domainIqRegistered(domain);
-      if (diq === true) return { registered: true, expiration: x.expiration };   // DomainIQ sees a record → HOLD
-      if (diq === false) return { registered: false, expiration: x.expiration }; // DomainIQ confirms gone → DROP
-      // DomainIQ unknown/error: trust a reliable-RDAP 404 (real drop), else HOLD.
-      return { registered: trustRdapGone ? false : true, expiration: x.expiration };
-    }
-    return { registered: false, expiration: x.expiration };  // no DomainIQ configured → legacy fast-oracle drop
-  }
-  // All inconclusive → hold.
-  return { registered: null, expiration: x.expiration };
+  // RDAP flagged not-found and the fast oracles can't vouch it's registered — this is
+  // a drop candidate. ALWAYS consult DomainIQ (authoritative current-WHOIS) before
+  // deciding, even when the fast oracles are merely inconclusive (WhoisXML has no
+  // record for the TLD + port-43 is dead on Vercel → both null; without this they'd
+  // sit in pending_drop forever and DomainIQ would never be checked).
+  let diq = null;
+  if (process.env.DOMAINIQ_API_KEY) diq = await domainIqRegistered(domain);
+  if (diq === true) return { registered: true, expiration: x.expiration };   // DomainIQ: still registered → HOLD
+  if (diq === false) return { registered: false, expiration: x.expiration }; // DomainIQ: gone → DROP
+  // DomainIQ unavailable/inconclusive → trust a reliable-RDAP 404 (real drop), else HOLD.
+  return { registered: trustRdapGone ? false : true, expiration: x.expiration };
 }
 
 // Beeper poller — runs every minute (vercel.json cron). For each active watch it
