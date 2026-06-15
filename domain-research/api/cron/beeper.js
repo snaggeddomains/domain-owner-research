@@ -97,26 +97,26 @@ async function portWhoisRegistered(domain) {
 
 // → { registered: true|false|null, expiration }. A drop is declared ONLY when no
 // source can find a record. ANY source that still sees a registration → hold.
-async function confirmDropOracle(domain) {
+//
+// `trustRdapGone` distinguishes the TWO kinds of RDAP-404:
+//   • RDAP-reliable TLDs (.com, .id/PANDI, most ccTLDs) keep the record through the
+//     delete pipeline, so a 404 there is a GENUINE drop — trust it even if DomainIQ
+//     can't confirm (DomainIQ may not even cover the ccTLD). Caller sets this true
+//     when it has seen a real RDAP record for the domain (e.g. an expiration date).
+//   • RDAP-purged TLDs (Identity Digital: .computer/.io/…) 404 DURING pendingDelete
+//     while still registered — there a 404 is NOT trustworthy, so we require DomainIQ
+//     to positively confirm "available" and HOLD on any doubt (the agent.computer fix).
+async function confirmDropOracle(domain, { trustRdapGone = false } = {}) {
   const [x, p] = await Promise.all([whoisXmlRegistered(domain), portWhoisRegistered(domain)]);
   // Registered per the fast (free) oracles → hold; no need to spend a DomainIQ call.
   if (x.registered === true || p === true) return { registered: true, expiration: x.expiration };
-  // The fast oracles think it's GONE — but they're wrong for Identity-Digital
-  // pendingDelete (RDAP 404 + WhoisXML "available"). Do the FINAL authoritative
-  // check against DomainIQ current-WHOIS before alerting. If DomainIQ still sees a
-  // record, VETO the drop (this is the agent.computer fix). DomainIQ confirming
-  // "gone", or being unavailable, falls through to the drop.
   if (x.registered === false || p === false) {
-    // The fast oracles think it's gone — but they're WRONG for Identity-Digital
-    // pendingDelete (RDAP 404 + WhoisXML "available"). Require DomainIQ to
-    // POSITIVELY confirm "no record" before we EVER alert. A record, an unknown
-    // result, OR an error all HOLD — a missed/late drop beats crying wolf (this is
-    // what false-dropped agent.computer three times). Only DomainIQ explicitly
-    // saying "no match" lets the drop through.
     if (process.env.DOMAINIQ_API_KEY) {
       const diq = await domainIqRegistered(domain);
-      if (diq === false) return { registered: false, expiration: x.expiration };  // DomainIQ CONFIRMS gone → drop
-      return { registered: true, expiration: x.expiration };                       // record / unknown / error → HOLD
+      if (diq === true) return { registered: true, expiration: x.expiration };   // DomainIQ sees a record → HOLD
+      if (diq === false) return { registered: false, expiration: x.expiration }; // DomainIQ confirms gone → DROP
+      // DomainIQ unknown/error: trust a reliable-RDAP 404 (real drop), else HOLD.
+      return { registered: trustRdapGone ? false : true, expiration: x.expiration };
     }
     return { registered: false, expiration: x.expiration };  // no DomainIQ configured → legacy fast-oracle drop
   }
@@ -203,7 +203,7 @@ export default async function handler(req, res) {
       // shows it REGISTERED (an RDAP-purged pendingDelete name that never actually
       // dropped), silently revert it to held_registered — no alert, no re-add needed.
       if (w.status === 'dropped') {
-        const oracle = await confirmDropOracle(w.domain);
+        const oracle = await confirmDropOracle(w.domain, { trustRdapGone: Boolean(w.expiration) });
         if (oracle.registered === true) {
           await updateWatch(w.id, {
             status: 'held_registered',
@@ -242,7 +242,10 @@ export default async function handler(req, res) {
           // server, so RDAP alone cries wolf. A drop is declared ONLY on a
           // positive "available"; anything else HOLDS (fail-safe — a missed/late
           // alert beats a false one, the bug that bit agent.computer).
-          const oracle = await confirmDropOracle(w.domain);
+          // Trust an RDAP-404 as a real drop when RDAP is reliable for this domain
+          // (we have an expiration from it — .com/.id/most ccTLDs); require the
+          // DomainIQ veto only for RDAP-purged TLDs (no expiration ever seen).
+          const oracle = await confirmDropOracle(w.domain, { trustRdapGone: Boolean(w.expiration) });
           if (oracle.expiration) patch.expiration = oracle.expiration;
           if (oracle.registered === false) {
             changed++;
