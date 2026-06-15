@@ -34,6 +34,16 @@ export function checkIntervalMs(watch, now = Date.now()) {
   // Awaiting drop confirmation (saw one RDAP not-found) → re-check every minute so
   // the second confirming check lands fast.
   if (watch && watch.status === 'pending_drop') return MIN;
+  // Holding: RDAP says gone but WHOIS shows it's still registered (Identity-Digital
+  // pendingDelete). It WILL drop, but not for a while — slow-poll so we don't hit
+  // the paid WHOIS oracle every minute. Taper toward the expiration, hourly floor.
+  if (watch && watch.status === 'held_registered') {
+    const dh = daysToExpiry(watch.expiration, now);
+    if (dh === null) return 6 * HOUR;
+    if (dh > 2) return 12 * HOUR;
+    if (dh > 0) return 6 * HOUR;
+    return HOUR;                      // at/after expiry → the real drop is near, tighten
+  }
   const statuses = Array.isArray(watch && watch.last_status) ? watch.last_status : [];
   // Pipeline statuses override the date — a drop is imminent regardless of when
   // the original expiration was.

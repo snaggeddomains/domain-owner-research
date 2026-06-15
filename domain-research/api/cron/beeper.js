@@ -5,19 +5,51 @@ import { getUser } from '../../lib/db/users.js';
 import { createNotification } from '../../lib/db/notifications.js';
 import { sendEmail, isEmailConfigured } from '../../lib/email.js';
 import whoisSource from '../../lib/sources/whois.js';
+import { fetchJson } from '../../lib/util.js';
 
-// Authoritative port-43 WHOIS cross-check used to CONFIRM a drop before alerting.
-// RDAP not-found alone is unreliable: some registries (notably Identity Digital —
-// .computer/.io/etc.) PURGE the RDAP record during pendingDelete while the domain
-// is still registered and NOT registerable, so a pure RDAP 404 cries wolf (this
-// is the agent.computer false drop). WHOIS still shows the registration in that
-// window, so it's the tiebreaker. Returns:
-//   true  → still registered (registrar/created/status present) → NOT dropped
-//   false → no registration found ("No match") → consistent with a real drop
-//   null  → WHOIS failed/inconclusive → caller falls back to RDAP (never delay a
-//           genuine .com drop just because WHOIS was momentarily flaky)
+// Confirm-a-drop oracle. RDAP not-found ALONE is unreliable: some registries
+// (notably Identity Digital — .computer/.io/etc.) PURGE the RDAP record during
+// pendingDelete while the domain is still registered and NOT registerable, so a
+// pure RDAP 404 cries wolf (the agent.computer false drop). Even the AUTHORITATIVE
+// registry RDAP 404s in that window — so before alerting we need a non-RDAP check.
+//
+// Primary oracle = WhoisXML over HTTPS (works on Vercel serverless — unlike legacy
+// port-43 WHOIS, which has no egress in the cron and silently failed, which is what
+// let the false drop through). `domainAvailability` is UNAVAILABLE while a WHOIS
+// record exists (incl. pendingDelete) and only AVAILABLE once the name is truly
+// purged. Port-43 WHOIS is a best-effort secondary. Returns:
+//   { registered: true,  expiration } → still registered → NOT a drop (hold)
+//   { registered: false, expiration } → no registration → a real drop (alert)
+//   { registered: null }              → inconclusive → caller HOLDS (never alerts)
 const WHOIS_FREE_RE = /no match|not found|no data found|no entries found|no object found|status:\s*free|available for registration|domain not registered/i;
-async function whoisStillRegistered(domain) {
+
+async function whoisXmlRegistered(domain) {
+  const key = process.env.WHOISXML_API_KEY;
+  if (!key) return { registered: null, expiration: null };
+  try {
+    const url =
+      'https://www.whoisxmlapi.com/whoisserver/WhoisService' +
+      `?apiKey=${encodeURIComponent(key)}&domainName=${encodeURIComponent(domain)}&outputFormat=JSON`;
+    const d = await fetchJson(url);
+    const w = (d && d.WhoisRecord) || {};
+    const reg = w.registryData || {};
+    const expiration = reg.expiresDate || w.expiresDate || null;
+    const avail = String(w.domainAvailability || '').toUpperCase();
+    if (avail === 'AVAILABLE') return { registered: false, expiration };
+    if (avail === 'UNAVAILABLE') return { registered: true, expiration };
+    // No explicit availability flag — infer from record contents.
+    const hasRecord = Boolean(
+      w.registrarName || reg.registrarName || w.createdDate || reg.createdDate ||
+      (reg.status || w.status),
+    );
+    if (hasRecord) return { registered: true, expiration };
+    return { registered: null, expiration };
+  } catch {
+    return { registered: null, expiration: null };
+  }
+}
+
+async function portWhoisRegistered(domain) {
   try {
     const w = await whoisSource.run({ domain });
     if (!w) return null;
@@ -26,6 +58,15 @@ async function whoisStillRegistered(domain) {
   } catch {
     return null;
   }
+}
+
+// → { registered: true|false|null, expiration }
+async function confirmDropOracle(domain) {
+  const x = await whoisXmlRegistered(domain);
+  if (x.registered !== null) return x;
+  // WhoisXML inconclusive (no key / error) → best-effort legacy port-43 WHOIS.
+  const p = await portWhoisRegistered(domain);
+  return { registered: p, expiration: x.expiration };
 }
 
 // Beeper poller — runs every minute (vercel.json cron). For each active watch it
@@ -121,31 +162,39 @@ export default async function handler(req, res) {
           await updateWatch(w.id, { last_checked: nowIso }); // already alerted
           continue;
         }
-        if (w.status === 'pending_drop') {
-          // 2nd consecutive RDAP not-found. Before declaring the drop, cross-check
-          // authoritative WHOIS — registries that purge RDAP during pendingDelete
-          // (Identity Digital: .computer/.io/…) would otherwise cry wolf. If WHOIS
-          // still shows it registered, it has NOT dropped → keep confirming, no
-          // alert. WHOIS inconclusive (null) → trust the RDAP confirmation.
-          const stillReg = await whoisStillRegistered(w.domain);
-          if (stillReg === true) {
-            patch.status = 'pending_drop';      // RDAP-404 contradicted by WHOIS → hold
-          } else {
+        if (w.status === 'pending_drop' || w.status === 'held_registered') {
+          // 2nd+ consecutive RDAP not-found. Confirm against a non-RDAP oracle
+          // before alerting — registries that purge RDAP during pendingDelete
+          // (Identity Digital: .computer/.io/…) 404 even on the authoritative
+          // server, so RDAP alone cries wolf. A drop is declared ONLY on a
+          // positive "available"; anything else HOLDS (fail-safe — a missed/late
+          // alert beats a false one, the bug that bit agent.computer).
+          const oracle = await confirmDropOracle(w.domain);
+          if (oracle.expiration) patch.expiration = oracle.expiration;
+          if (oracle.registered === false) {
             changed++;
-            patch.status = 'dropped';           // confirmed (RDAP 404 ×2 + WHOIS not-registered)
+            patch.status = 'dropped';           // confirmed: RDAP 404 + oracle says AVAILABLE
             patch.triggered_at = nowIso;
             kind = 'dropped';
+          } else if (oracle.registered === true) {
+            // RDAP says gone but WHOIS shows it still registered (pendingDelete on
+            // an Identity-Digital-style TLD). Move to a SLOW-polled holding state so
+            // we don't hammer the paid oracle every minute — cadence tapers it.
+            patch.status = 'held_registered';
+          } else {
+            patch.status = w.status;            // inconclusive → keep current state, retry next due
           }
         } else {
-          patch.status = 'pending_drop';        // first 404 → hold, no alert yet
+          patch.status = 'pending_drop';        // first 404 → fast-confirm, no alert yet
         }
       } else {
-        // Registered / in-pipeline. If we were mid-confirmation, RDAP found it
-        // again → it was a false 404; silently revert to watching (no alert).
+        // Registered / in-pipeline. If we were mid-confirmation (pending_drop) or
+        // holding (held_registered), RDAP found it again → silently return to
+        // normal watching (no alert).
         const prevKey = w.last_http === 404 ? 'AVAILABLE' : (w.last_status || []).join('|');
         const newKey = statusKey(s.available, s.statuses);
         const hadBaseline = w.last_status !== null || w.last_http !== null;
-        if (w.status === 'pending_drop') {
+        if (w.status === 'pending_drop' || w.status === 'held_registered') {
           patch.status = 'watching';
         } else if (hadBaseline && newKey !== prevKey) {
           changed++;
