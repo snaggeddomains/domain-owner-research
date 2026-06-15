@@ -44,6 +44,9 @@ export function checkIntervalMs(watch, now = Date.now()) {
     if (dh > 0) return 6 * HOUR;
     return HOUR;                      // at/after expiry → the real drop is near, tighten
   }
+  // Auto-heal re-verification of a 'dropped' watch (only recent ones reach the cron;
+  // see activeWatches) → re-check every 6h to catch a FALSE drop and revert it.
+  if (watch && watch.status === 'dropped') return 6 * HOUR;
   const statuses = Array.isArray(watch && watch.last_status) ? watch.last_status : [];
   // Pipeline statuses override the date — a drop is imminent regardless of when
   // the original expiration was.

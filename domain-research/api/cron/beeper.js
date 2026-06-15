@@ -153,6 +153,27 @@ export default async function handler(req, res) {
       checked++;
       if (!s || !s.ok) { await updateWatch(w.id, { last_checked: new Date().toISOString() }); continue; }
       const nowIso = new Date().toISOString();
+
+      // AUTO-HEAL a false drop. A watch already marked 'dropped' is re-verified for a
+      // window (BEEPER_REHEAL_DAYS, see activeWatches): if a non-RDAP oracle still
+      // shows it REGISTERED (an RDAP-purged pendingDelete name that never actually
+      // dropped), silently revert it to held_registered — no alert, no re-add needed.
+      if (w.status === 'dropped') {
+        const oracle = await confirmDropOracle(w.domain);
+        if (oracle.registered === true) {
+          await updateWatch(w.id, {
+            status: 'held_registered',
+            last_status: [],
+            last_http: s.code,
+            last_checked: nowIso,
+            triggered_at: null,
+            ...(oracle.expiration ? { expiration: oracle.expiration } : {}),
+          });
+        } else {
+          await updateWatch(w.id, { last_checked: nowIso }); // confirmed gone → stays dropped
+        }
+        continue;
+      }
       const patch = {
         last_status: s.available ? [] : s.statuses,
         last_http: s.code,
@@ -168,11 +189,8 @@ export default async function handler(req, res) {
         // (or RDAP↔registry propagation lag) is frequently a FALSE drop — the name
         // still shows registered in authoritative WHOIS and isn't registerable
         // (this bit us on agent.computer). So require the not-found to PERSIST
-        // across two consecutive checks before declaring the drop.
-        if (w.status === 'dropped') {
-          await updateWatch(w.id, { last_checked: nowIso }); // already alerted
-          continue;
-        }
+        // across two consecutive checks AND a non-RDAP oracle before declaring it.
+        // ('dropped' is handled earlier — auto-heal.)
         if (w.status === 'pending_drop' || w.status === 'held_registered') {
           // 2nd+ consecutive RDAP not-found. Confirm against a non-RDAP oracle
           // before alerting — registries that purge RDAP during pendingDelete
