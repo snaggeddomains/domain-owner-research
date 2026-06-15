@@ -9,24 +9,29 @@ import { fetchJson } from '../../lib/util.js';
 import { domainIqCurrentWhois } from '../../lib/sources/domainiq.js';
 
 // FINAL authoritative registered-check via DomainIQ current-WHOIS (service=whois).
-// DomainIQ is the only source that still shows the registry record during an
+// DomainIQ is the only source that still reflects the registry during an
 // Identity-Digital pendingDelete (RDAP 404s and WhoisXML reports "available" —
-// that's what kept false-dropping agent.computer). Returns:
-//   true  → DomainIQ still sees a record (registrar / created / EPP status) → registered
-//   false → DomainIQ explicitly shows no registration (no match) → really gone
-//   null  → unconfigured / inconclusive / error
-const DIQ_REGISTERED_RE = /"?registrar(?:\s*name)?"?\s*[:=]\s*"?[A-Za-z0-9]|creation date|created(?:\s*on)?\b|domain status\b|pending\s*delete|pendingdelete|redemption|client(?:transfer|delete|hold|update|renew)|serverhold|transfer prohibited/i;
-const DIQ_FREE_RE = /no match for|not found|no data found|no entries found|not registered|status:\s*available|available for registration/i;
+// that's what kept false-dropping agent.computer).
+//
+// DomainIQ returns a STRUCTURED record: {result:{status,registrar,create_date,
+// raw,…}}. For a pendingDelete name the detail fields are BLANK but the normalized
+// `status` is the signal (agent.computer → "Inactive"). A truly unregistered name
+// reads "available". So:
+//   true  → status is anything the registry still knows ("inactive"/"active"/
+//           "redemption"/…) or any record field is populated → registered (HOLD)
+//   false → status explicitly "available"/unregistered → really gone (DROP)
+//   null  → no result / error → caller HOLDS
+const DIQ_AVAILABLE_RE = /\bavailable\b|unregistered|not\s*registered|no\s*match|\bfree\b/i;
 async function domainIqRegistered(domain) {
   const body = await domainIqCurrentWhois(domain);
-  if (body == null) return null;
-  const text = typeof body === 'string' ? body : JSON.stringify(body);
-  if (!text || text.length < 20) return null;        // empty / tiny → can't tell → HOLD
-  // An API error (bad key, rate limit, unknown service) must NEVER read as "available".
-  if (/"(error|errors|err|message|status)"\s*:\s*"?\s*(error|fail|invalid|unauthor|forbidden|denied|limit|not\s*authoriz)/i.test(text)) return null;
-  if (DIQ_REGISTERED_RE.test(text)) return true;     // a real record is present → registered (HOLD)
-  if (DIQ_FREE_RE.test(text)) return false;          // explicit registry no-match → really gone (DROP)
-  return null;                                       // can't tell → HOLD
+  const r = body && typeof body === 'object' ? body.result : null;
+  if (!r || typeof r !== 'object') return null;       // no result / error → HOLD
+  const status = String(r.status || '').trim();
+  if (status && DIQ_AVAILABLE_RE.test(status)) return false;   // explicitly available → DROP
+  // Any other known status, or a populated record field, means the registry still
+  // has the name (incl. "Inactive" = in the delete pipeline) → registered → HOLD.
+  if (status || r.registrar || r.create_date || r.expire_date || r.ns_1 || r.reg_email) return true;
+  return null;                                         // empty/unknown → HOLD
 }
 
 // Confirm-a-drop oracle. RDAP not-found ALONE is unreliable: some registries
