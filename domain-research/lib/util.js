@@ -26,6 +26,35 @@ export function isValidDomain(domain) {
   );
 }
 
+// Strict, user-facing scrub for a submitted domain (server backstop to the same
+// client check). Like normalizeDomain it strips scheme / www / trailing junk, but
+// it THROWS on an AMBIGUOUS input — a path, query, fragment, or user@host — instead
+// of silently keeping the host. That stops a pasted marketplace URL like
+// https://www.afternic.com/domain/satiate.com from quietly resolving to the WRONG
+// domain (afternic.com). Returns a validated bare domain.
+export function cleanDomainInput(raw) {
+  const shown = String(raw == null ? '' : raw).trim();
+  const bad = () =>
+    new Error(`Couldn't read a domain from "${shown}". Enter just the domain — e.g. example.com (no https://, no path).`);
+  let s = String(raw == null ? '' : raw)
+    .normalize('NFKC')
+    .replace(/[\s ​-‏⁠﻿]/g, '')
+    .replace(/^["'<]+|[">']+$/g, '')
+    .replace(/^[a-z][a-z0-9+.-]*:\/\//i, ''); // scheme://
+  if (!s) throw new Error('Enter a domain — e.g. example.com');
+  if (s.includes('@')) throw bad(); // user@host / email
+  const cut = s.search(/[/?#]/);
+  const after = cut === -1 ? '' : s.slice(cut);
+  if (after && after.replace(/\/+$/, '') !== '') throw bad(); // real path/query/fragment
+  const host = (cut === -1 ? s : s.slice(0, cut))
+    .replace(/^www\./i, '')
+    .replace(/:\d+$/, '')
+    .replace(/\.+$/, '')
+    .toLowerCase();
+  if (!isValidDomain(host)) throw bad();
+  return host;
+}
+
 // fetch + JSON parse with a hard timeout, so one slow API can't hang the function.
 export async function fetchJson(url, opts = {}, timeoutMs = 12000) {
   const ctrl = new AbortController();
@@ -119,10 +148,17 @@ export function extractClues(html) {
   const copyright = (text.match(/(?:©|&copy;|copyright)\s*[^.<\n]{0,80}/i) || [])[0]?.trim() || null;
 
   const lower = h.toLowerCase();
-  const PARKERS = ['above.com', 'afternic', 'sedo', 'bodis', 'parkingcrew', 'dan.com', 'uniregistry', 'hugedomains', 'domainmarket', 'efty'];
+  // Parker platforms must be matched as DOMAINS (with TLD), not bare brand words —
+  // a bare 'sedo'/'efty' substring-matches common minified-JS tokens (mouseDown →
+  // "mou·sedo·wn", purchasedOn → "purcha·sedo·n", hefty, parsedObj…), which falsely
+  // flagged live JS-heavy sites (modulate.ai, cycling74.com) as parked/for-sale.
+  const PARKERS = ['above.com', 'afternic.com', 'sedo.com', 'sedoparking.com', 'bodis.com', 'parkingcrew.net', 'dan.com', 'uniregistry.com', 'hugedomains.com', 'domainmarket.com', 'efty.com'];
   const platforms = PARKERS.filter((p) => lower.includes(p));
-  const FOR_SALE = ['buy this domain', 'domain is for sale', 'this domain is for sale', 'make offer', 'make an offer', 'inquire about this domain', 'domain for sale'];
-  const for_sale_signals = FOR_SALE.filter((p) => lower.includes(p));
+  // Match for-sale phrases against VISIBLE text only (not raw HTML/JSON/script) so a
+  // string buried in a script bundle can't trip it.
+  const lowerText = text.toLowerCase();
+  const FOR_SALE = ['buy this domain', 'domain is for sale', 'this domain is for sale', 'make an offer', 'inquire about this domain', 'domain for sale'];
+  const for_sale_signals = FOR_SALE.filter((p) => lowerText.includes(p));
 
   return {
     title,

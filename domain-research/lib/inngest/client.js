@@ -14,3 +14,7 @@ export const SALES_RESEARCH_REQUESTED = 'domain-research/sales-research.requeste
 // Tier-2 category fan-out (Explore by category). Async so the per-category LLM +
 // liveness work isn't bound by the 60s API function cap.
 export const SALES_ANGLES_REQUESTED = 'domain-research/sales-angles.requested';
+// Corporate Portfolios — reverse-WHOIS pull of a company's registered domains,
+// filtered to "premium" names. Async because a large registrant paginates across
+// many Whoxy pages (0.5s apart), well past the API function's 60s cap.
+export const PORTFOLIO_REQUESTED = 'domain-research/portfolio.requested';

@@ -1,4 +1,4 @@
-import { inngest, RUN_REQUESTED, CHAT_REQUESTED, RUN_CANCELLED, SALES_RESEARCH_REQUESTED, SALES_ANGLES_REQUESTED } from './client.js';
+import { inngest, RUN_REQUESTED, CHAT_REQUESTED, RUN_CANCELLED, SALES_RESEARCH_REQUESTED, SALES_ANGLES_REQUESTED, PORTFOLIO_REQUESTED } from './client.js';
 import { gather, critique, chatTurn } from '../agent.js';
 import { setRunStatus, saveRunReport, failRun, getRun } from '../db/runs.js';
 import { getChat, updateTurn } from '../db/chat.js';
@@ -17,6 +17,13 @@ import { resolveCandidates } from '../sales/resolve.js';
 import {
   setSalesProjectStatus, insertSalesCandidates, getSalesProject, listSalesCandidates,
 } from '../db/sales.js';
+import {
+  getPortfolioRun, setPortfolioRunStatus, insertPortfolioDomains,
+} from '../db/portfolio.js';
+import { deriveRegistrantKeys } from '../portfolio/registrant.js';
+import { pullPortfolio } from '../portfolio/providers.js';
+import { classifyPremium, wordsNeedingDictionary } from '../portfolio/premium.js';
+import { filterDictionaryWords } from '../db/dictionary.js';
 
 // Format the refine-chat history as a single corrections block the agent can
 // treat as authoritative. Only the user-assistant pairs that contain actual
@@ -236,12 +243,14 @@ export const runResearch = inngest.createFunction(
   },
   { event: RUN_REQUESTED },
   async ({ event, step }) => {
-    const { runId, domain, question, phase = 'shallow' } = event.data;
+    const { runId, domain, question, phase = 'shallow', tier: tierOverride } = event.data;
     const deep = phase === 'deep';
     const isRegenSynth = phase === 'regenerate-synth';
     const isRegenDeep = phase === 'regenerate-deep';
     const isRegen = isRegenSynth || isRegenDeep;
-    const tier = (deep || isRegen) ? 'all' : 'free';
+    // `tier` may be overridden by the caller — a synth regenerate by a non-deep
+    // user runs at the FREE tier so it never spends paid credits.
+    const tier = tierOverride || ((deep || isRegen) ? 'all' : 'free');
 
     await step.run('mark-running', () =>
       setRunStatus(runId, 'running', isRegen ? 'regenerating' : (deep ? 'deepening' : 'gathering')),
@@ -481,4 +490,74 @@ export const runSalesAngles = inngest.createFunction(
   },
 );
 
-export const functions = [runResearch, runChat, runSalesResearch, runSalesAngles];
+// Corporate Portfolios — reverse-WHOIS pull of a company's registered domains,
+// filtered to "premium" names. Async because a large registrant paginates across
+// many Whoxy pages (0.5s apart), past the API function's 60s cap.
+export const runCorporatePortfolio = inngest.createFunction(
+  {
+    id: 'run-corporate-portfolio',
+    retries: 1,
+    onFailure: async ({ event, step }) => {
+      const runId = event?.data?.event?.data?.runId;
+      const message = String(event?.data?.error?.message || 'failed').slice(0, 500);
+      if (runId) await step.run('mark-failed', () => setPortfolioRunStatus(runId, 'failed', { error: message }));
+    },
+  },
+  { event: PORTFOLIO_REQUESTED },
+  async ({ event, step }) => {
+    const { runId } = event.data;
+    try {
+      const run = await step.run('load', () => getPortfolioRun(runId));
+      if (!run) return { runId, ok: false, reason: 'not found' };
+
+      // KEYS — turn the seed (domain / company / email) into reverse-WHOIS search
+      // terms (a domain seed derives the registrant org/email from live WHOIS).
+      await step.run('mark-keys', () => setPortfolioRunStatus(runId, 'running', { stage: 'keys' }));
+      const keys = await step.run('derive-keys', () => deriveRegistrantKeys(run.query, process.env));
+
+      // PULL — union every reverse-WHOIS provider (Whoxy ∪ WhoisXML current+historic
+      // ∪ DomainIQ best-effort) across all derived terms.
+      await step.run('mark-pull', () => setPortfolioRunStatus(runId, 'running', { stage: 'pull' }));
+      const pull = await step.run('pull', () => pullPortfolio(keys.terms, { env: process.env }));
+
+      // CLASSIFY — keep the WHOLE portfolio; FLAG which names are premium (short or
+      // dictionary .com). 5+ char SLDs need a dictionary check; batch it in one DB
+      // pass against english_words, then classify purely.
+      await step.run('mark-classify', () => setPortfolioRunStatus(runId, 'running', { stage: 'classify' }));
+      const classified = await step.run('classify', async () => {
+        const filter = run.filter || undefined;
+        const need = wordsNeedingDictionary(pull.domains, filter);
+        const dict = need.length ? await filterDictionaryWords(need) : new Set();
+        return pull.domains.map((d) => {
+          const { premium, reason } = classifyPremium(d.domain, filter, (sld) => dict.has(sld));
+          return { ...d, premium, premium_reason: premium ? reason : null };
+        }).sort((a, b) => {
+          // premium first, then shortest SLD, then alpha
+          if (a.premium !== b.premium) return a.premium ? -1 : 1;
+          const la = a.domain.split('.')[0].length, lb = b.domain.split('.')[0].length;
+          return la - lb || a.domain.localeCompare(b.domain);
+        });
+      });
+      const premiumCount = classified.filter((d) => d.premium).length;
+
+      await step.run('persist', () => insertPortfolioDomains(runId, classified));
+      await step.run('mark-done', () => setPortfolioRunStatus(runId, 'done', {
+        stage: 'done',
+        premium_count: premiumCount,
+        total_results: pull.total_results,
+        credits_used: pull.credits_used,
+        capped: false,
+        // Per-provider breakdown for transparency (stashed in the filter jsonb to
+        // avoid a migration): { whoxy, whoisxml, domainiq } + the seed keys used.
+        filter: { ...(run.filter || {}), providers: pull.provider_counts, keys: keys.terms.map((t) => `${t.field}:${t.term}`), errors: (pull.errors || []).slice(0, 8) },
+      }));
+      return { runId, ok: true, premium: premiumCount, scanned: pull.total_results, providers: pull.provider_counts };
+    } catch (err) {
+      const message = String(err?.message || err);
+      await step.run('mark-error', () => setPortfolioRunStatus(runId, 'failed', { error: message }));
+      throw err;
+    }
+  },
+);
+
+export const functions = [runResearch, runChat, runSalesResearch, runSalesAngles, runCorporatePortfolio];

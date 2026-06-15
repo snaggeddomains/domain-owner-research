@@ -221,6 +221,11 @@ function applyUiFilters(filters, body) {
     const picked = [...new Set(body.connotation.map((c) => String(c || '').toLowerCase()).filter((c) => VALID.includes(c)))];
     filters.connotation = picked.length === 0 || picked.length >= VALID.length ? null : picked;
   }
+  if (Array.isArray(body.part_of_speech)) {
+    const VALID_POS = ['noun', 'verb', 'adjective', 'adverb'];
+    const picked = [...new Set(body.part_of_speech.map((p) => String(p || '').toLowerCase()).filter((p) => VALID_POS.includes(p)))];
+    filters.part_of_speech = picked.length === 0 || picked.length >= VALID_POS.length ? null : picked;
+  }
   if (Array.isArray(body.tlds) && body.tlds.length) {
     const tlds = body.tlds.map((t) => String(t).replace(/^\./, '').toLowerCase()).filter(Boolean);
     if (tlds.length) filters.tlds = [...new Set(tlds)];

@@ -1,5 +1,5 @@
 import { inngest, RUN_REQUESTED, RUN_CANCELLED } from '../lib/inngest/client.js';
-import { isValidDomain, normalizeDomain } from '../lib/util.js';
+import { cleanDomainInput } from '../lib/util.js';
 import { checkRateLimit, clientIp } from '../lib/ratelimit.js';
 import { isAuthed, currentUser, userCan, userCanReportPhase } from '../lib/auth.js';
 import { isDbConfigured } from '../lib/db/supabase.js';
@@ -36,8 +36,11 @@ export default async function handler(req, res) {
   // ── List past runs (Projects view) ─────────────────────────────────────────
   if (req.method === 'GET' && req.query.list !== undefined) {
     const q = typeof req.query.q === 'string' ? req.query.q.slice(0, 200) : '';
-    // Show completed runs plus any actively-researching ones (skip transient queued).
-    const runs = await listRuns({ q, limit: 100, statuses: ['done', 'running'] });
+    // Show completed runs plus any actively-researching ones (skip transient
+    // queued). Also surface errored runs that DID save a report — a deep pass
+    // that timed out still leaves a usable free pre-flight report; without this
+    // they'd vanish from Recent even though the report opens fine.
+    const runs = await listRuns({ q, limit: 100, statuses: ['done', 'running'], reportStatuses: ['error'] });
     res.status(200).json({ runs });
     return;
   }
@@ -157,8 +160,15 @@ export default async function handler(req, res) {
   // synthesis still uses the SYSTEM_PROMPT + tools + LLM budget.
   if (body.regenerate_from_chat) {
     const mode = body.regenerate_from_chat === 'deep' ? 'deep' : 'synth';
-    if (_userForPerm && !userCanReportPhase(_userForPerm, 'deep')) {
-      res.status(403).json({ error: "You don't have access to regenerate reports — ask an admin to enable deep research." });
+    // Regenerating is part of Domain Owner research, not a separate privilege:
+    // the fast "from chat" (synth) re-synthesis rides base domain_owner access.
+    // Only the paid "deep re-research" (same cost class as a fresh deep run)
+    // keeps the deep-report permission.
+    const needPhase = mode === 'deep' ? 'deep' : 'shallow';
+    if (_userForPerm && !userCanReportPhase(_userForPerm, needPhase)) {
+      res.status(403).json({ error: mode === 'deep'
+        ? "You don't have access to deep re-research — ask an admin to enable deep research."
+        : "You don't have access to Domain Owner research — ask an admin to enable it." });
       return;
     }
     const run = await getRun(body.id);
@@ -171,11 +181,14 @@ export default async function handler(req, res) {
       return;
     }
     const phase = mode === 'deep' ? 'regenerate-deep' : 'regenerate-synth';
+    // A synth regenerate by a user WITHOUT deep access runs at the FREE tier — so
+    // "anyone with Domain Owner can regenerate" never quietly spends paid credits.
+    const tierOverride = (mode === 'synth' && !(_userForPerm && userCanReportPhase(_userForPerm, 'deep'))) ? 'free' : undefined;
     await setRunStatus(run.id, 'queued', 'queued');
     try {
       await inngest.send({
         name: RUN_REQUESTED,
-        data: { runId: run.id, domain: run.domain, question: run.question || '', phase },
+        data: { runId: run.id, domain: run.domain, question: run.question || '', phase, ...(tierOverride ? { tier: tierOverride } : {}) },
       });
     } catch (e) {
       await failRun(run.id, `Failed to enqueue regeneration: ${e?.message || e}`);
@@ -213,9 +226,11 @@ export default async function handler(req, res) {
   }
 
   // ── New run (free pre-flight pass) ──────────────────────────────────────────
-  const domain = normalizeDomain(body.domain);
-  if (!isValidDomain(domain)) {
-    res.status(400).json({ error: 'Please provide a valid domain, e.g. example.com' });
+  let domain;
+  try {
+    domain = cleanDomainInput(body.domain);
+  } catch (e) {
+    res.status(400).json({ error: String((e && e.message) || e) });
     return;
   }
   const question = typeof body.question === 'string' ? body.question.slice(0, 1000) : '';
@@ -235,7 +250,7 @@ export default async function handler(req, res) {
   // "Researched X ago · Refresh" affordance to spend credits on demand.
   const force = body.force === true || body.force === 'true';
   if (!force) {
-    const recents = await listRuns({ q: domain, limit: 10, statuses: ['done'] });
+    const recents = await listRuns({ q: domain, limit: 10, statuses: ['done'], reportStatuses: ['error'] });
     const match = recents.find((r) => String(r.domain).toLowerCase() === domain.toLowerCase());
     if (match) {
       res.status(200).json({ run_id: match.id, domain, existing: true, created_at: match.created_at });

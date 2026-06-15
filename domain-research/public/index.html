@@ -28,7 +28,7 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="apple-mobile-web-app-title" content="Snagged Research" />
     <meta name="theme-color" content="#254254" />
-    <link rel="stylesheet" href="styles.css?v=20260605ak" />
+    <link rel="stylesheet" href="styles.css?v=20260605at" />
     <!-- Layout: horizontal tab nav (Admin-style), no sidebar. -->
   </head>
   <body>
@@ -90,6 +90,11 @@
                PWA / "Mac app" where there's no browser refresh button). -->
           <button id="refresh-btn" class="topbar-refresh" type="button" aria-label="Reload" title="Reload latest version">
             <svg viewBox="0 0 24 24" width="19" height="19" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+          </button>
+          <!-- Share — copy a link to the current report so it's easy to send to
+               a teammate or client (works on any report view; the URL reopens it). -->
+          <button id="share-btn" class="topbar-refresh" type="button" aria-label="Share" title="Copy a shareable link to this report">
+            <svg viewBox="0 0 24 24" width="19" height="19" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.59 13.51l6.83 3.98M15.41 6.51l-6.82 3.98"/></svg>
           </button>
           <!-- Notifications bell — red unread count; dropdown deep-links in-app. -->
           <button id="notif-btn" class="notif-bell" type="button" aria-label="Notifications" title="Notifications" aria-haspopup="true" aria-expanded="false">
@@ -177,9 +182,16 @@
         <!-- Nameserver Search — domain↔nameserver lookups over the zone index.
              Gated by the `nameserver` permission; shown by JS. -->
         <a id="nav-nameserver" class="nav-btn" href="/research/nameserver" hidden>Nameserver</a>
+        <!-- Beeper — RDAP drop watcher. Gated by the `beeper` permission. -->
+        <a id="nav-beeper" class="nav-btn" href="/research/beeper" hidden>Beeper</a>
+        <!-- Whois — basic free RDAP/WHOIS lookup. Gated by the `whois` permission. -->
+        <a id="nav-whois" class="nav-btn" href="/research/whois" hidden>Whois</a>
         <!-- Sales Research — find companies that would buy a domain we're selling.
              Gated by the `sales` permission; shown by JS. -->
         <a id="nav-sales" class="nav-btn" href="/research/sales" hidden>Sales Research</a>
+        <!-- Corporate Portfolios — reverse-WHOIS a company to pull its premium
+             domains. Gated by the `portfolio` permission; shown by JS. -->
+        <a id="nav-portfolio" class="nav-btn" href="/research/portfolio" hidden>Corporate Portfolios</a>
         <!-- Lessons (playbook curation) is admin-only and now lives in the
              umbrella Admin module; reachable directly at /research/admin. -->
         <button id="nav-admin" class="nav-btn nav-btn-admin" type="button" hidden style="display:none">Lessons</button>
@@ -195,6 +207,13 @@
 
       <div class="content">
       <div class="wrap">
+        <!-- Cross-module action bar — carries the active domain to another tool in
+             one click (rendered by renderDomainBar(); chips from DOMAIN_MODULES). -->
+        <div id="domain-bar" class="domain-bar" hidden>
+          <span class="domain-bar-label">Use <strong id="domain-bar-d"></strong> in:</span>
+          <div id="domain-bar-chips" class="domain-bar-chips"></div>
+          <button type="button" id="domain-bar-k" class="domain-bar-k" title="Quick switch (⌘K / Ctrl-K)">⌘K</button>
+        </div>
         <!-- Research view -->
         <section id="view-research">
           <div class="hero" id="hero">
@@ -283,6 +302,14 @@
               <ul id="trace"></ul>
             </details>
           </section>
+
+          <!-- Suggest a Strategy — submit a research-playbook strategy/tip.
+               Lives on the Domain Owner page + bottom of every report. Gated to
+               domain_owner; a super admin approves before it goes live. -->
+          <div id="suggest-strategy" class="suggest-strategy" hidden>
+            <button id="suggest-strategy-btn" type="button" class="suggest-strategy-btn">💡 Suggest a Strategy</button>
+            <span class="suggest-strategy-cap">Spotted a tactic that helped crack an owner? Send it to the playbook.</span>
+          </div>
         </section>
 
         <!-- Projects view -->
@@ -382,7 +409,10 @@
               <button type="button" data-db="universe">Universe</button>
               <button type="button" data-db="master">Master List</button>
             </div>
-            <div id="ds-count" class="dbs-count"></div>
+            <div class="dbs-toprow-right">
+              <div id="ds-count" class="dbs-count"></div>
+              <button type="button" id="ds-export" class="dbs-export" title="Download all matching rows as CSV">⬇ Download CSV</button>
+            </div>
           </div>
           <div class="dbs-layout">
             <aside class="dbs-filters" id="ds-filters">
@@ -410,6 +440,18 @@
               </div>
               <div class="dbs-fgroup"><label>Dictionary word</label>
                 <select id="ds-dict"><option value="">Any</option><option value="yes">Yes</option><option value="no">No</option></select>
+              </div>
+              <div class="dbs-fgroup"><label>Exclude word-forms</label>
+                <details class="dbs-multi" id="ds-forms-wrap">
+                  <summary><span class="dbs-multi-label" id="ds-forms-label">None</span><span class="dbs-multi-count" id="ds-forms-count"></span></summary>
+                  <div class="dbs-multi-list" id="ds-forms-list"></div>
+                </details>
+              </div>
+              <div class="dbs-fgroup"><label>Part of speech <span class="dbs-hint">Universe only</span></label>
+                <details class="dbs-multi" id="ds-pos-wrap">
+                  <summary><span class="dbs-multi-label" id="ds-pos-label">Any</span><span class="dbs-multi-count" id="ds-pos-count"></span></summary>
+                  <div class="dbs-multi-list" id="ds-pos-list"></div>
+                </details>
               </div>
               <div class="dbs-fgroup"><label>Words</label>
                 <input id="ds-words-min" type="number" placeholder="Min" min="1" />
@@ -522,6 +564,30 @@
           <div id="ns-result" class="ns-result" hidden></div>
         </section>
 
+        <!-- Beeper — watch a domain's RDAP status; alert on change / drop -->
+        <section id="view-beeper" hidden>
+          <h1 class="page-title">Beeper <span class="accent">drop watch</span></h1>
+          <p class="sub">Watch a domain's registry status via the free RDAP API and get an <strong>email + bell alert the instant it changes</strong> — especially the drop to <strong>available</strong>. For names heading into delete/expiry that are hard to backorder or drop-catch. <strong>Adaptive cadence:</strong> a name on the cusp is checked <strong>every minute</strong>; one with an expiration months out is checked occasionally and tightens as the date nears (weekly → daily → hourly → every minute).</p>
+          <form id="beeper-form" class="beeper-form">
+            <input id="beeper-domain" type="text" placeholder="e.g. thru.id" autocomplete="off" autocapitalize="off" spellcheck="false" />
+            <button id="beeper-add" type="submit">Watch</button>
+          </form>
+          <div id="beeper-status" class="tool-status" hidden></div>
+          <ul id="beeper-list" class="beeper-list"></ul>
+        </section>
+
+        <!-- Whois — basic free domain lookup (RDAP + legacy WHOIS) -->
+        <section id="view-whois" hidden>
+          <h1 class="page-title">Whois <span class="accent">lookup</span></h1>
+          <p class="sub">A basic, free domain lookup via <strong>RDAP</strong> (with legacy WHOIS merged in) — registrar, registration / expiry / updated dates, status codes, nameservers, DNSSEC, and the registrant contact when it's public. No credits used.</p>
+          <form id="whois-form" class="beeper-form">
+            <input id="whois-domain" type="text" placeholder="e.g. example.com" autocomplete="off" autocapitalize="off" spellcheck="false" />
+            <button id="whois-add" type="submit">Look up</button>
+          </form>
+          <div id="whois-status" class="tool-status" hidden></div>
+          <div id="whois-result" class="whois-result" hidden></div>
+        </section>
+
         <!-- Sales Research — companies that would buy a domain we're selling -->
         <section id="view-sales" hidden>
           <!-- Entry: hero + form + recent. Hidden once a run is open (collapsed
@@ -589,6 +655,67 @@
           <ul id="sr-projects-list" class="projects-list"></ul>
         </section>
 
+        <!-- Corporate Portfolios — reverse-WHOIS a company to its premium domains -->
+        <section id="view-portfolio" hidden>
+          <div id="cp-entry">
+            <div class="hero tool-hero">
+              <h1 class="hero-title">Corporate <span class="accent">Portfolios</span></h1>
+              <p class="hero-sub">Enter a company <strong>domain</strong> (best — I read its WHOIS to find the registrant, e.g. <em>meta.com</em>), a company <strong>name</strong>, or a registrant <strong>email</strong>. I union every reverse-WHOIS provider to pull the whole registered portfolio and flag the premium names (short / dictionary .coms).</p>
+            </div>
+            <form id="cp-form" class="search cp-form" autocomplete="off">
+              <input id="cp-query" type="text" placeholder="meta.com  ·  Meta Platforms, Inc.  ·  registrant@email.com" />
+              <button id="cp-go" type="submit">Pull portfolio</button>
+            </form>
+            <!-- Premium filter knobs (collapsed defaults match the proven script). -->
+            <details id="cp-filter" class="cp-filter">
+              <summary>Premium filter</summary>
+              <div class="cp-filter-grid">
+                <label class="cp-field"><span>TLDs (comma-sep, blank = any)</span>
+                  <input id="cp-tlds" type="text" value="com" placeholder="com, io, net" /></label>
+                <label class="cp-field"><span>Short SLD min</span>
+                  <input id="cp-min" type="number" min="1" value="2" /></label>
+                <label class="cp-field"><span>Short SLD max</span>
+                  <input id="cp-max" type="number" min="1" value="4" /></label>
+                <label class="cp-check"><input id="cp-dict" type="checkbox" checked /> Keep 5+ char dictionary words</label>
+                <label class="cp-check"><input id="cp-hyphens" type="checkbox" /> Allow hyphens</label>
+              </div>
+            </details>
+            <div id="cp-recent" class="sr-recent" hidden>
+              <div class="sr-recent-head">Recent portfolios</div>
+              <ul id="cp-recent-list" class="sr-recent-list"></ul>
+              <a id="cp-recent-all" class="show-all" href="/research/portfolio/all">View all portfolios &rarr;</a>
+            </div>
+            <p id="cp-error" class="login-error" hidden></p>
+          </div>
+
+          <div id="cp-reshead" class="sr-reshead" hidden>
+            <h1 class="sr-reshead-title"><span id="cp-reshead-q"></span> <span class="accent">portfolio</span></h1>
+            <button id="cp-new" type="button" class="sr-new-btn">+ New pull</button>
+          </div>
+
+          <div id="cp-status" class="sr-status" hidden></div>
+
+          <section id="cp-results" class="sr-results" hidden>
+            <div class="sr-toolbar">
+              <div class="sr-summary" id="cp-summary"></div>
+              <div class="sr-actions">
+                <button id="cp-csv" type="button" class="sr-btn sr-btn-ghost" title="Download the full premium list as CSV.">Download CSV</button>
+              </div>
+            </div>
+            <div id="cp-table" class="sr-table-wrap"></div>
+          </section>
+        </section>
+
+        <!-- Past Corporate Portfolio runs — searchable list -->
+        <section id="view-portfolio-runs" hidden>
+          <h1 class="page-title">Past <span class="accent">Portfolios</span></h1>
+          <p class="sub">Open a previous pull to revisit its premium domains.</p>
+          <div class="sales-projects-controls">
+            <input id="cp-runs-search" class="projects-search" type="text" placeholder="Search by company / email…" autocomplete="off" />
+          </div>
+          <ul id="cp-runs-list" class="projects-list"></ul>
+        </section>
+
         <!-- Naming exercise -->
         <section id="view-naming" hidden>
           <div class="tool-reshead">
@@ -635,6 +762,13 @@ The model parses it into structured filters (TLDs, length, budget, tone, etc.) a
                   <details class="dbs-multi" id="nm-con-wrap">
                     <summary><span class="dbs-multi-label" id="nm-con-label">Any</span><span class="dbs-multi-count" id="nm-con-count"></span></summary>
                     <div class="dbs-multi-list" id="nm-con-list"></div>
+                  </details>
+                </div>
+                <div class="naming-filter">
+                  <span class="naming-con-cap">Part of speech</span>
+                  <details class="dbs-multi" id="nm-pos-wrap">
+                    <summary><span class="dbs-multi-label" id="nm-pos-label">Any</span><span class="dbs-multi-count" id="nm-pos-count"></span></summary>
+                    <div class="dbs-multi-list" id="nm-pos-list"></div>
                   </details>
                 </div>
                 <div class="naming-filter naming-filter--price">
@@ -733,8 +867,8 @@ The model parses it into structured filters (TLDs, length, budget, tone, etc.) a
     <!-- Save-lesson modal (filled from /api/lessons distill) -->
     <div id="lesson-modal" class="lesson-modal" hidden>
       <div class="lesson-modal-card">
-        <h3 class="lesson-modal-title">Save as playbook lesson</h3>
-        <p class="lesson-modal-sub">Distilling the rule from this exchange. Edit before submitting — an admin reviews and approves before it goes live.</p>
+        <h3 id="lesson-modal-heading" class="lesson-modal-title">Save as playbook lesson</h3>
+        <p id="lesson-modal-sub" class="lesson-modal-sub">Distilling the rule from this exchange. Edit before submitting — a super admin reviews and approves before it goes live.</p>
         <label class="lesson-field">
           <span class="lesson-field-label">Title</span>
           <input id="lesson-modal-title" type="text" maxlength="200" placeholder="Short imperative rule" />
@@ -808,7 +942,17 @@ The model parses it into structured filters (TLDs, length, budget, tone, etc.) a
       </div>
     </aside>
 
+    <!-- Quick-switch command palette (⌘K / Ctrl-K): run any domain tool on a
+         domain without navigating + retyping. Populated by DOMAIN_MODULES. -->
+    <div id="cmdk" class="cmdk" hidden>
+      <div class="cmdk-box" role="dialog" aria-modal="true" aria-label="Quick switch">
+        <input id="cmdk-domain" class="cmdk-domain" type="text" placeholder="domain (e.g. example.com)" autocomplete="off" autocapitalize="off" spellcheck="false" />
+        <ul id="cmdk-list" class="cmdk-list"></ul>
+        <div class="cmdk-hint">↑↓ to move · Enter to open · Esc to close</div>
+      </div>
+    </div>
+
     <!-- Bump ?v= on any public/app.js or styles.css change to bust caches. -->
-    <script src="app.js?v=20260605ak"></script>
+    <script src="app.js?v=20260605at"></script>
   </body>
 </html>

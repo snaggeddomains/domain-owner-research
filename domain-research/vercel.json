@@ -1,5 +1,8 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
+  "crons": [
+    { "path": "/api/cron/beeper", "schedule": "* * * * *" }
+  ],
   "redirects": [
     {
       "source": "/",
@@ -57,6 +60,12 @@
     { "source": "/research/nameserver/:slug*", "destination": "/index.html" },
     { "source": "/research/sales", "destination": "/index.html" },
     { "source": "/research/sales/:slug*", "destination": "/index.html" },
+    { "source": "/research/beeper", "destination": "/index.html" },
+    { "source": "/research/beeper/:slug*", "destination": "/index.html" },
+    { "source": "/research/whois", "destination": "/index.html" },
+    { "source": "/research/whois/:slug*", "destination": "/index.html" },
+    { "source": "/research/portfolio", "destination": "/index.html" },
+    { "source": "/research/portfolio/:slug*", "destination": "/index.html" },
     { "source": "/research/api/:fn*", "destination": "/api/:fn*" },
     { "source": "/research/:path*", "destination": "/:path*" }
   ]

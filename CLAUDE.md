@@ -236,10 +236,55 @@ owner · sweep · reports`. relate/sweep accept a `run_id` to pull report contex
 consolidated owner dossier, 🔑 lead / 🎯 match badges, background deep-research that
 consolidates back into the screen, and localStorage "recent lookups" chips.
 
+**TLD facet filter (2026-06).** An NS lookup returns a per-TLD breakdown so the results
+can be narrowed to one TLD with a click — a custom pair returns mostly `.com`, but the
+ownership signal is often the handful of small-TLD names on it (e.g. the 47 `.vc`), which
+`.com` would crowd off the first page. `query.js` `nsTldFacets({nameservers,mode})` →
+RPC **`ns_tld_counts(p_ns,p_match)`** (group-by-count with an internal 5s
+statement_timeout — exact for a selective NS, `→ []` graceful for a huge shared host);
+both the `ns` AND `pairing` API modes return `tlds:[{tld,count}]` **only on the unfiltered
+(All) query**, and the UI's `.ns-tldbar` chips (a `data-ns-scope` routes the re-run to the
+NS-search list vs the domain→same-pairing siblings) re-run the lookup with `&tld=<x>`
+(server-side, partition-pruned via the existing `domainsByNameservers` `.eq('tld')`).
+**CSV export** pulls the FULL match (not just the loaded first page) via `&full=1` →
+`EXPORT_MAX=50000` cap, respecting the active TLD filter (`nsExportPairingCsv` re-fetches
+when `listHasMore`). **One-time setup:** run
+`snagged-admin/scripts/ns_tld_counts.sql` on the `snagged-zone-index` project (without it
+the bar just doesn't render; results still work).
+
 **Open / next:** rotate the exposed zone DB password; give the 5 legacy TLDs their own
 partitions (independent refresh); write `update_<tld>.sh` + a cron for periodic refresh
 (esp. `.com`); the live-resolve path is now robust but only a fallback — loaded TLDs
 answer from the index.
+
+---
+
+# Beeper — RDAP drop watcher (adaptive cadence, 2026-06-12)
+
+UI at **research.snagged.com/research/beeper** (gated by the `beeper` module permission).
+Watches a domain's RDAP status and alerts (bell + email) the instant it changes —
+especially the drop to available. **Universal team watchlist** (`listWatches()` returns
+every user's watches; each row carries `submitted_by` for the who-added-it chip;
+`stopWatch(id)` lets any Beeper user stop any watch).
+
+- **Adaptive cadence** (`lib/beeper/cadence.js`) — the cron still fires every minute
+  (`vercel.json`), but a watch is only actually hit when it's **DUE** (`isDue`).
+  `checkIntervalMs(watch)` is a pure function of the watch's `expiration` + current EPP
+  `last_status`: **pending-delete → 1 min**, redemption/restore/auto-renew → 1h, else
+  taper by days-to-expiry (>14d weekly · >7d daily · >2d 12h · >1d 6h · day-of hourly ·
+  past-but-clean 6h · **unknown 1h** — bootstraps the date then tapers). So a name on
+  the cusp is polled every minute; a name
+  months out is polled occasionally and tightens as the date nears. The cron filters to
+  due watches and persists `expiration` from RDAP each check; `listWatches` attaches a
+  `cadence` summary (`cadenceInfo`: tier/label/days_to_expiry/next_check) for the UI,
+  which groups rows into **🎯 Drop watch — live** / **🕒 Long-term** / **✓ Finished** with a
+  per-row cadence chip.
+- **`expiration` column** is a later add — `addWatch`/`updateWatch` write it best-effort
+  and **strip+retry on a column-missing error**, so the app degrades gracefully (cadence
+  falls back to a 6h default) before the migration runs. **One-time migration:**
+  `supabase/migrations/0010_beeper_expiration.sql` (`alter table beeper_watches add column
+  if not exists expiration timestamptz`) on the research project.
+- **Safety cap** still applies (`BEEPER_MAX_WATCH_DAYS`, default 60) → auto-stops a watch.
 
 ---
 
@@ -277,6 +322,54 @@ Find companies that would BUY a domain we're selling. UI at **research.snagged.c
   product holder with an unrelated company name isn't wrongly demoted.
 - **Permission:** `research.sales` in snagged-admin `dashboard/lib/permissions.ts`
   (MODULES + CATALOG; stored flat as `sales`). Grant per-user in the Users editor.
+
+---
+
+# Corporate Portfolios — reverse-WHOIS a company → its premium domains (2026-06-11)
+
+A Reports module that takes a **company name** (or registrant **email**) and pulls
+that entity's WHOLE registered-domain portfolio from Whoxy reverse-WHOIS, then
+skims off the **premium** names (short + dictionary-word .coms) for outreach.
+Productionizes Rob/Sam's `premium_portfolio_check_master.py` script (NLTK + a
+hardcoded API key) — same proven premium rules, but configurable, no bundled
+dictionary, no key in code. UI at **research.snagged.com/research/portfolio**,
+gated by the `research.portfolio` module permission.
+
+- **Shared Whoxy client** (`lib/whoxy.js`): `reverseWhoisAll({company|email|name|
+  keyword}, {env, maxPages, delayMs})` paginates EVERY page (the `whoxy_reverse`
+  source only grabs page 1), 0.5s apart, with a `maxPages` credit cap (default 100)
+  + a running credit count. Returns `{domains[], total_results, credits_used,
+  capped}`. One credit per page; ~$10/1000. Env: `WHOXY_API_KEY` (already set).
+- **Premium filter** (`lib/portfolio/premium.js`): `classifyPremium`/`selectPremium`
+  — pure, configurable (`DEFAULT_FILTER` = .com only, no hyphens, 2–4 char short OR
+  5+ char dictionary word — the script's exact rules). Knobs: `tlds[]` (blank=any),
+  `minShort`/`maxShort`, `requireDictionary`, `allowHyphens`. Dictionary check is a
+  caller-supplied predicate, NOT a bundled wordlist.
+- **Dictionary reuse** (`lib/db/dictionary.js`): new `filterDictionaryWords(slds[])`
+  — one batched `.in()` pass over the naming project's `english_words` table (the
+  same table the Appraisal definitions use). Fail-open → empty Set (then only shorts
+  qualify, mirroring the script's no-NLTK path). NO NLTK.
+- **Async pipeline** (`runCorporatePortfolio` Inngest fn, event `PORTFOLIO_REQUESTED`):
+  pull → filter (batch dict check + classify) → persist. Async because a big
+  registrant paginates past the 60s API cap.
+- **API** (`api/portfolio.js`, gated `research.portfolio`): `POST {action:'create',
+  company?|email?, filter?}` → `{run_id}`; `GET ?id=` → `{run, domains}`; `GET
+  ?id=&format=csv` → CSV; `GET ?list=1&q=` → recent runs. An `@` in the query ⇒
+  email (precise) else company.
+- **Storage** (`supabase/schema.sql`): `domain_research_portfolio_{runs,domains}`
+  (RLS auto-enabled by the trailing `domain_research_%` loop). **One-time migration:
+  run the two new tables on the research project before first use.**
+- **UI**: `/research/portfolio` tab (`#view-portfolio` + `#view-portfolio-runs`;
+  the `cp*` helpers in app.js; `.cp-*` styles). Company/email box, a collapsible
+  premium-filter `<details>`, polled run, results table, **Download CSV**, recent
+  + searchable past-runs list. Nav `#nav-portfolio` gated by `can('portfolio')`.
+- **Still TODO in snagged-admin (separate repo):** add catalog/module key
+  `research.portfolio` to `dashboard/lib/permissions.ts` (MODULES + CATALOG; stored
+  flat as `portfolio`) so it's grantable in the Users editor, and (optional) a hub
+  tile in `app/page.tsx`. Admins auto-pass without it.
+- **Future (Sam's full ask):** "pull emails for execs" — wire the existing
+  RocketReach enrichment (`lib/sales/enrich/contacts.js`) as an on-demand second
+  step per company. Not in v1 (portfolio-only).
 
 ---
 

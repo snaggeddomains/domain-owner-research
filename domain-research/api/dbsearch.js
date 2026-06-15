@@ -14,10 +14,15 @@ import { currentUser, userCan } from '../lib/auth.js';
 import { getNamingDb, isNamingDbConfigured } from '../lib/db/supabase-naming.js';
 import { getMasterlistDb, isMasterlistDbConfigured } from '../lib/db/masterlist.js';
 
+// CSV export can paginate well past a single page, so give it room.
+export const config = { maxDuration: 60 };
+
 const UNIVERSE = 'name_universe';
 const MASTER = 'Master Domain List';
 const MAX_LIMIT = 100;
 const MERGE_CAP = 1000; // max rows to pull per source in "both" mode
+const EXPORT_MAX = 50000; // hard cap on a CSV export
+const EXPORT_PAGE = 1000;  // rows per request when paginating an export
 
 const OWNER_BY_SOURCE = {
   snagged_snap_sheet: 'Snagged',
@@ -47,7 +52,15 @@ const tldVariants = (arr) => bareTlds(arr).flatMap((t) => [t, '.' + t]);
 // corpus is wasteful — use the fast planner estimate. Once filtered, the set is
 // small enough that an exact count is cheap AND the accuracy matters.
 const FILTER_KEYS = ['q', 'price_min', 'price_max', 'tld', 'len_exact', 'len_min', 'len_max',
-  'single_word', 'dict_word', 'words_min', 'words_max', 'no_numbers', 'source', 'category', 'emotion', 'connotation', 'industry', 'owner', 'keyword'];
+  'single_word', 'dict_word', 'words_min', 'words_max', 'no_numbers', 'source', 'category', 'emotion', 'connotation', 'industry', 'part_of_speech', 'exclude_forms', 'owner', 'keyword'];
+
+// Word-form exclusions (Plurals / Past tense / -ing / -ly): drop SLDs ending in
+// the form. Same heuristic as the Naming Exercise (plural = trailing 's' that
+// isn't ss/us/is/as/os), applied as a SQL POSIX-regex exclusion like the existing
+// "no numbers" filter so counts stay exact. Universe matches on `sld`; Master has
+// no sld column, so it matches the SLD right before the final .tld on `domain`.
+const FORM_SLD = { plural: '[^suaio]s$', past: 'ed$', ing: 'ing$', ly: 'ly$' };
+const FORM_DOMAIN = { plural: '[^suaio]s\\.[a-z]+$', past: 'ed\\.[a-z]+$', ing: 'ing\\.[a-z]+$', ly: 'ly\\.[a-z]+$' };
 function hasActiveFilters(p) {
   return FILTER_KEYS.some((k) => str(p[k]));
 }
@@ -59,7 +72,7 @@ const MASTER_SORT = { domain: 'domain', price: 'price', source: 'source' };
 function buildUniverse(p, ascending, countMode) {
   let q = getNamingDb()
     .from(UNIVERSE)
-    .select('domain, sld, tld, sld_length, num_words, is_dictionary_word, best_price, best_price_source, sources, category, emotions, keywords', { count: countMode });
+    .select('domain, sld, tld, sld_length, num_words, is_dictionary_word, best_price, best_price_source, sources, category, emotions, keywords, part_of_speech', { count: countMode });
   const text = str(p.q);
   if (text) {
     const t = text.toLowerCase();
@@ -99,6 +112,11 @@ function buildUniverse(p, ascending, countMode) {
   const emo = csv(p.emotion); if (emo) q = q.overlaps('emotions', emo);
   const con = csv(p.connotation); if (con) q = q.in('connotation', con);
   const ind = csv(p.industry); if (ind) q = q.overlaps('industries', ind);
+  // Part-of-speech (universe-only enrichment): strict any-of overlap. Rows not
+  // yet POS-enriched have a null/empty array and won't match — coverage fills in
+  // as the structural backfill runs.
+  const pos = csv(p.part_of_speech); if (pos) q = q.overlaps('part_of_speech', pos);
+  const forms = csv(p.exclude_forms); if (forms) for (const f of forms) if (FORM_SLD[f]) q = q.not('sld', 'match', FORM_SLD[f]);
   const kw = str(p.keyword); if (kw) q = q.or(`keywords.cs.{${kw.toLowerCase()}},sld.ilike.%${kw.toLowerCase()}%`);
   return q.order(UNIVERSE_SORT[p.sort] || 'domain', { ascending, nullsFirst: false });
 }
@@ -154,6 +172,7 @@ function buildMaster(p, ascending, countMode) {
   const con = csv(p.connotation); if (con) q = q.in('connotation', con);
   const ind = csv(p.industry); if (ind) q = q.overlaps('industries', ind);
   const owner = str(p.owner); if (owner) q = q.ilike('owner', '%' + owner + '%');
+  const forms = csv(p.exclude_forms); if (forms) for (const f of forms) if (FORM_DOMAIN[f]) q = q.not('domain', 'match', FORM_DOMAIN[f]);
   return q.order(MASTER_SORT[p.sort] || 'domain', { ascending, nullsFirst: false });
 }
 
@@ -175,6 +194,54 @@ function sortRows(rows, sort, ascending) {
     if (typeof av === 'number' && typeof bv === 'number') return (av - bv) * dir;
     return String(av).localeCompare(String(bv)) * dir;
   });
+}
+
+// Pull EVERY matching row (not just one page) by paging through range() until a
+// short page or the export cap. `makeQuery` rebuilds the query per page.
+async function fetchAll(makeQuery) {
+  const out = [];
+  for (let start = 0; start < EXPORT_MAX; start += EXPORT_PAGE) {
+    const { data, error } = await makeQuery().range(start, Math.min(start + EXPORT_PAGE, EXPORT_MAX) - 1);
+    if (error) throw error;
+    const batch = data || [];
+    out.push(...batch);
+    if (batch.length < EXPORT_PAGE) break;
+  }
+  return out;
+}
+
+// Collect the FULL normalized result set for a CSV export (same db/filter/sort
+// semantics as the paged search, just uncapped to EXPORT_MAX).
+async function collectExport(p, db, ascending, ownerFilter) {
+  const posActive = !!csv(p.part_of_speech);
+  const wantU = (db === 'both' || db === 'universe') && isNamingDbConfigured();
+  const wantM = (db === 'both' || db === 'master') && isMasterlistDbConfigured() && !(posActive && db === 'both');
+  let rows = [];
+  if (wantU) rows = rows.concat((await fetchAll(() => buildUniverse(p, ascending, undefined))).map(normUniverse));
+  if (wantM) {
+    const masterRows = (await fetchAll(() => buildMaster(p, ascending, undefined))).map(normMaster);
+    if (db === 'both') {
+      const md = new Set(masterRows.map((r) => (r.domain || '').toLowerCase()));
+      rows = rows.filter((r) => !md.has((r.domain || '').toLowerCase()));
+    }
+    rows = rows.concat(masterRows);
+  }
+  if (ownerFilter) rows = rows.filter((r) => (r.owner || '').toLowerCase().includes(ownerFilter));
+  rows = sortRows(rows, p.sort || 'domain', ascending);
+  return rows.slice(0, EXPORT_MAX);
+}
+
+const csvCell = (v) => {
+  const s = v == null ? '' : String(v);
+  return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+};
+function toCsv(rows) {
+  const lines = ['domain,price,source,owner,category,db'];
+  for (const r of rows) {
+    const src = r.best_price_source || (Array.isArray(r.sources) && r.sources[0]) || '';
+    lines.push([r.domain, r.best_price ?? '', src, r.owner ?? '', r.category ?? '', r.db].map(csvCell).join(','));
+  }
+  return lines.join('\r\n');
 }
 
 export default async function handler(req, res) {
@@ -201,6 +268,16 @@ export default async function handler(req, res) {
   const countMode = hasActiveFilters(p) ? 'exact' : 'estimated';
 
   try {
+    // ── CSV export: the FULL matching set (uncapped to EXPORT_MAX), same filters ──
+    if (str(p.format) === 'csv') {
+      const rows = await collectExport(p, db, ascending, ownerFilter);
+      const stamp = new Date().toISOString().slice(0, 10);
+      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+      res.setHeader('Content-Disposition', `attachment; filename="domain-search-${stamp}.csv"`);
+      res.status(200).send(toCsv(rows));
+      return;
+    }
+
     // ── Single-DB modes: clean server-side pagination via range() ──
     if (db === 'universe' || db === 'master') {
       const start = page * limit;
@@ -224,9 +301,15 @@ export default async function handler(req, res) {
     // ── Both: fetch a capped window from EACH source (not just the current
     // page's worth — otherwise dedupe of owned domains present in both DBs can
     // collapse a page and stop pagination), merge, dedupe, sort, then slice. ──
+    // Part-of-speech is a universe-only attribute; when it's filtered, Master
+    // can't be classified, so a "both" query restricts to Universe rather than
+    // padding the page with unfilterable Master rows.
+    const posActive = !!csv(p.part_of_speech);
     const [uRes, mRes] = await Promise.all([
       buildUniverse(p, ascending, countMode).range(0, MERGE_CAP - 1).then((r) => r).catch((e) => ({ error: e })),
-      buildMaster(p, ascending, countMode).range(0, MERGE_CAP - 1).then((r) => r).catch((e) => ({ error: e })),
+      posActive
+        ? Promise.resolve({ data: [], count: 0 })
+        : buildMaster(p, ascending, countMode).range(0, MERGE_CAP - 1).then((r) => r).catch((e) => ({ error: e })),
     ]);
     const errors = {};
     let merged = [];

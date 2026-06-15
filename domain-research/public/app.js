@@ -35,6 +35,7 @@ const els = {
   notifBtn: $('notif-btn'),
   refreshBtn: $('refresh-btn'),
   backBtn: $('back-btn'),
+  shareBtn: $('share-btn'),
   notifCount: $('notif-count'),
   notifMenu: $('notif-menu'),
   notifList: $('notif-list'),
@@ -181,6 +182,10 @@ const els = {
   lessonModalError: $('lesson-modal-error'),
   lessonModalSubmit: $('lesson-modal-submit'),
   lessonModalCancel: $('lesson-modal-cancel'),
+  lessonModalSub: $('lesson-modal-sub'),
+  lessonModalHeading: $('lesson-modal-heading'),
+  suggestStrategy: $('suggest-strategy'),
+  suggestStrategyBtn: $('suggest-strategy-btn'),
   navToggle: $('nav-toggle'),
   nav: $('nav'),
   tmForm: $('tm-form'),
@@ -197,6 +202,17 @@ const els = {
   navDbsearch: $('nav-dbsearch'),
   navNameserver: $('nav-nameserver'),
   navSales: $('nav-sales'),
+  navPortfolio: $('nav-portfolio'),
+  navBeeper: $('nav-beeper'),
+  navWhois: $('nav-whois'),
+  whoisForm: $('whois-form'), whoisDomain: $('whois-domain'), whoisStatus: $('whois-status'), whoisResult: $('whois-result'),
+  domainBar: $('domain-bar'), domainBarD: $('domain-bar-d'), domainBarChips: $('domain-bar-chips'), domainBarK: $('domain-bar-k'),
+  cmdk: $('cmdk'), cmdkDomain: $('cmdk-domain'), cmdkList: $('cmdk-list'),
+  beeperForm: $('beeper-form'),
+  beeperDomain: $('beeper-domain'),
+  beeperAdd: $('beeper-add'),
+  beeperList: $('beeper-list'),
+  beeperStatus: $('beeper-status'),
   srForm: $('sr-form'), srDomain: $('sr-domain'), srGo: $('sr-go'), srStatus: $('sr-status'),
   srResults: $('sr-results'), srSummary: $('sr-summary'), srShowAll: $('sr-show-all'), srSelectAll: $('sr-select-all'),
   srEnrich: $('sr-enrich'), srCsv: $('sr-csv'), srTable: $('sr-table'),
@@ -205,6 +221,12 @@ const els = {
   srRecent: $('sr-recent'), srRecentList: $('sr-recent-list'), srRecentAll: $('sr-recent-all'),
   srProjectsSearch: $('sr-projects-search'), srProjectsList: $('sr-projects-list'),
   srEntry: $('sr-entry'), srReshead: $('sr-reshead'), srResheadSeed: $('sr-reshead-seed'), srNew: $('sr-new'),
+  cpForm: $('cp-form'), cpQuery: $('cp-query'), cpGo: $('cp-go'), cpError: $('cp-error'),
+  cpTlds: $('cp-tlds'), cpMin: $('cp-min'), cpMax: $('cp-max'), cpDict: $('cp-dict'), cpHyphens: $('cp-hyphens'),
+  cpEntry: $('cp-entry'), cpReshead: $('cp-reshead'), cpResheadQ: $('cp-reshead-q'), cpNew: $('cp-new'),
+  cpStatus: $('cp-status'), cpResults: $('cp-results'), cpSummary: $('cp-summary'), cpTable: $('cp-table'), cpCsv: $('cp-csv'),
+  cpRecent: $('cp-recent'), cpRecentList: $('cp-recent-list'), cpRecentAll: $('cp-recent-all'),
+  cpRunsSearch: $('cp-runs-search'), cpRunsList: $('cp-runs-list'),
   nsModeToggle: $('ns-modetoggle'), nsMatchToggle: $('ns-matchtoggle'),
   nsDomainForm: $('ns-domain-form'), nsDomain: $('ns-domain'),
   nsNsForm: $('ns-ns-form'), nsNs: $('ns-ns'), nsTld: $('ns-tld'),
@@ -218,7 +240,7 @@ const els = {
   dsNonum: $('ds-nonum'), dsFuzzy: $('ds-fuzzy'),
   dsSource: $('ds-source'), dsOwner: $('ds-owner'), dsKeyword: $('ds-keyword'),
   dsApply: $('ds-apply'), dsReset: $('ds-reset'),
-  dsDbToggle: $('ds-dbtoggle'), dsCount: $('ds-count'),
+  dsDbToggle: $('ds-dbtoggle'), dsCount: $('ds-count'), dsExport: $('ds-export'),
   dsStatus: $('ds-status'), dsTbody: $('ds-tbody'),
   dsPager: $('ds-pager'), dsPrev: $('ds-prev'), dsNext: $('ds-next'), dsPageinfo: $('ds-pageinfo'),
   dsTable: $('ds-table'),
@@ -243,6 +265,40 @@ function saveRecentLocal(kind, key, data) {
 function saveRecent(kind, key, data) {
   saveRecentLocal(kind, key, data);
   serverSaveTool(kind, key, data);
+}
+
+// Scrub a user-typed domain before it's submitted: strip the bits that aren't
+// part of the domain (scheme, leading www., wrapping quotes/whitespace, a port,
+// trailing slashes/dots). THROW a clear error (so the form can prompt re-entry)
+// when the input is ambiguous — a path/query/fragment or user@host means we
+// can't tell WHICH domain is meant (e.g. https://www.afternic.com/domain/
+// satiate.com → afternic.com or satiate.com?), and we must not silently guess.
+// With { requireValid:false } a bare word passes through (Trademark reduces it to
+// an SLD); otherwise the result must be a valid domain.
+function cleanDomainInput(raw, { requireValid = true } = {}) {
+  const shown = String(raw == null ? '' : raw).trim();
+  const bad = () => new Error(
+    `Couldn't read a domain from "${shown}". Enter just the domain — e.g. example.com (no https://, no www, no path).`,
+  );
+  let s = String(raw == null ? '' : raw)
+    .normalize('NFKC')
+    .replace(/[ ​-‏⁠﻿]/g, '') // nbsp + zero-width
+    .trim()
+    .replace(/^[<"'“”‘’\s]+|[>"'“”‘’\s]+$/g, '')        // wrapping quotes/brackets
+    .trim();
+  if (!s) throw new Error('Enter a domain — e.g. example.com');
+  s = s.replace(/^[a-z][a-z0-9+.-]*:\/\//i, '');        // scheme://
+  if (s.includes('@')) throw bad();                     // user@host / email
+  const cut = s.search(/[/?#]/);
+  let host = cut === -1 ? s : s.slice(0, cut);
+  const after = cut === -1 ? '' : s.slice(cut);
+  // A bare trailing slash is fine; a real path / query / fragment is ambiguous.
+  if (after && after.replace(/\/+$/, '') !== '') throw bad();
+  host = host.replace(/^www\./i, '').replace(/:\d+$/, '').replace(/\.+$/, '').toLowerCase();
+  if (!host || /[\s/]/.test(host)) throw bad();
+  if (requireValid &&
+      !/^(?=.{1,253}$)(?!-)[a-z0-9-]{1,63}(?<!-)(\.(?!-)[a-z0-9-]{1,63}(?<!-))+$/i.test(host)) throw bad();
+  return host;
 }
 const TOOL_PATH = { tm: 'trademark', ap: 'appraisal' };
 const TOOL_LABEL = { tm: 'trademark searches', ap: 'appraisals' };
@@ -338,6 +394,10 @@ const POLL_MS = 2500;
 let pollTimer = null;
 let clockTimer = null;
 let currentRunId = null;
+// Session memory of the latest research run per domain, so switching back to
+// Domain Owner (via the action bar / ⌘K) RESUMES the existing call — clock and
+// all — instead of firing a duplicate run.
+const domainRuns = new Map();
 let canOutreach = false;
 // On-demand phone enhance (FullEnrich, premium) is gated like the deep pass.
 let canEnhance = false;
@@ -402,7 +462,7 @@ function clearHash() {
 // the SPA): Domain DB Screen at /dbscreen, DB Search at /dbsearch.
 const VANITY_TOOLS = ['dbscreen', 'dbsearch'];
 function currentToolRoute() {
-  let m = location.pathname.match(/^\/research\/(trademark|appraisal|naming|dbscreen|dbsearch|nameserver|sales|admin)(?:\/(.+?))?\/?$/);
+  let m = location.pathname.match(/^\/research\/(trademark|appraisal|naming|dbscreen|dbsearch|nameserver|sales|portfolio|beeper|whois|admin)(?:\/(.+?))?\/?$/);
   if (!m) m = location.pathname.match(/^\/(dbscreen|dbsearch)(?:\/(.+?))?\/?$/);
   if (!m) return null;
   return { tool: m[1], slug: m[2] ? decodeURIComponent(m[2]) : '' };
@@ -424,7 +484,107 @@ const TOOL_PERMISSION = {
   dbscreen: 'dbscreen',
   dbsearch: 'dbsearch',
   nameserver: 'nameserver',
+  beeper: 'beeper',
+  whois: 'whois',
+  portfolio: 'portfolio',
 };
+
+// ── Cross-module domain context (action bar + ⌘K palette; workspace-ready) ──
+// Single source of truth for the domain-centric tools. Each entry knows how to
+// load ITSELF for a domain, so the action bar, the ⌘K palette, and (later) a
+// Domain Workspace of stacked cards all drive off this one list — adding the
+// workspace is then just "render these as cards" instead of "navigate".
+function runOwnerFor(domain) {
+  const d = (domain || '').trim().toLowerCase();
+  setActiveDomain(d);
+  // Already holding this domain's run (in-flight or loaded this session)? Re-open
+  // it so we resume the SAME call — openProject re-anchors the elapsed clock to
+  // the run's real start — rather than enqueuing a duplicate research run.
+  const existing = (currentRunId && currentReportDomain && currentReportDomain.toLowerCase() === d)
+    ? currentRunId
+    : domainRuns.get(d);
+  if (existing) { openProject(existing); return; }
+  // No prior run this session → start a fresh free pre-flight.
+  if (history.pushState) history.pushState(null, '', '/research');
+  showEntry();                                   // Domain Owner is the home view
+  if (els.deepToggle) els.deepToggle.checked = false; // free pre-flight, not paid deep
+  if (els.domain) els.domain.value = d;
+  if (els.form) { els.form.requestSubmit ? els.form.requestSubmit() : els.form.dispatchEvent(new Event('submit', { cancelable: true })); }
+}
+const DOMAIN_MODULES = [
+  { tool: 'research',   label: 'Owner',      icon: '✉',  perm: 'domain_owner', run: (d) => runOwnerFor(d) },
+  { tool: 'whois',      label: 'Whois',      icon: '🔎', perm: 'whois',        run: (d) => { setToolUrl('whois', d); route(); } },
+  { tool: 'appraisal',  label: 'Appraise',   icon: '💲', perm: 'appraisal',    run: (d) => { setToolUrl('appraisal', d); route(); } },
+  { tool: 'trademark',  label: 'Trademark',  icon: '™',  perm: 'trademark',    run: (d) => { setToolUrl('trademark', d); route(); } },
+  { tool: 'dbscreen',   label: 'DB Screen',  icon: '📋', perm: 'dbscreen',     run: (d) => { setToolUrl('dbscreen', d); route(); } },
+  { tool: 'nameserver', label: 'Nameserver', icon: '🌐', perm: 'nameserver',   run: (d) => { setToolUrl('nameserver', d); route(); } },
+  { tool: 'beeper',     label: 'Watch',      icon: '🔔', perm: 'beeper',        run: (d) => { setToolUrl('beeper', d); route(); } },
+];
+let activeDomain = '';
+// Record the domain the user is currently working — drives the action bar + palette.
+function setActiveDomain(d) {
+  const v = (d || '').trim().toLowerCase();
+  if (v) activeDomain = v;
+  renderDomainBar();
+}
+// The domain tool currently in view (so we exclude it from the chips); null when
+// the current view isn't a domain tool (e.g. Naming, DB Search, Portfolios).
+function currentDomainTool() {
+  const tr = currentToolRoute();
+  if (tr) return DOMAIN_MODULES.some((m) => m.tool === tr.tool) ? tr.tool : null;
+  const rv = document.getElementById('view-research');
+  return (rv && !rv.hidden) ? 'research' : null;
+}
+function renderDomainBar() {
+  const bar = els.domainBar; if (!bar) return;
+  const here = currentDomainTool();
+  // Render the FULL accessible set (stable positions so a chip never shifts under
+  // a finger mid-tap) and mark the current tool as a non-clickable "you are here"
+  // chip rather than removing it.
+  const mods = activeDomain && here
+    ? DOMAIN_MODULES.filter((m) => canModule(currentUser, m.perm))
+    : [];
+  if (!mods.length || (mods.length === 1 && mods[0].tool === here)) { bar.hidden = true; return; }
+  if (els.domainBarD) els.domainBarD.textContent = activeDomain;
+  els.domainBarChips.innerHTML = mods.map((m) => {
+    const cur = m.tool === here;
+    return `<button type="button" class="domain-chip${cur ? ' current' : ''}" data-tool="${m.tool}"${cur ? ' disabled aria-current="page"' : ''}>${m.icon} ${escapeHtml(m.label)}</button>`;
+  }).join('');
+  els.domainBarChips.querySelectorAll('.domain-chip:not(.current)').forEach((b) => b.addEventListener('click', () => {
+    b.blur(); // drop focus so no highlight lingers after navigation
+    const m = DOMAIN_MODULES.find((x) => x.tool === b.dataset.tool);
+    if (m) m.run(activeDomain);
+  }));
+  bar.hidden = false;
+}
+
+// ── ⌘K / Ctrl-K quick-switch palette ──
+let cmdkIdx = 0;
+function cmdkMods() { return DOMAIN_MODULES.filter((m) => canModule(currentUser, m.perm)); }
+function renderCmdkList() {
+  const mods = cmdkMods();
+  cmdkIdx = Math.max(0, Math.min(cmdkIdx, mods.length - 1));
+  els.cmdkList.innerHTML = mods.map((m, i) => `<li class="cmdk-item${i === cmdkIdx ? ' active' : ''}" data-tool="${m.tool}">${m.icon} ${escapeHtml(m.label)}</li>`).join('');
+  els.cmdkList.querySelectorAll('.cmdk-item').forEach((li) => li.addEventListener('click', () => runCmdk(li.dataset.tool)));
+}
+function openCmdk() {
+  if (!els.cmdk) return;
+  els.cmdkDomain.value = activeDomain || '';
+  cmdkIdx = 0;
+  renderCmdkList();
+  els.cmdk.hidden = false;
+  els.cmdkDomain.focus(); els.cmdkDomain.select();
+}
+function closeCmdk() { if (els.cmdk) els.cmdk.hidden = true; }
+function runCmdk(tool) {
+  let d;
+  try { d = cleanDomainInput(els.cmdkDomain.value, { requireValid: false }); }
+  catch { d = (els.cmdkDomain.value || '').trim(); }
+  const m = DOMAIN_MODULES.find((x) => x.tool === tool);
+  if (!m || !d) return;
+  closeCmdk();
+  m.run(d);
+}
 // Collapse a tool's hero+search into the compact "<seed> <label>" header once a
 // result is showing (CSS .report-open); restore the entry when off.
 function toolReport(viewId, seed, on) {
@@ -470,7 +630,7 @@ function route() {
     showView('appraisal');
     refreshToolRecent(els.apRecent, 'ap');
     if (tr.slug) openToolSlug('ap', tr.slug);
-    else { els.apResult.hidden = true; els.apResult.innerHTML = ''; els.apDomain.value = ''; setToolStatus(els.apStatus, ''); }
+    else { els.apResult.hidden = true; els.apResult.innerHTML = ''; els.apDomain.value = ''; setToolStatus(els.apStatus, ''); if (els.apNamebio) { els.apNamebio.hidden = true; els.apNamebio.innerHTML = ''; els.apNamebio.dataset.domain = ''; } }
     toolReport('view-appraisal', tr.slug || '', !!tr.slug);
     return;
   }
@@ -502,6 +662,17 @@ function route() {
     toolReport('view-nameserver', tr.slug || '', !!tr.slug);
     return;
   }
+  if (tr && tr.tool === 'beeper') {
+    showView('beeper');
+    if (tr.slug && els.beeperDomain) { els.beeperDomain.value = tr.slug; setActiveDomain(tr.slug); } // carry a domain in (no silent add)
+    loadBeeper();
+    return;
+  }
+  if (tr && tr.tool === 'whois') {
+    showView('whois');
+    if (tr.slug) { if (els.whoisDomain) els.whoisDomain.value = tr.slug; runWhois(tr.slug); }
+    return;
+  }
   if (tr && tr.tool === 'sales') {
     if (tr.slug === 'all') {
       showView('sales-projects');
@@ -512,6 +683,18 @@ function route() {
     showView('sales');
     if (tr.slug) openSalesProject(tr.slug);
     else resetSalesView();
+    return;
+  }
+  if (tr && tr.tool === 'portfolio') {
+    if (tr.slug === 'all') {
+      showView('portfolio-runs');
+      loadPortfolioRuns('');
+      if (els.cpRunsSearch) els.cpRunsSearch.value = '';
+      return;
+    }
+    showView('portfolio');
+    if (tr.slug) openPortfolioRun(tr.slug);
+    else resetPortfolioView();
     return;
   }
   if (tr && tr.tool === 'admin') {
@@ -589,6 +772,7 @@ function renderDbResult(data) {
 }
 async function runDbScreen(domain) {
   showView('dbscreen');
+  setActiveDomain(domain);
   setToolStatus(els.dbStatus, 'Screening…');
   if (els.dbResult) els.dbResult.hidden = true;
   try {
@@ -606,7 +790,7 @@ async function runDbScreen(domain) {
 const DS_LIMIT = 50;
 const dsState = {
   page: 0, sort: 'domain', dir: 'asc', activeTlds: new Set(), db: 'both',
-  category: new Set(), connotation: new Set(), industry: new Set(), emotion: new Set(),
+  category: new Set(), connotation: new Set(), industry: new Set(), emotion: new Set(), pos: new Set(), forms: new Set(),
 };
 
 // Controlled option lists (mirror tools/enrich.py). Industries/emotions are
@@ -624,10 +808,17 @@ const DS_CATEGORIES = [
   'Dating & Relationships', 'Lifestyle', 'General & Other',
 ];
 const DS_CONNOTATIONS = ['positive', 'somewhat positive', 'neutral', 'somewhat negative', 'negative'];
+// Part-of-speech tags (universe-only enrichment, from WordNet). All-selected = no
+// constraint (matches the Naming Exercise filter).
+const DS_POS = ['noun', 'verb', 'adjective', 'adverb'];
+// Word-form exclusions: selecting a form EXCLUDES those names (default None).
+// Friendly labels in the UI → stable keys sent as exclude_forms.
+const DS_FORMS = ['Plurals', 'Past tense', '-ing', '-ly'];
+const DS_FORM_KEY = { 'Plurals': 'plural', 'Past tense': 'past', '-ing': 'ing', '-ly': 'ly' };
 
 // A collapsible checkbox dropdown backed by a Set in dsState[key]. Selections
 // apply on the existing "Apply filters" button (no live re-query).
-function dsMultiSelect(key, prefix, withFilter) {
+function dsMultiSelect(key, prefix, withFilter, emptyLabel = 'Any') {
   const $id = (s) => document.getElementById(s);
   const list = $id(`ds-${prefix}-list`), count = $id(`ds-${prefix}-count`),
         label = $id(`ds-${prefix}-label`), filter = withFilter ? $id(`ds-${prefix}-filter`) : null;
@@ -636,7 +827,7 @@ function dsMultiSelect(key, prefix, withFilter) {
   const summary = () => {
     const n = set.size;
     count.textContent = n ? String(n) : '';
-    label.textContent = n === 0 ? 'Any' : (n === 1 ? [...set][0] : `${n} selected`);
+    label.textContent = n === 0 ? emptyLabel : (n === 1 ? [...set][0] : `${n} selected`);
   };
   const render = (opts) => {
     list.innerHTML = opts.length
@@ -666,8 +857,12 @@ async function dsEnsureFilters() {
   dsMulti.connotation = dsMultiSelect('connotation', 'connotation', false);
   dsMulti.industry = dsMultiSelect('industry', 'industry', true);
   dsMulti.emotion = dsMultiSelect('emotion', 'emotion', true);
+  dsMulti.pos = dsMultiSelect('pos', 'pos', false);
+  dsMulti.forms = dsMultiSelect('forms', 'forms', false, 'None');
   dsMulti.category.setOptions(DS_CATEGORIES);
   dsMulti.connotation.setOptions(DS_CONNOTATIONS);
+  dsMulti.pos.setOptions(DS_POS);
+  dsMulti.forms.setOptions(DS_FORMS);
   try {
     const res = await fetch('/research/api/dbsearch-facets');
     if (res.ok) {
@@ -698,6 +893,9 @@ function dsBuildParams() {
   if (dsState.industry.size) p.set('industry', [...dsState.industry].join(','));
   if (dsState.emotion.size) p.set('emotion', [...dsState.emotion].join(','));
   if (dsState.connotation.size) p.set('connotation', [...dsState.connotation].join(','));
+  // All POS selected = "Any" (no constraint), like the Naming Exercise.
+  if (dsState.pos.size && dsState.pos.size < DS_POS.length) p.set('part_of_speech', [...dsState.pos].join(','));
+  if (dsState.forms.size) p.set('exclude_forms', [...dsState.forms].map((f) => DS_FORM_KEY[f]).filter(Boolean).join(','));
   if (v(els.dsOwner)) p.set('owner', v(els.dsOwner));
   if (v(els.dsKeyword)) p.set('keyword', v(els.dsKeyword));
   p.set('db', dsState.db);
@@ -757,6 +955,29 @@ async function fetchDbSearch() {
   }
 }
 
+// Download the FULL matching set (all filters/sort/db applied) as CSV.
+async function dsExportCsv() {
+  const p = dsBuildParams();
+  p.set('format', 'csv'); p.delete('page'); p.delete('limit');
+  const btn = els.dsExport;
+  const orig = btn ? btn.textContent : '';
+  if (btn) { btn.disabled = true; btn.textContent = 'Preparing…'; }
+  try {
+    const res = await fetch(`/research/api/dbsearch?${p.toString()}`);
+    if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || `Export failed (${res.status})`); }
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `domain-search-${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+  } catch (e) {
+    setToolStatus(els.dsStatus, String((e && e.message) || e), true);
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = orig; }
+  }
+}
+
 function runDbSearch(initialQ) {
   showView('dbsearch');
   if (initialQ && els.dsQ) els.dsQ.value = initialQ;
@@ -800,7 +1021,18 @@ function renderMarkdown(md) {
       .replace(/\*([^*]+)\*/g, '<em>$1</em>')
       .replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>')
       // Bare URLs → clickable (skip ones already inside a markdown link's href/text).
-      .replace(/(?<![">])(https?:\/\/[^\s<)]*[^\s<).,;:!?])/g, '<a href="$1" target="_blank" rel="noopener">$1</a>');
+      .replace(/(?<![">])(https?:\/\/[^\s<)]*[^\s<).,;:!?])/g, '<a href="$1" target="_blank" rel="noopener">$1</a>')
+      // Scheme-less URLs the agent writes as plain text (e.g.
+      // mediaoptions.com/brokered-domains/roundtable-com/) → clickable. The
+      // lookbehind skips hosts already inside an <a> (after / " > ) or an email
+      // (after @) or mid-word/after a dot; the 2+-letter-TLD requirement leaves
+      // prose abbreviations ("Inc.", "U.S.") and decimals ("3.14") alone. Trailing
+      // sentence punctuation is excluded from the link.
+      .replace(/(?<![/">@\w.])((?:[a-z0-9][a-z0-9-]*\.)+[a-z]{2,}(?:\/[^\s<)]*)?)/g, (m) => {
+        const t = m.match(/[.,;:!?]+$/);
+        const url = t ? m.slice(0, -t[0].length) : m;
+        return `<a href="https://${url}" target="_blank" rel="noopener">${url}</a>${t ? t[0] : ''}`;
+      });
 
   for (const raw of lines) {
     const line = raw.trimEnd();
@@ -930,7 +1162,9 @@ function setReportMeta(createdAt, phase, opts) {
     return;
   }
   const deepIncomplete = !!(opts && opts.deepIncomplete);
-  const typeLabel = phase === 'deep' ? 'Deep research' : phase === 'shallow' ? 'Free report' : 'Report';
+  const regenerated = !!(opts && opts.regenerated);
+  const isRegenPhase = /^regenerate/.test(String(phase || ''));
+  const typeLabel = phase === 'deep' ? 'Deep research' : phase === 'shallow' ? 'Free report' : isRegenPhase ? 'Regenerated report' : 'Report';
   const when = new Date(createdAt).toLocaleString();
   // Offer to re-run the deep pass when it's the one that didn't finish; otherwise
   // refresh matches whatever phase we have.
@@ -939,8 +1173,10 @@ function setReportMeta(createdAt, phase, opts) {
   const warn = deepIncomplete
     ? `<span class="rm-incomplete">⚠ Deep research did not complete — showing the free pre-flight report only</span> · `
     : '';
+  // Loud, unmistakable confirmation right after a regenerate completes.
+  const regen = regenerated ? `<span class="rm-regen">✓ Just regenerated from chat</span> · ` : '';
   els.reportMeta.innerHTML =
-    warn +
+    warn + regen +
     `<span class="rm-type">${escapeHtml(typeLabel)}</span> · ` +
     `<span class="rm-when">${escapeHtml(when)}</span> · ` +
     `<a href="#" class="report-refresh" data-deep="${refreshDeep}">${deepIncomplete ? 'Re-run deep' : 'Refresh'}</a>`;
@@ -994,7 +1230,19 @@ function chatBubble(m) {
   const saveLink = (m.role === 'assistant' && !pending && !err && m.id)
     ? `<button type="button" class="chat-save-lesson" data-msg-id="${escapeHtml(m.id)}">Save as lesson</button>`
     : '';
-  return `<div class="chat-msg ${cls}${pending ? ' pending' : ''}${err ? ' chat-err' : ''}"${idAttr}>${body}${saveLink}</div>`;
+  // Tag user messages with who sent them — a report (and its chat) can be shared,
+  // so "was this me or a teammate?" should be answerable at a glance.
+  const authorLabel = (m.role === 'user' && m.author)
+    ? `<span class="chat-author">${escapeHtml(chatAuthorName(m.author))}</span>`
+    : '';
+  return `<div class="chat-msg ${cls}${pending ? ' pending' : ''}${err ? ' chat-err' : ''}"${idAttr}>${authorLabel}${body}${saveLink}</div>`;
+}
+// Short display name from a stored author (email → capitalized local part).
+function chatAuthorName(a) {
+  const s = String(a || '').trim();
+  if (!s) return '';
+  const local = s.includes('@') ? s.split('@')[0] : s;
+  return local.charAt(0).toUpperCase() + local.slice(1);
 }
 function renderChatMessages(messages) {
   if (!els.chatThread) return;
@@ -1016,7 +1264,9 @@ async function sendChat(message) {
   chatBusy = true;
   if (els.chatSend) els.chatSend.disabled = true;
   const thread = els.chatThread;
-  thread.insertAdjacentHTML('beforeend', `<div class="chat-msg me">${renderMarkdown(message)}</div>`);
+  const myName = chatAuthorName((currentUser && (currentUser.name || currentUser.email)) || '');
+  const meLabel = myName ? `<span class="chat-author">${escapeHtml(myName)}</span>` : '';
+  thread.insertAdjacentHTML('beforeend', `<div class="chat-msg me">${meLabel}${renderMarkdown(message)}</div>`);
   thread.insertAdjacentHTML('beforeend', `<div class="chat-msg bot pending">Researching… this can take up to a couple of minutes.</div>`);
   thread.scrollTop = thread.scrollHeight;
   const pending = thread.querySelector('.chat-msg.pending:last-child') || thread.querySelector('.chat-msg.pending');
@@ -1505,12 +1755,9 @@ let currentUser = null;
 // the namespaced spelling too. Used to HIDE the Lessons/admin view entirely
 // from users without the permission, rather than show it then deny.
 function canAdminLessons(user) {
-  if (!user) return false;
-  if (user.is_admin) return true;
-  const perms = user.permissions || {};
-  // The umbrella `admin` grant is full access (all tabs), so it covers lessons too.
-  if (perms.admin === true) return true;
-  return perms['admin.lessons.approve'] === true || perms['research.admin.lessons.approve'] === true;
+  // Approving/rejecting lessons is SUPER ADMIN only — matches the API
+  // (requireAdmin = is_admin). Submitting a tip is separate (domain_owner).
+  return Boolean(user && user.is_admin);
 }
 // Mirror of permissions.ts#canEnterAdmin: the owner, the umbrella `admin` grant,
 // or ANY single granular admin tab can open the admin dashboard.
@@ -1567,6 +1814,9 @@ function gateReportPhaseUI(user) {
   // but pre-set the disabled state so any in-flight render is consistent.
   if (els.deepenTopBtn) els.deepenTopBtn.disabled = !canDeep;
   if (els.deepenBtn) els.deepenBtn.disabled = !canDeep;
+  // The fast "From chat" regenerate rides base domain_owner access (any user with
+  // a report can regenerate); only the paid "Deep re-research" needs deep.
+  if (els.chatRegenDeep) els.chatRegenDeep.hidden = !canDeep;
   // If the user has neither phase, lock the search submit + message it.
   if (els.go) els.go.disabled = !canShallow && !canDeep;
   if (els.domain && !canShallow && !canDeep) {
@@ -1586,7 +1836,14 @@ function gateNavByPermissions(user) {
   if (els.navDbscreen) els.navDbscreen.hidden = !can('dbscreen');
   if (els.navDbsearch) els.navDbsearch.hidden = !can('dbsearch');
   if (els.navNameserver) els.navNameserver.hidden = !can('nameserver');
+  if (els.navBeeper) els.navBeeper.hidden = !can('beeper');
+  if (els.navWhois) els.navWhois.hidden = !can('whois');
   if (els.navSales) els.navSales.hidden = !can('sales');
+  if (els.navPortfolio) els.navPortfolio.hidden = !can('portfolio');
+  // "Suggest a Strategy" — anyone with Domain Owner Research access can submit a
+  // playbook strategy (a super admin approves it). Lives on the Domain Owner page
+  // + bottom of every report (inside #view-research), so it's scoped to that tool.
+  if (els.suggestStrategy) els.suggestStrategy.hidden = !can('domain_owner');
   // Owner outreach is a report-page feature (not a nav module); cache whether
   // this user may use it so renderReport can show/hide the launcher button.
   canOutreach = can('outreach');
@@ -1600,6 +1857,8 @@ els.navAdmin?.addEventListener('click', () => {
   if (!canAdminLessons(currentUser)) { showEntry(); closeNav(); return; }
   history.pushState(null, '', '/research/admin'); showView('admin'); closeNav();
 });
+
+els.suggestStrategyBtn?.addEventListener('click', () => openTipModal());
 
 // ── Profile menu (avatar dropdown) ──────────────────────────────────────────
 // Avatar shows the first letter of the first name (or email). The dropdown
@@ -1803,6 +2062,20 @@ els.refreshBtn?.addEventListener('click', () => {
 });
 // In-app back navigation (PWA has no browser back button).
 els.backBtn?.addEventListener('click', () => history.back());
+// Share — copy the current report's URL to the clipboard with a brief confirmation.
+els.shareBtn?.addEventListener('click', async () => {
+  const b = els.shareBtn;
+  try {
+    await navigator.clipboard.writeText(window.location.href);
+    b.classList.add('copied');
+    const prev = b.getAttribute('title');
+    b.setAttribute('title', 'Link copied!');
+    setTimeout(() => { b.classList.remove('copied'); b.setAttribute('title', prev || 'Share'); }, 1600);
+  } catch {
+    // Clipboard blocked — fall back to a prompt the user can copy from.
+    window.prompt('Copy this link to share the report:', window.location.href);
+  }
+});
 
 // "+ New report" on any collapsed tool header → back to that tool's entry.
 document.addEventListener('click', (e) => {
@@ -1998,7 +2271,7 @@ async function regenerateFromChat(mode) {
     setRegenStatus('');
     // Hand off to the existing polling loop — it owns the live clock,
     // stage updates, and the final renderReport() / setReportMeta() call.
-    startPolling(currentRunId, mode === 'deep' ? 'Regenerating (deep)' : 'Regenerating');
+    startPolling(currentRunId, mode === 'deep' ? 'Regenerating (deep)' : 'Regenerating', { regenerated: true });
   } catch (e) {
     setRegenStatus(`⚠️ ${e.message || e}`, true);
   } finally {
@@ -2009,6 +2282,10 @@ async function regenerateFromChat(mode) {
 }
 
 let regenInFlight = false;
+// "Skip to deep" should still show the FREE pre-flight report first (fast), then
+// auto-chain into the deep pass. Bound to a specific run id so it can only deepen
+// THAT run (never a different report the user happens to open later).
+let autoDeepenForRunId = null;
 function setRegenStatus(text, isErr = false) {
   if (!els.chatRegenStatus) return;
   if (!text) { els.chatRegenStatus.hidden = true; els.chatRegenStatus.textContent = ''; return; }
@@ -2031,7 +2308,8 @@ function detectRegenMarker(text) {
   return { cleaned: text.slice(m[0].length), mode: m[1].toLowerCase() };
 }
 
-function startPolling(runId, label) {
+function startPolling(runId, label, opts = {}) {
+  const regenerated = !!opts.regenerated;
   currentRunId = runId;
   els.go.disabled = true;
   if (els.runControls) els.runControls.hidden = false;
@@ -2068,12 +2346,20 @@ function startPolling(runId, label) {
         if (els.runControls) els.runControls.hidden = true;
         if (r.domain) setReportTitle(r.domain);
         renderReport(r.report);
-        setReportMeta(r.created_at, r.report && r.report.phase);
+        setReportMeta(r.created_at, r.report && r.report.phase, regenerated ? { regenerated: true } : undefined);
+        if (regenerated && els.report) els.report.scrollIntoView({ behavior: 'smooth', block: 'start' });
         els.go.disabled = false;
         // The report-done notification is created server-side at this exact
         // moment (same step as the email) — refresh the bell now instead of
         // waiting up to a full poll interval.
         if (typeof loadNotifications === 'function') loadNotifications();
+        // "Skip to deep": the FREE pass for THIS run just finished and is on screen
+        // — now automatically chain into the deep pass (fast report first, then the
+        // paid enrichment replaces it).
+        if (autoDeepenForRunId === runId && r.report && r.report.phase !== 'deep') {
+          autoDeepenForRunId = null;
+          deepen();
+        }
       } else if (r.status === 'error') {
         clearTimers();
         if (els.runControls) els.runControls.hidden = true;
@@ -2361,11 +2647,19 @@ async function run({ domain, deep, force }) {
   enterResultMode(domain);
   // First action: check the marketplaces in parallel with the free LLM pass.
   runMarketStrip(domain);
-  setStatus(deep
+  // "Skip to deep" still runs the FREE pre-flight FIRST (fast result), then
+  // auto-deepens — as long as the user can run the free pass. Only a user without
+  // free access goes straight to deep.
+  const freeFirst = !!deep && canPhase(currentUser, 'shallow');
+  const effectiveDeep = !!deep && !freeFirst;
+  autoDeepenForRunId = null; // set once we have the run id (below)
+  setStatus(effectiveDeep
     ? `Researching ${domain} (deep, paid sources)… this can take a few minutes.`
-    : `Researching ${domain}… this can take a few minutes.`);
+    : freeFirst
+      ? `Researching ${domain} — free pre-flight first, then deep…`
+      : `Researching ${domain}… this can take a few minutes.`);
   try {
-    const data = await enqueue({ domain, deep, force });
+    const data = await enqueue({ domain, deep: effectiveDeep, force });
     // Server returned a cached completed run — open it directly instead of
     // re-running. Shows "Researched X ago · Refresh" so the user can re-run
     // on demand if the cached data is stale.
@@ -2374,16 +2668,28 @@ async function run({ domain, deep, force }) {
       applyHash({ id: data.run_id, domain: r.domain, created_at: r.created_at });
       setStatus('');
       if (r.domain) setReportTitle(r.domain);
-      renderReport(r.report);
-      setReportMeta(r.created_at, r.report && r.report.phase);
+      // Set currentRunId BEFORE renderReport — it gates the report-chat (and the
+      // outreach launcher) on currentRunId, so rendering first would hide the chat.
       currentRunId = data.run_id;
+      domainRuns.set(domain.toLowerCase(), data.run_id);
+      renderReport(r.report);
+      // A reused run can be an errored deep pass that still saved a free
+      // pre-flight — mark it incomplete (and offer re-deepen) instead of letting
+      // the partial report look complete, mirroring openProject().
+      const deepIncomplete = r.status === 'error' && r.report && r.report.phase !== 'deep';
+      setReportMeta(r.created_at, r.report && r.report.phase, deepIncomplete ? { deepIncomplete: true } : undefined);
       els.go.disabled = false;
+      // Asked for deep but got a cached free report → deepen it now.
+      if (freeFirst && r.report && r.report.phase !== 'deep') deepen();
       return;
     }
     const runId = data.run_id;
+    domainRuns.set(domain.toLowerCase(), runId);
     applyHash({ id: runId, domain, created_at: new Date().toISOString() });
-    startPolling(runId, deep ? `Researching ${domain} (deep)` : `Researching ${domain}`);
+    if (freeFirst) autoDeepenForRunId = runId; // deepen this run once its free report lands
+    startPolling(runId, effectiveDeep ? `Researching ${domain} (deep)` : `Researching ${domain}`);
   } catch (err) {
+    autoDeepenForRunId = null;
     setStatus(err.message || String(err), true);
     els.go.disabled = false;
   }
@@ -2489,6 +2795,7 @@ async function openProject(id) {
   try {
     const r = await pollRun(id);
     currentRunId = id;
+    if (r.domain) domainRuns.set(r.domain.toLowerCase(), id);
     applyHash({ id, domain: r.domain, created_at: r.created_at });
     setReportTitle(r.domain);
     if (r.domain) runMarketStrip(r.domain);
@@ -2508,8 +2815,26 @@ async function openProject(id) {
         setStatus(r.error || 'This run failed.', true);
       }
     } else {
-      // Still running. If a free (shallow) report was already saved (e.g. a deep
-      // pass is now in progress), keep it on screen instead of a blank page.
+      // Still "running" server-side. If a report was already saved AND the run is
+      // older than the stall threshold, it's an orphaned run (e.g. a deep pass that
+      // died without finalizing the status) — show its saved report CALMLY as
+      // deep-incomplete rather than resuming a doomed poll that immediately blasts
+      // the alarming "likely stalled" banner over a perfectly good report.
+      const ageMs = r.created_at ? Date.now() - Date.parse(r.created_at) : 0;
+      if (r.report && ageMs > STALL_MS) {
+        if (r.domain) setReportTitle(r.domain);
+        renderReport(r.report);
+        els.deepenTop.hidden = true;
+        els.deepenBar.hidden = true;
+        if (els.reportFeedback) els.reportFeedback.hidden = true;
+        setReportMeta(r.created_at, r.report && r.report.phase, { deepIncomplete: r.report.phase !== 'deep' });
+        setStatus('');
+        if (els.runControls) els.runControls.hidden = true;
+        els.go.disabled = false;
+        return;
+      }
+      // Genuinely in-flight (recent). Keep any saved free report on screen and
+      // resume polling — the elapsed clock re-anchors to the run's real start.
       if (r.report) {
         renderReport(r.report);
         els.deepenTop.hidden = true;
@@ -2533,8 +2858,12 @@ const VIEWS = {
   dbscreen: { view: 'view-dbscreen', nav: 'nav-dbscreen' },
   dbsearch: { view: 'view-dbsearch', nav: 'nav-dbsearch' },
   nameserver: { view: 'view-nameserver', nav: 'nav-nameserver' },
+  beeper: { view: 'view-beeper', nav: 'nav-beeper' },
+  whois: { view: 'view-whois', nav: 'nav-whois' },
   sales: { view: 'view-sales', nav: 'nav-sales' },
   'sales-projects': { view: 'view-sales-projects', nav: 'nav-sales' },
+  portfolio: { view: 'view-portfolio', nav: 'nav-portfolio' },
+  'portfolio-runs': { view: 'view-portfolio-runs', nav: 'nav-portfolio' },
   admin: { view: 'view-admin', nav: 'nav-admin' },
 };
 function showView(name) {
@@ -2550,6 +2879,161 @@ function showView(name) {
   // Exercise) so the space isn't wasted by a narrow centered column.
   const wrap = document.querySelector('.content > .wrap');
   if (wrap) wrap.classList.add('wrap--wide');
+  renderDomainBar(); // refresh the cross-module action bar for the new view
+}
+
+// ── Beeper — RDAP drop watcher ──────────────────────────────────────────────
+async function loadBeeper() {
+  if (!els.beeperList) return;
+  els.beeperList.innerHTML = '<li class="muted">Loading…</li>';
+  try {
+    const res = await fetch('/research/api/beeper');
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed to load watches');
+    renderBeeper(data.watches || []);
+  } catch (e) {
+    els.beeperList.innerHTML = `<li class="muted">${escapeHtml(e.message || String(e))}</li>`;
+  }
+}
+function beeperStateLabel(w) {
+  if (w.status === 'dropped') return '🎯 AVAILABLE — dropped!';
+  if (w.status === 'pending_drop') return '⏳ not-found — confirming drop…';
+  if (w.status === 'resolved') return 'renewed / registered — watch stopped';
+  if (w.status === 'expired') return 'auto-stopped (max watch window)';
+  const s = Array.isArray(w.last_status) ? w.last_status : [];
+  if (s.length) return s.join(', ');
+  if (w.last_checked) return 'registered';
+  return 'checking…';
+}
+// Which display group a watch belongs to: finished (terminal), live (minute /
+// hourly cadence — on the cusp), or scheduled (long-term tapered toward expiry).
+function beeperBucket(w) {
+  if (w.status === 'dropped' || w.status === 'resolved' || w.status === 'expired') return 'done';
+  const tier = (w.cadence && w.cadence.tier) || 'scheduled';
+  return (tier === 'live' || tier === 'hourly') ? 'live' : 'scheduled';
+}
+// "daily · exp in 92d" — the current poll cadence + how far the expiration is.
+function beeperCadenceChip(w) {
+  const c = w.cadence;
+  if (!c) return '';
+  const bits = [c.label];
+  if (c.days_to_expiry != null) {
+    const d = c.days_to_expiry;
+    bits.push(d < 0 ? `exp ${Math.abs(Math.round(d))}d ago` : d < 1 ? 'exp today' : `exp in ${Math.round(d)}d`);
+  }
+  const live = c.tier === 'live';
+  return ` <span class="beeper-cadence${live ? ' beeper-cadence-live' : ''}" title="Polling cadence">${escapeHtml(bits.join(' · '))}</span>`;
+}
+function beeperRowHtml(w) {
+  const dropped = w.status === 'dropped'; // confirmed only (pending_drop isn't green yet)
+  const when = w.last_checked ? `last checked: ${new Date(w.last_checked).toLocaleString()}` : 'not checked yet';
+  const who = w.submitted_by ? ` <span class="beeper-who" title="Added by ${escapeHtml(w.submitted_by)}">${escapeHtml(w.submitted_by)}</span>` : '';
+  const terminal = w.status === 'dropped' || w.status === 'resolved' || w.status === 'expired';
+  const cadence = terminal ? '' : beeperCadenceChip(w);
+  return `<li class="beeper-row${dropped ? ' beeper-dropped' : ''}">`
+    + `<div><strong>${escapeHtml(w.domain)}</strong>${who}${cadence} — <span class="beeper-state">${escapeHtml(beeperStateLabel(w))}</span><div class="muted beeper-meta">${escapeHtml(when)}</div></div>`
+    + `<button type="button" class="beeper-stop" data-id="${escapeHtml(w.id)}">Stop</button>`
+    + `</li>`;
+}
+function renderBeeper(watches) {
+  if (!watches.length) { els.beeperList.innerHTML = '<li class="muted">No domains watched yet — add one above.</li>'; return; }
+  const groups = { live: [], scheduled: [], done: [] };
+  for (const w of watches) groups[beeperBucket(w)].push(w);
+  const section = (title, hint, rows) => rows.length
+    ? `<li class="beeper-group"><span class="beeper-group-title">${title}</span> <span class="muted">${hint}</span></li>` + rows.map(beeperRowHtml).join('')
+    : '';
+  els.beeperList.innerHTML =
+      section('🎯 Drop watch — live', 'on the cusp — checked every minute / hourly', groups.live)
+    + section('🕒 Long-term', 'far from expiry — checked occasionally, tightening as the date nears', groups.scheduled)
+    + section('✓ Finished', 'dropped / renewed / stopped', groups.done);
+  els.beeperList.querySelectorAll('.beeper-stop').forEach((b) => b.addEventListener('click', () => stopBeeperWatch(b.getAttribute('data-id'))));
+}
+async function addBeeperWatch() {
+  const domain = (els.beeperDomain.value || '').trim();
+  if (!domain) return;
+  setToolStatus(els.beeperStatus, `Adding ${domain}…`);
+  try {
+    const res = await fetch('/research/api/beeper', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ domain }) });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || `Failed (${res.status})`);
+    els.beeperDomain.value = '';
+    const s = data.status;
+    setToolStatus(els.beeperStatus, s && s.ok ? `Now watching — current status: ${s.available ? 'AVAILABLE' : (s.statuses.join(', ') || 'registered')}` : 'Now watching.');
+    loadBeeper();
+  } catch (e) {
+    setToolStatus(els.beeperStatus, e.message || String(e), true);
+  }
+}
+async function stopBeeperWatch(id) {
+  if (!id) return;
+  try {
+    await fetch('/research/api/beeper', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ action: 'stop', id }) });
+    loadBeeper();
+  } catch { /* ignore */ }
+}
+
+// ── Whois — basic free domain lookup (RDAP + WHOIS) ─────────────────────────
+async function runWhois(domain) {
+  if (!els.whoisResult) return;
+  const d = (domain || '').trim();
+  if (!d) return;
+  setActiveDomain(d);
+  setToolStatus(els.whoisStatus, `Looking up ${escapeHtml(d)}…`);
+  els.whoisResult.hidden = true;
+  try {
+    const res = await fetch(`/research/api/whois?domain=${encodeURIComponent(d)}`);
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || `Lookup failed (${res.status})`);
+    setToolStatus(els.whoisStatus, '');
+    renderWhois(data);
+  } catch (e) {
+    setToolStatus(els.whoisStatus, String((e && e.message) || e), true);
+  }
+}
+function whoisDate(s) {
+  if (!s) return null;
+  const t = Date.parse(s);
+  return Number.isNaN(t) ? escapeHtml(String(s)) : new Date(t).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+}
+function whoisRow(label, val) {
+  return val ? `<div class="wi-row"><span class="wi-k">${label}</span><span class="wi-v">${val}</span></div>` : '';
+}
+function whoisContact(title, c) {
+  if (!c) return '';
+  const rows = [['Name', c.name], ['Org', c.organization], ['Email', c.email], ['Phone', c.phone], ['Country', c.country], ['Region', c.region]]
+    .filter((x) => x[1])
+    .map((x) => `<div class="wi-row"><span class="wi-k">${x[0]}</span><span class="wi-v">${escapeHtml(String(x[1]))}</span></div>`).join('');
+  return rows ? `<div class="wi-card"><h4>${title}</h4>${rows}</div>` : '';
+}
+function renderWhois(w) {
+  if (w.available) {
+    els.whoisResult.innerHTML = `<div class="wi-card wi-avail"><strong>${escapeHtml(w.domain)}</strong> appears <strong>AVAILABLE</strong> — no current registration record (RDAP returned not-found).</div>`;
+    els.whoisResult.hidden = false;
+    return;
+  }
+  const r = w.registrar || {};
+  const reg = r.name
+    ? escapeHtml(r.name) + (r.ianaId ? ` <span class="muted">(IANA ${escapeHtml(String(r.ianaId))})</span>` : '') + (r.url ? ` · <a href="${escapeHtml(r.url)}" target="_blank" rel="noopener">site</a>` : '')
+    : null;
+  const statuses = (w.statuses || []).length ? w.statuses.map((s) => `<span class="wi-tag">${escapeHtml(s)}</span>`).join(' ') : null;
+  const ns = (w.nameservers || []).length ? w.nameservers.map((n) => `<div>${escapeHtml(n)}</div>`).join('') : null;
+  const ab = w.abuse && (w.abuse.email || w.abuse.phone) ? [w.abuse.email, w.abuse.phone].filter(Boolean).map((x) => escapeHtml(String(x))).join(' · ') : null;
+  const core = `<div class="wi-card"><h4>${escapeHtml(w.domain)}</h4>`
+    + whoisRow('Registrar', reg)
+    + whoisRow('Registered', whoisDate(w.dates && w.dates.registered))
+    + whoisRow('Expires', whoisDate(w.dates && w.dates.expires))
+    + whoisRow('Updated', whoisDate(w.dates && w.dates.updated))
+    + whoisRow('Status', statuses)
+    + whoisRow('Nameservers', ns)
+    + whoisRow('DNSSEC', w.dnssec == null ? null : (w.dnssec ? 'signed' : 'unsigned'))
+    + whoisRow('Abuse', ab)
+    + `</div>`;
+  const c = w.contacts || {};
+  const cards = whoisContact('Registrant', c.registrant) + whoisContact('Admin', c.admin) + whoisContact('Tech', c.tech);
+  const note = (w.privacy && !cards) ? `<div class="wi-note">Registrant contact is privacy/proxy-protected or withheld (GDPR).</div>` : '';
+  const src = `<div class="wi-src muted">Source: ${[w.sources && w.sources.rdap ? 'RDAP' : null, w.sources && w.sources.whois ? `WHOIS (${escapeHtml(w.sources.whois)})` : null].filter(Boolean).join(' + ') || '—'}</div>`;
+  els.whoisResult.innerHTML = core + cards + note + src;
+  els.whoisResult.hidden = false;
 }
 
 // ── Standalone tools (Trademark, Appraisal) ─────────────────────────────────
@@ -2796,6 +3280,7 @@ function renderTmResults() {
   if (btn) btn.addEventListener('click', () => { tmActiveOnly = !tmActiveOnly; renderTmResults(); });
 }
 async function runTrademark(input) {
+  if (/\.[a-z]{2,}$/i.test(String(input || '').trim())) setActiveDomain(String(input).trim());
   const isAi = /\.ai$/i.test(String(input || '').trim());
   const q = toSld(input);
   els.tmResults.innerHTML = '';
@@ -2881,6 +3366,11 @@ function renderAppraisal(domain, a, meta) {
   const defBlock = (() => {
     if (!def || !Array.isArray(def.senses) || !def.senses.length) return '';
     const phonetic = def.phonetic ? ` <span class="ap-phonetic">${escapeHtml(def.phonetic)}</span>` : '';
+    // Consolidated part-of-speech set (every form the word can take) — surfaces
+    // the "ambiguous word, multiple POS" angle at a glance, e.g. venture → noun·verb.
+    const allPos = [...new Set(def.senses.map((s) => s && s.pos).filter(Boolean))];
+    const posSet = allPos.length
+      ? ` <span class="ap-pos-set">${allPos.map((p) => `<span class="ap-pos">${escapeHtml(p)}</span>`).join('')}</span>` : '';
     const senses = def.senses
       .map((s) => {
         const pos = s && s.pos ? `<span class="ap-pos">${escapeHtml(s.pos)}</span>` : '';
@@ -2892,7 +3382,7 @@ function renderAppraisal(domain, a, meta) {
       .filter(Boolean)
       .join('');
     if (!senses) return '';
-    return `<div class="ap-block ap-definition"><h3>Definition${phonetic}</h3>${senses}</div>`;
+    return `<div class="ap-block ap-definition"><h3>Definition${phonetic}${posSet}</h3>${senses}</div>`;
   })();
   const raw = escapeHtml(JSON.stringify(a, null, 2).slice(0, 4000));
   // "Last appraised <ago> · Refresh" line — lets the user see freshness and
@@ -2950,11 +3440,12 @@ async function pollAppraisal(domain, jobId) {
     try {
       const res = await fetch(`/research/api/lookup?source=appraise_lookup&job_id=${encodeURIComponent(jobId)}&domain=${encodeURIComponent(domain)}`);
       const data = await res.json();
+      if (data && data.ok === false) { setToolStatus(els.apStatus, data.error || 'Appraisal service error.', true); return; }
       const st = (data && data.data) || {};
       const statusStr = String(st.status || st.state || '');
       const v = digAppraisal(st);
-      const ready = (v && v !== st) || appraisalRange(v) || /complete|done|success|finished/i.test(statusStr);
-      if (ready) {
+      const ready = (v && typeof v === 'object' && v !== st) || appraisalRange(v) || /complete|done|success|finished/i.test(statusStr);
+      if (ready && v && typeof v === 'object') {
         finishAppraisal(domain, v, st.definition);
         return;
       }
@@ -2965,9 +3456,13 @@ async function pollAppraisal(domain, jobId) {
 }
 async function runAppraisal(domainInput, opts) {
   const domain = String(domainInput || '').trim();
+  if (domain) setActiveDomain(domain);
   const force = !!(opts && opts.force);
   els.apResult.hidden = true;
   els.apResult.innerHTML = '';
+  // Clear the prior domain's NameBio panel so it doesn't linger while the new
+  // appraisal runs (renderAppraisal reloads it for the new domain).
+  if (els.apNamebio) { els.apNamebio.hidden = true; els.apNamebio.innerHTML = ''; els.apNamebio.dataset.domain = ''; }
   setToolStatus(els.apStatus, force ? `Re-appraising ${domain}…` : `Appraising ${domain}…`);
   try {
     const qs = `source=appraise_lookup&domain=${encodeURIComponent(domain)}${force ? '&force=1' : ''}`;
@@ -2975,9 +3470,21 @@ async function runAppraisal(domainInput, opts) {
     const data = await res.json();
     if (!data.ok) throw new Error(data.error || `Failed (${res.status})`);
     const d = data.data || {};
-    if (d.appraisal) finishAppraisal(domain, digAppraisal(d.appraisal), d.definition);
-    else if (d.job_id) await pollAppraisal(domain, d.job_id);
-    else finishAppraisal(domain, digAppraisal(d), d.definition);
+    // A real valuation is always an OBJECT. Appraise.net occasionally returns an
+    // error as a 200-with-string (e.g. their DB "Too many connections"); guard so
+    // that never renders as an empty "No value fields recognized" appraisal.
+    const okVal = (v) => v && typeof v === 'object';
+    if (d.appraisal != null) {
+      const v = digAppraisal(d.appraisal);
+      if (okVal(v)) finishAppraisal(domain, v, d.definition);
+      else throw new Error('The appraisal service is temporarily unavailable — please try again shortly.');
+    } else if (d.job_id) {
+      await pollAppraisal(domain, d.job_id);
+    } else {
+      const v = digAppraisal(d);
+      if (okVal(v)) finishAppraisal(domain, v, d.definition);
+      else throw new Error('The appraisal service is temporarily unavailable — please try again shortly.');
+    }
   } catch (e) {
     setToolStatus(els.apStatus, e.message || String(e), true);
   }
@@ -3026,6 +3533,13 @@ function showEntry() {
   els.evidence.hidden = true;
   currentRunId = null;
   els.domain.value = '';
+  // Re-enable the search submit. A run sets els.go.disabled = true and relies on
+  // the polling completion handler to re-enable it — but coming back to the entry
+  // (back button or "+ New report") clears that timer, so the button would stay
+  // greyed out forever. Re-apply the permission gate (keeps it disabled only when
+  // the user genuinely lacks shallow+deep access).
+  if (currentUser) gateReportPhaseUI(currentUser);
+  else if (els.go) els.go.disabled = false;
   loadRecent();
 }
 
@@ -3039,6 +3553,8 @@ async function openLessonModal(messageId) {
   if (!currentRunId || !messageId) return;
   lessonModalContext = { runId: currentRunId, messageId };
   resetLessonModal();
+  if (els.lessonModalHeading) els.lessonModalHeading.textContent = 'Save as playbook strategy';
+  if (els.lessonModalSub) els.lessonModalSub.textContent = 'Distilling the rule from this exchange. Edit before submitting — a super admin reviews and approves before it goes live.';
   showLessonModal(true);
   setLessonModalBusy(true, 'Distilling the rule…');
   try {
@@ -3063,6 +3579,17 @@ async function openLessonModal(messageId) {
   } finally {
     setLessonModalBusy(false);
   }
+}
+
+// Standalone "Suggest a tip" — open a blank lesson form (no chat distill).
+function openTipModal() {
+  // Anchor the strategy to the current report when one is open (so the curator
+  // sees what prompted it), else a free-standing submission.
+  lessonModalContext = { runId: currentRunId || null, messageId: null };
+  resetLessonModal();
+  if (els.lessonModalHeading) els.lessonModalHeading.textContent = 'Suggest a Strategy';
+  if (els.lessonModalSub) els.lessonModalSub.textContent = 'Share a research tactic for the playbook. A super admin reviews and approves before it goes live.';
+  showLessonModal(true);
 }
 
 function resetLessonModal() {
@@ -3092,7 +3619,7 @@ function setLessonModalError(text) {
 }
 
 async function submitLessonModal() {
-  if (!lessonModalContext) return;
+  const ctx = lessonModalContext || {};
   const title = (els.lessonModalTitle?.value || '').trim();
   const body = (els.lessonModalBody?.value || '').trim();
   const tagsRaw = (els.lessonModalTags?.value || '').trim();
@@ -3106,8 +3633,8 @@ async function submitLessonModal() {
       body: JSON.stringify({
         action: 'create',
         title, body, tags,
-        source_run_id: lessonModalContext.runId,
-        source_chat_message_id: lessonModalContext.messageId,
+        source_run_id: ctx.runId || null,
+        source_chat_message_id: ctx.messageId || null,
       }),
     });
     const data = await res.json().catch(() => ({}));
@@ -3271,6 +3798,16 @@ const NM_EXCLUDE_OPTS = [
   { value: 'ing', label: '-ing' },
   { value: 'ly', label: '-ly' },
 ];
+// Part of speech: default ALL (= "Any", no constraint). A narrowed subset is sent
+// and keeps names that CAN be one of the chosen parts of speech (WordNet multi-tags
+// e.g. venture = noun+verb). Universe-only enrichment; populated by the POS backfill.
+const NM_POS_OPTS = [
+  { value: 'noun', label: 'Noun' },
+  { value: 'verb', label: 'Verb' },
+  { value: 'adjective', label: 'Adjective' },
+  { value: 'adverb', label: 'Adverb' },
+];
+const namingPosSet = new Set(NM_POS_OPTS.map((o) => o.value));
 // TLDs: default ALL checked. We only send a tlds override when the user narrows
 // to a proper subset; otherwise the brief decides (a brief-specified TLD wins;
 // a silent brief = all TLDs). After each search we sync the dropdown to the
@@ -3282,6 +3819,7 @@ let namingTldCtl = null;
 function initNamingFilters() {
   const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
   initNamingMulti('con', namingConSet, DS_CONNOTATIONS.map((c) => ({ value: c, label: cap(c) })), { allLabel: 'Any' });
+  initNamingMulti('pos', namingPosSet, NM_POS_OPTS, { allLabel: 'Any' });
   initNamingMulti('exc', namingExcludeSet, NM_EXCLUDE_OPTS, { noneLabel: 'None' });
   namingTldCtl = initNamingMulti('tld', namingTldSet, NM_TLD_OPTS, { allLabel: 'All' });
 }
@@ -3300,6 +3838,8 @@ function numOrNull(v) {
 function namingFilterPayload() {
   return {
     connotation: [...namingConSet],
+    // Only send a POS override when narrowed to a proper subset; all/none = "Any".
+    part_of_speech: (namingPosSet.size === 0 || namingPosSet.size >= NM_POS_OPTS.length) ? null : [...namingPosSet],
     exclude: [...namingExcludeSet],
     // TLD override only when narrowed to a proper subset; all/none = no override.
     tlds: (namingTldSet.size === 0 || namingTldSet.size >= NM_TLD_OPTS.length) ? null : [...namingTldSet],
@@ -3518,8 +4058,16 @@ function renderNamingTable(rows /* , bucketLabel */) {
     return `<p class="naming-empty">No matches for this brief.</p>`;
   }
   const cards = rows.map((r) => {
-    const price = r.best_price == null ? 'TBD' : `$${Number(r.best_price).toLocaleString()}`;
-    const priceClass = r.best_price == null ? 'naming-card-price is-tbd' : 'naming-card-price';
+    // Monthly-lease listings (e.g. venture.com): the price is per-MONTH, not a buy,
+    // so label it "/mo" and badge it so the number isn't read as a purchase price.
+    const lease = !!r.is_lease;
+    const price = r.best_price == null
+      ? 'TBD'
+      : (lease ? `$${Number(r.best_price).toLocaleString()}/mo` : `$${Number(r.best_price).toLocaleString()}`);
+    const priceClass = r.best_price == null ? 'naming-card-price is-tbd' : (lease ? 'naming-card-price is-lease' : 'naming-card-price');
+    const leaseBadge = lease
+      ? `<span class="naming-card-lease" title="Monthly lease (via venture.com) — price shown is per month, not a purchase">Lease&nbsp;· monthly</span>`
+      : '';
     const source = r.source_label ? escapeHtml(r.source_label) : '—';
     const matched = Array.isArray(r.matched_keywords) ? r.matched_keywords : [];
     const chips = matched.length
@@ -3543,7 +4091,9 @@ function renderNamingTable(rows /* , bucketLabel */) {
             domain +
             `<div class="naming-card-meta">` +
               originBadge +
-              `<span class="naming-card-forsale">For sale</span>` +
+              (lease
+                ? leaseBadge
+                : `<span class="naming-card-forsale">For sale</span>`) +
               `<span class="naming-card-source">${source}</span>` +
             `</div>` +
             chips +
@@ -3861,8 +4411,12 @@ async function sendNamingChat(message) {
 // ── Wiring ──────────────────────────────────────────────────────────────────
 els.form?.addEventListener('submit', (e) => {
   e.preventDefault();
-  const domain = els.domain.value.trim();
-  if (!domain) return;
+  if (!els.domain.value.trim()) return;
+  let domain;
+  try { domain = cleanDomainInput(els.domain.value); }
+  catch (err) { setStatus(String(err.message || err)); return; }
+  els.domain.value = domain;
+  setActiveDomain(domain);
   // Choose phase against the user's permissions. The checkbox is the user's
   // explicit ask; otherwise default to shallow. When the user has ONLY deep
   // (admin disabled free reports), force deep so the server doesn't 403 them.
@@ -4218,8 +4772,11 @@ els.navDbscreen?.addEventListener('click', (e) => { if (newTabClick(e)) return; 
 els.navDbsearch?.addEventListener('click', (e) => { if (newTabClick(e)) return; e.preventDefault(); setToolUrl('dbsearch', ''); route(); });
 els.dbForm?.addEventListener('submit', (e) => {
   e.preventDefault();
-  const d = (els.dbDomain.value || '').trim();
-  if (!d) return;
+  if (!(els.dbDomain.value || '').trim()) return;
+  let d;
+  try { d = cleanDomainInput(els.dbDomain.value); }
+  catch (err) { setToolStatus(els.dbStatus, String(err.message || err), true); return; }
+  els.dbDomain.value = d;
   setToolUrl('dbscreen', d);
   runDbScreen(d);
 });
@@ -4227,7 +4784,7 @@ els.dbForm?.addEventListener('submit', (e) => {
 // ── Nameserver Search ───────────────────────────────────────────────────────
 // Domain → its NS; NS set → domains (AND/OR); domain → siblings on the same
 // pairing; + an LLM "which siblings are related" pass. Server: /api/nameserver.
-const nsState = { mode: 'domain', match: 'all' };
+const nsState = { mode: 'domain', match: 'all', tld: '', nsRaw: '', facets: null, pairDomain: '', pairTld: '', pairFacets: null, listKind: '', listHasMore: false };
 
 function nsSetMode(mode) {
   nsState.mode = mode === 'ns' ? 'ns' : 'domain';
@@ -4240,6 +4797,8 @@ function nsReset() {
   if (els.nsDomain) els.nsDomain.value = '';
   if (els.nsNs) els.nsNs.value = '';
   if (els.nsResult) { els.nsResult.hidden = true; els.nsResult.innerHTML = ''; }
+  nsState.tld = ''; nsState.nsRaw = ''; nsState.facets = null;
+  nsState.pairDomain = ''; nsState.pairTld = ''; nsState.pairFacets = null;
   setToolStatus(els.nsStatus, '');
   nsRenderRecent();
 }
@@ -4306,10 +4865,26 @@ function nsDownloadCsv(filename, header, rows) {
   a.href = url; a.download = filename; a.click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
-function nsExportPairingCsv() {
-  const rows = nsState.csvRows || [];
+async function nsExportPairingCsv() {
+  let rows = nsState.csvRows || [];
+  const tldF = (nsState.listKind === 'pairing' ? nsState.pairTld : nsState.tld) || '';
+  // The on-screen list is only the first page. If there's more, pull the FULL
+  // match for the current view (respecting the active TLD filter) before exporting.
+  if (nsState.listHasMore) {
+    const params = nsState.listKind === 'pairing'
+      ? `mode=pairing&domain=${encodeURIComponent(nsState.pairDomain)}${tldF ? `&tld=${encodeURIComponent(tldF)}` : ''}&full=1`
+      : `mode=ns&ns=${encodeURIComponent(nsState.nsRaw)}&match=${nsState.match}${tldF ? `&tld=${encodeURIComponent(tldF)}` : ''}&full=1`;
+    setToolStatus(els.nsStatus, 'Building full CSV…');
+    try {
+      const data = await nsFetch(params);
+      if (Array.isArray(data.rows) && data.rows.length) rows = data.rows;
+      setToolStatus(els.nsStatus, '');
+    } catch (e) {
+      setToolStatus(els.nsStatus, 'Couldn’t fetch the full list — exporting the loaded page only.', true);
+    }
+  }
   if (!rows.length) return;
-  nsDownloadCsv(`pairing-${nsState.seed || 'domains'}.csv`, ['domain', 'tld', 'nameservers'],
+  nsDownloadCsv(`pairing-${nsState.seed || 'domains'}${tldF ? `-${tldF}` : ''}.csv`, ['domain', 'tld', 'nameservers'],
     rows.map((r) => [r.domain, r.tld || '', (r.nameservers || []).join(' ')]));
 }
 function nsExportOwnerCsv() {
@@ -4562,6 +5137,7 @@ async function nsFetch(params) {
 
 async function runNsDomain(domain) {
   showView('nameserver');
+  setActiveDomain(domain);
   setToolStatus(els.nsStatus, 'Looking up…');
   if (els.nsResult) els.nsResult.hidden = true;
   try {
@@ -4652,18 +5228,26 @@ async function nsCtxSearch(term) {
   }
 }
 
-async function runNsPairing(domain) {
+async function runNsPairing(domain, opts = {}) {
+  const fromChip = !!opts.fromChip;
+  // Fresh pairing run resets the TLD filter + facets; a facet-chip click reuses them.
+  if (!fromChip) { nsState.pairDomain = domain; nsState.pairTld = ''; nsState.pairFacets = null; }
   const sub = document.getElementById('ns-sub');
-  if (sub) sub.innerHTML = '<div class="ns-running">⏳ Finding siblings on the same nameserver set…</div>';
+  if (sub && !fromChip) sub.innerHTML = '<div class="ns-running">⏳ Finding siblings on the same nameserver set…</div>';
   try {
-    const data = await nsFetch(`mode=pairing&domain=${encodeURIComponent(domain)}`);
+    const tld = nsState.pairTld || '';
+    const data = await nsFetch(`mode=pairing&domain=${encodeURIComponent(domain)}${tld ? `&tld=${encodeURIComponent(tld)}` : ''}`);
     if (!sub) return;
     if (data.generic) {
       sub.innerHTML = `<p class="ns-pairnote muted">⚠ ${escapeHtml(data.genericNote || 'Generic/parking nameservers — shared by huge numbers of unrelated domains, so this pairing is not an ownership signal.')} Skipping the lookup.</p>`;
       return;
     }
+    if (Array.isArray(data.tlds)) nsState.pairFacets = data.tlds; // returned on the All (unfiltered) query only
+    nsState.listKind = 'pairing'; nsState.listHasMore = !!data.hasMore;
     const more = data.hasMore ? ' <span class="muted">(first page — many matches; likely a shared host)</span>' : '';
-    const head = `<h3>${data.count}${data.hasMore ? '+' : ''} other domain${data.count === 1 ? '' : 's'} on this exact pairing${more}</h3>`;
+    const bar = nsTldBarHtml(nsState.pairFacets, tld, 'pairing');
+    const scope = tld ? ` <span class="muted">· .${escapeHtml(tld)} only</span>` : '';
+    const head = `${bar}<h3>${data.count}${data.hasMore ? '+' : ''} other domain${data.count === 1 ? '' : 's'} on this exact pairing${scope}${more}</h3>`;
     if (!data.rows.length) { sub.innerHTML = head + '<p class="muted">None.</p>'; return; }
     const items = data.rows.map((r) => ({
       domain: r.domain,
@@ -4717,28 +5301,79 @@ async function runNsRelate(domain) {
   }
 }
 
-async function runNsList() {
+async function runNsList(opts = {}) {
   showView('nameserver');
-  const raw = (els.nsNs && els.nsNs.value || '').trim();
+  const fromChip = !!opts.fromChip;
+  // Fresh search reads the inputs and resets the TLD filter + facets; a facet-chip
+  // click reuses the stored nameserver/facets and only swaps the active TLD.
+  if (!fromChip) {
+    const raw = (els.nsNs && els.nsNs.value || '').trim();
+    if (!raw) return;
+    nsState.nsRaw = raw;
+    nsState.tld = (els.nsTld && els.nsTld.value || '').trim().toLowerCase().replace(/^\./, '');
+    nsState.facets = null;
+  }
+  const raw = nsState.nsRaw;
   if (!raw) return;
   setToolStatus(els.nsStatus, 'Searching…');
-  if (els.nsResult) els.nsResult.hidden = true;
+  if (!fromChip && els.nsResult) els.nsResult.hidden = true;
   try {
-    const tld = (els.nsTld && els.nsTld.value || '').trim();
+    const tld = nsState.tld || '';
     const params = `mode=ns&ns=${encodeURIComponent(raw)}&match=${nsState.match}${tld ? `&tld=${encodeURIComponent(tld)}` : ''}`;
     const data = await nsFetch(params);
+    if (Array.isArray(data.tlds)) nsState.facets = data.tlds; // facets come back only on the All (unfiltered) query
+    nsState.listKind = 'ns'; nsState.listHasMore = !!data.hasMore;
     setToolStatus(els.nsStatus, '');
     const more = data.hasMore ? ' <span class="muted">(showing first page)</span>' : '';
     const head = `Domains using ${nsState.match === 'all' ? 'ALL' : 'ANY'} of: ${(data.nameservers || []).map((n) => `<code>${escapeHtml(n)}</code>`).join(' ')}`;
-    els.nsResult.innerHTML = `<div class="ns-card"><p class="ns-nsrow">${head}</p><h3>${data.count} domain${data.count === 1 ? '' : 's'}${more}</h3>${nsRowsHtml(data.rows)}</div>`;
+    const bar = nsTldBarHtml(nsState.facets, tld, 'ns');
+    const scope = tld ? ` <span class="muted">· .${escapeHtml(tld)} only</span>` : '';
+    els.nsResult.innerHTML = `<div class="ns-card"><p class="ns-nsrow">${head}</p>${bar}<h3>${data.count} domain${data.count === 1 ? '' : 's'}${scope}${more}</h3>${nsRowsHtml(data.rows)}</div>`;
     els.nsResult.hidden = false;
   } catch (e) {
     setToolStatus(els.nsStatus, String((e && e.message) || e), true);
   }
 }
 
+// Clickable TLD facet bar above the NS results: "All (N) · .com (x) · .vc (y) …".
+// Clicking a chip narrows the result to that TLD server-side (partition-pruned),
+// so small-TLD matches that .com would crowd off the first page are reachable in
+// one click. Hidden when the match spans only a single TLD.
+function nsTldBarHtml(facets, activeTld, scope = 'ns') {
+  if (!Array.isArray(facets) || facets.length < 2) return '';
+  const total = facets.reduce((s, f) => s + (f.count || 0), 0);
+  const chip = (tld, label, n, active) =>
+    `<button type="button" class="ns-tld-chip${active ? ' active' : ''}" data-ns-scope="${scope}" data-ns-tld="${escapeHtml(tld)}">${escapeHtml(label)} <span class="ns-tld-n">${(n || 0).toLocaleString()}</span></button>`;
+  const chips = [chip('', 'All', total, !activeTld)]
+    .concat(facets.map((f) => chip(f.tld, `.${f.tld}`, f.count, activeTld === f.tld)));
+  return `<div class="ns-tldbar" title="Filter these domains to one TLD">${chips.join('')}</div>`;
+}
+
 els.navNameserver?.addEventListener('click', (e) => { if (newTabClick(e)) return; e.preventDefault(); setToolUrl('nameserver', ''); route(); });
 els.navSales?.addEventListener('click', (e) => { if (newTabClick(e)) return; e.preventDefault(); setToolUrl('sales', ''); route(); });
+els.navBeeper?.addEventListener('click', (e) => { if (newTabClick(e)) return; e.preventDefault(); setToolUrl('beeper', ''); route(); });
+els.beeperForm?.addEventListener('submit', (e) => { e.preventDefault(); addBeeperWatch(); });
+els.navWhois?.addEventListener('click', (e) => { if (newTabClick(e)) return; e.preventDefault(); setToolUrl('whois', ''); showView('whois'); });
+els.whoisForm?.addEventListener('submit', (e) => { e.preventDefault(); const d = (els.whoisDomain.value || '').trim(); if (d) { setToolUrl('whois', d); runWhois(d); } });
+
+// Cross-module action bar + ⌘K quick-switch.
+els.domainBarK?.addEventListener('click', openCmdk);
+els.cmdk?.addEventListener('click', (e) => { if (e.target === els.cmdk) closeCmdk(); });
+els.cmdkDomain?.addEventListener('keydown', (e) => {
+  const mods = cmdkMods();
+  if (e.key === 'ArrowDown') { e.preventDefault(); cmdkIdx = Math.min(mods.length - 1, cmdkIdx + 1); renderCmdkList(); }
+  else if (e.key === 'ArrowUp') { e.preventDefault(); cmdkIdx = Math.max(0, cmdkIdx - 1); renderCmdkList(); }
+  else if (e.key === 'Enter') { e.preventDefault(); if (mods[cmdkIdx]) runCmdk(mods[cmdkIdx].tool); }
+});
+document.addEventListener('keydown', (e) => {
+  if ((e.metaKey || e.ctrlKey) && (e.key === 'k' || e.key === 'K')) {
+    if (els.app && els.app.hidden) return; // not logged in / app not ready
+    e.preventDefault();
+    (els.cmdk && !els.cmdk.hidden) ? closeCmdk() : openCmdk();
+  } else if (e.key === 'Escape' && els.cmdk && !els.cmdk.hidden) {
+    closeCmdk();
+  }
+});
 
 // ── Sales Research ───────────────────────────────────────────────────────────
 let salesProjectId = null;
@@ -4746,6 +5381,7 @@ let salesPollTimer = null;
 let salesCandidates = [];          // cached for render + CSV
 let salesSeed = '';
 const salesCollapsed = new Set();  // candidate ids whose contacts are collapsed
+const salesSelected = new Set();   // checked candidate ids — persist across path-filter tabs
 let salesAngles = [];              // angle objects from the last gate render
 let salesPathFilter = 'all';       // view filter: 'all' | 'upgrade' | 'product' | 'keyword'
 
@@ -4786,6 +5422,7 @@ function resetSalesView() {
   clearSalesPoll();
   hideAngleGate();
   salesProjectId = null; salesCandidates = []; salesSeed = ''; salesPathFilter = 'all';
+  salesSelected.clear();
   if (els.srDomain) els.srDomain.value = '';
   if (els.srResults) els.srResults.hidden = true;
   if (els.srTable) els.srTable.innerHTML = '';
@@ -4884,8 +5521,11 @@ async function salesCreate(domain, tries = 3) {
 
 els.srForm?.addEventListener('submit', async (e) => {
   e.preventDefault();
-  const domain = (els.srDomain.value || '').trim().toLowerCase();
-  if (!domain) return;
+  if (!(els.srDomain.value || '').trim()) return;
+  let domain;
+  try { domain = cleanDomainInput(els.srDomain.value); }
+  catch (err) { setSalesStatus(String(err.message || err), true); return; }
+  els.srDomain.value = domain;
   els.srGo.disabled = true;
   setSalesStatus('Starting discovery…');
   if (els.srResults) els.srResults.hidden = true;
@@ -4906,6 +5546,54 @@ function hideAngleGate() {
   els.srAnglegate.innerHTML = '';
   delete els.srAnglegate.dataset.seed;
   salesAngles = [];
+  setAnglesBtnMode(false);
+}
+
+// The top "Explore by category" button doubles as "Research selected categories"
+// once the gate is open, so you can kick off the research from the top toolbar
+// without scrolling down to the gate's footer button.
+function setAnglesBtnMode(researching) {
+  if (!els.srAngles) return;
+  els.srAngles.dataset.mode = researching ? 'research' : 'explore';
+  els.srAngles.textContent = researching
+    ? '🔬 Research selected categories'
+    : '✨ Explore by category';
+}
+
+// Dispatch the chosen buyer categories for the free company fan-out. Shared by
+// the top toolbar button (research mode) and the gate's footer button.
+async function researchSelectedAngles() {
+  if (!els.srAnglegate) return;
+  const keys = new Set([...els.srAnglegate.querySelectorAll('.sr-ag-cb:checked')].map((c) => c.dataset.key));
+  const chosen = salesAngles.filter((a) => keys.has(a.key));
+  if (!chosen.length || !salesProjectId) return;
+  const limit = Number(document.getElementById('sr-ag-lim')?.value) || 15;
+  const note = els.srAnglegate.querySelector('.sr-ag-note');
+  const footBtn = document.getElementById('sr-ag-go');
+  const n = chosen.length;
+  const catWord = n === 1 ? 'category' : 'categories';
+  if (footBtn) footBtn.disabled = true;
+  if (els.srAngles) els.srAngles.disabled = true;
+  if (note) note.innerHTML = `<span class="sr-spin"></span> Finding companies across ${n} ${catWord}…`;
+  try {
+    const res = await fetch('/research/api/sales', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ action: 'research_angles', project_id: salesProjectId, angles: chosen, limit }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(apiErrText(data, res));
+    // Runs async in the background now (was timing out the request on mobile).
+    els.srAnglegate.hidden = true;
+    setAnglesBtnMode(false);
+    const before = salesCandidates.length;
+    setSalesStatus(`Researching ${n} ${catWord}… this runs in the background — you can keep working.`);
+    pollAnglesUntilDone(n, catWord, before);
+  } catch (err) {
+    if (note) note.innerHTML = `<span class="sr-status-err">${escapeHtml(String(err.message || err))}</span>`;
+  } finally {
+    if (footBtn) footBtn.disabled = false;
+    if (els.srAngles) els.srAngles.disabled = false;
+  }
 }
 
 function openSalesProject(id) {
@@ -4958,16 +5646,34 @@ function openSalesProject(id) {
 // keyword/category (companies surfaced by Explore-by-category). Anything without
 // an explicit category counts as an upgrade (the original discovery path).
 function isProductAngle(c) { return c.angle === 'product_named' || c.angle === 'product_named_exact'; }
-function salesPath(c) {
-  if (isProductAngle(c)) return 'product';                  // product-name matches (exact + similar)
-  return c.category === 'keyword' ? 'keyword' : 'upgrade';
+// A candidate's domain SLD is an affix-variant of the seed (hoss → hosstools,
+// gethoss) — i.e. structurally an "upgrade" target even if it was discovered via
+// the product/keyword angle. So an exact product-name match like hosstools.com
+// (Hoss Tools, product "Hoss") is ALSO an upgrade prospect, not just a product hit.
+function isUpgradeShape(c) {
+  const s = (String(salesSeed).split('.')[0] || '').toLowerCase();
+  const sld = (String(c.domain || '').split('.')[0] || '').toLowerCase();
+  if (!s || !sld || sld === s) return false;
+  return sld.startsWith(s) || sld.endsWith(s);
+}
+
+// Path membership is a SET — a candidate can live under more than one tab (e.g.
+// product-name match that's also an affix-upgrade shows under both Product and
+// Upgrades). The 'all' tab still renders each card once (single section below).
+function salesPaths(c) {
+  const set = new Set();
+  if (isProductAngle(c)) set.add('product');
+  if (c.category === 'keyword' && !isProductAngle(c)) set.add('keyword');
+  if (c.category === 'upgrade' || isUpgradeShape(c)) set.add('upgrade');
+  if (!set.size) set.add('upgrade');
+  return set;
 }
 
 function salesVisible() {
   const showAll = els.srShowAll && els.srShowAll.checked;
   return salesCandidates.filter((c) =>
     (showAll || c.status === 'active') &&
-    (salesPathFilter === 'all' || salesPath(c) === salesPathFilter));
+    (salesPathFilter === 'all' || salesPaths(c).has(salesPathFilter)));
 }
 
 function renderSalesResults(data) {
@@ -5097,7 +5803,7 @@ function renderSalesTable() {
     return `
     <div class="sr-card sr-card-${escapeHtml(c.tier || 'unknown')}${unq ? ' sr-card-unq' : ''}" data-id="${escapeHtml(c.id)}">
       <div class="sr-card-head">
-        <label class="sr-card-check"><input type="checkbox" class="sr-cb" data-id="${escapeHtml(c.id)}"></label>
+        <label class="sr-card-check"><input type="checkbox" class="sr-cb" data-id="${escapeHtml(c.id)}"${salesSelected.has(c.id) ? ' checked' : ''}></label>
         <div class="sr-card-id">
           <div class="sr-card-name">${escapeHtml(c.company || '—')}${recommend}${angleBadge}${lowConfBadge}${offBadge}</div>
           <div class="sr-card-links">
@@ -5126,6 +5832,20 @@ function renderSalesTable() {
     { label: 'Others', rows: [] },
   ];
   const offTarget = (c) => (c.firmographics && c.firmographics.atp_relevant === false) || Number(c.score) < 0;
+  // When a specific path tab is active, show one flat sorted list — a card can
+  // belong to several tabs (e.g. an affix-upgrade product match), so the multi-
+  // section headers (which are keyed off the primary angle) would otherwise file
+  // it under a mismatched header on the filtered tab.
+  if (salesPathFilter !== 'all') {
+    const flat = rows.slice().sort(byScore);
+    els.srTable.innerHTML = `<div class="sr-section"><div class="sr-cards">${flat.map(cardHtml).join('')}</div></div>`;
+    els.srTable.querySelectorAll('.sr-cb').forEach((cb) => cb.addEventListener('change', () => {
+      if (cb.checked) salesSelected.add(cb.dataset.id); else salesSelected.delete(cb.dataset.id);
+      updateSalesEnrichBtn();
+    }));
+    updateSalesEnrichBtn();
+    return;
+  }
   for (const c of rows) {
     if (c.status && c.status !== 'active') sections[3].rows.push(c);                 // for-sale / inactive
     else if (offTarget(c)) sections[3].rows.push(c);                                 // relevance-gated → Others
@@ -5139,12 +5859,18 @@ function renderSalesTable() {
     return `<div class="sr-section"><div class="sr-section-head">${escapeHtml(s.label)} <span class="sr-section-n">${s.rows.length}</span></div>`
       + `<div class="sr-cards">${s.rows.map(cardHtml).join('')}</div></div>`;
   }).join('');
-  els.srTable.querySelectorAll('.sr-cb').forEach((cb) => cb.addEventListener('change', updateSalesEnrichBtn));
+  els.srTable.querySelectorAll('.sr-cb').forEach((cb) => cb.addEventListener('change', () => {
+    if (cb.checked) salesSelected.add(cb.dataset.id); else salesSelected.delete(cb.dataset.id);
+    updateSalesEnrichBtn();
+  }));
   updateSalesEnrichBtn();
 }
 
+// Selection persists across path-filter tabs (set-backed, not DOM-backed), so you
+// can tick rows on Upgrades, switch to Product/Keyword, tick more, then act on the
+// whole set. Drop ids that no longer exist (e.g. after a refresh).
 function selectedCandidateIds() {
-  return [...els.srTable.querySelectorAll('.sr-cb:checked')].map((cb) => cb.dataset.id);
+  return [...salesSelected].filter((id) => salesCandidates.some((c) => c.id === id));
 }
 function updateSalesEnrichBtn() {
   const ids = selectedCandidateIds();
@@ -5154,18 +5880,22 @@ function updateSalesEnrichBtn() {
   // Qualify is enabled when any SELECTED company is still unqualified (no firmographics).
   const anyUnqualified = ids.some((id) => { const c = salesCandidates.find((x) => x.id === id); return c && !c.firmographics; });
   if (els.srQualify) els.srQualify.disabled = !anyUnqualified;
-  // Keep the Select-all box in sync (checked when all visible rows are ticked).
+  // Keep the Select-all box in sync (checked when all VISIBLE rows are ticked).
   if (els.srSelectAll) {
-    const all = [...els.srTable.querySelectorAll('.sr-cb')];
-    els.srSelectAll.checked = all.length > 0 && ids.length === all.length;
-    els.srSelectAll.indeterminate = ids.length > 0 && ids.length < all.length;
+    const visIds = [...els.srTable.querySelectorAll('.sr-cb')].map((cb) => cb.dataset.id);
+    const visSel = visIds.filter((id) => salesSelected.has(id));
+    els.srSelectAll.checked = visIds.length > 0 && visSel.length === visIds.length;
+    els.srSelectAll.indeterminate = visSel.length > 0 && visSel.length < visIds.length;
   }
 }
 
-// Select all / none of the currently-visible cards.
+// Select all / none of the currently-visible cards (other tabs' picks are untouched).
 els.srSelectAll?.addEventListener('change', () => {
   const on = els.srSelectAll.checked;
-  els.srTable.querySelectorAll('.sr-cb').forEach((cb) => { cb.checked = on; });
+  els.srTable.querySelectorAll('.sr-cb').forEach((cb) => {
+    cb.checked = on;
+    if (on) salesSelected.add(cb.dataset.id); else salesSelected.delete(cb.dataset.id);
+  });
   updateSalesEnrichBtn();
 });
 
@@ -5221,7 +5951,7 @@ function updatePathFilter() {
   if (!els.srPathfilter) return;
   const pool = salesCandidates.filter((c) => (els.srShowAll && els.srShowAll.checked) || c.status === 'active');
   const counts = { all: pool.length, upgrade: 0, product: 0, keyword: 0 };
-  for (const c of pool) counts[salesPath(c)]++;
+  for (const c of pool) for (const p of salesPaths(c)) counts[p]++;
   if (salesPathFilter !== 'all' && !counts[salesPathFilter]) salesPathFilter = 'all';
   const LABELS = { all: 'All', upgrade: 'Upgrades', product: 'Product', keyword: 'Keyword' };
   els.srPathfilter.querySelectorAll('.sr-pf-btn').forEach((b) => {
@@ -5290,8 +6020,8 @@ els.srCsv?.addEventListener('click', () => {
 // headline player) → pick angles (checkboxes) → research the chosen ones.
 els.srAngles?.addEventListener('click', async () => {
   if (!salesSeed || !els.srAnglegate) return;
-  const open = !els.srAnglegate.hidden && els.srAnglegate.dataset.seed === salesSeed;
-  if (open) { els.srAnglegate.hidden = true; return; }   // toggle off
+  // Gate already open → the button is in "research" mode; dispatch the picks.
+  if (els.srAngles.dataset.mode === 'research') { researchSelectedAngles(); return; }
   els.srAnglegate.hidden = false;
   els.srAnglegate.dataset.seed = salesSeed;
   els.srAnglegate.innerHTML = '<div class="sr-ag-loading sr-enriching"><span class="sr-spin"></span> Mapping buyer categories and verifying the top player in each…</div>';
@@ -5353,34 +6083,10 @@ function renderAngleGate(angles) {
       </label>
       <span class="sr-ag-note muted">Free — finds the companies (no Apollo). You then tick which to <strong>Qualify</strong> (the paid step).</span>
     </div>`;
-  document.getElementById('sr-ag-go')?.addEventListener('click', async () => {
-    const keys = new Set([...els.srAnglegate.querySelectorAll('.sr-ag-cb:checked')].map((c) => c.dataset.key));
-    const chosen = salesAngles.filter((a) => keys.has(a.key));
-    if (!chosen.length || !salesProjectId) return;
-    const limit = Number(document.getElementById('sr-ag-lim')?.value) || 15;
-    const btn = document.getElementById('sr-ag-go');
-    const note = els.srAnglegate.querySelector('.sr-ag-note');
-    const n = chosen.length;
-    const catWord = n === 1 ? 'category' : 'categories';
-    btn.disabled = true;
-    note.innerHTML = `<span class="sr-spin"></span> Finding companies across ${n} ${catWord}…`;
-    try {
-      const res = await fetch('/research/api/sales', {
-        method: 'POST', headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ action: 'research_angles', project_id: salesProjectId, angles: chosen, limit }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(apiErrText(data, res));
-      // Runs async in the background now (was timing out the request on mobile).
-      els.srAnglegate.hidden = true;
-      const before = salesCandidates.length;
-      setSalesStatus(`Researching ${n} ${catWord}… this runs in the background — you can keep working.`);
-      pollAnglesUntilDone(n, catWord, before);
-    } catch (err) {
-      note.innerHTML = `<span class="sr-status-err">${escapeHtml(String(err.message || err))}</span>`;
-      btn.disabled = false;
-    }
-  });
+  document.getElementById('sr-ag-go')?.addEventListener('click', researchSelectedAngles);
+  // Gate is now open with categories → flip the top toolbar button to act as
+  // "Research selected categories" so it can be triggered from the top.
+  setAnglesBtnMode(true);
 }
 
 // Poll the project after dispatching a category fan-out (async Inngest) and render
@@ -5455,6 +6161,245 @@ els.srProjectsSearch?.addEventListener('input', () => {
   salesProjectsTimer = setTimeout(() => loadSalesProjects(els.srProjectsSearch.value.trim()), 200);
 });
 
+// ── Corporate Portfolios ────────────────────────────────────────────────────
+// Reverse-WHOIS a company (or registrant email) → premium domains. Create kicks
+// off an async Inngest pull; we poll the run until done, then render the table.
+let cpRunId = null;
+let cpPollTimer = null;
+let cpRunsTimer = null;
+function clearCpPoll() { if (cpPollTimer) { clearInterval(cpPollTimer); cpPollTimer = null; } }
+function setCpStatus(msg, isErr = false) {
+  if (!els.cpStatus) return;
+  els.cpStatus.hidden = !msg;
+  els.cpStatus.textContent = msg || '';
+  els.cpStatus.classList.toggle('error', !!isErr);
+}
+function setCpMode(mode, q = '') {
+  const view = document.getElementById('view-portfolio');
+  if (view) view.classList.toggle('report-open', mode === 'results');
+  if (els.cpEntry) els.cpEntry.hidden = mode === 'results';
+  if (els.cpReshead) els.cpReshead.hidden = mode !== 'results';
+  if (mode === 'results' && els.cpResheadQ) els.cpResheadQ.textContent = q || '';
+}
+function resetPortfolioView() {
+  clearCpPoll();
+  cpRunId = null;
+  if (els.cpQuery) els.cpQuery.value = '';
+  if (els.cpError) els.cpError.hidden = true;
+  if (els.cpResults) els.cpResults.hidden = true;
+  if (els.cpTable) els.cpTable.innerHTML = '';
+  if (els.cpCsv) els.cpCsv.disabled = true;
+  setCpStatus('');
+  setCpMode('entry');
+  loadPortfolioRecent();
+}
+
+// Read the premium-filter knobs into the API's filter shape (or undefined for
+// the defaults, so the server applies DEFAULT_FILTER).
+function cpReadFilter() {
+  const tlds = String(els.cpTlds?.value || '').split(',').map((t) => t.trim().replace(/^\./, '')).filter(Boolean);
+  return {
+    tlds,
+    minShort: Number(els.cpMin?.value) || 2,
+    maxShort: Number(els.cpMax?.value) || 4,
+    requireDictionary: !!(els.cpDict && els.cpDict.checked),
+    allowHyphens: !!(els.cpHyphens && els.cpHyphens.checked),
+  };
+}
+
+function cpRecentRow(r) {
+  const when = r.created_at ? new Date(r.created_at).toLocaleString() : '';
+  const st = r.status === 'done' ? (r.premium_count != null ? ` · ${r.premium_count} premium` : '') : ` · ${escapeHtml(r.status || '')}`;
+  return `<li class="recent-run" data-id="${escapeHtml(r.id)}">`
+    + `<span class="recent-domain">${escapeHtml(r.query || '')}${st}</span>`
+    + `<span class="recent-when">${escapeHtml(when)}</span></li>`;
+}
+async function loadPortfolioRecent() {
+  if (!els.cpRecent) return;
+  try {
+    const res = await fetch('/research/api/portfolio?list=1&limit=5');
+    const data = await res.json().catch(() => ({}));
+    const runs = res.ok && Array.isArray(data.runs) ? data.runs : [];
+    els.cpRecent.hidden = runs.length === 0;
+    if (els.cpRecentList) els.cpRecentList.innerHTML = runs.slice(0, 5).map(cpRecentRow).join('');
+  } catch { els.cpRecent.hidden = true; }
+}
+async function loadPortfolioRuns(q = '') {
+  if (!els.cpRunsList) return;
+  els.cpRunsList.innerHTML = '<li class="muted">Loading…</li>';
+  try {
+    const res = await fetch(`/research/api/portfolio?list=1&q=${encodeURIComponent(q)}`);
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || `Failed (${res.status})`);
+    const runs = data.runs || [];
+    if (!runs.length) { els.cpRunsList.innerHTML = '<li class="muted">No portfolio pulls yet.</li>'; return; }
+    els.cpRunsList.innerHTML = runs.map((r) => {
+      const when = r.created_at ? new Date(r.created_at).toLocaleString() : '';
+      const running = r.status && r.status !== 'done';
+      const cnt = r.premium_count != null ? ` · ${r.premium_count} premium` : '';
+      const meta = running ? `${escapeHtml(r.status)}…` : `${escapeHtml(when)}${cnt}`;
+      return `<li class="project-group"><div class="project-group-title">${escapeHtml(r.query || '(unknown)')}</div>`
+        + `<ul class="project-runs"><li class="project-run${running ? ' active' : ''}" data-id="${escapeHtml(r.id)}">${meta}</li></ul></li>`;
+    }).join('');
+  } catch (e) {
+    els.cpRunsList.innerHTML = `<li class="muted">${escapeHtml(String(e.message || e))}</li>`;
+  }
+}
+
+async function portfolioCreate(query, filter, tries = 3) {
+  // One seed field — the server classifies it (domain → derive registrant from
+  // WHOIS · company name · registrant email) and derives the reverse-WHOIS keys.
+  const body = { action: 'create', filter, seed: query };
+  let last;
+  for (let a = 0; a < tries; a++) {
+    const res = await fetch('/research/api/portfolio', {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (res.ok) return data;
+    last = new Error(data.error || `Failed (${res.status})`);
+    if (res.status >= 500 && a < tries - 1) { await new Promise((r) => setTimeout(r, 1500 * (a + 1))); continue; }
+    throw last;
+  }
+  throw last;
+}
+
+function openPortfolioRun(id) {
+  clearCpPoll();
+  cpRunId = id;
+  if (els.cpGo) els.cpGo.disabled = true;
+  setCpMode('results', '');
+  setCpStatus('Pulling the portfolio from reverse-WHOIS…');
+  if (els.cpResults) els.cpResults.hidden = true;
+  let pollErrors = 0;
+  const poll = async () => {
+    try {
+      const res = await fetch(`/research/api/portfolio?id=${encodeURIComponent(id)}`);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        if (res.status >= 500 && ++pollErrors < 8) { setCpStatus('Reconnecting…'); return; }
+        throw new Error(data.error || `Poll failed (${res.status})`);
+      }
+      pollErrors = 0;
+      const run = data.run || {};
+      if (run.query && els.cpResheadQ) els.cpResheadQ.textContent = run.query;
+      if (run.status === 'done') {
+        clearCpPoll();
+        if (els.cpGo) els.cpGo.disabled = false;
+        renderPortfolio(data);
+      } else if (run.status === 'failed') {
+        clearCpPoll();
+        if (els.cpGo) els.cpGo.disabled = false;
+        setCpStatus(run.error || 'Pull failed', true);
+      } else {
+        setCpStatus(`Working… (${run.stage || run.status})`);
+      }
+    } catch (err) {
+      if (++pollErrors < 8) { setCpStatus('Reconnecting…'); return; }
+      clearCpPoll();
+      if (els.cpGo) els.cpGo.disabled = false;
+      setCpStatus(String(err.message || err), true);
+    }
+  };
+  poll();
+  cpPollTimer = setInterval(poll, 2500);
+}
+
+let cpDomains = [];     // last run's full domain list (premium + the rest)
+let cpPremiumOnly = false;
+
+function cpRenderTable() {
+  const all = cpDomains;
+  const list = cpPremiumOnly ? all.filter((d) => d.premium_reason) : all;
+  if (!all.length) {
+    els.cpTable.innerHTML = '<p class="muted">No domains found for this company/registrant. If you searched a name, try the parent <strong>domain</strong> (e.g. meta.com) so I can read its WHOIS — or a registrant email. Big corporates often register behind MarkMonitor/CSC privacy, which thins reverse-WHOIS coverage.</p>';
+    return;
+  }
+  if (!list.length) { els.cpTable.innerHTML = '<p class="muted">No premium names in this portfolio — untick “Premium only” to see all owned domains.</p>'; return; }
+  const rows = list.map((d) => `<tr>`
+    + `<td class="cp-dom">${escapeHtml(d.domain)}${d.premium_reason ? ' <span class="cp-badge">★ premium</span>' : ''}</td>`
+    + `<td class="cp-len">${d.sld_length ?? ''}</td>`
+    + `<td class="cp-reason">${escapeHtml(d.premium_reason || '')}</td>`
+    + `<td class="cp-via">${escapeHtml(d.matched_via || '')}</td>`
+    + `<td>${escapeHtml(d.created || '')}</td>`
+    + `<td>${escapeHtml(d.registrar || '')}</td></tr>`).join('');
+  els.cpTable.innerHTML = `<table class="cp-table"><thead><tr>`
+    + `<th>Domain</th><th>Len</th><th>Premium</th><th>Matched on</th><th>Registered</th><th>Registrar</th>`
+    + `</tr></thead><tbody>${rows}</tbody></table>`;
+}
+
+function renderPortfolio(data) {
+  const run = data.run || {};
+  cpDomains = data.domains || [];
+  setCpStatus('');
+  setCpMode('results', run.query || '');
+  if (els.cpResults) els.cpResults.hidden = false;
+  if (els.cpCsv) els.cpCsv.disabled = cpDomains.length === 0;
+  els.cpCsv && (els.cpCsv.dataset.runId = run.id || '');
+  const owned = Number(run.total_results || cpDomains.length || 0);
+  const premium = Number(run.premium_count != null ? run.premium_count : cpDomains.filter((d) => d.premium_reason).length);
+  if (els.cpSummary) {
+    const pv = (run.filter && run.filter.providers) || null;
+    const prov = pv
+      ? ` · <span class="cp-prov">Whoxy ${Number(pv.whoxy || 0).toLocaleString()} · WhoisXML ${Number(pv.whoisxml || 0).toLocaleString()} · DomainIQ ${Number(pv.domainiq || 0).toLocaleString()}</span>`
+      : '';
+    els.cpSummary.innerHTML = `<strong>${owned.toLocaleString()}</strong> owned · `
+      + `<strong>${premium.toLocaleString()}</strong> premium`
+      + (run.credits_used ? ` · ${run.credits_used} Whoxy pages` : '')
+      + prov
+      + ` <label class="cp-toggle"><input type="checkbox" id="cp-premonly"${cpPremiumOnly ? ' checked' : ''}/> Premium only</label>`;
+    const t = document.getElementById('cp-premonly');
+    if (t) t.addEventListener('change', () => { cpPremiumOnly = t.checked; cpRenderTable(); });
+  }
+  cpRenderTable();
+}
+
+els.cpForm?.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const query = String(els.cpQuery?.value || '').trim();
+  if (!query) return;
+  if (els.cpError) els.cpError.hidden = true;
+  if (els.cpGo) els.cpGo.disabled = true;
+  setCpMode('results', query);
+  setCpStatus('Starting the portfolio pull…');
+  if (els.cpResults) els.cpResults.hidden = true;
+  try {
+    const data = await portfolioCreate(query, cpReadFilter());
+    setToolUrl('portfolio', data.run_id);
+    openPortfolioRun(data.run_id);
+  } catch (err) {
+    setCpStatus(String(err.message || err), true);
+    if (els.cpGo) els.cpGo.disabled = false;
+  }
+});
+els.cpCsv?.addEventListener('click', () => {
+  const id = els.cpCsv.dataset.runId;
+  if (id) window.location.href = `/research/api/portfolio?id=${encodeURIComponent(id)}&format=csv`;
+});
+function openPortfolioFromList(li) {
+  if (!li || !li.dataset.id) return;
+  history.pushState(null, '', `/research/portfolio/${encodeURIComponent(li.dataset.id)}`);
+  showView('portfolio');
+  openPortfolioRun(li.dataset.id);
+}
+els.cpRecentList?.addEventListener('click', (e) => openPortfolioFromList(e.target.closest('.recent-run')));
+els.cpRunsList?.addEventListener('click', (e) => openPortfolioFromList(e.target.closest('.project-run')));
+els.cpRecentAll?.addEventListener('click', (e) => {
+  if (newTabClick(e)) return;
+  e.preventDefault();
+  history.pushState(null, '', '/research/portfolio/all');
+  showView('portfolio-runs');
+  loadPortfolioRuns('');
+});
+els.cpNew?.addEventListener('click', () => {
+  history.pushState(null, '', '/research/portfolio');
+  resetPortfolioView();
+});
+els.cpRunsSearch?.addEventListener('input', () => {
+  clearTimeout(cpRunsTimer);
+  cpRunsTimer = setTimeout(() => loadPortfolioRuns(els.cpRunsSearch.value.trim()), 200);
+});
+
 els.nsRecent?.addEventListener('click', (e) => {
   if (e.target.dataset && e.target.dataset.recentClear) { try { localStorage.removeItem(NS_RECENT_KEY); } catch {} nsRenderRecent(); return; }
   const chip = e.target.closest('button[data-recent]');
@@ -5466,10 +6411,22 @@ els.nsMatchToggle?.addEventListener('click', (e) => {
   nsState.match = b.dataset.match === 'any' ? 'any' : 'all';
   for (const x of els.nsMatchToggle.querySelectorAll('button')) x.classList.toggle('active', x === b);
 });
+// Click a TLD facet chip → narrow the results to that TLD (server-side). Works in
+// both surfaces: the NS-search list and the domain→same-pairing siblings (the chip
+// carries data-ns-scope to route the re-run).
+document.addEventListener('click', (e) => {
+  const c = e.target.closest('.ns-tld-chip'); if (!c) return;
+  const tld = c.dataset.nsTld || '';
+  if (c.dataset.nsScope === 'pairing') { nsState.pairTld = tld; runNsPairing(nsState.pairDomain, { fromChip: true }); }
+  else { nsState.tld = tld; runNsList({ fromChip: true }); }
+});
 els.nsDomainForm?.addEventListener('submit', (e) => {
   e.preventDefault();
-  const d = (els.nsDomain.value || '').trim();
-  if (!d) return;
+  if (!(els.nsDomain.value || '').trim()) return;
+  let d;
+  try { d = cleanDomainInput(els.nsDomain.value); }
+  catch (err) { setToolStatus(els.nsStatus, String(err.message || err), true); return; }
+  els.nsDomain.value = d;
   setToolUrl('nameserver', d);
   runNsDomain(d);
 });
@@ -5520,6 +6477,7 @@ els.nsResult?.addEventListener('input', (e) => {
 // DB Search interactions
 els.dsSearch?.addEventListener('submit', (e) => { e.preventDefault(); dsState.page = 0; fetchDbSearch(); });
 els.dsApply?.addEventListener('click', () => { dsState.page = 0; fetchDbSearch(); });
+els.dsExport?.addEventListener('click', dsExportCsv);
 els.dsReset?.addEventListener('click', () => {
   [els.dsQ, els.dsPriceMin, els.dsPriceMax, els.dsLenMin, els.dsLenMax, els.dsWordsMin, els.dsWordsMax,
    els.dsSource, els.dsOwner, els.dsKeyword].forEach((el) => { if (el) el.value = ''; });
@@ -5527,7 +6485,7 @@ els.dsReset?.addEventListener('click', () => {
   if (els.dsDict) els.dsDict.value = '';
   if (els.dsNonum) els.dsNonum.checked = false;
   if (els.dsFuzzy) els.dsFuzzy.checked = false;
-  ['category', 'connotation', 'industry', 'emotion'].forEach((k) => dsMulti[k] && dsMulti[k].clear());
+  ['category', 'connotation', 'industry', 'emotion', 'pos', 'forms'].forEach((k) => dsMulti[k] && dsMulti[k].clear());
   dsState.activeTlds.clear();
   if (els.dsTlds) els.dsTlds.querySelectorAll('button').forEach((b) => b.classList.remove('active'));
   dsState.db = 'both';
@@ -5702,8 +6660,25 @@ els.reportMeta?.addEventListener('click', (e) => {
   const deep = link.dataset.deep === 'true';
   run({ domain, deep, force: true });
 });
-els.tmForm?.addEventListener('submit', (e) => { e.preventDefault(); const q = els.tmQuery.value.trim(); if (q) runTrademark(q); });
-els.apForm?.addEventListener('submit', (e) => { e.preventDefault(); const v = els.apDomain.value.trim(); if (v) runAppraisal(v); });
+els.tmForm?.addEventListener('submit', (e) => {
+  e.preventDefault();
+  if (!els.tmQuery.value.trim()) return;
+  let q;
+  // Lenient: a bare brand word is valid for a trademark search, but a pasted URL
+  // with a path is still ambiguous → error.
+  try { q = cleanDomainInput(els.tmQuery.value, { requireValid: false }); }
+  catch (err) { setToolStatus(els.tmStatus, String(err.message || err), true); return; }
+  if (q) runTrademark(q);
+});
+els.apForm?.addEventListener('submit', (e) => {
+  e.preventDefault();
+  if (!els.apDomain.value.trim()) return;
+  let v;
+  try { v = cleanDomainInput(els.apDomain.value); }
+  catch (err) { setToolStatus(els.apStatus, String(err.message || err), true); return; }
+  els.apDomain.value = v;
+  runAppraisal(v);
+});
 els.namingGo?.addEventListener('click', runNaming);
 els.namingApply?.addEventListener('click', runNaming);
 

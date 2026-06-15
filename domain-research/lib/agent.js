@@ -29,6 +29,7 @@ How to work:
 - Reconstruct the FULL ownership timeline from historical WHOIS (DomainIQ returns dated "eras"). Surface every historical registrant NAME, organization and email — especially a real person's name from a pre-privacy era — even when the current record is privacy-shielded.
 - Piece clues together across eras. If infrastructure is continuous across a privacy transition (e.g. the same nameservers, registrar, hosting or email pattern persist from a named era through today), infer that the historically-named registrant most likely still controls the domain — name them and explain the chain of evidence, with calibrated confidence.
 - Check the registration cluster (registration_cluster): same-label siblings on other TLDs registered around the same time as the target, or sharing its nameservers, are likely the same owner — and a sibling whose WHOIS is NOT private can directly reveal the owner's name/email. Pivot on any such lead (whoxy_reverse / reverse_whois / web_search / domainiq).
+- NAMESERVER-PAIR SIBLINGS (ns_siblings — FREE internal zone index of ~187M domains, runs automatically on the target): a domain on a UNIQUELY-configured nameserver pair — a custom Cloudflare-ACCOUNT pair, or a small private host — shares that EXACT pair only with the SAME owner's other domains. This is one of the strongest free ways to crack a privacy-walled target: find a sibling on its pair that DOES have public WHOIS/contact and pivot to it (whois_lookup / rdap_whois / dns_lookup / web_search). Do NOT discard an off-theme sibling because the name looks unrelated — these are often the owner's personal or side domains; instead LABEL what each is. Re-run ns_siblings on a promising sibling to widen the cluster. IGNORE generic parking/registrar nameservers (Afternic/Sedo/GoDaddy/Namecheap/Cloudflare-shared) — co-location there is NOT an ownership signal.
 - Check trademarks (trademark_search) on the brand (the domain's SLD) and on any candidate owner. The applicant/owner on a matching mark — even a pending or abandoned application — is a strong ownership/entity lead, and a filing date near the domain's creation corroborates it.
 - Chase every named owner — current OR historical — on the open web (web_search). When a real person or organization surfaces (even a pre-privacy registrant from years ago, e.g. an old WHOIS "Cove Communications / Bill Ostaski"), search that name WITH disambiguating context (their organization, city/state, a distinctive email, or the domain) to establish who they are today and how to reach them: current employer, companies founded, news, and profiles (LinkedIn, Crunchbase, X). Also search a distinctive email or the domain itself.
 - WHOIS-FINGERPRINT CHECK before crowning a CURRENT owner who is DIFFERENT from the named historical registrant while the current WHOIS is privacy-shielded: WHOIS one of that historical registrant's OTHER known domains (any sibling already mentioned in the eras / their email's portfolio — if none is known, whoxy_reverse the historical email first to enumerate it, then pick the most recently-updated one) and compare REGISTRAR + creation date + expiry + UPDATED-AT timestamp + NAMESERVERS + any state/country leak under privacy. Identical fingerprints — especially the UPDATED-AT to the second and a matching expiry — prove the target is still in the historical registrant's same account, so they still own it. This trumps trademark / MX / brand-similarity inferences; if it matches, the answer is the historical registrant, not the brand. Run this check whenever you are about to attribute a privacy-shielded domain to anyone other than its last named registrant.
@@ -111,10 +112,17 @@ export async function chatTurn({ domain, reportMarkdown, history = [], message, 
 function deriveTooling(env, tier) {
   const toolSpecs = getToolSpecs(env, { tier });
   const available = new Set(toolSpecs.map((t) => t.name));
-  const preRun = ['masterlist_lookup', 'universe_ownership'];
-  if (tier === 'all') preRun.push('whoisxml_lookup', 'domainiq_lookup', 'bigdomaindata_lookup', 'whoxy_history');
+  // DomainIQ runs on BOTH passes now (moved to the free pre-flight) — its
+  // historical-WHOIS eras anchor the report early. The other premium history
+  // sources stay deep-only.
+  const preRun = ['masterlist_lookup', 'universe_ownership', 'domainiq_lookup', 'ns_siblings'];
+  if (tier === 'all') preRun.push('whoisxml_lookup', 'bigdomaindata_lookup', 'whoxy_history');
   const toRun = preRun.filter((n) => available.has(n));
-  const agentToolSpecs = toolSpecs.filter((t) => !toRun.includes(t.name));
+  // ns_siblings is SEEDED on the target (pair classification + siblings) but ALSO
+  // kept as a callable tool, so the agent can re-run it on a candidate sibling to
+  // widen the cluster. The other seeded sources are removed from the tool list.
+  const keepAsTool = new Set(['ns_siblings']);
+  const agentToolSpecs = toolSpecs.filter((t) => !toRun.includes(t.name) || keepAsTool.has(t.name));
   return { toolSpecs, agentToolSpecs, toRun };
 }
 
@@ -175,6 +183,19 @@ export async function gather({ domain, question, history = [], env, tier = 'all'
       else if (res.ok && res.data && res.data.found) seedParts.push(`Internal name Universe HAS this domain (sources: ${JSON.stringify(res.data.sources)}, tier ${res.data.source_tier}) but not from an owned feed — not an ownership signal by itself.`);
       else if (res.ok) seedParts.push(`Internal name Universe: NO record for this domain.`);
       else seedParts.push(`universe_ownership errored: ${res.error}`);
+    } else if (name === 'ns_siblings') {
+      const d = res.ok ? (res.data || {}) : null;
+      if (d && d.same_owner_signal && d.sibling_count) {
+        seedParts.push(`Nameserver-pair triangulation (internal zone index): ${domain} is on a UNIQUELY-configured ${d.pair_kind} nameserver pair (${(d.nameservers || []).join(', ')}). Every domain on this EXACT pair is almost certainly the SAME owner — including off-theme personal/side domains. Siblings on the pair (${d.sibling_count}${d.has_more ? '+' : ''}): ${(d.siblings || []).slice(0, 40).join(', ')}. PIVOT: WHOIS/RDAP a sibling that has PUBLIC contact (or web_search it) to unmask the owner. Do NOT discard an off-theme sibling — label what it is. Re-run ns_siblings on a sibling to widen the cluster.`);
+      } else if (d && d.generic) {
+        seedParts.push(`Nameserver-pair triangulation: ${domain} uses GENERIC ${d.pair_kind} nameservers (parking/registrar) — co-location here is NOT an ownership signal, no siblings pulled.`);
+      } else if (d && d.sibling_count) {
+        seedParts.push(`Nameserver-pair triangulation: ${domain} shares its nameserver pair with ${d.sibling_count} other domain(s): ${(d.siblings || []).slice(0, 30).join(', ')}. May be a shared host — judge each sibling by whether it fits the owner's identity/industry, not co-location alone.`);
+      } else if (d) {
+        seedParts.push(`Nameserver-pair triangulation: no same-pair siblings found for ${domain} in the zone index.`);
+      } else {
+        seedParts.push(`ns_siblings (ran automatically) errored: ${res.error} — note this gap.`);
+      }
     } else if (res.ok) {
       seedParts.push(`${name} (ran automatically): ${JSON.stringify(res.data).slice(0, 4000)}`);
     } else {

@@ -83,11 +83,34 @@ export function looksParked(resp) {
   return PARKED_MARKERS.test(head) || PARKED_NAME.test(title.trim());
 }
 
+// Registrable domain (last two labels), lowercased, www/scheme/path stripped.
+function regDomain(s) {
+  const h = String(s || '').toLowerCase().replace(/^https?:\/\//, '').replace(/^www\./, '').split(/[/?#]/)[0];
+  const p = h.split('.').filter(Boolean);
+  return p.length >= 2 ? p.slice(-2).join('.') : h;
+}
+// Two registrable domains that share an SLD token (foo.com ↔ foo.io) — a legit
+// rebrand redirect, NOT a redirect-away.
+function relatedDomains(a, b) {
+  const ta = a.split('.')[0]; const tb = b.split('.')[0];
+  if (!ta || !tb) return false;
+  return ta === tb || ta.includes(tb) || tb.includes(ta);
+}
+// A 200 whose FINAL url left the requested domain for an UNRELATED one — the
+// requested domain is parked/expired/redirected, not an operating site of its
+// own (e.g. modulateam.com → kukla.associates). www/https/rebrand redirects stay.
+function redirectedAway(domain, finalUrl) {
+  if (!domain || !finalUrl) return false;
+  const from = regDomain(domain); const to = regDomain(finalUrl);
+  return !!from && !!to && from !== to && !relatedDomains(from, to);
+}
+
 // Pure: classify an already-fetched response → 'active' | 'for_sale' | 'inactive'.
-export function classifyResp(resp) {
+export function classifyResp(resp, domain) {
   const clues = extractClues(resp.body || '');
   if (clues.parking?.likely_parked || looksForSale(resp) || looksParked(resp)) return 'for_sale';
   if (!resp.ok) return 'inactive';
+  if (redirectedAway(domain, resp.finalUrl)) return 'inactive';
   return 'active';
 }
 
@@ -96,5 +119,5 @@ export async function classifyDomain(domain) {
   let resp;
   try { resp = await fetchCapped(`https://${domain}/`); }
   catch { try { resp = await fetchCapped(`http://${domain}/`); } catch { return 'inactive'; } }
-  return classifyResp(resp);
+  return classifyResp(resp, domain);
 }

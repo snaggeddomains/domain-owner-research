@@ -27,6 +27,7 @@ import trademark from './trademark.js';
 import appraise from './appraise.js';
 import namebio from './namebio.js';
 import namepros from './namepros.js';
+import nsSiblings from './ns_siblings.js';
 import { recordUsage } from '../db/usage.js';
 
 // To add a new data source: create a module exporting { name, description,
@@ -34,7 +35,7 @@ import { recordUsage } from '../db/usage.js';
 const ALL = [
   rdap, whois, dns, wayback, livesite, marketplace, cluster, masterlist, universeOwnership, rocketreach, readurl, analytics,
   whoisxml, domainiq, bigdomaindata, reversewhois, reversens, reverseip, websearch, bravesearch, trademark, appraise,
-  rocketreachLookup, fullenrich, whoxyHistory, whoxyReverse, identify, namebio, namepros,
+  rocketreachLookup, fullenrich, whoxyHistory, whoxyReverse, identify, namebio, namepros, nsSiblings,
 ];
 
 // Paid sources spend external API credits. They are withheld from the free
@@ -46,6 +47,11 @@ const PAID = new Set([
   'rocketreach_lookup', 'fullenrich_lookup', 'whoxy_history', 'whoxy_reverse', 'identify_operator', 'namebio_sales',
   'namepros_search',
 ]);
+
+// Paid sources we nonetheless run on the FREE pre-flight pass (still cost-metered
+// via PAID, just not deep-only). DomainIQ's historical-WHOIS is valuable enough on
+// the first pass to justify the per-search credit.
+const FREE_PAID = new Set(['domainiq_lookup']);
 
 // Recap grouping — each source's category, used to break the "Sources checked"
 // panel into labeled sections.
@@ -65,6 +71,7 @@ const CATEGORY = {
   livesite_inspect: 'Live site',
   analytics_footprint: 'Live site',
   registration_cluster: 'Registration cluster',
+  ns_siblings: 'Registration cluster',
   marketplace_check: 'Marketplace',
   masterlist_lookup: 'Internal list',
   universe_ownership: 'Internal list',
@@ -99,7 +106,7 @@ function isEnabled(source, env) {
 // Returns a provider-neutral spec; each LLM adapter converts it to that
 // provider's tool format.
 export function getToolSpecs(env, { tier = 'all' } = {}) {
-  return ALL.filter((s) => isEnabled(s, env) && (tier === 'all' || !PAID.has(s.name))).map((s) => ({
+  return ALL.filter((s) => isEnabled(s, env) && (tier === 'all' || !PAID.has(s.name) || FREE_PAID.has(s.name))).map((s) => ({
     name: s.name,
     description: s.description,
     parameters: s.parameters,

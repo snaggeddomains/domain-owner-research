@@ -481,6 +481,39 @@ create table if not exists domain_research_sales_contacts (
 );
 create index if not exists idx_sales_contacts_cand on domain_research_sales_contacts (candidate_id);
 
+-- ── Corporate Portfolios ────────────────────────────────────────────────────
+-- One "run" = a reverse-WHOIS (Whoxy) pull of a company's (or registrant
+-- email's) registered domains, filtered to "premium" names. The premium subset
+-- lands in the child table. RLS auto-enabled by the loop below.
+create table if not exists domain_research_portfolio_runs (
+  id            uuid primary key default gen_random_uuid(),
+  query         text not null,                         -- company name or registrant email
+  search_type   text not null,                         -- 'company' | 'email'
+  filter        jsonb,                                 -- premium filter used (tlds, length, dictionary…)
+  status        text not null default 'pending',       -- pending|running|done|failed
+  stage         text,                                  -- pull|filter|done
+  error         text,
+  total_results int,                                   -- domains Whoxy reported (pre-filter)
+  premium_count int,                                   -- domains kept after the premium filter
+  credits_used  int,                                   -- Whoxy pages fetched
+  capped        boolean,                               -- maxPages stopped us before the last page
+  created_by    uuid references domain_research_users(id) on delete set null,
+  created_at    timestamptz not null default now()
+);
+create index if not exists idx_portfolio_runs_created on domain_research_portfolio_runs (created_at desc);
+
+create table if not exists domain_research_portfolio_domains (
+  id             uuid primary key default gen_random_uuid(),
+  run_id         uuid not null references domain_research_portfolio_runs(id) on delete cascade,
+  domain         text not null,
+  sld_length     int,
+  premium_reason text,                                 -- short|dictionary|kept
+  created        text,                                 -- registration date (as Whoxy returns it)
+  registrar      text,
+  created_at     timestamptz not null default now()
+);
+create index if not exists idx_portfolio_domains_run on domain_research_portfolio_domains (run_id, sld_length);
+
 -- ── Enable RLS (no policies → backend secret key only) ──────────────────────
 do $$
 declare t text;

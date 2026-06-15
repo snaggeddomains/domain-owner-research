@@ -75,7 +75,7 @@ async function classifyLive(domain) {
   try { resp = await fetchCapped(`https://${domain}/`); }
   catch { try { resp = await fetchCapped(`http://${domain}/`); } catch { return { status: 'inactive', page: null }; } }
   const clues = extractClues(resp.body || '');
-  return { status: classifyResp(resp), page: clues, html: resp.body };
+  return { status: classifyResp(resp, domain), page: clues, html: resp.body };
 }
 
 // Resolve + classify a single candidate. `enrich` gates the paid firmographic call.

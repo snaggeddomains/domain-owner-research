@@ -30,7 +30,7 @@ const BUCKET_LIMIT = 500;
 const SELECT_COLS =
   'domain, sld, tld, sld_length, num_words, num_syllables, is_dictionary_word, ' +
   'best_price, best_price_source, sources, quality_score, deal_score, source_tier, ' +
-  'category, connotation, keywords, industries';
+  'category, connotation, keywords, industries, part_of_speech';
 
 // Master Domain List columns differ (see api/dbsearch.js buildMaster): domain
 // (no sld), price, owner, source (single text), category, tld, sld_length,
@@ -39,6 +39,11 @@ const SELECT_COLS =
 const MASTER_SELECT_COLS =
   'domain, price, owner, source, category, tld, sld_length, number_of_words, ' +
   'is_single_word, dictionary_word, connotation, keywords, industries, emotions, quality_score';
+
+// Owners whose Master listings are MONTHLY LEASES (via venture.com), not buys —
+// their `price` is the monthly lease amount, so the UI tags them + labels "/mo".
+// Lowercased for case-insensitive matching; extend as new lease entities appear.
+const LEASE_OWNERS = new Set(['blue nova']);
 
 export async function searchUniverse(filters) {
   const db = getNamingDb();
@@ -132,6 +137,18 @@ export async function searchUniverse(filters) {
   const allowCon = Array.isArray(filters.connotation) && filters.connotation.length
     ? new Set(filters.connotation) : null;
   const conOk = (row) => !allowCon || !row.connotation || allowCon.has(String(row.connotation));
+  // Part-of-speech (UI multi-select), in-memory like connotation. WordNet multi-tags
+  // a word with every POS it can be (venture → noun+verb), so a row passes if ANY of
+  // its tags is selected. Rows with no POS (compounds, non-words, not-yet-backfilled)
+  // are kept — lenient, mirroring connotation — so the filter narrows without nuking
+  // everything before the POS backfill has populated.
+  const allowPos = Array.isArray(filters.part_of_speech) && filters.part_of_speech.length
+    ? new Set(filters.part_of_speech) : null;
+  const posOk = (row) => {
+    if (!allowPos) return true;
+    const p = Array.isArray(row.part_of_speech) ? row.part_of_speech : [];
+    return p.length === 0 || p.some((x) => allowPos.has(String(x)));
+  };
   // Word-form exclusions (UI multi-select) applied in-memory for the same
   // reason connotation is: a SQL regex/LIKE on the SLD over millions of rows
   // blows the (tld, quality_score) index → statement timeout. Heuristics on the
@@ -183,6 +200,7 @@ export async function searchUniverse(filters) {
     for (const row of r.data || []) {
       if (seen.has(row.domain)) continue;
       if (!conOk(row)) continue;
+      if (!posOk(row)) continue;
       if (!formOk(row)) continue;
       if (!sylOk(row)) continue;
       const bucket = isPricedInRange(row) ? priced : other;
@@ -437,6 +455,13 @@ function normalizeMasterRow(r) {
     keywords: Array.isArray(r.keywords) ? r.keywords : [],
     industries: Array.isArray(r.industries) ? r.industries : [],
     emotions: Array.isArray(r.emotions) ? r.emotions : [],
+    part_of_speech: [], // Master has no POS column (universe-only enrichment)
+    owner: r.owner || null,
+    // Monthly-LEASE listing flag. Some Master rows are leased (not bought) via a
+    // marketplace (e.g. venture.com) — their `price` is the MONTHLY lease, not a
+    // buy price, so showing "$700" is misleading. Identified by lease-owner
+    // (e.g. Blue Nova). The UI badges these + labels the price "/mo".
+    is_lease: LEASE_OWNERS.has(String(r.owner || '').trim().toLowerCase()),
     _origin: 'master', // corpus tag → "M" badge in the UI (universe rows have none)
   };
 }
@@ -555,6 +580,9 @@ function shapeRow(r, keywords, filters) {
     relevance: matched_semantic.length * 2 + matched_sld.length + boost,
     // Which corpus this came from — "M" = Master Domain List, "U" = name_universe.
     origin: r._origin === 'master' ? 'M' : 'U',
+    // Monthly-lease listing (price is per-month, not a buy) — UI badges it + "/mo".
+    is_lease: !!r.is_lease,
+    part_of_speech: Array.isArray(r.part_of_speech) ? r.part_of_speech : [],
   };
 }
 
