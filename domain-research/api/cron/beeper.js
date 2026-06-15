@@ -6,6 +6,26 @@ import { createNotification } from '../../lib/db/notifications.js';
 import { sendEmail, isEmailConfigured } from '../../lib/email.js';
 import whoisSource from '../../lib/sources/whois.js';
 import { fetchJson } from '../../lib/util.js';
+import { domainIqCurrentWhois } from '../../lib/sources/domainiq.js';
+
+// FINAL authoritative registered-check via DomainIQ current-WHOIS (service=whois).
+// DomainIQ is the only source that still shows the registry record during an
+// Identity-Digital pendingDelete (RDAP 404s and WhoisXML reports "available" —
+// that's what kept false-dropping agent.computer). Returns:
+//   true  → DomainIQ still sees a record (registrar / created / EPP status) → registered
+//   false → DomainIQ explicitly shows no registration (no match) → really gone
+//   null  → unconfigured / inconclusive / error
+const DIQ_REGISTERED_RE = /"?registrar(?:\s*name)?"?\s*[:=]\s*"?[A-Za-z0-9]|creation date|created(?:\s*on)?\b|domain status\b|pending\s*delete|pendingdelete|redemption|client(?:transfer|delete|hold|update|renew)|serverhold|transfer prohibited/i;
+const DIQ_FREE_RE = /no match for|not found|no data found|no entries found|not registered|status:\s*available|available for registration/i;
+async function domainIqRegistered(domain) {
+  const body = await domainIqCurrentWhois(domain);
+  if (body == null) return null;
+  const text = typeof body === 'string' ? body : JSON.stringify(body);
+  if (!text) return null;
+  if (DIQ_REGISTERED_RE.test(text)) return true;     // a real record is present → registered
+  if (DIQ_FREE_RE.test(text)) return false;          // explicitly no record → gone
+  return null;                                       // can't tell → caller decides
+}
 
 // Confirm-a-drop oracle. RDAP not-found ALONE is unreliable: some registries
 // (notably Identity Digital — .computer/.io/etc.) PURGE the RDAP record during
@@ -69,14 +89,22 @@ async function portWhoisRegistered(domain) {
 }
 
 // → { registered: true|false|null, expiration }. A drop is declared ONLY when no
-// oracle can find a record. ANY oracle that still sees a registration → hold.
+// source can find a record. ANY source that still sees a registration → hold.
 async function confirmDropOracle(domain) {
   const [x, p] = await Promise.all([whoisXmlRegistered(domain), portWhoisRegistered(domain)]);
-  // Registered wins: if EITHER oracle still sees the name, it has NOT dropped.
+  // Registered per the fast (free) oracles → hold; no need to spend a DomainIQ call.
   if (x.registered === true || p === true) return { registered: true, expiration: x.expiration };
-  // Drop only when at least one oracle positively says "gone" and neither says registered.
-  if (x.registered === false || p === false) return { registered: false, expiration: x.expiration };
-  // Both inconclusive → hold.
+  // The fast oracles think it's GONE — but they're wrong for Identity-Digital
+  // pendingDelete (RDAP 404 + WhoisXML "available"). Do the FINAL authoritative
+  // check against DomainIQ current-WHOIS before alerting. If DomainIQ still sees a
+  // record, VETO the drop (this is the agent.computer fix). DomainIQ confirming
+  // "gone", or being unavailable, falls through to the drop.
+  if (x.registered === false || p === false) {
+    const diq = await domainIqRegistered(domain);
+    if (diq === true) return { registered: true, expiration: x.expiration };  // VETO — still registered
+    return { registered: false, expiration: x.expiration };
+  }
+  // All inconclusive → hold.
   return { registered: null, expiration: x.expiration };
 }
 

@@ -55,6 +55,28 @@ async function fetchViaProxy(url, agent, timeoutMs = 12000) {
   }
 }
 
+// CURRENT WHOIS via DomainIQ's `service=whois` (the "Whois" tab — NOT domain_history).
+// This is the authoritative current-status source for registries that purge their
+// RDAP record during pendingDelete (Identity Digital: .computer/.io/…), where RDAP
+// and WhoisXML wrongly report the name as available. Returns the raw JSON/text body
+// (caller inspects it), or null when unconfigured / on error. Routed through the
+// Fixie proxy (DomainIQ is IP-allowlisted).
+export async function domainIqCurrentWhois(domain, env = process.env) {
+  const key = env.DOMAINIQ_API_KEY;
+  if (!key) return null;
+  const tmpl = env.DOMAINIQ_WHOIS_URL_TEMPLATE ||
+    'https://www.domainiq.com/api?key={key}&service=whois&domain={domain}&output_mode=json';
+  const url = tmpl
+    .replaceAll('{domain}', encodeURIComponent(domain))
+    .replaceAll('{key}', encodeURIComponent(key));
+  try {
+    const agent = getProxyAgent();
+    return agent ? await fetchViaProxy(url, agent) : await fetchJson(url);
+  } catch {
+    return null;
+  }
+}
+
 // raw=1 returns one WHOIS snapshot per crawl date — often dozens of near-identical
 // entries. Collapse consecutive identical ownership states into dated "eras" so
 // the FULL lineage (including old pre-privacy owners) survives the model's input
