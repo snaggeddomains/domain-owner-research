@@ -13,15 +13,21 @@ import { fetchJson } from '../../lib/util.js';
 // pure RDAP 404 cries wolf (the agent.computer false drop). Even the AUTHORITATIVE
 // registry RDAP 404s in that window — so before alerting we need a non-RDAP check.
 //
-// Primary oracle = WhoisXML over HTTPS (works on Vercel serverless — unlike legacy
-// port-43 WHOIS, which has no egress in the cron and silently failed, which is what
-// let the false drop through). `domainAvailability` is UNAVAILABLE while a WHOIS
-// record exists (incl. pendingDelete) and only AVAILABLE once the name is truly
-// purged. Port-43 WHOIS is a best-effort secondary. Returns:
+// HARD-LEARNED: WhoisXML's `domainAvailability` flag ALSO reports agent.computer
+// as AVAILABLE during pendingDelete (it leans on the same purged registry record),
+// so trusting that flag re-fired the false drop. The RELIABLE signal is the WHOIS
+// RECORD CONTENT — a registrar / creation date / EPP status (incl. "pendingDelete"
+// / "redemption") means the name is STILL REGISTERED and NOT droppable. So:
+//   - prioritize record content over the availability flag, and
+//   - require BOTH oracles (HTTPS WhoisXML + legacy port-43 WHOIS) to find NO
+//     record before declaring a drop. ANY oracle that still sees a record → HOLD.
+// A drop only fires on positive "gone" agreement; uncertainty always holds.
 //   { registered: true,  expiration } → still registered → NOT a drop (hold)
-//   { registered: false, expiration } → no registration → a real drop (alert)
+//   { registered: false, expiration } → no record anywhere → a real drop (alert)
 //   { registered: null }              → inconclusive → caller HOLDS (never alerts)
 const WHOIS_FREE_RE = /no match|not found|no data found|no entries found|no object found|status:\s*free|available for registration|domain not registered/i;
+// EPP / record signals that mean "still registered" even mid delete-pipeline.
+const PIPELINE_STATUS_RE = /pending\s*delete|pendingdelete|redemption|pending\s*restore|client|server|transfer prohibited|hold|inactive|ok\b/i;
 
 async function whoisXmlRegistered(domain) {
   const key = process.env.WHOISXML_API_KEY;
@@ -34,15 +40,17 @@ async function whoisXmlRegistered(domain) {
     const w = (d && d.WhoisRecord) || {};
     const reg = w.registryData || {};
     const expiration = reg.expiresDate || w.expiresDate || null;
-    const avail = String(w.domainAvailability || '').toUpperCase();
-    if (avail === 'AVAILABLE') return { registered: false, expiration };
-    if (avail === 'UNAVAILABLE') return { registered: true, expiration };
-    // No explicit availability flag — infer from record contents.
+    // RECORD CONTENT FIRST — a registrar / created date / any EPP status means the
+    // name still exists in the registry (incl. pendingDelete) → registered. This is
+    // what the `domainAvailability` flag gets WRONG for purged-RDAP TLDs.
+    const statusStr = [].concat(w.status || [], reg.status || []).join(' ');
     const hasRecord = Boolean(
       w.registrarName || reg.registrarName || w.createdDate || reg.createdDate ||
-      (reg.status || w.status),
+      (statusStr && PIPELINE_STATUS_RE.test(statusStr)) || statusStr.trim(),
     );
     if (hasRecord) return { registered: true, expiration };
+    // No record content — now trust an explicit AVAILABLE; else inconclusive.
+    if (String(w.domainAvailability || '').toUpperCase() === 'AVAILABLE') return { registered: false, expiration };
     return { registered: null, expiration };
   } catch {
     return { registered: null, expiration: null };
@@ -60,13 +68,16 @@ async function portWhoisRegistered(domain) {
   }
 }
 
-// → { registered: true|false|null, expiration }
+// → { registered: true|false|null, expiration }. A drop is declared ONLY when no
+// oracle can find a record. ANY oracle that still sees a registration → hold.
 async function confirmDropOracle(domain) {
-  const x = await whoisXmlRegistered(domain);
-  if (x.registered !== null) return x;
-  // WhoisXML inconclusive (no key / error) → best-effort legacy port-43 WHOIS.
-  const p = await portWhoisRegistered(domain);
-  return { registered: p, expiration: x.expiration };
+  const [x, p] = await Promise.all([whoisXmlRegistered(domain), portWhoisRegistered(domain)]);
+  // Registered wins: if EITHER oracle still sees the name, it has NOT dropped.
+  if (x.registered === true || p === true) return { registered: true, expiration: x.expiration };
+  // Drop only when at least one oracle positively says "gone" and neither says registered.
+  if (x.registered === false || p === false) return { registered: false, expiration: x.expiration };
+  // Both inconclusive → hold.
+  return { registered: null, expiration: x.expiration };
 }
 
 // Beeper poller — runs every minute (vercel.json cron). For each active watch it
