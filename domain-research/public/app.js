@@ -4486,7 +4486,17 @@ els.form?.addEventListener('submit', (e) => {
 els.deepenBtn?.addEventListener('click', deepen);
 els.deepenTopBtn?.addEventListener('click', deepen);
 els.cancelRun?.addEventListener('click', cancelRun);
-els.exportPdf?.addEventListener('click', () => window.print());
+els.exportPdf?.addEventListener('click', () => {
+  // Name the saved PDF after the domain (the print dialog uses document.title as
+  // the default filename), then restore the title once printing is done.
+  const d = (currentReportDomain || '').trim();
+  const prevTitle = document.title;
+  if (d) document.title = `Domain Ownership Report — ${d}`;
+  const restore = () => { document.title = prevTitle; window.removeEventListener('afterprint', restore); };
+  window.addEventListener('afterprint', restore);
+  // Let the title change settle before opening the print dialog.
+  setTimeout(() => window.print(), 60);
+});
 
 // ── Owner outreach drawer ────────────────────────────────────────────────────
 // Slide-over that drafts a first-touch email to the likely owner. The scenario
