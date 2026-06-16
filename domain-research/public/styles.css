@@ -1241,6 +1241,9 @@ body.drawer-open { overflow: hidden; }
   .hd-panel { width: 100%; border-left: none; }
 }
 
+/* DomainIQ standalone view: the same .hd-* sections rendered into the page. */
+.hd-result { margin-top: 12px; max-width: 720px; }
+
 /* Outreach drawer: per-field copy icons, fit note, save-as-template row */
 .od-label-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
 .od-label-row .od-label { margin-bottom: 0; }

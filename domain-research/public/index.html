@@ -28,7 +28,7 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="apple-mobile-web-app-title" content="Snagged Research" />
     <meta name="theme-color" content="#254254" />
-    <link rel="stylesheet" href="styles.css?v=20260615hist" />
+    <link rel="stylesheet" href="styles.css?v=20260616diq" />
     <!-- Layout: horizontal tab nav (Admin-style), no sidebar. -->
   </head>
   <body>
@@ -186,6 +186,9 @@
         <a id="nav-beeper" class="nav-btn" href="/research/beeper" hidden>Beeper</a>
         <!-- Whois — basic free RDAP/WHOIS lookup. Gated by the `whois` permission. -->
         <a id="nav-whois" class="nav-btn" href="/research/whois" hidden>Whois</a>
+        <!-- DomainIQ — premium historical-WHOIS ownership lineage. Gated by the
+             `domain_owner` permission (the module DomainIQ bills to); shown by JS. -->
+        <a id="nav-diq" class="nav-btn" href="/research/diq" hidden>DomainIQ</a>
         <!-- Sales Research — find companies that would buy a domain we're selling.
              Gated by the `sales` permission; shown by JS. -->
         <a id="nav-sales" class="nav-btn" href="/research/sales" hidden>Sales Research</a>
@@ -588,6 +591,18 @@
           <div id="whois-result" class="whois-result" hidden></div>
         </section>
 
+        <!-- DomainIQ — premium historical-WHOIS ownership lineage -->
+        <section id="view-diq" hidden>
+          <h1 class="page-title">DomainIQ <span class="accent">ownership history</span></h1>
+          <p class="sub">Historical WHOIS lineage from <strong>DomainIQ</strong> — every dated registrant era, distilled to the named owners behind the domain (privacy/registrar layers filtered out). <strong>Premium:</strong> each lookup spends a DomainIQ credit.</p>
+          <form id="diq-form" class="beeper-form">
+            <input id="diq-domain" type="text" placeholder="e.g. example.com" autocomplete="off" autocapitalize="off" spellcheck="false" />
+            <button id="diq-add" type="submit">Look up</button>
+          </form>
+          <div id="diq-status" class="tool-status" hidden></div>
+          <div id="diq-result" class="hd-result" hidden></div>
+        </section>
+
         <!-- Sales Research — companies that would buy a domain we're selling -->
         <section id="view-sales" hidden>
           <!-- Entry: hero + form + recent. Hidden once a run is open (collapsed
@@ -972,6 +987,6 @@ The model parses it into structured filters (TLDs, length, budget, tone, etc.) a
     </div>
 
     <!-- Bump ?v= on any public/app.js or styles.css change to bust caches. -->
-    <script src="app.js?v=20260615hist"></script>
+    <script src="app.js?v=20260616diq"></script>
   </body>
 </html>
