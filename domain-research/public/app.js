@@ -212,6 +212,8 @@ const els = {
   navBeeper: $('nav-beeper'),
   navWhois: $('nav-whois'),
   whoisForm: $('whois-form'), whoisDomain: $('whois-domain'), whoisStatus: $('whois-status'), whoisResult: $('whois-result'),
+  navDiq: $('nav-diq'),
+  diqForm: $('diq-form'), diqDomain: $('diq-domain'), diqStatus: $('diq-status'), diqResult: $('diq-result'),
   domainBar: $('domain-bar'), domainBarD: $('domain-bar-d'), domainBarChips: $('domain-bar-chips'), domainBarK: $('domain-bar-k'),
   cmdk: $('cmdk'), cmdkDomain: $('cmdk-domain'), cmdkList: $('cmdk-list'),
   beeperForm: $('beeper-form'),
@@ -468,7 +470,7 @@ function clearHash() {
 // the SPA): Domain DB Screen at /dbscreen, DB Search at /dbsearch.
 const VANITY_TOOLS = ['dbscreen', 'dbsearch'];
 function currentToolRoute() {
-  let m = location.pathname.match(/^\/research\/(trademark|appraisal|naming|dbscreen|dbsearch|nameserver|sales|portfolio|beeper|whois|admin)(?:\/(.+?))?\/?$/);
+  let m = location.pathname.match(/^\/research\/(trademark|appraisal|naming|dbscreen|dbsearch|nameserver|sales|portfolio|beeper|whois|diq|admin)(?:\/(.+?))?\/?$/);
   if (!m) m = location.pathname.match(/^\/(dbscreen|dbsearch)(?:\/(.+?))?\/?$/);
   if (!m) return null;
   return { tool: m[1], slug: m[2] ? decodeURIComponent(m[2]) : '' };
@@ -492,6 +494,7 @@ const TOOL_PERMISSION = {
   nameserver: 'nameserver',
   beeper: 'beeper',
   whois: 'whois',
+  diq: 'domain_owner',
   portfolio: 'portfolio',
 };
 
@@ -682,6 +685,11 @@ function route() {
   if (tr && tr.tool === 'whois') {
     showView('whois');
     if (tr.slug) { if (els.whoisDomain) els.whoisDomain.value = tr.slug; runWhois(tr.slug); }
+    return;
+  }
+  if (tr && tr.tool === 'diq') {
+    showView('diq');
+    if (tr.slug) { if (els.diqDomain) els.diqDomain.value = tr.slug; runDiq(tr.slug); }
     return;
   }
   if (tr && tr.tool === 'sales') {
@@ -1849,6 +1857,7 @@ function gateNavByPermissions(user) {
   if (els.navNameserver) els.navNameserver.hidden = !can('nameserver');
   if (els.navBeeper) els.navBeeper.hidden = !can('beeper');
   if (els.navWhois) els.navWhois.hidden = !can('whois');
+  if (els.navDiq) els.navDiq.hidden = !can('domain_owner');
   if (els.navSales) els.navSales.hidden = !can('sales');
   if (els.navPortfolio) els.navPortfolio.hidden = !can('portfolio');
   // "Suggest a Strategy" — anyone with Domain Owner Research access can submit a
@@ -2871,6 +2880,7 @@ const VIEWS = {
   nameserver: { view: 'view-nameserver', nav: 'nav-nameserver' },
   beeper: { view: 'view-beeper', nav: 'nav-beeper' },
   whois: { view: 'view-whois', nav: 'nav-whois' },
+  diq: { view: 'view-diq', nav: 'nav-diq' },
   sales: { view: 'view-sales', nav: 'nav-sales' },
   'sales-projects': { view: 'view-sales-projects', nav: 'nav-sales' },
   portfolio: { view: 'view-portfolio', nav: 'nav-portfolio' },
@@ -4528,12 +4538,13 @@ async function loadHistory(domain, opts = {}) {
   }
 }
 
-function renderHistory(data) {
-  if (!els.hdBody) return;
+// Build the distilled ownership-history HTML (key named-owner signals + the
+// dated era timeline) from a domainiq_lookup result. Shared by the History
+// drawer and the standalone DomainIQ view.
+function historyHtml(data) {
   const eras = Array.isArray(data && data.eras) ? data.eras : [];
   if (!eras.length) {
-    els.hdBody.innerHTML = `<p class="hd-empty">No historical WHOIS records found for this domain via DomainIQ.</p>`;
-    return;
+    return `<p class="hd-empty">No historical WHOIS records found for this domain via DomainIQ.</p>`;
   }
 
   // Distill the "meaningful" owners: distinct named registrants (org/name) that
@@ -4598,8 +4609,50 @@ function renderHistory(data) {
       </ol>
     </div>`;
 
-  els.hdBody.innerHTML = summaryHtml + timelineHtml;
+  return summaryHtml + timelineHtml;
 }
+
+function renderHistory(data) {
+  if (els.hdBody) els.hdBody.innerHTML = historyHtml(data);
+}
+
+// ── DomainIQ standalone view (top-level menu) — same lookup as the History
+// quick action, rendered into its own page instead of the drawer. ──
+let diqSeq = 0;
+async function runDiq(domain) {
+  if (!els.diqResult) return;
+  const d = (domain || '').trim().toLowerCase();
+  if (!d) return;
+  setActiveDomain(d);
+  const seq = ++diqSeq;
+  setToolStatus(els.diqStatus, `Pulling historical WHOIS for ${escapeHtml(d)} from DomainIQ…`);
+  els.diqResult.hidden = true;
+  // Reuse the History drawer's per-domain session cache so re-looking-up a
+  // domain you already pulled doesn't re-spend a DomainIQ credit.
+  if (historyCache[d]) {
+    setToolStatus(els.diqStatus, '');
+    els.diqResult.innerHTML = historyHtml(historyCache[d]);
+    els.diqResult.hidden = false;
+    return;
+  }
+  try {
+    const res = await fetch(`/research/api/lookup?source=domainiq_lookup&domain=${encodeURIComponent(d)}`);
+    const json = await res.json().catch(() => ({}));
+    if (seq !== diqSeq) return;
+    if (!res.ok || json.ok === false) {
+      throw new Error((json && (json.error || (json.data && json.data.error))) || `Lookup failed (${res.status})`);
+    }
+    const data = json.data || json;
+    historyCache[d] = data;
+    setToolStatus(els.diqStatus, '');
+    els.diqResult.innerHTML = historyHtml(data);
+    els.diqResult.hidden = false;
+  } catch (e) {
+    if (seq !== diqSeq) return;
+    setToolStatus(els.diqStatus, String((e && e.message) || e), true);
+  }
+}
+
 
 function openOutreach() {
   if (!els.outreachDrawer || !currentRunId) return;
@@ -5516,6 +5569,8 @@ els.navBeeper?.addEventListener('click', (e) => { if (newTabClick(e)) return; e.
 els.beeperForm?.addEventListener('submit', (e) => { e.preventDefault(); addBeeperWatch(); });
 els.navWhois?.addEventListener('click', (e) => { if (newTabClick(e)) return; e.preventDefault(); setToolUrl('whois', ''); showView('whois'); });
 els.whoisForm?.addEventListener('submit', (e) => { e.preventDefault(); const d = (els.whoisDomain.value || '').trim(); if (d) { setToolUrl('whois', d); runWhois(d); } });
+els.navDiq?.addEventListener('click', (e) => { if (newTabClick(e)) return; e.preventDefault(); setToolUrl('diq', ''); showView('diq'); });
+els.diqForm?.addEventListener('submit', (e) => { e.preventDefault(); const d = (els.diqDomain.value || '').trim(); if (d) { setToolUrl('diq', d); runDiq(d); } });
 // Copy the public whois.com share link (delegated — the card is re-rendered each lookup).
 els.whoisResult?.addEventListener('click', (e) => { const b = e.target.closest('.wi-share'); if (b) copyText(b.getAttribute('data-share-url'), b); });
 
