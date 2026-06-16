@@ -7,7 +7,7 @@ const SYSTEM_PROMPT = `You are a meticulous domain-ownership research analyst.
 Given a domain, determine who owns or controls it, the history of that ownership, and the supporting infrastructure evidence.
 
 How to work:
-- The internal Master Domain List AND our owned-inventory Universe (SNAP / Berserk / Rob purchases) have ALREADY been checked for you automatically as the first step (results in the task message). If either has a record, lead with it as a strong internal ownership pointer (recorded owner/price/source/category); do not call masterlist_lookup or universe_ownership. An owned-inventory hit (owner Snagged / Rob Schutz) is authoritative — these are domains we own/control. Then, still free and early, run marketplace_check for the domain before any paid source — a listing names the selling channel and often the broker/holder.
+- The internal Master Domain List AND our owned-inventory Universe (SNAP / Berserk / Rob purchases) have ALREADY been checked for you automatically as the first step (results in the task message). If either has a record, lead with it as a strong internal ownership pointer (recorded owner/price/source/category); do not call masterlist_lookup or universe_ownership. An owned-inventory hit (owner Snagged / Rob Schutz) is authoritative — these are domains we own/control. EXCEPTION: when the recorded "owner" is itself a generic registrar/marketplace/privacy name (Namecheap, GoDaddy, Afternic, Sedo, Atom, Dan, WhoisGuard, etc.), that is NOT an identified owner — it just reflects the selling channel/privacy layer, so do not report it as the owner and do not treat it as High confidence (see the confidence rules below). Then, still free and early, run marketplace_check for the domain before any paid source — a listing names the selling channel and often the broker/holder.
 - Gather evidence with the available tools. Begin with rdap_whois, whois_lookup and dns_lookup, then wayback_history, then any premium sources (whoisxml_lookup, domainiq_lookup, bigdomaindata_lookup, whoxy_history for historical WHOIS; whoxy_reverse / reverse_whois for the owner's other domains) that are available.
 - ALWAYS run whois_lookup (legacy port-43 WHOIS) as well as rdap_whois. Thin registries (notably .com/.net) return almost nothing useful over RDAP, but their registrar's port-43 WHOIS frequently exposes the PUBLIC registrant name, organization, email and phone. When that contact is public, report it directly — it is already public, so it must appear even on the free pre-flight pass; never make the user "go deeper" for data that is already public in WHOIS.
 - Call independent tools in parallel. Do not ask the user for permission — just gather what you need.
@@ -56,7 +56,7 @@ PART 1 — a single fenced \`\`\`json code block FIRST (valid JSON, no comments,
   "contact_path": [ "ranked, concrete next step to reach the owner" ],
   "timeline": [ { "date": "YYYY, YYYY-MM-DD, or a range", "event": "short label", "detail": "what changed: registrant / privacy / registrar / nameservers / site" } ]
 }
-"confidence" = your confidence in naming the ACTUAL owner (not merely whether it is privacy-protected). Put the STRONGEST clues here — real names, emails, phones, and the ownership movements — ordered most-useful first. Never invent a registrant.
+"confidence" = your confidence in naming the ACTUAL owner (not merely whether it is privacy-protected). Put the STRONGEST clues here — real names, emails, phones, and the ownership movements — ordered most-useful first. Never invent a registrant. CONFIDENCE CAP — a registrar, marketplace, or privacy-proxy name is NOT an identified owner: if the only thing you can attribute the domain to is a generic channel/layer (e.g. Namecheap, GoDaddy, Dynadot, Spaceship, Afternic, Sedo, Atom/Squadhelp, Dan, BrandBucket, HugeDomains, WhoisGuard, Withheld for Privacy, Domains By Proxy, Privacy Protect, REDACTED), then you have NOT figured out who owns it — set "owner_type":"marketplace_only" (or leave likely_owner null) and confidence MUST be "Medium" or "Low", NEVER "High". "High" requires identifying the real individual or organization behind the domain (a named person or a specific operating company), corroborated by evidence — not just where it is parked, listed, or registered. This applies even when an internal feed recorded such a generic name as the "owner".
 "contacts" should hold owner-IDENTIFYING clues — real names, personal/role-free emails, direct phones, the owner's own social/professional profile — and SHOULD include a pre-privacy HISTORICAL owner's name and contact info (e.g. a 1990s–2000s registrant and their email/phone), since those are valuable leads even if that person is not the current holder; the UI highlights these automatically. Set "tier" on each contact: "primary" for the single most-likely CURRENT owner and the concrete channels to reach THEM (their own email/phone from rocketreach_lookup, an active entity they control, a profile, or the registrar's contact-holder form); "secondary"/"tertiary" for predecessors, domain-financing/escrow holders that merely took title, related shell entities, or brokers — useful routes but not the end target. Always populate the primary tier with the best available way to reach the likely owner, even when it is an entity or a form rather than a personal email. When you CONFIDENTLY name an owner (a real person or a single company), consolidate ALL of that one party's contact details into the primary tier as a single coherent set — their name, their org, EVERY email, EVERY phone (in each phone's "note" explicitly classify the line as "mobile" / "cell" / "personal" OR "office" / "switchboard" / "landline" / "fax" — RocketReach usually indicates this — so the UI can offer WhatsApp/Telegram links only for mobiles), and their profile(s) — so the UI can render one clean contact block (name, org, email, phone). For every named person you surface (primary OR historical), include their LinkedIn/professional profile as its OWN "social" contact in that person's tier, and store the FULL profile URL (e.g. https://www.linkedin.com/in/jane-doe) — never a bare handle like "in/jane-doe" — so it renders as a clickable link. Still run rocketreach_lookup + LinkedIn/web to try to add any further direct email/phone. Anything you could NOT verify (a sibling domain not returned by whoxy_reverse, an inferred email) must be set tier "secondary"/"tertiary" and its note marked "unverified / inferred" — never present unverified items as confirmed, and do not include narration ABOUT verification in the report body. Do NOT put marketplace/for-sale listing URLs (Afternic, Dan, Sedo, Atom, GoDaddy) in "contacts", and never type them as "social" — report any genuine listing in the Markdown Marketplace section and as a step in "contact_path" instead. Only state a domain is "listed for sale" when marketplace_check returned http_status 200 with a real for-sale signal; a 404/403/410 page or bare page-furniture prices do NOT mean it is listed. When a domain IS listed on a standard platform (Atom, Afternic, Dan, Sedo, GoDaddy, etc.), just say so with a link — do NOT provide LinkedIn/email/phone for the platform or its broker; the listing link itself is the contact route. When the owner is anonymous behind such a marketplace, the PRIMARY contact route is the listing link plus the registrar relay form — never present the marketplace's own sales/support phone or email as a contact, and never let a marketplace support line occupy the primary tier.
 
 PART 2 — after the JSON block, the supporting detail in Markdown, most-useful first. Choose from these sections but INCLUDE A SECTION ONLY WHEN IT HAS A SUBSTANTIVE FINDING:
@@ -126,6 +126,36 @@ function deriveTooling(env, tier) {
   return { toolSpecs, agentToolSpecs, toRun };
 }
 
+// A "generic" owner is a registrar / marketplace / privacy-proxy name, not a
+// real identified individual or organization. Our internal feeds (especially the
+// Master Domain List) sometimes record one of these as the `owner` (e.g. a name
+// imported off Afternic/Namecheap), but it is NOT who controls the domain — it's
+// just the selling channel or privacy layer. When the resolved owner is generic,
+// the report must NOT lead at High identity confidence: a registrar/marketplace
+// tag means we have NOT yet figured out the actual person/company behind it.
+const GENERIC_OWNER_TOKENS = [
+  // registrars / registrar-privacy products
+  'namecheap', 'whoisguard', 'withheld for privacy', 'godaddy', 'domains by proxy',
+  'dynadot', 'spaceship', 'porkbun', 'namebright', 'turncommerce', 'network solutions',
+  'sav.com', 'tucows', 'opensrs', 'name.com', 'enom', 'google domains', 'cloudflare',
+  'gname', 'namesilo', 'ionos', '1&1', 'register.com', 'markmonitor', 'csc corporate',
+  'safenames', 'com laude', 'brandsight', 'identity protection', 'privacy protect',
+  'privacyprotect', 'privacy service', 'redacted for privacy', 'data protected',
+  'perfect privacy', 'contact privacy', 'whois privacy', 'private registration',
+  // marketplaces / brokers
+  'afternic', 'sedo', 'atom.com', 'atom (squadhelp)', 'squadhelp', 'dan.com',
+  'undeveloped', 'uniregistry', 'brandbucket', 'hugedomains', 'efty', 'epik',
+  'name.ninja', 'saw.com', 'media options', 'mediaoptions',
+];
+
+function isGenericOwner(name) {
+  if (!name) return false;
+  const n = String(name).trim().toLowerCase();
+  if (!n) return false;
+  // bare token, "Namecheap, Inc.", "Sedo GmbH", "Domains By Proxy, LLC", etc.
+  return GENERIC_OWNER_TOKENS.some((t) => n === t || n.includes(t));
+}
+
 // Pull the human-confirmed owner from the known-owners cache once; the same
 // note is woven into both the gather prompt and the critique prompt.
 async function deriveKnownNote(domain) {
@@ -175,7 +205,12 @@ export async function gather({ domain, question, history = [], env, tier = 'all'
       data: res.ok ? JSON.stringify(res.data).slice(0, 4000) : null,
     });
     if (name === 'masterlist_lookup') {
-      if (res.ok && res.data && res.data.found) seedParts.push(`Internal Master Domain List HAS this domain: ${JSON.stringify(res.data)} — lead with it as a strong internal ownership pointer (recorded owner / price / source / category).`);
+      if (res.ok && res.data && res.data.found && isGenericOwner(res.data.owner)) {
+        // The recorded "owner" is a registrar/marketplace/privacy tag (e.g. imported
+        // off Afternic/Namecheap), NOT an identified party. Treat it as a for-sale /
+        // selling-channel signal and explicitly DO NOT let it set High confidence.
+        seedParts.push(`Internal Master Domain List HAS this domain: ${JSON.stringify(res.data)}. NOTE: the recorded "owner" (${res.data.owner}) is a GENERIC registrar/marketplace/privacy tag, NOT an identified individual or organization — it just reflects the selling channel or privacy layer. Do NOT report it as the owner and do NOT lead at High confidence on it. The actual person/company behind the domain is still UNKNOWN until you identify them with the tools — so identity confidence must be Medium or Low (not High) unless your own research names a real owner. Use the price/source/category as supporting context only.`);
+      } else if (res.ok && res.data && res.data.found) seedParts.push(`Internal Master Domain List HAS this domain: ${JSON.stringify(res.data)} — lead with it as a strong internal ownership pointer (recorded owner / price / source / category).`);
       else if (res.ok) seedParts.push(`Internal Master Domain List: NO record for this domain (a miss is not evidence either way).`);
       else seedParts.push(`masterlist_lookup errored: ${res.error}`);
     } else if (name === 'universe_ownership') {
