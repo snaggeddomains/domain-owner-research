@@ -704,11 +704,26 @@ a.naming-card-domain:hover { color: var(--coral-deep); text-decoration: underlin
   .contacts .ctype { min-width: 0; margin-right: 6px; }
 }
 @media print {
-  .sidebar, .hero, #report-actions, #status, #run-controls, #market-strip, #deepen-top, #deepen-bar, #evidence, #report-feedback, #report-chat, .copy-emails, #outreach-drawer { display: none !important; }
-  body { background: #fff; color: #000; }
-  #app { display: block; }
-  .content .wrap { max-width: none; padding: 0; }
-  .report { border: 0; background: #fff; padding: 0; box-shadow: none; }
+  /* Hide ALL app chrome — only the report itself should print. This app uses a
+     horizontal #nav/.topbar (there is no .sidebar), plus a cross-module action
+     bar (#domain-bar), the ⌘K palette and slide-over drawers — none of which
+     belong in a PDF. */
+  .topbar, #nav, .nav, .tabnav, #nav-toggle, #domain-bar, #cmdk,
+  #outreach-drawer, #history-drawer, #notif-menu, #login,
+  .hero, #report-actions, #status, #run-controls, #market-strip, #deepen-top,
+  #deepen-bar, #evidence, #report-feedback, #report-chat, .copy-emails,
+  .sidebar { display: none !important; }
+  html, body { background: #fff !important; color: #000 !important; }
+  #app { display: block !important; max-width: none !important; margin: 0 !important; padding: 0 !important; min-height: 0 !important; }
+  .content { display: block !important; flex: none !important; }
+  .content .wrap, .wrap, .wrap--wide { max-width: none !important; margin: 0 !important; padding: 0 !important; }
+  .report { border: 0 !important; background: #fff !important; padding: 0 !important; box-shadow: none !important; }
+  /* Preserve the colored confidence label / badges, and avoid splitting list
+     rows and table rows across pages. */
+  * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+  .report h1, .report h2, .report h3 { break-after: avoid-page; }
+  .report li, .report tr { break-inside: avoid; }
+  @page { margin: 14mm; }
 }
 
 /* Playbook lessons — admin curation + in-chat save flow */
