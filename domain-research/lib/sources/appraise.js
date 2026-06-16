@@ -10,16 +10,38 @@ function headers(env) {
   };
 }
 
-// The result lives under `valuation` (sync/cached) or `results[0].valuation`
-// (completed async job). Dig it out.
-const unwrap = (o) => {
-  if (!o) return o;
-  if (o.valuation) return o.valuation;
-  if (Array.isArray(o.results) && o.results[0]) return o.results[0].valuation || o.results[0];
-  return o.appraisal || o.result || o;
-};
-const hasResult = (o) =>
-  o && (o.valuation || (Array.isArray(o.results) && o.results.length) || o.appraisal || o.result || o.value != null || o.estimated_value != null || o.estimatedValue || o.range);
+// The valuation can arrive in several shapes: directly (sync/cached GET), under
+// `valuation` / `results[0].valuation`, OR — now that Appraise.net is async —
+// nested inside a COMPLETED-job envelope ({success, job_id, status:"completed",
+// job_type:"single", …}) under a field name that has drifted over time. Rather
+// than chase field names, find the valuation by its SIGNATURE (a `factors`
+// block, a value/range field, or notes+domain) anywhere a couple levels deep.
+const looksLikeValuation = (o) =>
+  o && typeof o === 'object' && !Array.isArray(o) &&
+  (o.factors != null || o.value_range != null || o.valueRange != null || o.range != null ||
+    o.estimated_value != null || o.estimatedValue != null || o.value != null ||
+    o.brandScore != null || o.brandability != null || o.appraisedValue != null ||
+    o.fair_market_value != null || o.fairMarketValue != null ||
+    (o.notes != null && o.domain != null));
+const WRAP_KEYS = ['valuation', 'appraisal', 'result', 'results', 'data', 'output', 'report', 'job', 'jobs'];
+function findValuation(o, depth = 0) {
+  if (!o || typeof o !== 'object') return null;
+  if (Array.isArray(o)) {
+    for (const it of o) { const f = findValuation(it, depth + 1); if (f) return f; }
+    return null;
+  }
+  if (looksLikeValuation(o)) return o;
+  if (depth >= 4) return null;
+  for (const k of WRAP_KEYS) {
+    if (o[k] != null) { const f = findValuation(o[k], depth + 1); if (f) return f; }
+  }
+  for (const v of Object.values(o)) {
+    if (v && typeof v === 'object') { const f = findValuation(v, depth + 1); if (f) return f; }
+  }
+  return null;
+}
+const unwrap = (o) => findValuation(o) || (o == null ? o : (o.valuation || (Array.isArray(o.results) && o.results[0] && (o.results[0].valuation || o.results[0])) || o.appraisal || o.result || o));
+const hasResult = (o) => Boolean(findValuation(o));
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const asText = (o) => (typeof o === 'string' ? o : JSON.stringify(o || ''));

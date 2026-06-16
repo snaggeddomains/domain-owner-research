@@ -3350,11 +3350,34 @@ function fmtMoney(v) {
 }
 // Unwrap the valuation whether it's sync/cached (a.valuation) or a completed
 // async job (a.results[0].valuation). Returns the object itself if already flat.
+// Find the valuation object by its SIGNATURE (factors / value / range / notes),
+// digging through a completed async-job envelope ({success, job_id, status, …})
+// whose nesting field has drifted — mirrors findValuation() in lib/sources/appraise.js.
+function looksLikeValuation(o) {
+  return o && typeof o === 'object' && !Array.isArray(o) &&
+    (o.factors != null || o.value_range != null || o.valueRange != null || o.range != null ||
+      o.estimated_value != null || o.estimatedValue != null || o.value != null ||
+      o.brandScore != null || o.brandability != null || o.appraisedValue != null ||
+      o.fair_market_value != null || o.fairMarketValue != null ||
+      (o.notes != null && o.domain != null));
+}
+function findValuation(o, depth) {
+  depth = depth || 0;
+  if (!o || typeof o !== 'object') return null;
+  if (Array.isArray(o)) {
+    for (const it of o) { const f = findValuation(it, depth + 1); if (f) return f; }
+    return null;
+  }
+  if (looksLikeValuation(o)) return o;
+  if (depth >= 4) return null;
+  const wrap = ['valuation', 'appraisal', 'result', 'results', 'data', 'output', 'report', 'job', 'jobs'];
+  for (const k of wrap) { if (o[k] != null) { const f = findValuation(o[k], depth + 1); if (f) return f; } }
+  for (const v of Object.values(o)) { if (v && typeof v === 'object') { const f = findValuation(v, depth + 1); if (f) return f; } }
+  return null;
+}
 function digAppraisal(o) {
   if (!o || typeof o !== 'object') return o;
-  if (o.valuation) return o.valuation;
-  if (Array.isArray(o.results) && o.results[0]) return o.results[0].valuation || o.results[0];
-  return o.appraisal || o.result || o;
+  return findValuation(o) || (o.valuation || (Array.isArray(o.results) && o.results[0] && (o.results[0].valuation || o.results[0])) || o.appraisal || o.result || o);
 }
 function appraisalRange(a) {
   if (!a || typeof a !== 'object') return '';
