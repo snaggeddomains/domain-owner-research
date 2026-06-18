@@ -35,6 +35,26 @@ Password-gated (single `APP_PASSWORD`). Async pipeline runs in Inngest so jobs a
 
 ---
 
+## Shareable report links + OG previews (2026-06-18)
+
+Report deep-links are SPA **hash** routes (`#/r/<slug>`), which link-preview
+crawlers (Slack/iMessage/Twitter) can't read — and the SPA is login-gated — so a
+shared report previewed as the generic app card. Fix:
+
+- **Clean slug.** `buildSlug` (public/app.js) is now `<domain>-<runId>` (dotted
+  domain, no date) — e.g. `inference.com-<uuid>`. `runIdFromHash` still regex-
+  extracts the uuid, so **older dashed/dated slugs keep working**.
+- **Public share route** `api/r.js` at **`/research/r/<slug>`** (vercel.json rewrite
+  → `/api/r?slug=`, placed before the `/research/:path*` catch-all). It's PUBLIC
+  (no auth, no DB): parses the domain from the slug, renders OG/Twitter meta
+  (`Domain Owner Report — <domain>`), then redirects a real visitor into the gated
+  SPA (`#/r/<slug>`). Exposes only the domain (already in the URL), never report
+  content. Handles both new and legacy slug shapes.
+- **Share button** (`share()` in app.js) copies the path URL
+  `https://app.snagged.com/research/r/<slug>` instead of the bare hash href.
+- The snagged-admin proxy already forwards `/research/:path*`, so no admin change.
+  Research has **no preview builds** — this only previews correctly once on `main`.
+
 ## Branch & deploy
 
 - `main` → production (research.snagged.com), no preview builds (Ignored Build Step cancels non-prod).
