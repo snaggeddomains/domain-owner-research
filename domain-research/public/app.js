@@ -2087,15 +2087,28 @@ els.shareBtn?.addEventListener('click', async () => {
   // read the SPA's #hash, so the bare href would preview generically.
   const m = location.hash.match(/^#\/r\/(.+)$/);
   const shareUrl = m ? `${location.origin}/research/r/${m[1]}` : window.location.href;
-  try {
-    await navigator.clipboard.writeText(shareUrl);
+  const flash = () => {
     b.classList.add('copied');
     const prev = b.getAttribute('title');
     b.setAttribute('title', 'Link copied!');
     setTimeout(() => { b.classList.remove('copied'); b.setAttribute('title', prev || 'Share'); }, 1600);
+  };
+  // On mobile (iPhone/Android) the native share sheet is the expected behavior and
+  // works inside in-app webviews where clipboard/prompt are often no-ops — which is
+  // why "nothing happened" on iOS. Try it first, then fall back to clipboard, then
+  // to a prompt the user can copy from.
+  if (navigator.share) {
+    try { await navigator.share({ title: document.title || 'Domain Owner Report', url: shareUrl }); return; }
+    catch (e) { if (e && e.name === 'AbortError') return; /* user dismissed — done */ }
+  }
+  try {
+    if (!navigator.clipboard || !navigator.clipboard.writeText) throw new Error('no clipboard');
+    await navigator.clipboard.writeText(shareUrl);
+    flash();
   } catch {
-    // Clipboard blocked — fall back to a prompt the user can copy from.
-    window.prompt('Copy this link to share the report:', shareUrl);
+    // Clipboard blocked / unavailable — fall back to a prompt the user can copy from.
+    try { window.prompt('Copy this link to share the report:', shareUrl); }
+    catch { flash(); /* even prompt blocked — at least show the copied affordance */ }
   }
 });
 
