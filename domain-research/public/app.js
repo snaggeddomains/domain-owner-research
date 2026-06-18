@@ -435,17 +435,14 @@ function fmtElapsed(ms) {
 const SLOW_MS = 12 * 60 * 1000;
 const STALL_MS = 40 * 60 * 1000;
 
-// Deeplink helpers — reports live at a readable slug ending in the run id:
-//   #/r/<sld>-<tld>-<DD>-<MM>-<YYYY>-<runId>
+// Deeplink helpers — reports live at a clean, domain-led slug ending in the run
+// id:  #/r/<domain>-<runId>   (e.g. inference.com-67edc1fd-…). The dotted domain
+// reads as the real domain and powers the share link's preview title; the run id
+// is what actually resolves the report (runIdFromHash regex-extracts it, so older
+// dashed/dated slugs still work).
 function buildSlug(run) {
-  const d = String(run.domain || '').toLowerCase().replace(/[^a-z0-9.-]/g, '');
-  const parts = d.split('.').filter(Boolean);
-  const tld = parts.length > 1 ? parts.pop() : '';
-  const sld = (parts.join('-') || d).replace(/[^a-z0-9-]/g, '');
-  const t = run.created_at ? new Date(run.created_at) : new Date();
-  const pad = (n) => String(n).padStart(2, '0');
-  const date = `${pad(t.getUTCDate())}-${pad(t.getUTCMonth() + 1)}-${t.getUTCFullYear()}`;
-  return `${[sld, tld, date].filter(Boolean).join('-')}-${run.id}`;
+  const d = String(run.domain || '').toLowerCase().replace(/[^a-z0-9.-]/g, '').replace(/^-+|-+$/g, '');
+  return `${d}-${run.id}`;
 }
 function runIdFromHash() {
   const m = location.hash.match(/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i);
@@ -2085,15 +2082,20 @@ els.backBtn?.addEventListener('click', () => history.back());
 // Share — copy the current report's URL to the clipboard with a brief confirmation.
 els.shareBtn?.addEventListener('click', async () => {
   const b = els.shareBtn;
+  // Prefer the public, path-based share URL (/research/r/<slug>) so the link
+  // previews with a proper "Domain Owner Report — <domain>" card. Crawlers can't
+  // read the SPA's #hash, so the bare href would preview generically.
+  const m = location.hash.match(/^#\/r\/(.+)$/);
+  const shareUrl = m ? `${location.origin}/research/r/${m[1]}` : window.location.href;
   try {
-    await navigator.clipboard.writeText(window.location.href);
+    await navigator.clipboard.writeText(shareUrl);
     b.classList.add('copied');
     const prev = b.getAttribute('title');
     b.setAttribute('title', 'Link copied!');
     setTimeout(() => { b.classList.remove('copied'); b.setAttribute('title', prev || 'Share'); }, 1600);
   } catch {
     // Clipboard blocked — fall back to a prompt the user can copy from.
-    window.prompt('Copy this link to share the report:', window.location.href);
+    window.prompt('Copy this link to share the report:', shareUrl);
   }
 });
 

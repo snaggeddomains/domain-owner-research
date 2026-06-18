@@ -66,6 +66,7 @@
     { "source": "/research/whois/:slug*", "destination": "/index.html" },
     { "source": "/research/portfolio", "destination": "/index.html" },
     { "source": "/research/portfolio/:slug*", "destination": "/index.html" },
+    { "source": "/research/r/:slug*", "destination": "/api/r?slug=:slug*" },
     { "source": "/research/api/:fn*", "destination": "/api/:fn*" },
     { "source": "/research/:path*", "destination": "/:path*" }
   ]
