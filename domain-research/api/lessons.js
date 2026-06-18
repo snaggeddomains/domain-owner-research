@@ -1,4 +1,4 @@
-import { isAuthed, requirePermission, requireAdmin } from '../lib/auth.js';
+import { isAuthed, requirePermission, requireAdmin, userCan } from '../lib/auth.js';
 import { isDbConfigured } from '../lib/db/supabase.js';
 import { createLesson, listLessons, updateLesson, deleteLesson } from '../lib/db/lessons.js';
 import { distillLesson } from '../lib/llm/distill.js';
@@ -11,15 +11,17 @@ import { withCategory } from '../lib/db/usage.js';
 
 export const config = { maxDuration: 30 };
 
-// Notify curators (admins) when a lesson is submitted for review — bell + email,
-// the same two channels as a finished report. Best-effort: a notify failure must
-// never fail the submission. Skips the submitter (no self-notify). The Lessons
-// curation view lives at /research/admin.
+// Notify every admin / lesson curator when a lesson is submitted for review —
+// bell + email, the same two channels as a finished report. Best-effort: a notify
+// failure must never fail the submission. Skips the submitter (no self-notify).
+// Recipients = anyone marked as Admin (the is_admin owner flag OR the `admin`
+// umbrella permission) PLUS anyone granted `admin.lessons.approve` — i.e. exactly
+// the people who can act on the pending lesson. The curation view is /research/admin.
 async function notifyAdminsOfLesson(lesson, submitter) {
   try {
     const users = await listUsers();
     const admins = (users || []).filter(
-      (u) => u && u.is_admin && (!submitter || u.id !== submitter.id),
+      (u) => u && (userCan(u, 'admin') || userCan(u, 'admin.lessons.approve')) && (!submitter || u.id !== submitter.id),
     );
     if (!admins.length) return;
     const who = (submitter && submitter.email) || 'someone';
