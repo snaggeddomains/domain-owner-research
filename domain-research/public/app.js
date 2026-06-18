@@ -2082,11 +2082,24 @@ els.backBtn?.addEventListener('click', () => history.back());
 // Share — copy the current report's URL to the clipboard with a brief confirmation.
 els.shareBtn?.addEventListener('click', async () => {
   const b = els.shareBtn;
-  // Prefer the public, path-based share URL (/research/r/<slug>) so the link
-  // previews with a proper "Domain Owner Report — <domain>" card. Crawlers can't
-  // read the SPA's #hash, so the bare href would preview generically.
+  // Public, path-based share URL (/research/r/<slug>) so the link previews with a
+  // proper "Domain Owner Report — <domain>" card (crawlers can't read the #hash).
+  // Keep it SHORT/clean: <domain>-<8-hex of the run id>; the share route resolves
+  // that back to the full report (scoped by the domain). Falls back to the full
+  // slug if the hash shape is unexpected.
   const m = location.hash.match(/^#\/r\/(.+)$/);
-  const shareUrl = m ? `${location.origin}/research/r/${m[1]}` : window.location.href;
+  let shareUrl = window.location.href;
+  if (m) {
+    const slug = m[1];
+    const u = slug.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i);
+    if (u) {
+      const dom = slug.slice(0, u.index).replace(/-+$/, '');     // domain before the id
+      const short = u[0].replace(/-/g, '').slice(0, 8);          // first 8 hex of the id
+      shareUrl = `${location.origin}/research/r/${dom}-${short}`;
+    } else {
+      shareUrl = `${location.origin}/research/r/${slug}`;
+    }
+  }
   const flash = () => {
     b.classList.add('copied');
     const prev = b.getAttribute('title');

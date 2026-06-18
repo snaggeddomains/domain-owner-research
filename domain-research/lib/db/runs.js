@@ -16,6 +16,25 @@ export async function getRun(id) {
   return data || null;
 }
 
+// Resolve a short share token (the leading hex chars of a run id) to the full run
+// id, scoped by the slug's domain so the scan is tiny — a domain has only a handful
+// of reports. Lets share links stay short (/research/r/<domain>-<8hex>) without a
+// schema change. Returns the newest matching id, or null.
+export async function resolveRunIdByShort(domain, token) {
+  const t = String(token || '').toLowerCase().replace(/[^0-9a-f]/g, '');
+  const dom = String(domain || '').toLowerCase().trim();
+  if (!dom || t.length < 4) return null;
+  const { data, error } = await getDb()
+    .from(RUNS)
+    .select('id, created_at')
+    .ilike('domain', dom)
+    .order('created_at', { ascending: false })
+    .limit(50);
+  if (error || !data) return null;
+  const hit = data.find((r) => String(r.id || '').replace(/-/g, '').toLowerCase().startsWith(t));
+  return hit ? hit.id : null;
+}
+
 // Lightweight list for the Projects view (no heavy report payload). Optional
 // case-insensitive domain filter.
 //

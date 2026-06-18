@@ -11,14 +11,21 @@
 // It exposes ONLY the domain name, which is already in the shared URL — never any
 // report content. No auth, no DB: the domain is parsed from the slug.
 
-const UUID_RE = /-?[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
+import { resolveRunIdByShort } from "../lib/db/runs.js";
+import { isDbConfigured } from "../lib/db/supabase.js";
 
-// Recover the human domain from a report slug. New slugs keep the dotted domain
-// (`inference.com-<uuid>`); legacy slugs dashed it and carried a date
-// (`inference-com-09-06-2026-<uuid>`). Handle both.
+const FULL_UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
+const UUID_RE = /-?[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
+// A short share token: the leading hex of a run id, trailing the slug.
+const SHORT_TOKEN = /-([0-9a-f]{6,12})$/i;
+
+// Recover the human domain from a report slug. Slugs are <domain>-<token> where
+// the token is a full run id (in-app links / legacy) OR a short hex id (clean
+// share links). Legacy slugs dashed the domain and carried a date. Handle all.
 function domainFromSlug(slug) {
   let s = String(slug || "").trim().toLowerCase();
-  s = s.replace(UUID_RE, "");              // drop the trailing run id
+  s = s.replace(UUID_RE, "");               // drop a full run id
+  s = s.replace(SHORT_TOKEN, "");           // drop a short share token
   s = s.replace(/-\d{2}-\d{2}-\d{4}$/, ""); // drop a legacy -DD-MM-YYYY date
   s = s.replace(/[-/.]+$/, "");             // trailing separators
   // Legacy slugs had no dot (sld-tld) — restore the final dash to a dot.
@@ -33,7 +40,7 @@ function esc(s) {
   return String(s || "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 }
 
-export default function handler(req, res) {
+export default async function handler(req, res) {
   const slug = String((req.query && req.query.slug) || "").trim();
   const domain = domainFromSlug(slug);
   const title = domain ? `Domain Owner Report — ${domain}` : "Domain Owner Report";
@@ -43,7 +50,20 @@ export default function handler(req, res) {
 
   const base = "https://app.snagged.com/research";
   const shareUrl = `${base}/r/${slug}`;
-  const target = slug ? `${base}#/r/${slug}` : base; // gated SPA report route
+  // The SPA report route needs the FULL run id. A clean share link only carries a
+  // short token, so resolve it (scoped by the domain in the slug) to the full id.
+  // Full-id / legacy slugs already resolve in-SPA, so pass them straight through.
+  let redirectSlug = slug;
+  if (slug && !FULL_UUID.test(slug)) {
+    const sm = slug.match(SHORT_TOKEN);
+    if (sm && domain && isDbConfigured()) {
+      try {
+        const fullId = await resolveRunIdByShort(domain, sm[1]);
+        if (fullId) redirectSlug = `${domain}-${fullId}`;
+      } catch { /* fall back to the slug as-is */ }
+    }
+  }
+  const target = slug ? `${base}#/r/${redirectSlug}` : base; // gated SPA report route
   const image = `${base}/og-image.png`;
 
   const T = esc(title), D = esc(description), U = esc(shareUrl), I = esc(image), G = esc(target);
