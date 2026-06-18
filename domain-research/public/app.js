@@ -2614,10 +2614,16 @@ function renderNameBio(el, data) {
   const sales = data && Array.isArray(data.sales) ? data.sales : [];
   if (!sales.length) { el.hidden = true; el.innerHTML = ''; return; }
   const fmt = (n) => '$' + Number(n).toLocaleString();
+  // Each recorded sale links out to the domain's NameBio page (where the
+  // transaction is listed). NameBio's per-domain page is namebio.com/<domain>.
+  const dom = el.dataset.domain || '';
+  const nbUrl = dom ? `https://namebio.com/${encodeURIComponent(dom)}` : 'https://namebio.com/';
   const rows = sales.slice(0, 10).map((s) =>
-    `<li><span class="nb-price">${fmt(s.price)}</span>`
+    `<li><a class="nb-row" href="${nbUrl}" target="_blank" rel="noreferrer noopener" title="View this sale on NameBio">`
+    + `<span class="nb-price">${fmt(s.price)}</span>`
     + `<span class="nb-date">${escapeHtml(s.date || '')}</span>`
-    + `<span class="nb-venue">${escapeHtml(s.venue || '')}</span></li>`).join('');
+    + `<span class="nb-venue">${escapeHtml(s.venue || '')}</span>`
+    + `<span class="nb-ext" aria-hidden="true">↗</span></a></li>`).join('');
   el.innerHTML = `<div class="nb-head"><span class="nb-badge">NameBio</span> Previous sales (${sales.length})</div>`
     + `<ul class="nb-list">${rows}</ul>`;
   el.hidden = false;
