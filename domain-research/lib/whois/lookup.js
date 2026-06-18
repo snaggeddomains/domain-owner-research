@@ -51,6 +51,19 @@ async function fetchRdap(url) {
   }
 }
 
+// DNS nameservers via DoH (Google) — used to corroborate an RDAP "not-found"
+// before declaring a domain available. A domain with live NS delegation is
+// registered, full stop, even when RDAP/WHOIS coverage is thin. NS record = type 2.
+async function dnsNameservers(domain) {
+  try {
+    const j = await fetchJson(`https://dns.google/resolve?name=${encodeURIComponent(domain)}&type=NS`);
+    const ans = (j && Array.isArray(j.Answer)) ? j.Answer : [];
+    return ans.filter((a) => a && a.type === 2).map((a) => String(a.data || '').replace(/\.$/, '').toLowerCase()).filter(Boolean);
+  } catch {
+    return [];
+  }
+}
+
 // Flatten an RDAP jCard (vcardArray) into the fields we care about.
 function parseVcard(vcardArray) {
   const out = { fn: '', org: '', email: '', tel: '', country: '', region: '' };
@@ -158,8 +171,18 @@ export async function whoisLookup(domainRaw) {
   const rdap = rdapR.status === 'fulfilled' ? rdapR.value : { ok: false };
   const whois = whoisR.status === 'fulfilled' ? whoisR.value : null;
 
+  // RDAP "not-found" is NOT proof of availability: some ccTLD registries (e.g.
+  // .co) aren't in IANA's RDAP bootstrap, so rdap.org 404s a perfectly registered
+  // domain. Before declaring available, corroborate with the legacy WHOIS leg and
+  // a DNS NS lookup — either one finding a record means it's registered.
+  let dnsNs = [];
   if (rdap && rdap.available) {
-    return { domain, available: true, registrar: null, dates: {}, statuses: [], nameservers: [], contacts: {}, privacy: false, sources: { rdap: rdap.source, whois: null }, raw: {} };
+    const whoisRegistered = !!(whois && (whois.created || whois.registrar || (whois.nameservers && whois.nameservers.length)));
+    if (!whoisRegistered) dnsNs = await dnsNameservers(domain);
+    if (!whoisRegistered && dnsNs.length === 0) {
+      return { domain, available: true, registrar: null, dates: {}, statuses: [], nameservers: [], contacts: {}, privacy: false, sources: { rdap: rdap.source, whois: null }, raw: {} };
+    }
+    // Registered after all — fall through and build the result from WHOIS + DNS.
   }
 
   // Prefer RDAP for the structured core; fall back to WHOIS field-by-field.
@@ -171,7 +194,9 @@ export async function whoisLookup(domainRaw) {
     updated: (rdap.dates && rdap.dates.updated) || (whois && whois.updated) || null,
   };
   const statuses = (rdap.statuses && rdap.statuses.length) ? rdap.statuses : (whois ? whois.status || [] : []);
-  const nameservers = (rdap.nameservers && rdap.nameservers.length) ? rdap.nameservers : (whois ? whois.nameservers || [] : []);
+  const nameservers = (rdap.nameservers && rdap.nameservers.length) ? rdap.nameservers
+    : (whois && whois.nameservers && whois.nameservers.length) ? whois.nameservers
+    : dnsNs;
 
   // Registrant: RDAP rarely exposes it (GDPR); WHOIS often does. Merge per-field.
   const rReg = (rdap.contacts && rdap.contacts.registrant) || {};
