@@ -98,6 +98,10 @@ const els = {
   hdBody: $('hd-body'),
   hdStatus: $('hd-status'),
   reportFeedback: $('report-feedback'),
+  reportNotes: $('report-notes'),
+  rnText: $('rn-text'),
+  rnSave: $('rn-save'),
+  rnStatus: $('rn-status'),
   rfYes: $('rf-yes'),
   rfNo: $('rf-no'),
   rfCorrection: $('rf-correction'),
@@ -1158,11 +1162,68 @@ function setReportTitle(domain) {
     currentReportDomain = domain;
     els.reportDomain.hidden = false;
     els.reportDomain.textContent = `Domain Ownership Report — ${domain}`;
+    loadDomainNotes(domain);
   } else {
     els.reportDomain.hidden = true;
     els.reportDomain.textContent = '';
+    if (els.reportNotes) els.reportNotes.hidden = true;
   }
 }
+
+// ── Per-domain user notes (persist across re-runs; ingested by the agent) ─────
+// Keyed by DOMAIN, so they stay attached to the report through free/deep/refresh
+// re-runs and are never overwritten by a regenerated report.
+let notesDirty = false;
+function setNotesStatus(msg) { if (els.rnStatus) els.rnStatus.textContent = msg || ''; }
+function markNotesSaved(savedAt, by) {
+  notesDirty = false;
+  if (els.rnSave) { els.rnSave.disabled = true; els.rnSave.textContent = 'Saved'; }
+  if (savedAt) {
+    const who = by ? ` by ${by}` : '';
+    setNotesStatus(`Last saved ${agoLabel(Date.parse(savedAt))}${who}`);
+  }
+}
+async function loadDomainNotes(domain) {
+  if (!els.reportNotes || !els.rnText || !domain) return;
+  els.reportNotes.hidden = false;
+  els.reportNotes.dataset.domain = domain;
+  els.rnText.value = '';
+  setNotesStatus('');
+  notesDirty = false;
+  if (els.rnSave) { els.rnSave.disabled = true; els.rnSave.textContent = 'Saved'; }
+  try {
+    const r = await fetch(`/research/api/notes?domain=${encodeURIComponent(domain)}`, { cache: 'no-store' });
+    const j = await r.json().catch(() => ({}));
+    if (els.reportNotes.dataset.domain !== domain) return; // a newer report superseded this
+    if (r.ok && j && j.ok) {
+      els.rnText.value = j.notes || '';
+      if (j.updated_at) markNotesSaved(j.updated_at, j.updated_by);
+    }
+  } catch { /* notes are optional — never block the report */ }
+}
+async function saveDomainNotes() {
+  const domain = (els.reportNotes && els.reportNotes.dataset.domain) || currentReportDomain;
+  if (!domain || !els.rnText) return;
+  if (els.rnSave) { els.rnSave.disabled = true; els.rnSave.textContent = 'Saving…'; }
+  try {
+    const r = await fetch('/research/api/notes', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ domain, notes: els.rnText.value }),
+    });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok || !j.ok) throw new Error((j && j.error) || `Failed (${r.status})`);
+    markNotesSaved(j.updated_at || new Date().toISOString(), j.updated_by);
+  } catch (e) {
+    if (els.rnSave) { els.rnSave.disabled = false; els.rnSave.textContent = 'Save notes'; }
+    setNotesStatus(String((e && e.message) || e));
+  }
+}
+els.rnText?.addEventListener('input', () => {
+  notesDirty = true;
+  if (els.rnSave) { els.rnSave.disabled = false; els.rnSave.textContent = 'Save notes'; }
+  setNotesStatus('Unsaved changes');
+});
+els.rnSave?.addEventListener('click', () => { if (notesDirty) void saveDomainNotes(); });
 // "<Type> · <datetime> · Refresh" — shown on any DONE report. Type tells the
 // user whether they're looking at the free pre-flight or a paid deep run;
 // the datetime lets them gauge staleness (especially on historical reports);
@@ -2689,6 +2750,7 @@ function enterResultMode(domain) {
   els.reportActions.hidden = true;
   els.report.hidden = true;
   if (els.reportFeedback) els.reportFeedback.hidden = true;
+  if (els.reportNotes) els.reportNotes.hidden = true;
   if (els.reportChat) { els.reportChat.hidden = true; chatLoadedFor = null; }
   els.evidence.hidden = true;
   els.deepenTop.hidden = true;
@@ -2881,6 +2943,7 @@ async function openProject(id) {
         els.deepenTop.hidden = true;
         els.deepenBar.hidden = true;
         if (els.reportFeedback) els.reportFeedback.hidden = true;
+  if (els.reportNotes) els.reportNotes.hidden = true;
         setReportMeta(r.created_at, r.report && r.report.phase, { deepIncomplete: r.report.phase !== 'deep' });
         setStatus('');
         if (els.runControls) els.runControls.hidden = true;
@@ -2893,7 +2956,8 @@ async function openProject(id) {
         renderReport(r.report);
         els.deepenTop.hidden = true;
         els.deepenBar.hidden = true; // a pass is already running
-        if (els.reportFeedback) els.reportFeedback.hidden = true; // it'll be replaced by the deep report
+        if (els.reportFeedback) els.reportFeedback.hidden = true;
+  if (els.reportNotes) els.reportNotes.hidden = true; // it'll be replaced by the deep report
       }
       startPolling(id, `Researching ${r.domain || ''}`);
     }
@@ -3618,6 +3682,7 @@ function showEntry() {
   if (els.runControls) els.runControls.hidden = true;
   els.report.hidden = true;
   if (els.reportFeedback) els.reportFeedback.hidden = true;
+  if (els.reportNotes) els.reportNotes.hidden = true;
   if (els.reportChat) { els.reportChat.hidden = true; chatLoadedFor = null; }
   els.deepenTop.hidden = true;
   els.deepenBar.hidden = true;

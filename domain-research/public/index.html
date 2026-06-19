@@ -28,7 +28,7 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="apple-mobile-web-app-title" content="Snagged Research" />
     <meta name="theme-color" content="#254254" />
-    <link rel="stylesheet" href="styles.css?v=20260619share" />
+    <link rel="stylesheet" href="styles.css?v=20260619notes" />
     <!-- Layout: horizontal tab nav (Admin-style), no sidebar. -->
   </head>
   <body>
@@ -281,6 +281,15 @@
             </div>
             <div id="rf-thanks" class="rf-thanks" hidden>Thanks — saved to the known-owners cache &amp; eval set.</div>
           </div>
+
+          <section id="report-notes" class="report-notes" hidden>
+            <div class="rn-head">&#128221; Your notes <span class="rn-sub">— attached to this report, kept across every re-run, and fed into the research</span></div>
+            <textarea id="rn-text" class="rn-text" rows="4" placeholder="Add context, leads, or corrections about this domain. These stay attached to the report no matter how it changes, and are used the next time you run free or deep research."></textarea>
+            <div class="rn-row">
+              <button id="rn-save" class="rn-save" type="button" disabled>Saved</button>
+              <span id="rn-status" class="rn-status"></span>
+            </div>
+          </section>
 
           <section id="report-chat" class="report-chat" hidden>
             <div class="rc-head">Refine this report — ask a follow-up or request a lookup</div>
@@ -987,6 +996,6 @@ The model parses it into structured filters (TLDs, length, budget, tone, etc.) a
     </div>
 
     <!-- Bump ?v= on any public/app.js or styles.css change to bust caches. -->
-    <script src="app.js?v=20260619share"></script>
+    <script src="app.js?v=20260619notes"></script>
   </body>
 </html>

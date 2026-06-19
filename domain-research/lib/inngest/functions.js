@@ -1,6 +1,7 @@
 import { inngest, RUN_REQUESTED, CHAT_REQUESTED, RUN_CANCELLED, SALES_RESEARCH_REQUESTED, SALES_ANGLES_REQUESTED, PORTFOLIO_REQUESTED } from './client.js';
 import { gather, critique, chatTurn } from '../agent.js';
 import { setRunStatus, saveRunReport, failRun, getRun } from '../db/runs.js';
+import { getDomainNotes } from '../db/notes.js';
 import { getChat, updateTurn } from '../db/chat.js';
 import { getUser } from '../db/users.js';
 import { createNotification } from '../db/notifications.js';
@@ -272,6 +273,13 @@ export const runResearch = inngest.createFunction(
       ? await step.run('load-chat-corrections', async () => formatChatCorrections(await getChat(runId)))
       : '';
 
+    // User notes attached to this domain's report (kept per-domain so they
+    // survive every rerun). Fed into gather + critique as authoritative context
+    // so a rerun ingests them and lets them add color to the results. Best-effort.
+    const userNotes = await step.run('load-user-notes', () =>
+      getDomainNotes(domain).then((n) => (n && n.notes) || '').catch(() => ''),
+    );
+
     try {
       let report;
       let trace;
@@ -285,7 +293,7 @@ export const runResearch = inngest.createFunction(
         if (!draft) throw new Error('regenerate-synth: existing draft is empty — run gather first');
         await step.run('mark-verifying', () => setRunStatus(runId, 'running', 'regenerating'));
         const refined = await step.run('critique-regen', () =>
-          withCategory('domain_owner', () => critique({ domain, env: process.env, tier, draft, priorTrace, lessons, chatCorrections })),
+          withCategory('domain_owner', () => critique({ domain, env: process.env, tier, draft, priorTrace, lessons, chatCorrections, userNotes })),
         );
         report = refined.report;
         trace = refined.trace;
@@ -300,7 +308,7 @@ export const runResearch = inngest.createFunction(
         // For regenerate-deep, chatCorrections gets folded into the user
         // prompt so the new pass anchors on the user's confirmed findings.
         gathered = await step.run('gather', () =>
-          withCategory('domain_owner', () => gather({ domain, question, env: process.env, tier, lessons, chatCorrections })),
+          withCategory('domain_owner', () => gather({ domain, question, env: process.env, tier, lessons, chatCorrections, userNotes })),
         );
 
         report = gathered.report;
@@ -311,7 +319,7 @@ export const runResearch = inngest.createFunction(
         if ((deep || isRegenDeep) && process.env.RESEARCH_CRITIQUE !== 'off') {
           await step.run('mark-verifying', () => setRunStatus(runId, 'running', 'verifying'));
           const refined = await step.run('critique', () =>
-            withCategory('domain_owner', () => critique({ domain, env: process.env, tier, draft: report, priorTrace: trace, lessons, chatCorrections })),
+            withCategory('domain_owner', () => critique({ domain, env: process.env, tier, draft: report, priorTrace: trace, lessons, chatCorrections, userNotes })),
           );
           report = refined.report;
           trace = refined.trace;

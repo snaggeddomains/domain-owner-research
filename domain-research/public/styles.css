@@ -358,6 +358,16 @@ a.naming-card-domain:hover { color: var(--coral-deep); text-decoration: underlin
 /* NameBio previous-sales call-out (Appraisal + Domain Owner) — gold accent so a
    domain with real sale history stands out. */
 .namebio-callout { margin: 0 0 18px; padding: 12px 16px; border-radius: 10px; background: rgba(184,134,11,.09); border: 1px solid rgba(184,134,11,.45); }
+/* Per-domain user notes attached to a report (persist across re-runs). */
+.report-notes { margin: 18px 0 8px; padding: 14px 16px; border: 1px solid var(--line, #e3ddcf); border-left: 4px solid var(--coral-deep, #c0492f); border-radius: 12px; background: #fbf8ef; }
+.report-notes .rn-head { font-weight: 800; color: var(--navy, #254254); font-size: 14px; margin-bottom: 8px; }
+.report-notes .rn-sub { font-weight: 500; color: var(--navy-3, #857c6c); font-size: 12px; }
+.report-notes .rn-text { width: 100%; box-sizing: border-box; padding: 10px 12px; font: inherit; font-size: 13.5px; line-height: 1.5; color: var(--navy, #254254); border: 1px solid #d8d0bf; border-radius: 10px; resize: vertical; background: #fff; }
+.report-notes .rn-row { display: flex; align-items: center; gap: 12px; margin-top: 8px; }
+.report-notes .rn-save { padding: 5px 14px; font-size: 13px; font-weight: 700; border-radius: 8px; border: 1px solid var(--coral-deep, #c0492f); background: #fff; color: var(--coral-deep, #c0492f); cursor: pointer; }
+.report-notes .rn-save:disabled { color: #9a9486; border-color: #d8d0bf; cursor: default; }
+.report-notes .rn-status { font-size: 12px; color: var(--navy-3, #857c6c); }
+
 .namebio-callout .nb-head { font-weight: 800; color: #8a6d0b; font-size: 14px; margin-bottom: 9px; display: flex; align-items: center; gap: 8px; }
 .namebio-callout .nb-badge { font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: .05em; color: #fff; background: #b8860b; border-radius: 999px; padding: 2px 8px; }
 .namebio-callout .nb-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }

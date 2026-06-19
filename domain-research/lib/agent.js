@@ -181,7 +181,7 @@ function getProvider(env) {
 // Phase 1 of the pipeline: deterministic pre-runs + the main agent loop that
 // drafts a report. Returned shape is JSON-serializable so it can be the result
 // of an Inngest step.
-export async function gather({ domain, question, history = [], env, tier = 'all', lessons = '', chatCorrections = '' }) {
+export async function gather({ domain, question, history = [], env, tier = 'all', lessons = '', chatCorrections = '', userNotes = '' }) {
   const provider = getProvider(env);
   const { toolSpecs, agentToolSpecs, toRun } = deriveTooling(env, tier);
 
@@ -254,12 +254,21 @@ export async function gather({ domain, question, history = [], env, tier = 'all'
   const correctionsNote = chatCorrections
     ? `\n\n[USER-CONFIRMED CORRECTIONS from prior refine chat — treat as authoritative facts that the report MUST reflect; verify with tools where it would strengthen the case, but do not contradict them]:\n${chatCorrections}`
     : '';
+  // The user attached freeform notes to this domain's report (off-the-record
+  // context, leads, or corrections that may not be in the public record). Treat
+  // them as authoritative context to weigh and weave in — they add color and can
+  // override the public record; if your findings disagree, say so explicitly
+  // rather than ignoring them. They are NOT a substitute for verification.
+  const notesNote = (userNotes && userNotes.trim())
+    ? `\n\n[NOTES the user attached to this report — authoritative context to weigh, weave into the analysis, and let guide which leads to chase. Do NOT ignore or silently discard them; where your findings disagree, acknowledge the note and explain. Do not fabricate to fit them]:\n${userNotes.trim().slice(0, 4000)}`
+    : '';
   const userPrompt =
     (question ? `Research the domain: ${domain}\n\nSpecific question: ${question}` : `Research the domain: ${domain}`) +
     knownNote +
     seedNote +
     deepNote +
-    correctionsNote;
+    correctionsNote +
+    notesNote;
 
   const result = await provider.runAgent({
     system: SYSTEM_PROMPT + (lessons || ''),
@@ -288,7 +297,7 @@ export async function gather({ domain, question, history = [], env, tier = 'all'
 // finds, then re-emits the report. Split out so each phase gets its own
 // Vercel-function budget when run as separate Inngest steps. Disable with
 // RESEARCH_CRITIQUE=off. Shallow tier skips this entirely.
-export async function critique({ domain, env, tier = 'all', draft, priorTrace = [], lessons = '', chatCorrections = '' }) {
+export async function critique({ domain, env, tier = 'all', draft, priorTrace = [], lessons = '', chatCorrections = '', userNotes = '' }) {
   // The regenerate-from-chat synth flow runs critique() to rebuild the
   // report from existing trace + user corrections — and that's worth doing
   // even when tier !== 'all' or critique is disabled, because the corrections
@@ -314,6 +323,9 @@ export async function critique({ domain, env, tier = 'all', draft, priorTrace = 
     `- If the domain is marketplace-consigned, did we follow the seller-portfolio link (marketplace_check.seller_portfolio) and confirm it with analytics_footprint?\n` +
     `Close any gap you can, then OUTPUT ONLY THE COMPLETE corrected report in the SAME two-part format (the fenced \`\`\`json block first, then the Markdown sections). CRITICAL: output the finished report and NOTHING ELSE — no "Critique", no "Fixes applied", no "the draft listed…", no reviewer notes or commentary about what you changed. The user sees only this text, so it must read as the final clean report. If the draft is already correct, output it unchanged.\n\nDRAFT REPORT:\n\n${draft}` +
     knownNote +
+    ((userNotes && userNotes.trim())
+      ? `\n\nNOTES the user attached to this report — authoritative context to honor and weave into the final report (they may add color the public record lacks). Do not discard them; where the report disagrees, acknowledge the note rather than ignore it. Do not fabricate to fit them:\n${userNotes.trim().slice(0, 4000)}`
+      : '') +
     (hasCorrections
       ? `\n\nUSER-CONFIRMED CORRECTIONS from the refine chat AFTER the draft was written — these are authoritative facts the regenerated report MUST reflect. Apply them: update the json block (likely_owner, owner_type, confidence, contacts, contact_path, timeline) AND the Markdown sections to incorporate every confirmed fact. Drop or rewrite any section of the draft that contradicts them. Where the corrections change the named owner, restructure the entire report around the new owner (the prior owner's threads can be summarized as "historical" or dropped if the corrections explicitly retire them). Verify the corrections with tools where doing so would strengthen the case, but do not contradict them.\n\nCorrections:\n${chatCorrections}`
       : '');

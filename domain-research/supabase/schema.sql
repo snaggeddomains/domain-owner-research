@@ -514,6 +514,18 @@ create table if not exists domain_research_portfolio_domains (
 );
 create index if not exists idx_portfolio_domains_run on domain_research_portfolio_domains (run_id, sld_length);
 
+-- ── Per-domain user notes attached to a Domain Owner report ─────────────────
+-- Keyed by DOMAIN (not run) so a user's notes persist across EVERY re-run (free,
+-- deep, deepen, regenerate, or a forced fresh research that creates a new run id)
+-- and are never overwritten by a regenerated report. On a rerun the agent ingests
+-- them as authoritative context. RLS auto-enabled by the loop below.
+create table if not exists domain_research_notes (
+  domain     text primary key,
+  notes      text not null default '',
+  updated_at timestamptz not null default now(),
+  updated_by text
+);
+
 -- ── Enable RLS (no policies → backend secret key only) ──────────────────────
 do $$
 declare t text;
