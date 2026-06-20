@@ -28,7 +28,7 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="apple-mobile-web-app-title" content="Snagged Research" />
     <meta name="theme-color" content="#254254" />
-    <link rel="stylesheet" href="styles.css?v=20260619notes" />
+    <link rel="stylesheet" href="styles.css?v=20260620email" />
     <!-- Layout: horizontal tab nav (Admin-style), no sidebar. -->
   </head>
   <body>
@@ -293,6 +293,21 @@
 
           <section id="report-chat" class="report-chat" hidden>
             <div class="rc-head">Refine this report — ask a follow-up or request a lookup</div>
+            <div id="chat-email" class="chat-email" hidden>
+              <div class="ce-bar">
+                <button id="ce-toggle" type="button" class="ce-toggle" title="Pull relevant email threads from our inboxes into this chat as context">📎 Attach email</button>
+                <span id="ce-attached" class="ce-attached"></span>
+              </div>
+              <div id="ce-panel" class="ce-panel" hidden>
+                <div class="ce-search">
+                  <input id="ce-q" type="text" placeholder="Search our inboxes (defaults to this domain)…" />
+                  <button id="ce-search-btn" type="button" class="ce-btn">Search</button>
+                  <button id="ce-refresh" type="button" class="ce-btn" title="Re-pull attached threads so new replies get ingested">↻ Refresh</button>
+                </div>
+                <div id="ce-results" class="ce-results"></div>
+                <div id="ce-status" class="ce-status muted" hidden></div>
+              </div>
+            </div>
             <div id="chat-thread" class="chat-thread"></div>
             <form id="chat-form" class="chat-form" autocomplete="off">
               <div class="chat-input-wrap">
@@ -996,6 +1011,6 @@ The model parses it into structured filters (TLDs, length, budget, tone, etc.) a
     </div>
 
     <!-- Bump ?v= on any public/app.js or styles.css change to bust caches. -->
-    <script src="app.js?v=20260619notes"></script>
+    <script src="app.js?v=20260620email"></script>
   </body>
 </html>

@@ -801,6 +801,33 @@ body.modal-open { overflow: hidden; }
 .chat-regen-status { font-size: .85rem; color: var(--navy-2); }
 .chat-regen-status.chat-regen-err { color: var(--coral-deep); }
 
+/* Attach-email to chat */
+.chat-email { margin-bottom: 12px; }
+.ce-bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.ce-toggle { padding: 5px 12px; font-size: .82rem; font-weight: 700; background: var(--cream); color: var(--navy); border: 1.5px solid var(--line); border-radius: 999px; cursor: pointer; }
+.ce-toggle:hover { border-color: var(--navy-3); background: var(--cream-2); }
+.ce-attached { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.ce-attached .ce-none { font-size: .8rem; }
+.ce-chip { display: inline-flex; align-items: center; gap: 4px; font-size: .78rem; font-weight: 600; color: var(--navy-2); background: var(--cream-2,#f3efe5); border: 1px solid var(--line); border-radius: 999px; padding: 2px 6px 2px 9px; }
+.ce-chip-x { border: none; background: none; cursor: pointer; color: var(--navy-3); font-size: 1rem; line-height: 1; padding: 0 2px; }
+.ce-chip-x:hover { color: var(--coral-deep); }
+.ce-panel { margin-top: 10px; border: 1.5px solid var(--line); border-radius: 12px; padding: 10px; background: var(--cream); }
+.ce-search { display: flex; gap: 8px; flex-wrap: wrap; }
+.ce-search input { flex: 1; min-width: 200px; padding: 7px 10px; border: 1.5px solid var(--line); border-radius: 8px; font-size: .88rem; }
+.ce-btn { padding: 6px 12px; font-size: .82rem; font-weight: 700; background: var(--cream-2); color: var(--navy); border: 1.5px solid var(--line); border-radius: 8px; cursor: pointer; }
+.ce-btn:hover { border-color: var(--navy-3); }
+.ce-results { margin-top: 10px; display: flex; flex-direction: column; gap: 8px; max-height: 320px; overflow-y: auto; }
+.ce-row { display: flex; align-items: flex-start; gap: 10px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: #fff; }
+.ce-row-main { flex: 1; min-width: 0; }
+.ce-subj { font-weight: 700; font-size: .86rem; color: var(--navy); }
+.ce-meta { font-size: .76rem; margin-top: 1px; }
+.ce-snip { font-size: .78rem; margin-top: 3px; overflow: hidden; text-overflow: ellipsis; }
+.ce-add { flex: 0 0 auto; padding: 5px 11px; font-size: .8rem; font-weight: 700; background: var(--teal-deep,#1f7a4d); color: #fff; border: none; border-radius: 999px; cursor: pointer; }
+.ce-add:disabled { opacity: .6; cursor: default; }
+.ce-added { flex: 0 0 auto; font-size: .8rem; font-weight: 700; color: var(--teal-deep,#1f7a4d); }
+.ce-status { margin-top: 8px; font-size: .82rem; }
+.ce-status.error { color: var(--coral-deep); }
+
 /* Matched semantic keywords as chips — kept green (the "why it surfaced"
    signal) but muted/secondary so they don't compete with the domain anchor. */
 .naming-relevance { line-height: 1.7; }

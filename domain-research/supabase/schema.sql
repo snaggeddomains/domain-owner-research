@@ -526,6 +526,24 @@ create table if not exists domain_research_notes (
   updated_by text
 );
 
+-- Email threads a user attached to a report's CHAT (ingested from Gmail via the
+-- snagged-admin internal endpoint) so the agent has the correspondence as context.
+create table if not exists domain_research_chat_emails (
+  id          uuid primary key default gen_random_uuid(),
+  run_id      text not null,
+  domain      text,
+  mailbox     text not null,
+  thread_id   text not null,
+  subject     text,
+  snippet     text,
+  body        text,
+  attached_by text,
+  created_at  timestamptz not null default now(),
+  unique (run_id, thread_id)
+);
+create index if not exists idx_dr_chat_emails_run on domain_research_chat_emails (run_id, created_at);
+
+
 -- ── Enable RLS (no policies → backend secret key only) ──────────────────────
 do $$
 declare t text;

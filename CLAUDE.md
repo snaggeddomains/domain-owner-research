@@ -123,6 +123,37 @@ real opening emails ("Domain Owner Initial Outreach" playbook).
 
 ---
 
+## Chat email ingestion (2026-06-20) — attach Gmail threads as chat context
+
+The Domain Owner **chat** can ingest relevant email threads (instead of the user
+copy-pasting correspondence), mirroring the nameserver "reports" picker: **auto-
+suggest by the report's domain + manual search**, you pick which threads to attach.
+
+- **Email source = snagged-admin's Gmail layer.** This app holds NO Google creds.
+  snagged-admin exposes an INTERNAL endpoint `/api/internal/email-threads`
+  (shared-secret `x-internal-secret`, restricted to `dealMailboxes()` =
+  rob@/brian@ snagged.com/.co) that reuses `lib/gmail.ts` (`searchMessages` /
+  `getThread`). `lib/email/threads.js` calls it server-to-server
+  (`ADMIN_INTERNAL_BASE` default `https://app.snagged.com` + `RESEARCH_INTERNAL_SECRET`).
+  Degrades gracefully when unset (search → [], the chat-email bar hides on 503).
+- **Storage:** `domain_research_chat_emails` (per RUN: mailbox, thread_id, subject,
+  snippet, body, attached_by; unique run_id+thread_id) — `lib/db/chatEmails.js`
+  (`listChatEmails`, `chatEmailContext`, `attachChatEmail` upsert, `detachChatEmail`).
+- **API** `api/chat-email.js` (gated `domain_owner`, same as chat): `GET ?run_id=&list=1`
+  / `&suggest=1` / `&q=<query>`; `POST {action:'attach'|'detach'|'refresh'}`.
+  **refresh** re-pulls every attached thread (upsert replaces the body) so NEW
+  replies since attach get ingested.
+- **Agent:** `chatTurn({…, emails})` injects the attached thread bodies into the
+  system prompt as authoritative primary-source context; `runChat` loads
+  `chatEmailContext(runId)` each turn (so refreshed bodies are always used).
+- **UI:** a "📎 Attach email" bar above the chat thread (`#chat-email` in
+  index.html; the `ce*` helpers in app.js; `.ce-*` styles). Auto-suggests on open,
+  manual search box, attach/detach chips, ↻ Refresh. Cache-bust `?v=20260620email`.
+- **One-time setup:** run the `domain_research_chat_emails` table on the research
+  project; set `RESEARCH_INTERNAL_SECRET` (BOTH projects, same value) +
+  `ADMIN_INTERNAL_BASE` (research, → the admin app). No extra permission — chat
+  access (`domain_owner`) is the gate.
+
 ## Domain data model — canonical (do not let this drift)
 
 Two domain corpora in **separate Supabase projects**; the search reads both.

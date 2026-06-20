@@ -83,12 +83,15 @@ The frontend detects the marker and triggers the actual report regeneration serv
 
 // A single refine-chat turn against an existing report. Conversational, with the
 // full toolset; runs synchronously (kept short via a small step budget).
-export async function chatTurn({ domain, reportMarkdown, history = [], message, env, lessons = '' }) {
+export async function chatTurn({ domain, reportMarkdown, history = [], message, env, lessons = '', emails = '' }) {
   const providerName = (env.LLM_PROVIDER || 'claude').toLowerCase();
   const provider = PROVIDERS[providerName];
   if (!provider) throw new Error(`Unknown LLM_PROVIDER "${providerName}"`);
   const toolSpecs = getToolSpecs(env, { tier: 'all' });
-  const system = `${CHAT_SYSTEM}${lessons || ''}\n\nThe current report for ${domain} is below — use it as context:\n\n${String(reportMarkdown || '').slice(0, 14000)}`;
+  const emailNote = (emails && emails.trim())
+    ? `\n\nEMAIL CORRESPONDENCE the user attached to this report (real threads pulled from our inboxes — treat as authoritative primary-source context: quote/cite it, use it to answer, and weigh it heavily. Do NOT fabricate beyond what the emails say):\n\n${emails.trim().slice(0, 40000)}`
+    : '';
+  const system = `${CHAT_SYSTEM}${lessons || ''}\n\nThe current report for ${domain} is below — use it as context:\n\n${String(reportMarkdown || '').slice(0, 14000)}${emailNote}`;
   const result = await provider.runAgent({
     system,
     history: (Array.isArray(history) ? history : []).map((m) => ({

@@ -118,6 +118,15 @@ const els = {
   chatRegenSynth: $('chat-regen-synth'),
   chatRegenDeep: $('chat-regen-deep'),
   chatRegenStatus: $('chat-regen-status'),
+  chatEmail: $('chat-email'),
+  ceToggle: $('ce-toggle'),
+  ceAttached: $('ce-attached'),
+  cePanel: $('ce-panel'),
+  ceQ: $('ce-q'),
+  ceSearchBtn: $('ce-search-btn'),
+  ceRefresh: $('ce-refresh'),
+  ceResults: $('ce-results'),
+  ceStatus: $('ce-status'),
   evidence: $('evidence'),
   trace: $('trace'),
   hero: $('hero'),
@@ -1335,6 +1344,110 @@ async function loadChat(runId) {
     const data = await res.json();
     renderChatMessages(data.messages || []);
   } catch { /* empty thread */ }
+  loadChatEmail(runId);
+}
+
+// ── Attach email threads to the chat (ingested as context by the agent) ──────
+let ceWired = false;
+function ceSetStatus(text, err = false) {
+  if (!els.ceStatus) return;
+  els.ceStatus.hidden = !text;
+  els.ceStatus.textContent = text || '';
+  els.ceStatus.classList.toggle('error', !!err);
+}
+function ceFmtDate(ms) {
+  if (!ms) return '';
+  const t = Number(ms);
+  return Number.isFinite(t) ? new Date(t).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : '';
+}
+function renderCeAttached(threads) {
+  if (!els.ceAttached) return;
+  const items = threads || [];
+  els.ceAttached.innerHTML = items.length
+    ? items.map((t) => `<span class="ce-chip" title="${escapeHtml(t.subject || '')}">📧 ${escapeHtml((t.subject || '(no subject)').slice(0, 40))}`
+        + `<button type="button" class="ce-chip-x" data-detach="${escapeHtml(t.id)}" aria-label="Detach">×</button></span>`).join('')
+    : '<span class="muted ce-none">No emails attached</span>';
+}
+function renderCeResults(threads) {
+  if (!els.ceResults) return;
+  const items = threads || [];
+  if (!items.length) { els.ceResults.innerHTML = '<div class="muted ce-none">No matching threads.</div>'; return; }
+  els.ceResults.innerHTML = items.map((t) => {
+    const meta = [t.fromName || t.from, ceFmtDate(t.date)].filter(Boolean).map(escapeHtml).join(' · ');
+    const btn = t.attached
+      ? '<span class="ce-added">✓ attached</span>'
+      : `<button type="button" class="ce-add" data-mb="${escapeHtml(t.mailbox)}" data-tid="${escapeHtml(t.threadId)}" data-subj="${escapeHtml(t.subject || '')}" data-snip="${escapeHtml(t.snippet || '')}">Attach</button>`;
+    return `<div class="ce-row"><div class="ce-row-main"><div class="ce-subj">${escapeHtml(t.subject || '(no subject)')}</div>`
+      + `<div class="ce-meta muted">${meta}</div>`
+      + (t.snippet ? `<div class="ce-snip muted">${escapeHtml(t.snippet.slice(0, 140))}</div>` : '')
+      + `</div>${btn}</div>`;
+  }).join('');
+}
+async function loadChatEmail(runId) {
+  if (!els.chatEmail) return;
+  els.chatEmail.hidden = false;
+  if (els.cePanel) els.cePanel.hidden = true;
+  if (els.ceResults) els.ceResults.innerHTML = '';
+  ceSetStatus('');
+  try {
+    const res = await fetch(`/research/api/chat-email?run_id=${encodeURIComponent(runId)}&list=1`);
+    if (res.status === 503) { els.chatEmail.hidden = true; return; } // not configured
+    const data = await res.json().catch(() => ({}));
+    renderCeAttached(data.threads || []);
+  } catch { renderCeAttached([]); }
+  if (!ceWired) wireChatEmail();
+}
+async function ceSuggest(manualQuery) {
+  if (!currentRunId) return;
+  ceSetStatus('Searching inboxes…');
+  if (els.ceResults) els.ceResults.innerHTML = '';
+  try {
+    const qs = manualQuery ? `&q=${encodeURIComponent(manualQuery)}` : '&suggest=1';
+    const res = await fetch(`/research/api/chat-email?run_id=${encodeURIComponent(currentRunId)}${qs}`);
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || `Search failed (${res.status})`);
+    ceSetStatus('');
+    renderCeResults(data.threads || []);
+  } catch (e) { ceSetStatus(String((e && e.message) || e), true); }
+}
+async function cePost(payload) {
+  const res = await fetch('/research/api/chat-email', {
+    method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ run_id: currentRunId, ...payload }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || `Failed (${res.status})`);
+  return data;
+}
+function wireChatEmail() {
+  ceWired = true;
+  els.ceToggle?.addEventListener('click', () => {
+    if (!els.cePanel) return;
+    const open = els.cePanel.hidden;
+    els.cePanel.hidden = !open;
+    if (open && !els.ceResults.children.length) ceSuggest(); // auto-suggest by domain on first open
+  });
+  els.ceSearchBtn?.addEventListener('click', () => ceSuggest((els.ceQ.value || '').trim() || null));
+  els.ceQ?.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); ceSuggest((els.ceQ.value || '').trim() || null); } });
+  els.ceRefresh?.addEventListener('click', async () => {
+    ceSetStatus('Re-pulling attached threads…');
+    try { const d = await cePost({ action: 'refresh' }); renderCeAttached(d.threads || []); ceSetStatus(`Refreshed ${d.updated || 0} thread(s).`); }
+    catch (e) { ceSetStatus(String((e && e.message) || e), true); }
+  });
+  els.ceResults?.addEventListener('click', async (e) => {
+    const b = e.target.closest('.ce-add'); if (!b) return;
+    b.disabled = true; b.textContent = 'Attaching…';
+    try {
+      const d = await cePost({ action: 'attach', mailbox: b.dataset.mb, thread_id: b.dataset.tid, subject: b.dataset.subj, snippet: b.dataset.snip });
+      renderCeAttached(d.threads || []);
+      b.outerHTML = '<span class="ce-added">✓ attached</span>';
+    } catch (err) { b.disabled = false; b.textContent = 'Attach'; ceSetStatus(String((err && err.message) || err), true); }
+  });
+  els.ceAttached?.addEventListener('click', async (e) => {
+    const x = e.target.closest('.ce-chip-x'); if (!x) return;
+    try { const d = await cePost({ action: 'detach', id: x.getAttribute('data-detach') }); renderCeAttached(d.threads || []); }
+    catch (err) { ceSetStatus(String((err && err.message) || err), true); }
+  });
 }
 async function sendChat(message) {
   if (chatBusy || !message || !currentRunId) return;

@@ -3,6 +3,7 @@ import { gather, critique, chatTurn } from '../agent.js';
 import { setRunStatus, saveRunReport, failRun, getRun } from '../db/runs.js';
 import { getDomainNotes } from '../db/notes.js';
 import { getChat, updateTurn } from '../db/chat.js';
+import { chatEmailContext } from '../db/chatEmails.js';
 import { getUser } from '../db/users.js';
 import { createNotification } from '../db/notifications.js';
 import { withCategory } from '../db/usage.js';
@@ -378,7 +379,8 @@ export const runChat = inngest.createFunction(
         const message = rows.length ? rows[rows.length - 1].content : '';
         const history = rows.slice(0, -1);
         const { addendum: lessons } = await loadLessonsAddendum();
-        const result = await chatTurn({ domain, reportMarkdown, history, message, env: process.env, lessons });
+        const emails = await chatEmailContext(runId).catch(() => '');
+        const result = await chatTurn({ domain, reportMarkdown, history, message, env: process.env, lessons, emails });
         let text = String((result && result.report) || '').trim();
         if (!text) {
           // The model ended without a written answer — surface what it checked so
