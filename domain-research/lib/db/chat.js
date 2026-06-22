@@ -48,8 +48,23 @@ export async function getChat(runId, limit = 50) {
   }
 }
 
-export async function getTurn(turnId) {
-  if (!isDbConfigured() || !turnId) return null;
+// Carry a prior run's transcript into a new run. Used when a user forces a FRESH
+// re-research (new run id) — without this the chat (and the chat-derived research,
+// e.g. a privacy-email cluster the agent worked out) would be orphaned on the old
+// run and look "wiped." Copies the done turns in order so the thread persists
+// visibly across runs, like per-domain notes do. Best-effort; returns count copied.
+export async function copyChatToRun(newRunId, domain, turns) {
+  if (!isDbConfigured() || !newRunId || !Array.isArray(turns) || !turns.length) return 0;
+  let copied = 0;
+  for (const t of turns) {
+    if (!t || t.status === 'pending' || t.status === 'error' || !t.content) continue;
+    const id = await appendChat(newRunId, domain || t.domain || null, t.role, t.content, 'done', t.author || null);
+    if (id) copied += 1;
+  }
+  return copied;
+}
+
+export async function getTurn(turnId) {  if (!isDbConfigured() || !turnId) return null;
   try {
     const { data, error } = await getDb().from(TABLE).select('id,role,content,status').eq('id', turnId).maybeSingle();
     if (error) throw error;

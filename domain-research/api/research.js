@@ -249,19 +249,26 @@ export default async function handler(req, res) {
   // is usually a re-search of a domain just looked at. The client surfaces a
   // "Researched X ago · Refresh" affordance to spend credits on demand.
   const force = body.force === true || body.force === 'true';
-  if (!force) {
+  // Most recent prior run for this domain — reused (no force) to save credits, or
+  // carried-forward (force) so a fresh re-research inherits the prior run's chat.
+  let prior = null;
+  try {
     const recents = await listRuns({ q: domain, limit: 10, statuses: ['done'], reportStatuses: ['error'] });
-    const match = recents.find((r) => String(r.domain).toLowerCase() === domain.toLowerCase());
-    if (match) {
-      res.status(200).json({ run_id: match.id, domain, existing: true, created_at: match.created_at });
-      return;
-    }
+    prior = recents.find((r) => String(r.domain).toLowerCase() === domain.toLowerCase()) || null;
+  } catch { /* best-effort */ }
+  if (!force && prior) {
+    res.status(200).json({ run_id: prior.id, domain, existing: true, created_at: prior.created_at });
+    return;
   }
 
   const user = await currentUser(req);
   const runId = await createRun({ domain, question, user_id: user && user.id ? user.id : null });
+  // Forced fresh research starts a NEW run id (new empty chat). Carry the prior
+  // run's chat forward so chat-derived research/refinements persist across the
+  // re-research instead of being orphaned on the old run.
+  const carryChatFrom = (force && prior && prior.id !== runId) ? prior.id : null;
   try {
-    await inngest.send({ name: RUN_REQUESTED, data: { runId, domain, question, phase } });
+    await inngest.send({ name: RUN_REQUESTED, data: { runId, domain, question, phase, ...(carryChatFrom ? { carryChatFrom } : {}) } });
   } catch (e) {
     await failRun(runId, `Failed to enqueue job: ${e?.message || e}`);
     res.status(502).json({ error: 'Could not enqueue the research job (check Inngest config).' });

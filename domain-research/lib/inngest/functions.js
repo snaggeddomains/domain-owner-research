@@ -2,7 +2,7 @@ import { inngest, RUN_REQUESTED, CHAT_REQUESTED, RUN_CANCELLED, SALES_RESEARCH_R
 import { gather, critique, chatTurn } from '../agent.js';
 import { setRunStatus, saveRunReport, failRun, getRun } from '../db/runs.js';
 import { getDomainNotes } from '../db/notes.js';
-import { getChat, updateTurn } from '../db/chat.js';
+import { getChat, updateTurn, copyChatToRun } from '../db/chat.js';
 import { chatEmailContext } from '../db/chatEmails.js';
 import { getUser } from '../db/users.js';
 import { createNotification } from '../db/notifications.js';
@@ -245,7 +245,7 @@ export const runResearch = inngest.createFunction(
   },
   { event: RUN_REQUESTED },
   async ({ event, step }) => {
-    const { runId, domain, question, phase = 'shallow', tier: tierOverride } = event.data;
+    const { runId, domain, question, phase = 'shallow', tier: tierOverride, carryChatFrom } = event.data;
     const deep = phase === 'deep';
     const isRegenSynth = phase === 'regenerate-synth';
     const isRegenDeep = phase === 'regenerate-deep';
@@ -270,9 +270,23 @@ export const runResearch = inngest.createFunction(
     // existing draft with the corrections; deep mode re-runs the whole
     // pipeline seeded with them. The chat thread itself is not deleted —
     // it stays as the audit trail of how the report got refined.
-    const chatCorrections = isRegen
-      ? await step.run('load-chat-corrections', async () => formatChatCorrections(await getChat(runId)))
-      : '';
+    // Regenerate pulls THIS run's chat as corrections. A forced fresh re-research
+    // (new run id) instead carries the PRIOR run's chat forward — copies the
+    // transcript into this run so it persists visibly, and feeds it as corrections
+    // so the new report ingests the chat-derived research/refinements (rather than
+    // orphaning them on the old run). Per-domain notes already persist separately.
+    let chatCorrections = '';
+    if (isRegen) {
+      chatCorrections = await step.run('load-chat-corrections', async () =>
+        formatChatCorrections(await getChat(runId)));
+    } else if (carryChatFrom) {
+      chatCorrections = await step.run('carry-prior-chat', async () => {
+        const turns = await getChat(carryChatFrom);
+        if (!turns || !turns.length) return '';
+        await copyChatToRun(runId, domain, turns).catch(() => 0);
+        return formatChatCorrections(turns);
+      });
+    }
 
     // User notes attached to this domain's report (kept per-domain so they
     // survive every rerun). Fed into gather + critique as authoritative context
