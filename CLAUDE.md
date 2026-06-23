@@ -232,7 +232,10 @@ contact info. Two directions: domain → its NS set; NS set → the domains usin
 (ref `opzqyeuumusbmvqxehgf`, region us-west-2; pooler `aws-1-us-west-2.pooler.supabase.com`),
 NOT the naming/master/research projects. App reads it via `ZONE_SUPABASE_URL` /
 `ZONE_SUPABASE_SERVICE_KEY` (falls back to the naming project's vars if unset) —
-`lib/db/supabase-zone.js` (`getZoneDb` / `isZoneDbConfigured`).
+`lib/db/supabase-zone.js` (`getZoneDb` / `isZoneDbConfigured`). **RLS enabled (no
+policies) on all zone tables 2026-06-23** — the service key bypasses RLS so the app
+is unaffected; closes the Supabase `rls_disabled_in_public` advisor (same fix already
+applied to Master + naming).
 
 **Table + partitioning.** `zone_domains(domain text, tld text, nameservers text[])`,
 one row per domain, **LIST-partitioned by `tld`**. Live layout:
