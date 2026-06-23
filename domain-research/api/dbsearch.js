@@ -80,11 +80,14 @@ function buildUniverse(p, ascending, countMode) {
     // (e.g. "crowdova.com"), match the `domain` column directly — exact-
     // match, the same behavior the DB Screen has. Bare keywords (no dot)
     // stay on the SLD-prefix browse path so "show me everything starting
-    // with pulse" is unchanged. Done as a separate ilike() (not an .or())
-    // because PostgREST's OR-filter parser splits each condition on `.`
-    // and dotted values silently lose their TLD half.
+    // with pulse" is unchanged.
     if (t.includes('.')) {
-      q = q.ilike('domain', t);
+      // Full domain → exact match. Universe domains are stored canonically
+      // lowercase (and `t` is lowercased), so `.eq` hits the unique b-tree
+      // index. `.ilike` is case-insensitive and CANNOT use that index, so it
+      // seq-scans millions of rows → statement timeout (the search hangs). DB
+      // Screen makes the same choice for the same reason.
+      q = q.eq('domain', t);
     } else {
       q = q.ilike('sld', (p.fuzzy === '1' ? '%' : '') + t + '%');
     }
