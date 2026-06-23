@@ -5,8 +5,35 @@ import { recordModelUsage } from '../db/usage.js';
 // Anthropic (Claude) adapter: same shape as the OpenAI adapter.
 // Uses the Messages API tool-use loop (tool_use / tool_result blocks),
 // adaptive thinking, and prompt caching on the tools + system prefix.
+// Map a raw API/SDK error to a clean, user-facing line for the known TRANSIENT
+// failures (Anthropic overload / rate-limit / 5xx). Returns null for anything
+// else so the caller falls back to the real message. Works on both a live SDK
+// error (has .status) and an Inngest-serialized error (message string only).
+export function friendlyApiError(err) {
+  if (!err) return null;
+  const status = err.status ?? err.statusCode;
+  const type = err?.error?.error?.type || err?.error?.type;
+  const msg = String((err && (err.message || err.name)) || err || '');
+  if (status === 529 || type === 'overloaded_error' || /overloaded/i.test(msg)) {
+    return "Claude's API was momentarily overloaded — a temporary hiccup on Anthropic's side, not a problem with the domain or your request. Please re-run the report in a moment.";
+  }
+  if (status === 429 || type === 'rate_limit_error' || /rate.?limit/i.test(msg)) {
+    return "Claude's API rate limit was hit — wait a few seconds and re-run the report.";
+  }
+  if (typeof status === 'number' && status >= 500 && status < 600) {
+    return `Claude's API had a temporary server error (${status}) — please re-run the report in a moment.`;
+  }
+  return null;
+}
+
 export async function runAgent({ system, history, userPrompt, toolSpecs, env, maxSteps, maxToolResultChars, seedTrace = [] }) {
-  const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY });
+  // maxRetries lets the SDK ride out short overloads/rate-limits within a single
+  // attempt (exponential backoff that honors the Retry-After header) — so a
+  // transient 529 recovers instead of failing the whole run.
+  const client = new Anthropic({
+    apiKey: env.ANTHROPIC_API_KEY,
+    maxRetries: Number(env.ANTHROPIC_MAX_RETRIES || 4),
+  });
   const model = env.ANTHROPIC_MODEL || 'claude-opus-4-7';
   const effort = env.ANTHROPIC_EFFORT || 'high'; // low | medium | high | xhigh | max
   const thinking = env.ANTHROPIC_THINKING === 'disabled' ? { type: 'disabled' } : { type: 'adaptive' };

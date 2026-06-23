@@ -1,5 +1,6 @@
 import { inngest, RUN_REQUESTED, CHAT_REQUESTED, RUN_CANCELLED, SALES_RESEARCH_REQUESTED, SALES_ANGLES_REQUESTED, PORTFOLIO_REQUESTED } from './client.js';
 import { gather, critique, chatTurn } from '../agent.js';
+import { friendlyApiError } from '../llm/anthropic.js';
 import { setRunStatus, saveRunReport, failRun, getRun } from '../db/runs.js';
 import { getDomainNotes } from '../db/notes.js';
 import { getChat, updateTurn, copyChatToRun } from '../db/chat.js';
@@ -237,7 +238,10 @@ export const runResearch = inngest.createFunction(
       const runId = original && original.data && original.data.runId;
       if (!runId) return;
       const err = event && event.data && event.data.error;
+      // A transient API error (overload / rate-limit / 5xx) gets a clean,
+      // retryable line; only the genuine unknown failures carry the maxDuration note.
       const message =
+        friendlyApiError(err) ||
         String((err && (err.message || err.name)) || err || 'Run failed').slice(0, 500) +
         ' (Vercel function likely hit maxDuration; marked errored by onFailure handler.)';
       await step.run('mark-error-on-failure', () => failRun(runId, message));
@@ -370,7 +374,9 @@ export const runResearch = inngest.createFunction(
       }
       return { runId, ok: true, phase };
     } catch (err) {
-      const message = String(err?.message || err);
+      // Clean, retryable message for transient API errors (overload/429/5xx);
+      // raw message otherwise. The UI renders run.error verbatim.
+      const message = friendlyApiError(err) || String(err?.message || err);
       await step.run('mark-error', () => failRun(runId, message));
       throw err; // let Inngest record the failure
     }
@@ -409,7 +415,8 @@ export const runChat = inngest.createFunction(
       await step.run('save', () => updateTurn(turnId, reply, 'done'));
       return { turnId, ok: true };
     } catch (err) {
-      await step.run('save-error', () => updateTurn(turnId, `⚠️ ${String(err?.message || err).slice(0, 300)}`, 'error'));
+      const message = friendlyApiError(err) || String(err?.message || err).slice(0, 300);
+      await step.run('save-error', () => updateTurn(turnId, `⚠️ ${message}`, 'error'));
       throw err;
     }
   },
