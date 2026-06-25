@@ -2657,9 +2657,12 @@ function quickLinks(domain) {
   // DomainScout carries the domain in the hash AND copies it to the clipboard on
   // click, so the "Add to DomainScout" bookmarklet can pick it up and submit it
   // into your (logged-in) watchlist — the server can't, it has no session there.
+  // Opens in a normal new tab (target="_blank") like the other quick-links — a
+  // named window target opened a separate popup-style window instead of reusing
+  // the browser's most-recent tab.
   const ds =
     `<a class="ms-link ms-ds" data-ds-domain="${escapeHtml(domain)}" ` +
-    `href="${dsUrl(domain)}" target="domainscout">DomainScout ↗</a>`;
+    `href="${dsUrl(domain)}" target="_blank" rel="noopener">DomainScout ↗</a>`;
   return main + ds;
 }
 
@@ -2669,11 +2672,11 @@ function dsUrl(domain) {
   return `https://www.domainscout.io/dashboard#snagged=${encodeURIComponent(domain)}`;
 }
 
-// Opt-in: open (or reuse) the DomainScout tab for a domain. The named target
-// means repeat opens reuse one tab rather than spawning many.
+// Opt-in: open the DomainScout dashboard for a domain in a new tab (not a named
+// window — that spawned a separate popup-style window instead of a normal tab).
 function openDomainScout(domain) {
   if (!domain) return;
-  window.open(dsUrl(domain), 'domainscout');
+  window.open(dsUrl(domain), '_blank', 'noopener');
 }
 
 function agoLabel(ts) {
