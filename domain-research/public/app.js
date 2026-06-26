@@ -2818,67 +2818,82 @@ function renderMarketStripDS(domain, marketplaces, ts, opts = {}) {
   marketPaint(domain, pills, meta, opts.tracked !== false);
 }
 
-// Auto-poll: a just-tracked domain returns empty marketplaces until DomainScout's
-// scanner runs. Re-check on a short cadence so the strip fills in by itself
-// instead of waiting on a manual refresh. Bounded so a genuinely-unlisted domain
+// Auto-poll: DomainScout fills a domain's marketplaces array INCREMENTALLY after
+// it's tracked (empty → a few → all ~10, over seconds). So we can't finalize on
+// the first non-empty result — we'd cache a partial set ("2 checked"). Instead we
+// re-render as the set grows and only finalize + cache once the count holds steady
+// across consecutive polls (or we hit the cap). Bounded so a never-scanned domain
 // settles rather than spinning forever.
 let dsPollTimer = null;
-const DS_POLL_EVERY_MS = 8000;
-const DS_POLL_MAX = 12; // ~96s of polling
+const DS_POLL_EVERY_MS = 4000;
+const DS_POLL_MAX = 20;       // ~80s of polling
+const DS_STABLE_HITS = 2;     // count unchanged across this many polls ⇒ done
 function stopDsPoll() {
   if (dsPollTimer) { clearTimeout(dsPollTimer); dsPollTimer = null; }
 }
-function scheduleDsPoll(domain, attempt) {
+async function dsFetchOnce(domain) {
+  const res = await fetch(`/research/api/lookup?source=domainscout_lookup&domain=${encodeURIComponent(domain)}`);
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data.ok || !data.data) return null;
+  return {
+    marketplaces: Array.isArray(data.data.marketplaces) ? data.data.marketplaces : [],
+    tracked: data.data.tracked !== false,
+  };
+}
+function dsFinalize(domain, mk, tracked) {
+  serverSaveTool('mk', domain, { v: MARKET_V, domain, source: 'domainscout', any_listed: mk.some((m) => m.listed), marketplaces: mk });
+  renderMarketStripDS(domain, mk, Date.now(), { tracked });
+}
+function scheduleDsPoll(domain, attempt, prevCount, stableHits) {
   stopDsPoll();
   if (attempt > DS_POLL_MAX) {
-    if (!els.marketStrip.hidden && els.marketStrip.dataset.domain === domain) {
-      renderMarketStripDS(domain, [], Date.now(), { tracked: true, settled: true });
-    }
+    // Stop waiting — finalize with whatever we have (one last read).
+    dsPollTimer = setTimeout(async () => {
+      if (els.marketStrip.hidden || els.marketStrip.dataset.domain !== domain) return;
+      let r = null;
+      try { r = await dsFetchOnce(domain); } catch { /* ignore */ }
+      if (els.marketStrip.hidden || els.marketStrip.dataset.domain !== domain) return;
+      const mk = (r && r.marketplaces) || [];
+      if (mk.length) dsFinalize(domain, mk, true);
+      else renderMarketStripDS(domain, [], Date.now(), { tracked: true, settled: true });
+    }, 0);
     return;
   }
   dsPollTimer = setTimeout(async () => {
     if (els.marketStrip.hidden || els.marketStrip.dataset.domain !== domain) return;
-    try {
-      const res = await fetch(`/research/api/lookup?source=domainscout_lookup&domain=${encodeURIComponent(domain)}`);
-      const data = await res.json().catch(() => ({}));
-      const mk = (data && data.data && Array.isArray(data.data.marketplaces)) ? data.data.marketplaces : [];
-      if (els.marketStrip.hidden || els.marketStrip.dataset.domain !== domain) return;
-      if (mk.length) {
-        serverSaveTool('mk', domain, { v: MARKET_V, domain, source: 'domainscout', any_listed: mk.some((m) => m.listed), marketplaces: mk });
-        renderMarketStripDS(domain, mk, Date.now(), { tracked: true });
-        return;
-      }
-    } catch { /* keep polling */ }
-    scheduleDsPoll(domain, attempt + 1);
+    let r = null;
+    try { r = await dsFetchOnce(domain); } catch { /* keep polling */ }
+    if (els.marketStrip.hidden || els.marketStrip.dataset.domain !== domain) return;
+    const mk = (r && r.marketplaces) || [];
+    const cur = mk.length;
+    // Render the latest (growing) set as it fills; keep the "scanning" meta until
+    // we're confident it's complete.
+    if (cur) renderMarketStripDS(domain, mk, null, { tracked: true, scanning: true });
+    const stable = cur > 0 && cur === prevCount ? stableHits + 1 : 0;
+    if (cur > 0 && stable >= DS_STABLE_HITS) {
+      dsFinalize(domain, mk, true);
+      return;
+    }
+    scheduleDsPoll(domain, attempt + 1, cur, stable);
   }, DS_POLL_EVERY_MS);
 }
 
-// Primary path: one DomainScout call returns the authoritative for-sale state
+// Primary path: the DomainScout API returns the authoritative for-sale state
 // across every marketplace it monitors. Returns false (→ scraping fallback) when
-// the key isn't configured or the call fails. When the scan is still pending
-// (empty marketplaces), render the scanning state and start auto-polling.
+// the key isn't configured or the call fails. The marketplace set fills in over a
+// few seconds, so we render the first read immediately then poll to completion
+// (only the stable, complete result is cached).
 async function loadDomainScoutStrip(domain) {
   stopDsPoll();
-  try {
-    const res = await fetch(`/research/api/lookup?source=domainscout_lookup&domain=${encodeURIComponent(domain)}`);
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok || !data.ok || !data.data) return false;
-    const marketplaces = Array.isArray(data.data.marketplaces) ? data.data.marketplaces : [];
-    const tracked = data.data.tracked !== false;
-    if (els.marketStrip.hidden || els.marketStrip.dataset.domain !== domain) return true;
-    if (marketplaces.length) {
-      serverSaveTool('mk', domain, { v: MARKET_V, domain, source: 'domainscout', any_listed: marketplaces.some((m) => m.listed), marketplaces });
-      renderMarketStripDS(domain, marketplaces, Date.now(), { tracked });
-      return true;
-    }
-    // Tracked but not scanned yet — show the spinner and poll until data lands.
-    // (Not cached: a pending result must re-check on the next view.)
-    renderMarketStripDS(domain, [], null, { tracked, scanning: true });
-    scheduleDsPoll(domain, 1);
-    return true;
-  } catch {
-    return false;
-  }
+  let r;
+  try { r = await dsFetchOnce(domain); } catch { return false; }
+  if (!r) return false;
+  if (els.marketStrip.hidden || els.marketStrip.dataset.domain !== domain) return true;
+  // First read — render what we have (spinner if still empty), then poll until the
+  // marketplace count stops growing. Never finalize/cache on this partial read.
+  renderMarketStripDS(domain, r.marketplaces, null, { tracked: r.tracked, scanning: true });
+  scheduleDsPoll(domain, 1, r.marketplaces.length, 0);
+  return true;
 }
 
 // Live check: one request per channel, each pill updated in place as it lands.
