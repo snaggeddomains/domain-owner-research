@@ -2652,6 +2652,7 @@ const MARKET_HOSTS = {
   dan: 'dan.com', efty: 'efty.com', hugedomains: 'hugedomains.com', dynadot: 'dynadot.com',
   flippa: 'flippa.com', epik: 'epik.com', name: 'name.com', uniregistry: 'uniregistry.com',
   bido: 'bido.com', sedomls: 'sedo.com', porkbun: 'porkbun.com',
+  dropcatch: 'dropcatch.com', parkio: 'park.io', gname: 'gname.com', domaineasy: 'domaineasy.com',
 };
 function marketSlug(name) {
   return String(name || '').toLowerCase().replace(/[^a-z0-9]/g, '');
@@ -2681,7 +2682,7 @@ function dsPill(m) {
   return `<span class="ms-item miss">${logo}✗ ${name}</span>`;
 }
 
-function quickLinks(domain) {
+function quickLinks(domain, tracked) {
   const d = encodeURIComponent(domain);
   const links = [
     ['Live site', `https://${domain}`],
@@ -2693,15 +2694,15 @@ function quickLinks(domain) {
   const main = links
     .map(([n, u]) => `<a class="ms-link" href="${u}" target="_blank" rel="noopener">${escapeHtml(n)} ↗</a>`)
     .join('');
-  // DomainScout carries the domain in the hash AND copies it to the clipboard on
-  // click, so the "Add to DomainScout" bookmarklet can pick it up and submit it
-  // into your (logged-in) watchlist — the server can't, it has no session there.
-  // Opens in a normal new tab (target="_blank") like the other quick-links — a
-  // named window target opened a separate popup-style window instead of reusing
-  // the browser's most-recent tab.
+  // The server now auto-tracks every researched domain in DomainScout. When that
+  // track is confirmed, the link gets a green "✓ Tracked" badge; otherwise it's
+  // a plain quick-open to the DomainScout dashboard for the domain.
+  const label = tracked ? '✓ DomainScout' : 'DomainScout';
+  const cls = tracked ? 'ms-link ms-ds tracked' : 'ms-link ms-ds';
+  const ttl = tracked ? ' title="Tracked on DomainScout"' : '';
   const ds =
-    `<a class="ms-link ms-ds" data-ds-domain="${escapeHtml(domain)}" ` +
-    `href="${dsUrl(domain)}" target="_blank" rel="noopener">DomainScout ↗</a>`;
+    `<a class="${cls}" data-ds-domain="${escapeHtml(domain)}"${ttl} ` +
+    `href="${dsUrl(domain)}" target="_blank" rel="noopener">${label} ↗</a>`;
   return main + ds;
 }
 
@@ -2771,10 +2772,10 @@ async function getMarketCache(domain) {
   }
 }
 
-function marketPaint(domain, pills, metaInner) {
+function marketPaint(domain, pills, metaInner, tracked) {
   els.marketStrip.innerHTML =
     `<div class="ms-row"><span class="ms-label">For sale:</span>${pills}${metaInner}</div>` +
-    `<div class="ms-row ms-quick"><span class="ms-label">Open:</span>${quickLinks(domain)}</div>`;
+    `<div class="ms-row ms-quick"><span class="ms-label">Open:</span>${quickLinks(domain, tracked)}</div>`;
 }
 
 // Render a complete result at once — misses stay as red ✗.
@@ -2788,8 +2789,10 @@ function renderMarketStrip(domain, channels, ts) {
 
 // Render the DomainScout result. Listed marketplaces lead (the actual signal);
 // the not-listed ones collapse behind a "+N not listed ▸" toggle so the strip
-// stays tidy whether 2 or 12 marketplaces come back.
-function renderMarketStripDS(domain, marketplaces, ts) {
+// stays tidy whether 2 or 12 marketplaces come back. While DomainScout is still
+// scanning a freshly-tracked domain (no marketplaces yet), show a spinner.
+// opts: { tracked, scanning, settled }
+function renderMarketStripDS(domain, marketplaces, ts, opts = {}) {
   const all = Array.isArray(marketplaces) ? marketplaces : [];
   const listed = all.filter((m) => m.listed).sort((a, b) => (b.price || 0) - (a.price || 0));
   const notListed = all.filter((m) => !m.listed).sort((a, b) => String(a.name).localeCompare(String(b.name)));
@@ -2804,28 +2807,74 @@ function renderMarketStripDS(domain, marketplaces, ts) {
     // Nothing listed — a single muted summary that expands to show which were checked.
     pills = `<button type="button" class="ms-more ms-none" aria-expanded="false">✗ Not listed (${all.length} checked) ▸</button>` +
       `<span class="ms-notlisted" hidden>${all.map(dsPill).join('')}</span>`;
+  } else if (opts.settled) {
+    pills = `<span class="ms-item miss ms-none">✗ No marketplace listings found</span>`;
   } else {
-    pills = `<span class="ms-checking">No marketplace data yet — now tracking on DomainScout…</span>`;
+    // Scan still pending — animated "scanning" state (DomainScout checks the
+    // marketplaces asynchronously after a domain is added; usually seconds).
+    pills = `<span class="ms-scanning"><span class="ms-spinner" aria-hidden="true"></span> Scanning marketplaces on DomainScout…</span>`;
   }
-  marketPaint(domain, pills, ts ? metaHtml(ts) : '');
+  const meta = ts ? metaHtml(ts) : (opts.scanning ? '<span class="ms-meta ms-checking">scanning…</span>' : '');
+  marketPaint(domain, pills, meta, opts.tracked !== false);
+}
+
+// Auto-poll: a just-tracked domain returns empty marketplaces until DomainScout's
+// scanner runs. Re-check on a short cadence so the strip fills in by itself
+// instead of waiting on a manual refresh. Bounded so a genuinely-unlisted domain
+// settles rather than spinning forever.
+let dsPollTimer = null;
+const DS_POLL_EVERY_MS = 8000;
+const DS_POLL_MAX = 12; // ~96s of polling
+function stopDsPoll() {
+  if (dsPollTimer) { clearTimeout(dsPollTimer); dsPollTimer = null; }
+}
+function scheduleDsPoll(domain, attempt) {
+  stopDsPoll();
+  if (attempt > DS_POLL_MAX) {
+    if (!els.marketStrip.hidden && els.marketStrip.dataset.domain === domain) {
+      renderMarketStripDS(domain, [], Date.now(), { tracked: true, settled: true });
+    }
+    return;
+  }
+  dsPollTimer = setTimeout(async () => {
+    if (els.marketStrip.hidden || els.marketStrip.dataset.domain !== domain) return;
+    try {
+      const res = await fetch(`/research/api/lookup?source=domainscout_lookup&domain=${encodeURIComponent(domain)}`);
+      const data = await res.json().catch(() => ({}));
+      const mk = (data && data.data && Array.isArray(data.data.marketplaces)) ? data.data.marketplaces : [];
+      if (els.marketStrip.hidden || els.marketStrip.dataset.domain !== domain) return;
+      if (mk.length) {
+        serverSaveTool('mk', domain, { v: MARKET_V, domain, source: 'domainscout', any_listed: mk.some((m) => m.listed), marketplaces: mk });
+        renderMarketStripDS(domain, mk, Date.now(), { tracked: true });
+        return;
+      }
+    } catch { /* keep polling */ }
+    scheduleDsPoll(domain, attempt + 1);
+  }, DS_POLL_EVERY_MS);
 }
 
 // Primary path: one DomainScout call returns the authoritative for-sale state
 // across every marketplace it monitors. Returns false (→ scraping fallback) when
-// the key isn't configured or the call fails.
+// the key isn't configured or the call fails. When the scan is still pending
+// (empty marketplaces), render the scanning state and start auto-polling.
 async function loadDomainScoutStrip(domain) {
+  stopDsPoll();
   try {
     const res = await fetch(`/research/api/lookup?source=domainscout_lookup&domain=${encodeURIComponent(domain)}`);
     const data = await res.json().catch(() => ({}));
     if (!res.ok || !data.ok || !data.data) return false;
     const marketplaces = Array.isArray(data.data.marketplaces) ? data.data.marketplaces : [];
+    const tracked = data.data.tracked !== false;
     if (els.marketStrip.hidden || els.marketStrip.dataset.domain !== domain) return true;
-    // Don't cache a "pending" result (just tracked, no scan yet) — so the next
-    // view re-checks once DomainScout has scanned the marketplaces.
-    if (!data.data.pending) {
+    if (marketplaces.length) {
       serverSaveTool('mk', domain, { v: MARKET_V, domain, source: 'domainscout', any_listed: marketplaces.some((m) => m.listed), marketplaces });
+      renderMarketStripDS(domain, marketplaces, Date.now(), { tracked });
+      return true;
     }
-    renderMarketStripDS(domain, marketplaces, Date.now());
+    // Tracked but not scanned yet — show the spinner and poll until data lands.
+    // (Not cached: a pending result must re-check on the next view.)
+    renderMarketStripDS(domain, [], null, { tracked, scanning: true });
+    scheduleDsPoll(domain, 1);
     return true;
   } catch {
     return false;
@@ -2919,6 +2968,7 @@ function renderNameBio(el, data) {
 
 async function runMarketStrip(domain, { force = false } = {}) {
   if (!els.marketStrip || !domain) return;
+  stopDsPoll(); // cancel any in-flight poll from a previous domain
   els.marketStrip.hidden = false;
   els.marketStrip.dataset.domain = domain;
   loadNameBio(domain, els.namebioStrip); // NameBio sales history (cached)
@@ -2930,7 +2980,7 @@ async function runMarketStrip(domain, { force = false } = {}) {
       // Only trust a cache from the current detection version and within TTL.
       if (cached && cached.data && cached.data.v === MARKET_V && Date.now() - cached.ts < MARKET_TTL_MS) {
         if (els.marketStrip.hidden || els.marketStrip.dataset.domain !== domain) return;
-        if (cached.data.source === 'domainscout') renderMarketStripDS(domain, cached.data.marketplaces || [], cached.ts);
+        if (cached.data.source === 'domainscout') renderMarketStripDS(domain, cached.data.marketplaces || [], cached.ts, { tracked: true });
         else renderMarketStrip(domain, cached.data.channels || [], cached.ts);
         return;
       }
@@ -2960,6 +3010,7 @@ function enterResultMode(domain) {
   els.evidence.hidden = true;
   els.deepenTop.hidden = true;
   els.deepenBar.hidden = true;
+  stopDsPoll();
   if (els.marketStrip) els.marketStrip.hidden = true;
   if (els.runControls) els.runControls.hidden = true;
 }
