@@ -572,9 +572,10 @@ a.naming-card-domain:hover { color: var(--coral-deep); text-decoration: underlin
 .ms-scanning { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; font-style: italic; color: var(--navy-3); }
 .ms-spinner { width: 13px; height: 13px; border-radius: 50%; border: 2px solid var(--line); border-top-color: var(--coral-deep); animation: ms-spin .7s linear infinite; flex: 0 0 auto; }
 @keyframes ms-spin { to { transform: rotate(360deg); } }
-/* DomainScout quick-link, green when the domain is confirmed tracked. */
-.ms-ds.tracked { color: #1d7a4d; font-weight: 700; }
-.ms-ds.tracked:hover { color: #15643d; }
+/* DomainScout quick-link, green when the domain is confirmed tracked. Scoped
+   under .ms-quick so it out-specifies the generic `.ms-quick .ms-link` navy. */
+.ms-quick .ms-ds.tracked { color: #1d7a4d; font-weight: 700; }
+.ms-quick .ms-ds.tracked:hover { color: #15643d; }
 .ms-meta { margin-left: auto; font-size: 12px; color: var(--navy-3); }
 .ms-meta.ms-checking, .ms-row > .ms-checking { font-style: italic; color: var(--navy-3); font-weight: 400; }
 .ms-meta .ms-refresh { color: var(--coral-deep); text-decoration: none; font-weight: 700; }

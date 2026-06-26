@@ -2697,9 +2697,9 @@ function quickLinks(domain, tracked) {
   // The server now auto-tracks every researched domain in DomainScout. When that
   // track is confirmed, the link gets a green "✓ Tracked" badge; otherwise it's
   // a plain quick-open to the DomainScout dashboard for the domain.
-  const label = tracked ? '✓ DomainScout' : 'DomainScout';
+  const label = tracked ? '✓ Tracking on DomainScout' : 'DomainScout';
   const cls = tracked ? 'ms-link ms-ds tracked' : 'ms-link ms-ds';
-  const ttl = tracked ? ' title="Tracked on DomainScout"' : '';
+  const ttl = tracked ? ' title="This domain is tracked on DomainScout"' : '';
   const ds =
     `<a class="${cls}" data-ds-domain="${escapeHtml(domain)}"${ttl} ` +
     `href="${dsUrl(domain)}" target="_blank" rel="noopener">${label} ↗</a>`;
