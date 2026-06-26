@@ -154,6 +154,48 @@ suggest by the report's domain + manual search**, you pick which threads to atta
   `ADMIN_INTERNAL_BASE` (research, → the admin app). No extra permission — chat
   access (`domain_owner`) is the gate.
 
+## DomainScout integration (2026-06-26) — auto-track + authoritative for-sale strip
+
+DomainScout (https://www.domainscout.io) is a domain-monitoring service. With the
+`DOMAINSCOUT_KEY` env var set (Sanctum personal access token; **API needs the
+Hunter plan — a lesser plan returns 403**) the server now uses it for two things,
+replacing the old manual "Add to DomainScout" bookmarklet (which existed only
+because the server had no session there):
+
+- **Auto-track.** Every Domain Owner research request initiated from the Research
+  tab POSTs the domain into the DomainScout watchlist. Wired in `api/research.js`
+  (new-run path, right after `cleanDomainInput`): `trackDomain(domain, env)`,
+  **best-effort + non-blocking** (a failure never blocks the run), idempotent
+  (re-tracking is a no-op). Fires for both fresh and reused-domain requests.
+- **For-sale strip = DomainScout.** The report header's "For sale" strip now calls
+  the **`domainscout_lookup`** source (one API call → authoritative per-marketplace
+  listing state: listed/price/currency/link across Afternic, Sedo, GoDaddy,
+  Namecheap, Sav, Spaceship, Atom, Dan, Efty, HugeDomains, …) instead of scraping
+  six pages. **Falls back to the legacy page-scraping `marketplace_check` strip
+  when no key is set / the call fails**, so non-keyed envs still work.
+
+- **Client** `lib/domainscout.js`: `isConfigured`, `trackDomain` (POST; 201/200/
+  409/422 all = success, never throws), `lookupDomain` (GET `/{domain}`; on 404 it
+  POST-tracks then re-reads, since DomainScout only has data for monitored domains;
+  normalizes `marketplaces[]` + builds per-marketplace deep-link URLs).
+- **Source** `lib/sources/domainscout.js` → `domainscout_lookup`, registered in
+  `lib/sources/index.js` as a **FREE** source (flat monthly sub, no per-call credit;
+  category `Marketplace`). `requiresKey: [['DOMAINSCOUT_KEY','DOMAINSCOUT_API_KEY']]`.
+- **UI** (`public/app.js`): `loadDomainScoutStrip` (primary) → `streamMarketStrip`
+  (fallback). `renderMarketStripDS` shows **listed marketplaces first** (favicon
+  logo + price + deep-link), with the not-listed ones **collapsed behind a "+N not
+  listed ▸" toggle** (kept clean whether 2 or 12 come back). Logos via Google's
+  favicon CDN (`MARKET_HOSTS` map). Cached server-side kind `mk` (shape
+  `{v:6, source:'domainscout', marketplaces[]}`; **MARKET_V bumped 5→6**; a
+  "pending" just-tracked result is NOT cached so it re-checks once scanned).
+  Cache-bust `app.js?v=20260626domainscout`.
+- **Test:** `/research/api/diag?source=domainscout_lookup&domain=<d>` (auth-gated)
+  exercises the GET + auto-track in isolation. Research has **no preview builds**,
+  so this only runs live once on `main`.
+- **TODO (this session):** historical backfill — POST every domain ever researched
+  (distinct `domain` in `domain_research_runs`) into DomainScout so the existing
+  corpus is tracked too.
+
 ## Domain data model — canonical (do not let this drift)
 
 Two domain corpora in **separate Supabase projects**; the search reads both.
