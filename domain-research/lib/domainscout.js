@@ -36,6 +36,9 @@ async function call(path, { method = 'GET', body, env, timeoutMs = 12000 } = {})
       headers: {
         authorization: `Bearer ${key}`,
         accept: 'application/json',
+        // DomainScout sits behind Cloudflare, which 403s some default client
+        // UAs (error 1010). Send an explicit, normal User-Agent.
+        'user-agent': 'snagged-research/1.0 (+https://snagged.com)',
         ...(body ? { 'content-type': 'application/json' } : {}),
       },
       ...(body ? { body: JSON.stringify(body) } : {}),
