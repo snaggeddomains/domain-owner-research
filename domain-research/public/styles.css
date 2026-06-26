@@ -560,6 +560,14 @@ a.naming-card-domain:hover { color: var(--coral-deep); text-decoration: underlin
 .ms-item.unverified { color: #9a6b15; background: rgba(217,154,60,.16); border: 1.5px solid rgba(217,154,60,.5); }
 .ms-item.unverified:hover { background: rgba(217,154,60,.26); }
 .ms-item.pending { color: var(--navy-3); background: var(--cream); border: 1.5px solid var(--line); }
+/* DomainScout pills: inline marketplace favicon + a collapsible "+N not listed" toggle. */
+.ms-item { display: inline-flex; align-items: center; gap: 6px; }
+.ms-logo { width: 16px; height: 16px; border-radius: 3px; flex: 0 0 auto; vertical-align: middle; }
+.ms-more { font-size: 13px; font-weight: 700; padding: 4px 10px; border-radius: 999px; cursor: pointer; color: var(--navy-3); background: var(--cream); border: 1.5px solid var(--line); transition: background .2s ease, color .2s ease; }
+.ms-more:hover { color: var(--navy-1); background: var(--cream-2); }
+.ms-more.ms-none { color: var(--navy-2); }
+.ms-notlisted { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 8px 10px; }
+.ms-notlisted[hidden] { display: none; }
 .ms-meta { margin-left: auto; font-size: 12px; color: var(--navy-3); }
 .ms-meta.ms-checking, .ms-row > .ms-checking { font-style: italic; color: var(--navy-3); font-weight: 400; }
 .ms-meta .ms-refresh { color: var(--coral-deep); text-decoration: none; font-weight: 700; }

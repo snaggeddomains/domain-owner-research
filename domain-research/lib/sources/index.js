@@ -23,6 +23,7 @@ import reversens from './reversens.js';
 import reverseip from './reverseip.js';
 import websearch from './websearch.js';
 import cluster from './cluster.js';
+import domainscout from './domainscout.js';
 import trademark from './trademark.js';
 import appraise from './appraise.js';
 import namebio from './namebio.js';
@@ -33,7 +34,7 @@ import { recordUsage } from '../db/usage.js';
 // To add a new data source: create a module exporting { name, description,
 // parameters, requiresKey?, run(args, { env }) } and register it here.
 const ALL = [
-  rdap, whois, dns, wayback, livesite, marketplace, cluster, masterlist, universeOwnership, rocketreach, readurl, analytics,
+  rdap, whois, dns, wayback, livesite, marketplace, domainscout, cluster, masterlist, universeOwnership, rocketreach, readurl, analytics,
   whoisxml, domainiq, bigdomaindata, reversewhois, reversens, reverseip, websearch, bravesearch, trademark, appraise,
   rocketreachLookup, fullenrich, whoxyHistory, whoxyReverse, identify, namebio, namepros, nsSiblings,
 ];
@@ -73,6 +74,7 @@ const CATEGORY = {
   registration_cluster: 'Registration cluster',
   ns_siblings: 'Registration cluster',
   marketplace_check: 'Marketplace',
+  domainscout_lookup: 'Marketplace',
   masterlist_lookup: 'Internal list',
   universe_ownership: 'Internal list',
   rocketreach_search: 'People & contacts',

@@ -6,6 +6,7 @@ import { isDbConfigured } from '../lib/db/supabase.js';
 import { createRun, getRun, failRun, setRunStatus, listRuns, updateRunReport } from '../lib/db/runs.js';
 import { runTool } from '../lib/sources/index.js';
 import { withCategory } from '../lib/db/usage.js';
+import { trackDomain, isConfigured as isDomainScoutConfigured } from '../lib/domainscout.js';
 
 export const config = { maxDuration: 60 };
 
@@ -233,6 +234,14 @@ export default async function handler(req, res) {
     res.status(400).json({ error: String((e && e.message) || e) });
     return;
   }
+  // Every research request initiated from the Research tab adds the domain to
+  // DomainScout monitoring (replaces the old manual "Add to DomainScout"
+  // bookmarklet). Best-effort and non-blocking: a failure never blocks the run.
+  // Idempotent — re-tracking a domain we've seen before is a harmless no-op.
+  if (isDomainScoutConfigured(process.env)) {
+    try { await trackDomain(domain, process.env); } catch { /* never block research */ }
+  }
+
   const question = typeof body.question === 'string' ? body.question.slice(0, 1000) : '';
   // Optional: skip the free pre-flight and go straight to the paid deep pass.
   const deep = body.deep === true || body.deep === 'true';

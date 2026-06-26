@@ -2640,7 +2640,46 @@ const MARKET_CHANNELS = ['afternic', 'sedo', 'atom', 'godaddy', 'dynadot', 'spac
 const MARKET_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 // Bump when the for-sale detection logic changes, so cached results from an
 // older (buggier) version are ignored and re-checked instead of shown stale.
-const MARKET_V = 5;
+// v6: primary source is now the DomainScout API (authoritative, many
+// marketplaces) — the page-scraping channels are a fallback when no key is set.
+const MARKET_V = 6;
+
+// DomainScout marketplace → host, for a real favicon logo. Unknown names render
+// without a logo (text pill only). Logos are pulled from Google's favicon CDN.
+const MARKET_HOSTS = {
+  afternic: 'afternic.com', sedo: 'sedo.com', godaddy: 'godaddy.com', namecheap: 'namecheap.com',
+  sav: 'sav.com', spaceship: 'spaceship.com', atom: 'atom.com', squadhelp: 'atom.com',
+  dan: 'dan.com', efty: 'efty.com', hugedomains: 'hugedomains.com', dynadot: 'dynadot.com',
+  flippa: 'flippa.com', epik: 'epik.com', name: 'name.com', uniregistry: 'uniregistry.com',
+  bido: 'bido.com', sedomls: 'sedo.com', porkbun: 'porkbun.com',
+};
+function marketSlug(name) {
+  return String(name || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+function marketLogo(name) {
+  const host = MARKET_HOSTS[marketSlug(name)];
+  if (!host) return '';
+  return `<img class="ms-logo" src="https://www.google.com/s2/favicons?domain=${host}&sz=64" alt="" loading="lazy" width="16" height="16">`;
+}
+function marketMoney(price, currency) {
+  if (!price) return '';
+  const cur = String(currency || 'USD').toUpperCase();
+  if (cur === 'USD') return ' $' + Number(price).toLocaleString();
+  return ` ${Number(price).toLocaleString()} ${escapeHtml(cur)}`;
+}
+// One DomainScout marketplace pill. Listed → green, logo, price, deep-link.
+// Not-listed → muted text pill with the logo.
+function dsPill(m) {
+  const name = escapeHtml(m.name || '');
+  const logo = marketLogo(m.name);
+  if (m.listed) {
+    const href = m.url ? escapeHtml(m.url) : '';
+    const price = marketMoney(m.price, m.currency);
+    if (href) return `<a class="ms-item listed" href="${href}" target="_blank" rel="noopener">${logo}✓ ${name}${price} ↗</a>`;
+    return `<span class="ms-item listed">${logo}✓ ${name}${price}</span>`;
+  }
+  return `<span class="ms-item miss">${logo}✗ ${name}</span>`;
+}
 
 function quickLinks(domain) {
   const d = encodeURIComponent(domain);
@@ -2747,6 +2786,52 @@ function renderMarketStrip(domain, channels, ts) {
   marketPaint(domain, ordered.map(channelPill).join(''), ts ? metaHtml(ts) : '');
 }
 
+// Render the DomainScout result. Listed marketplaces lead (the actual signal);
+// the not-listed ones collapse behind a "+N not listed ▸" toggle so the strip
+// stays tidy whether 2 or 12 marketplaces come back.
+function renderMarketStripDS(domain, marketplaces, ts) {
+  const all = Array.isArray(marketplaces) ? marketplaces : [];
+  const listed = all.filter((m) => m.listed).sort((a, b) => (b.price || 0) - (a.price || 0));
+  const notListed = all.filter((m) => !m.listed).sort((a, b) => String(a.name).localeCompare(String(b.name)));
+  let pills;
+  if (listed.length) {
+    pills = listed.map(dsPill).join('');
+    if (notListed.length) {
+      pills += `<button type="button" class="ms-more" aria-expanded="false">+${notListed.length} not listed ▸</button>` +
+        `<span class="ms-notlisted" hidden>${notListed.map(dsPill).join('')}</span>`;
+    }
+  } else if (all.length) {
+    // Nothing listed — a single muted summary that expands to show which were checked.
+    pills = `<button type="button" class="ms-more ms-none" aria-expanded="false">✗ Not listed (${all.length} checked) ▸</button>` +
+      `<span class="ms-notlisted" hidden>${all.map(dsPill).join('')}</span>`;
+  } else {
+    pills = `<span class="ms-checking">No marketplace data yet — now tracking on DomainScout…</span>`;
+  }
+  marketPaint(domain, pills, ts ? metaHtml(ts) : '');
+}
+
+// Primary path: one DomainScout call returns the authoritative for-sale state
+// across every marketplace it monitors. Returns false (→ scraping fallback) when
+// the key isn't configured or the call fails.
+async function loadDomainScoutStrip(domain) {
+  try {
+    const res = await fetch(`/research/api/lookup?source=domainscout_lookup&domain=${encodeURIComponent(domain)}`);
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data.ok || !data.data) return false;
+    const marketplaces = Array.isArray(data.data.marketplaces) ? data.data.marketplaces : [];
+    if (els.marketStrip.hidden || els.marketStrip.dataset.domain !== domain) return true;
+    // Don't cache a "pending" result (just tracked, no scan yet) — so the next
+    // view re-checks once DomainScout has scanned the marketplaces.
+    if (!data.data.pending) {
+      serverSaveTool('mk', domain, { v: MARKET_V, domain, source: 'domainscout', any_listed: marketplaces.some((m) => m.listed), marketplaces });
+    }
+    renderMarketStripDS(domain, marketplaces, Date.now());
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 // Live check: one request per channel, each pill updated in place as it lands.
 async function streamMarketStrip(domain) {
   const state = MARKET_CHANNELS.map((ch) => ({ channel: ch, pending: true }));
@@ -2845,11 +2930,15 @@ async function runMarketStrip(domain, { force = false } = {}) {
       // Only trust a cache from the current detection version and within TTL.
       if (cached && cached.data && cached.data.v === MARKET_V && Date.now() - cached.ts < MARKET_TTL_MS) {
         if (els.marketStrip.hidden || els.marketStrip.dataset.domain !== domain) return;
-        renderMarketStrip(domain, cached.data.channels || [], cached.ts);
+        if (cached.data.source === 'domainscout') renderMarketStripDS(domain, cached.data.marketplaces || [], cached.ts);
+        else renderMarketStrip(domain, cached.data.channels || [], cached.ts);
         return;
       }
     }
-    await streamMarketStrip(domain);
+    // Prefer the DomainScout API (authoritative, many marketplaces); fall back to
+    // the page-scraping channels when no DomainScout key is configured.
+    const ok = await loadDomainScoutStrip(domain);
+    if (!ok) await streamMarketStrip(domain);
   } catch {
     // Network/parse failure — leave the quick-open links in place.
   }
@@ -5184,6 +5273,18 @@ els.marketStrip?.addEventListener('click', (ev) => {
     ev.preventDefault();
     const d = els.marketStrip.dataset.domain;
     if (d) runMarketStrip(d, { force: true });
+    return;
+  }
+  const more = ev.target.closest('.ms-more');
+  if (more) {
+    ev.preventDefault();
+    const box = more.nextElementSibling;
+    if (box && box.classList.contains('ms-notlisted')) {
+      const open = box.hidden;
+      box.hidden = !open;
+      more.setAttribute('aria-expanded', open ? 'true' : 'false');
+      more.innerHTML = more.innerHTML.replace(open ? '▸' : '▾', open ? '▾' : '▸');
+    }
     return;
   }
   const ds = ev.target.closest('a.ms-ds');
