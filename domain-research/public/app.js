@@ -3781,7 +3781,10 @@ async function loadAtomAppraisal(domain, el) {
     try {
       const r = await fetch(`/research/api/lookup?source=atom_appraise&domain=${encodeURIComponent(domain)}`);
       const rj = await r.json().catch(() => ({}));
-      if (rj && rj.ok && rj.data && rj.data.value != null) {
+      // Cache a definitive result — a real value OR a stable "unavailable for this
+      // TLD" answer — so a re-view never re-spends a quota slot. (Transient
+      // auth/limit errors come back ok:false and are NOT cached.)
+      if (rj && rj.ok && rj.data && (rj.data.value != null || rj.data.unavailable)) {
         data = rj.data;
         fetch('/research/api/lookup', {
           method: 'POST', headers: { 'content-type': 'application/json' },
@@ -3806,7 +3809,12 @@ function renderAtomError(el, err) {
   el.hidden = false;
 }
 function renderAtomAppraisal(el, data) {
-  if (!data || data.value == null) { el.hidden = true; el.innerHTML = ''; return; }
+  if (!data) { el.hidden = true; el.innerHTML = ''; return; }
+  if (data.value == null) {
+    // Definitive "no valuation" (e.g. unsupported TLD) — show the reason quietly.
+    if (data.unavailable && data.note) { renderAtomError(el, data.note); return; }
+    el.hidden = true; el.innerHTML = ''; return;
+  }
   const val = '$' + Number(data.value).toLocaleString();
   const score = (data.score != null) ? `<span class="ap-atom-score">${escapeHtml(String(data.score))}/10</span>` : '';
   const pos = Array.isArray(data.positive_signals) ? data.positive_signals : [];

@@ -36,7 +36,9 @@ export default {
     // missing param, OR daily-limit exhausted). A real appraisal carries
     // `atom_appraisal`. Surface limit/auth errors clearly.
     const data = await fetchJson(url, {}, 30000);
-    if (!data || data.atom_appraisal == null) {
+    // An auth/limit failure comes back as a {message:…} body with no appraisal —
+    // throw so the UI shows the error (and nothing gets cached).
+    if (!data || (data.atom_appraisal == null && data.message)) {
       const msg = (data && data.message) || 'Atom returned no appraisal';
       if (/limit|quota|exceed/i.test(msg)) throw new Error(`Atom daily appraisal limit reached — ${msg}`);
       throw new Error(`Atom: ${msg}`);
@@ -44,10 +46,31 @@ export default {
     const usage = data.usage || {};
     const used = usage.used_today;
     const cap = usage.daily_limit;
+    const usageOut = {
+      used_today: used ?? null,
+      daily_limit: cap ?? null,
+      remaining: (cap != null && used != null) ? Math.max(0, cap - used) : null,
+    };
+    // Atom can't price some domains (unsupported TLD, etc.) — it returns
+    // atom_appraisal:-1 + an external_message. That's a DEFINITIVE result (cache
+    // it so a re-view doesn't re-spend a quota slot), not an error.
+    const val = Number(data.atom_appraisal);
+    if (data.atom_appraisal == null || !Number.isFinite(val) || val < 0) {
+      return {
+        domain: data.domain_name || d,
+        provider: 'atom',
+        value: null,
+        unavailable: true,
+        note: data.external_message || 'Atom has no valuation for this domain.',
+        tm_conflicts: data.tm_conflicts ?? null,
+        date_registered: data.date_registered || null,
+        usage: usageOut,
+      };
+    }
     return {
       domain: data.domain_name || d,
       provider: 'atom',
-      value: Number(data.atom_appraisal) || null,
+      value: val,
       currency: 'USD',
       score: data.domain_score ?? null,               // 0–10
       positive_signals: Array.isArray(data.positive_signals) ? data.positive_signals : [],
@@ -57,11 +80,7 @@ export default {
       date_registered: data.date_registered || null,
       is_listed: Boolean(data.is_listed),
       bin_price: data.bin_price ?? null,
-      usage: {
-        used_today: used ?? null,
-        daily_limit: cap ?? null,
-        remaining: (cap != null && used != null) ? Math.max(0, cap - used) : null,
-      },
+      usage: usageOut,
     };
   },
 };
