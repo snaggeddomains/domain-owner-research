@@ -216,6 +216,7 @@ const els = {
   apDomain: $('ap-domain'),
   apStatus: $('ap-status'),
   apResult: $('ap-result'),
+  apAtom: $('ap-atom'),
   apRecent: $('ap-recent'),
   navDbscreen: $('nav-dbscreen'),
   navDbsearch: $('nav-dbsearch'),
@@ -3763,6 +3764,69 @@ function appraisalRange(a) {
   const v = pickr(a, ['estimated_value', 'estimatedValue', 'value', 'valuation', 'price', 'fair_market_value', 'fairMarketValue', 'marketValue', 'appraisedValue', 'estimate']);
   return v ? fmtMoney(v) : '';
 }
+// Atom.com second-opinion valuation, shown alongside the Appraise.net result.
+// Cache-first (kind 'at') because Atom has a hard ~10/day cap — a re-view must
+// never re-spend. The key not being configured hides the panel entirely; a
+// daily-limit / error shows a quiet note rather than breaking the page.
+async function loadAtomAppraisal(domain, el) {
+  if (!el || !domain) return;
+  el.hidden = true; el.innerHTML = ''; el.dataset.domain = domain;
+  let data = null;
+  try {
+    const c = await fetch(`/research/api/lookup?kind=at&query=${encodeURIComponent(domain)}`);
+    const cj = await c.json().catch(() => ({}));
+    if (cj && cj.found && cj.data) data = cj.data;
+  } catch { /* cache miss */ }
+  if (!data) {
+    try {
+      const r = await fetch(`/research/api/lookup?source=atom_appraise&domain=${encodeURIComponent(domain)}`);
+      const rj = await r.json().catch(() => ({}));
+      if (rj && rj.ok && rj.data && rj.data.value != null) {
+        data = rj.data;
+        fetch('/research/api/lookup', {
+          method: 'POST', headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ kind: 'at', query: domain, data }),
+        }).catch(() => {});
+      } else if (rj && rj.ok === false) {
+        const err = String(rj.error || '');
+        // Key not set on the server → no second opinion at all, stay hidden.
+        if (/not configured/i.test(err)) { el.hidden = true; return; }
+        if (el.dataset.domain === domain) renderAtomError(el, err); // limit / other → quiet note
+        return;
+      }
+    } catch { /* leave hidden */ }
+  }
+  if (el.dataset.domain !== domain) return; // a newer domain superseded this one
+  renderAtomAppraisal(el, data);
+}
+function renderAtomError(el, err) {
+  el.innerHTML =
+    `<div class="ap-atom-head"><span class="ap-atom-badge">Atom</span> Second opinion</div>` +
+    `<div class="ap-atom-err muted">${escapeHtml(err || 'unavailable')}</div>`;
+  el.hidden = false;
+}
+function renderAtomAppraisal(el, data) {
+  if (!data || data.value == null) { el.hidden = true; el.innerHTML = ''; return; }
+  const val = '$' + Number(data.value).toLocaleString();
+  const score = (data.score != null) ? `<span class="ap-atom-score">${escapeHtml(String(data.score))}/10</span>` : '';
+  const pos = Array.isArray(data.positive_signals) ? data.positive_signals : [];
+  const neg = Array.isArray(data.negative_signals) ? data.negative_signals : [];
+  const sig = [
+    ...pos.map((s) => `<li class="pos">+ ${escapeHtml(resolve(s) || s)}</li>`),
+    ...neg.map((s) => `<li class="neg">− ${escapeHtml(resolve(s) || s)}</li>`),
+  ].join('');
+  const tm = (data.tm_conflicts != null && Number(data.tm_conflicts) > 0)
+    ? ` <span class="ap-atom-tm" title="Trademark conflicts (USPTO)">⚠ ${escapeHtml(String(data.tm_conflicts))} TM</span>` : '';
+  const u = data.usage || {};
+  const quota = (u.remaining != null && u.daily_limit != null)
+    ? `<span class="ap-atom-quota">${escapeHtml(String(u.remaining))}/${escapeHtml(String(u.daily_limit))} left today</span>` : '';
+  el.innerHTML =
+    `<div class="ap-atom-head"><span class="ap-atom-badge">Atom</span> Second opinion ${quota}</div>` +
+    `<div class="ap-atom-val">${val} ${score}${tm}</div>` +
+    (sig ? `<ul class="ap-atom-sig">${sig}</ul>` : '');
+  el.hidden = false;
+}
+
 function renderAppraisal(domain, a, meta) {
   const range = appraisalRange(a);
   const conf = pickr(a, ['confidence', 'confidence_level', 'confidenceLabel', 'confidenceScore', 'confidence_score']);
@@ -3830,6 +3894,7 @@ function renderAppraisal(domain, a, meta) {
     (catStr ? `<div class="ap-field"><span>Categories</span> ${catStr}</div>` : '') +
     `<details class="src-detail"><summary>full appraisal</summary><pre>${raw}</pre></details>`;
   loadNameBio(domain, els.apNamebio); // NameBio previous-sales call-out (cached)
+  loadAtomAppraisal(domain, els.apAtom); // Atom second-opinion valuation (cached; ~10/day cap)
   // Wire the Refresh button (re-renders happen each time, so re-bind every render).
   const refreshBtn = els.apResult.querySelector('button.ap-refresh');
   if (refreshBtn) {
@@ -3890,6 +3955,7 @@ async function runAppraisal(domainInput, opts) {
   // Clear the prior domain's NameBio panel so it doesn't linger while the new
   // appraisal runs (renderAppraisal reloads it for the new domain).
   if (els.apNamebio) { els.apNamebio.hidden = true; els.apNamebio.innerHTML = ''; els.apNamebio.dataset.domain = ''; }
+  if (els.apAtom) { els.apAtom.hidden = true; els.apAtom.innerHTML = ''; els.apAtom.dataset.domain = ''; }
   setToolStatus(els.apStatus, force ? `Re-appraising ${domain}…` : `Appraising ${domain}…`);
   try {
     const qs = `source=appraise_lookup&domain=${encodeURIComponent(domain)}${force ? '&force=1' : ''}`;

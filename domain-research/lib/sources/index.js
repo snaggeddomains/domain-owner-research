@@ -26,6 +26,7 @@ import cluster from './cluster.js';
 import domainscout from './domainscout.js';
 import trademark from './trademark.js';
 import appraise from './appraise.js';
+import atomAppraise from './atom_appraise.js';
 import namebio from './namebio.js';
 import namepros from './namepros.js';
 import nsSiblings from './ns_siblings.js';
@@ -35,7 +36,7 @@ import { recordUsage } from '../db/usage.js';
 // parameters, requiresKey?, run(args, { env }) } and register it here.
 const ALL = [
   rdap, whois, dns, wayback, livesite, marketplace, domainscout, cluster, masterlist, universeOwnership, rocketreach, readurl, analytics,
-  whoisxml, domainiq, bigdomaindata, reversewhois, reversens, reverseip, websearch, bravesearch, trademark, appraise,
+  whoisxml, domainiq, bigdomaindata, reversewhois, reversens, reverseip, websearch, bravesearch, trademark, appraise, atomAppraise,
   rocketreachLookup, fullenrich, whoxyHistory, whoxyReverse, identify, namebio, namepros, nsSiblings,
 ];
 
@@ -87,6 +88,7 @@ const CATEGORY = {
   namepros_search: 'Web & social',
   trademark_search: 'Trademark / legal',
   appraise_lookup: 'Valuation',
+  atom_appraise: 'Valuation',
   namebio_sales: 'Sales history',
 };
 
@@ -108,7 +110,7 @@ function isEnabled(source, env) {
 // Returns a provider-neutral spec; each LLM adapter converts it to that
 // provider's tool format.
 export function getToolSpecs(env, { tier = 'all' } = {}) {
-  return ALL.filter((s) => isEnabled(s, env) && (tier === 'all' || !PAID.has(s.name) || FREE_PAID.has(s.name))).map((s) => ({
+  return ALL.filter((s) => !s.agentExcluded && isEnabled(s, env) && (tier === 'all' || !PAID.has(s.name) || FREE_PAID.has(s.name))).map((s) => ({
     name: s.name,
     description: s.description,
     parameters: s.parameters,

@@ -195,6 +195,7 @@ export function userCanReportPhase(user, phase) {
 export const SOURCE_MODULE = {
   trademark_search: 'trademark',
   appraise_lookup: 'appraisal',
+  atom_appraise: 'appraisal',
 };
 export function moduleForSource(name) {
   return SOURCE_MODULE[name] || 'domain_owner';
