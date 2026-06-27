@@ -1064,6 +1064,9 @@ body.modal-open { overflow: hidden; }
 .dbs-head .hero-sub { margin: 4px 0 0; text-align: left; max-width: none; font-size: 1rem; }
 .dbs-title { font-size: 1.6rem; margin: 0; }
 .dbs-search { max-width: 100%; margin: 0 0 12px; }
+/* "Exact word" shortcut button — secondary/outline, next to Search. */
+.dbs-search .dbs-exact { flex: 0 0 auto; white-space: nowrap; padding: 13px 18px; background: transparent; color: var(--navy-2); border: 2px solid var(--line); border-radius: var(--radius-sm); font-weight: 700; font-size: 15px; font-family: var(--body); cursor: pointer; }
+.dbs-search .dbs-exact:hover { border-color: var(--coral); color: var(--coral-deep); }
 .dbs-toprow { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin: 0 0 16px; flex-wrap: wrap; }
 .dbs-count { font-size: .95rem; font-weight: 600; color: var(--navy-2); }
 .dbs-toprow-right { display: inline-flex; align-items: center; gap: 14px; }

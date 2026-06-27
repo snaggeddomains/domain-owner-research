@@ -253,7 +253,7 @@ const els = {
   nsDomainForm: $('ns-domain-form'), nsDomain: $('ns-domain'),
   nsNsForm: $('ns-ns-form'), nsNs: $('ns-ns'), nsTld: $('ns-tld'),
   nsStatus: $('ns-status'), nsResult: $('ns-result'), nsRecent: $('ns-recent'),
-  dsSearch: $('ds-search'), dsQ: $('ds-q'), dsGo: $('ds-go'),
+  dsSearch: $('ds-search'), dsQ: $('ds-q'), dsGo: $('ds-go'), dsExact: $('ds-exact'),
   dsPriceMin: $('ds-price-min'), dsPriceMax: $('ds-price-max'),
   dsTlds: $('ds-tlds'),
   dsLenMin: $('ds-len-min'), dsLenMax: $('ds-len-max'),
@@ -7185,6 +7185,18 @@ els.nsResult?.addEventListener('input', (e) => {
 
 // DB Search interactions
 els.dsSearch?.addEventListener('submit', (e) => { e.preventDefault(); dsState.page = 0; fetchDbSearch(); });
+// "Exact word": pin the SLD length to the number of letters in the query so only
+// the exact word matches (antigen → len 7 → only antigen.* survives the q filter).
+els.dsExact?.addEventListener('click', () => {
+  const raw = (els.dsQ && els.dsQ.value ? String(els.dsQ.value) : '').trim().toLowerCase();
+  // Use the SLD only (drop any TLD the user typed), and count letters/digits.
+  const sld = raw.split('.')[0].replace(/[^a-z0-9]/g, '');
+  if (!sld) { setToolStatus(els.dsStatus, 'Type a word first, then click “Exact word”.', true); return; }
+  const n = String(sld.length);
+  if (els.dsLenMin) els.dsLenMin.value = n;
+  if (els.dsLenMax) els.dsLenMax.value = n;
+  dsState.page = 0; fetchDbSearch();
+});
 els.dsApply?.addEventListener('click', () => { dsState.page = 0; fetchDbSearch(); });
 els.dsExport?.addEventListener('click', dsExportCsv);
 els.dsReset?.addEventListener('click', () => {
