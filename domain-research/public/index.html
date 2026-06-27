@@ -430,6 +430,7 @@
           <form id="ds-search" class="search dbs-search" autocomplete="off">
             <input id="ds-q" type="text" placeholder="Search domains…" />
             <button id="ds-go" type="submit">Search</button>
+            <button id="ds-exact" type="button" class="dbs-exact" title="Match the exact word — pins SLD length to the number of letters you typed (e.g. antigen → length 7, so only antigen.* matches)">Exact word</button>
           </form>
           <div class="dbs-toprow">
             <div class="dbs-dbtoggle" id="ds-dbtoggle">
@@ -1012,6 +1013,6 @@ The model parses it into structured filters (TLDs, length, budget, tone, etc.) a
     </div>
 
     <!-- Bump ?v= on any public/app.js or styles.css change to bust caches. -->
-    <script src="app.js?v=20260627apbadge"></script>
+    <script src="app.js?v=20260627exactword"></script>
   </body>
 </html>
