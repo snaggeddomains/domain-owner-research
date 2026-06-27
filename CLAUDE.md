@@ -196,6 +196,34 @@ because the server had no session there):
   (distinct `domain` in `domain_research_runs`) into DomainScout so the existing
   corpus is tracked too.
 
+## Atom appraisal — second-opinion valuation (2026-06-27)
+
+A second valuation shown ALONGSIDE Appraise.net in the Appraisal tool (Atom.com /
+ex-Squadhelp). Source `lib/sources/atom_appraise.js` → `atom_appraise`.
+
+- **Endpoint** `GET https://www.atom.com/api/marketplace/domain-appraisal` with
+  **query-param auth**: `api_token` (= the account's **appraisal_api_key**, NOT the
+  general api_key) + `user_id` + `domain_name`. Env: `ATOM_APPRAISAL_KEY` +
+  `ATOM_USER_ID`. Errors come back as HTTP 200 `{message:…}` (bad token / missing
+  param / **daily limit**); a real result carries `atom_appraisal`.
+- **Response** → normalized `{value (USD), score (0–10), positive_signals[],
+  negative_signals[], tm_conflicts, date_registered, is_listed, bin_price, usage}`.
+- **⚠️ HARD DAILY CAP (~10/day, `user_level:B`).** So: (1) the source is
+  `agentExcluded: true` — the autonomous research agent NEVER sees it (a run can't
+  exhaust the quota), enforced by a `!s.agentExcluded` filter in `getToolSpecs`;
+  (2) the UI is **cache-first** (lookup kind **`at`**, module `appraisal`) so a
+  re-view never re-spends. Only the Appraisal tool calls it (via `api/lookup`),
+  cached per domain.
+- **UI** (`public/app.js`): `loadAtomAppraisal`/`renderAtomAppraisal` render a
+  `#ap-atom` panel below the Appraise.net card (value + score + TM-conflict chip +
+  signals + "N/10 left today" quota). Key not set → panel stays hidden; daily-limit
+  / error → a quiet note. `.ap-atom-*` styles. Cache-bust `app.js?v=20260626atom`.
+- **Gating:** `moduleForSource('atom_appraise') = 'appraisal'`, category `Valuation`.
+  NOT in PAID (no per-call $ meter; the constraint is the daily cap, not credits).
+- **Verified live 2026-06-27:** spanglish.com $97,500/score 10; arx.com
+  $1,339,000/score 9. **One-time setup:** set `ATOM_APPRAISAL_KEY` + `ATOM_USER_ID`
+  in Vercel (research project).
+
 ## Domain data model — canonical (do not let this drift)
 
 Two domain corpora in **separate Supabase projects**; the search reads both.
