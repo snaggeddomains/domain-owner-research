@@ -162,6 +162,9 @@ a.wordmark:hover { text-decoration: none; opacity: .9; }
 .ap-meta { display: flex; align-items: center; gap: 10px; color: var(--navy-3); font-size: 12px; margin: 2px 0 10px; }
 .ap-meta .ap-refresh { background: transparent; border: 1.5px solid var(--line); color: var(--coral-deep); padding: 3px 10px; border-radius: 999px; font-weight: 700; font-size: 12px; cursor: pointer; }
 .ap-meta .ap-refresh:hover { border-color: var(--coral); background: rgba(228,128,105,.08); }
+/* Provider pill (Appraise.net primary, coral) — pairs with the Atom pill (navy). */
+.ap-badge { font-size: 11px; font-weight: 800; color: #fff; background: var(--navy-2); border-radius: 999px; padding: 2px 8px; letter-spacing: .02em; white-space: nowrap; }
+.ap-badge-primary { background: var(--coral-deep); }
 .ap-field { color: var(--navy); font-size: .95rem; margin: 2px 0; }
 .ap-field span { color: var(--navy-3); font-weight: 700; margin-right: 6px; }
 .ap-block { margin-top: 12px; }

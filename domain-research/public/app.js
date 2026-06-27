@@ -3887,9 +3887,11 @@ function renderAppraisal(domain, a, meta) {
   // "Last appraised <ago> · Refresh" line — lets the user see freshness and
   // re-run a paid appraisal when the cached one is stale.
   const updatedAt = meta && meta.updatedAt;
-  const metaRow = updatedAt
-    ? `<div class="ap-meta">Appraised ${escapeHtml(agoLabel(updatedAt))} · <button type="button" class="ap-refresh" data-refresh="${escapeHtml(domain)}">Refresh</button></div>`
+  // Provider badge (parallel to the Atom "second opinion" pill) + freshness/refresh.
+  const freshness = updatedAt
+    ? ` Appraised ${escapeHtml(agoLabel(updatedAt))} · <button type="button" class="ap-refresh" data-refresh="${escapeHtml(domain)}">Refresh</button>`
     : '';
+  const metaRow = `<div class="ap-meta"><span class="ap-badge ap-badge-primary">Appraise.net</span>${freshness}</div>`;
   els.apResult.hidden = false;
   els.apResult.innerHTML =
     `<div class="tool-title">${escapeHtml(domain)}</div>` +
