@@ -26,6 +26,34 @@ export function friendlyApiError(err) {
   return null;
 }
 
+// Place a single rolling cache breakpoint on the LAST block of the LAST message,
+// returning a shallow copy (the persistent `messages` array stays clean so we can
+// re-mark a fresh tail each step). Anthropic caches the whole prefix up to that
+// breakpoint and auto-reads the longest matching prefix on the next call — so as
+// the conversation grows, each step only pays full input price for its newest
+// turn and reads all prior turns from cache (~0.1× input). This is the big lever
+// for a multi-step tool-use loop, where the re-sent tool-result history otherwise
+// dominates uncached input. One breakpoint here + one on the system block = 2 of
+// the 4 allowed. We never mark a thinking block (don't touch signed thinking).
+function withConvCacheBreakpoint(messages) {
+  if (!messages.length) return messages;
+  const out = messages.slice();
+  const last = out[out.length - 1];
+  let content = last.content;
+  if (typeof content === 'string') {
+    content = [{ type: 'text', text: content, cache_control: { type: 'ephemeral' } }];
+  } else if (Array.isArray(content) && content.length) {
+    content = content.slice();
+    const i = content.length - 1;
+    if (content[i] && content[i].type === 'thinking') return messages; // leave signed thinking untouched
+    content[i] = { ...content[i], cache_control: { type: 'ephemeral' } };
+  } else {
+    return messages;
+  }
+  out[out.length - 1] = { ...last, content };
+  return out;
+}
+
 export async function runAgent({ system, history, userPrompt, toolSpecs, env, maxSteps, maxToolResultChars, seedTrace = [] }) {
   // maxRetries lets the SDK ride out short overloads/rate-limits within a single
   // attempt (exponential backoff that honors the Retry-After header) — so a
@@ -75,7 +103,9 @@ export async function runAgent({ system, history, userPrompt, toolSpecs, env, ma
       tools,
       thinking,
       output_config: { effort },
-      messages,
+      // Cache the growing conversation prefix (in addition to the tools+system
+      // prefix) so each step only pays full price for the newest turn.
+      messages: withConvCacheBreakpoint(messages),
     });
     recordModelUsage('anthropic', model, response.usage); // best-effort cost log
 
