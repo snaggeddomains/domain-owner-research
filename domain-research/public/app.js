@@ -7645,10 +7645,23 @@ async function runEvaluate(domain, { price = null, refresh = false } = {}) {
   try { setActiveDomain(d); } catch { /* domain bar is decorative */ }
   if (els.evDomain) els.evDomain.value = d;
   try {
-    const params = new URLSearchParams({ domain: d });
-    if (price) params.set('price', String(price));
-    if (refresh) params.set('refresh', '1');
-    const res = await fetch(`/research/api/evaluate?${params.toString()}`);
+    const doFetch = (useRefresh) => {
+      const params = new URLSearchParams({ domain: d });
+      if (price) params.set('price', String(price));
+      if (useRefresh) params.set('refresh', '1');
+      return fetch(`/research/api/evaluate?${params.toString()}`);
+    };
+    // A long (~40–60s) eval can drop mid-flight on mobile/wifi (deploy swap, network
+    // blip) → fetch() REJECTS ("Load failed"/"Failed to fetch"). The server often
+    // FINISHED + cached anyway, so on a network drop wait briefly and retry ONCE
+    // cache-first (no refresh) — that usually returns the just-computed result fast.
+    let res;
+    try {
+      res = await doFetch(refresh);
+    } catch (netErr) {
+      await new Promise((r) => setTimeout(r, 2500));
+      res = await doFetch(false);
+    }
     const text = await res.text();
     let data;
     try { data = JSON.parse(text); } catch { throw new Error(res.ok ? 'Unexpected response from the server.' : `Server error (HTTP ${res.status}). ${text.slice(0, 140)}`); }
