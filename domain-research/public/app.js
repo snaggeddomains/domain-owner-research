@@ -976,14 +976,14 @@ function dsRenderRows(rows) {
     const domain = r.domain || '';
     const src = (r.best_price_source || (Array.isArray(r.sources) && r.sources[0]) || '');
     const liveUrl = domain ? `https://${encodeURI(domain)}` : '';
-    // The domain name → the live site; the Source pill → the marketplace listing
-    // (or the live site when the source isn't a known marketplace).
+    // Both the domain name AND the Source pill → the marketplace listing for this
+    // domain (or the live site when the source isn't a known marketplace).
+    const listingUrl = domain ? (dsListingUrl(src, domain) || liveUrl) : '';
     const domCell = domain
-      ? `<a class="dbs-domain dbs-domain-link" href="${escapeHtml(liveUrl)}" target="_blank" rel="noopener" title="Open ${escapeHtml(domain)}">${escapeHtml(domain)}</a>`
+      ? `<a class="dbs-domain dbs-domain-link" href="${escapeHtml(listingUrl)}" target="_blank" rel="noopener" title="Open the listing for ${escapeHtml(domain)}">${escapeHtml(domain)}</a>`
       : '<span class="muted">—</span>';
-    const srcUrl = src ? (dsListingUrl(src, domain) || liveUrl) : '';
     const srcCell = src
-      ? `<a class="dbs-src dbs-src-link" href="${escapeHtml(srcUrl)}" target="_blank" rel="noopener" title="Open ${escapeHtml(src)} listing">${escapeHtml(src)} ↗</a>`
+      ? `<a class="dbs-src dbs-src-link" href="${escapeHtml(listingUrl)}" target="_blank" rel="noopener" title="Open ${escapeHtml(src)} listing">${escapeHtml(src)} ↗</a>`
       : '<span class="muted">—</span>';
     return `<tr>` +
       `<td>${domCell}</td>` +
