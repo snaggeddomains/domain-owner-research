@@ -48,7 +48,7 @@ function qualityBaseline(quality) {
 // {source, low, mid, high, weight, note}. Asking prices (the domain's own listing,
 // internal "similar asking" comps, AI appraisals) are DISCOUNTED to realizable —
 // asks run well above what names actually clear at.
-export function buildAnchors({ quality, namebio, internal, dealOffers, appraise, atom, listing } = {}) {
+export function buildAnchors({ quality, namebio, namebioComps, internal, dealOffers, appraise, atom, listing } = {}) {
   const anchors = [];
 
   // 1. NameBio — recorded PUBLIC SALES of the EXACT domain. The strongest signal:
@@ -64,6 +64,24 @@ export function buildAnchors({ quality, namebio, internal, dealOffers, appraise,
       high: Math.max(...prices) * 1.1,
       weight: 3.0,
       note: `${nbSales.length} recorded sale${nbSales.length > 1 ? 's' : ''} of this exact domain (median $${niceRound(mid).toLocaleString()}).`,
+    });
+  }
+
+  // 1b. NameBio COMPARABLE sales — recorded RETAIL sales of SIMILAR names (the comp
+  // set when there's no exact-domain sale). Real clearing prices, but for similar-
+  // not-this name, so discounted modestly to realizable and weighted below exact.
+  const nbComps = (namebioComps && Array.isArray(namebioComps.comps) ? namebioComps.comps : []).filter((c) => c && c.price > 0);
+  if (nbComps.length) {
+    const prices = nbComps.map((c) => c.price).sort((a, b) => a - b);
+    const at = (frac) => prices[Math.min(prices.length - 1, Math.max(0, Math.round(frac * (prices.length - 1))))];
+    const DISCOUNT = 0.75; // retail comps run above this specific name's realistic resale
+    anchors.push({
+      source: 'namebio_comps',
+      low: at(0.25) * DISCOUNT,
+      mid: at(0.5) * DISCOUNT,
+      high: at(0.75) * DISCOUNT,
+      weight: 2.0,
+      note: `${nbComps.length} comparable NameBio sale${nbComps.length > 1 ? 's' : ''} of similar names (median $${niceRound(at(0.5)).toLocaleString()}).`,
     });
   }
 
@@ -178,7 +196,7 @@ function blend(anchors) {
 function confidenceOf(anchors, blended) {
   const has = (s) => anchors.some((a) => a.source === s);
   const strong = (has('namebio') ? 1 : 0) + (has('snagged_deal_history') ? 1 : 0);
-  const supporting = ['internal_comps', 'appraise_net', 'atom'].filter(has).length;
+  const supporting = ['namebio_comps', 'internal_comps', 'appraise_net', 'atom'].filter(has).length;
   let band = 'low';
   if (strong >= 1 && supporting >= 1) band = 'high';
   else if (strong >= 1 || supporting >= 2) band = 'medium';

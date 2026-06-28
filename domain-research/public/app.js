@@ -7769,8 +7769,10 @@ function evComps(data) {
   const s = (data.evaluation && data.evaluation.signals) || {};
   const comps = s.comps || {};
   const nb = comps.namebio;
+  const nbc = comps.namebio_comps;
   const intc = comps.internal;
   const dh = comps.deal_history;
+  const ap = (s.appraisals || {});
   const val = (data.evaluation && data.evaluation.valuation) || {};
   const anchors = val.anchors || [];
 
@@ -7782,6 +7784,13 @@ function evComps(data) {
       + nb.sales.slice(0, 8).map((x) => `<tr><td>${evM(x.price)}</td><td>${escapeHtml(x.date || '—')}</td><td>${escapeHtml(x.venue || '—')}</td></tr>`).join('')
       + `</tbody></table></div>`;
   }
+  // NameBio comparable sales (similar names that actually sold)
+  if (nbc && nbc.comps && nbc.comps.length) {
+    body += `<div class="ev-comp-block"><h4 class="ev-comp-h">NameBio — comparable sales <span class="muted">(${nbc.comps.length} similar names that sold)</span></h4>`
+      + `<table class="ev-table"><thead><tr><th>Domain</th><th>Price</th><th>Date</th><th>Venue</th></tr></thead><tbody>`
+      + nbc.comps.slice(0, 15).map((x) => `<tr><td>${escapeHtml(x.domain || '—')}</td><td>${evM(x.price)}</td><td>${escapeHtml(x.date || '—')}</td><td>${escapeHtml(x.venue || '—')}</td></tr>`).join('')
+      + `</tbody></table></div>`;
+  }
   // Snagged deal history (strongest)
   if (dh && dh.offers && dh.offers.length) {
     body += `<div class="ev-comp-block"><h4 class="ev-comp-h">Snagged deal history — real money on this domain ${dh.sale ? `<span class="ev-tag">${escapeHtml(dh.sale.label || dh.sale.stage)}</span>` : ''}</h4>`
@@ -7791,14 +7800,25 @@ function evComps(data) {
   } else if (dh) {
     body += `<div class="ev-comp-block muted">Snagged has represented this domain (inbound ${dh.inbound || 0}) but no logged offers.</div>`;
   }
-  // Internal asking comps
+  // Internal corpus comparable listings (actual rows + marketplace source)
   if (intc && intc.count) {
-    body += `<div class="ev-comp-block"><h4 class="ev-comp-h">Internal corpus — ${intc.count} similar .${escapeHtml(intc.tld || '')} names for sale</h4>`
+    const rows = (intc.rows && intc.rows.length ? intc.rows : (intc.examples || []));
+    body += `<div class="ev-comp-block"><h4 class="ev-comp-h">Internal corpus — ${intc.count} similar .${escapeHtml(intc.tld || '')} names listed <span class="muted">(asking)</span></h4>`
       + `<p class="muted">Median ask ${evM(intc.p50)} (asking, not realized — discounted in the model). Range ${evM(intc.p25)}–${evM(intc.p75)}.</p>`
-      + (intc.examples && intc.examples.length ? `<div class="ev-chips">${intc.examples.map((e) => `<span class="ev-chip">${escapeHtml(e.domain)} <strong>${evM(e.price)}</strong></span>`).join('')}</div>` : '')
+      + (rows.length ? `<table class="ev-table"><thead><tr><th>Domain</th><th>Ask</th><th>Source</th></tr></thead><tbody>`
+        + rows.slice(0, 12).map((e) => `<tr><td>${escapeHtml(e.domain)}</td><td>${evM(e.price)}</td><td class="muted">${escapeHtml(e.source || '—')}</td></tr>`).join('')
+        + `</tbody></table>` : '')
       + `</div>`;
   }
-  if (!body) body = `<p class="muted">No comparable sales found for this name.</p>`;
+  // Appraisals (Appraise.net + Atom)
+  if (ap.appraise || ap.atom) {
+    const apRows = [];
+    if (ap.appraise) apRows.push(`<tr><td>Appraise.net</td><td>${evM(ap.appraise.mid)}${ap.appraise.low && ap.appraise.high ? ` <span class="muted">(${evM(ap.appraise.low)}–${evM(ap.appraise.high)})</span>` : ''}</td><td class="muted">—</td></tr>`);
+    if (ap.atom) apRows.push(`<tr><td>Atom</td><td>${evM(ap.atom.value)}</td><td class="muted">${ap.atom.score != null ? `score ${ap.atom.score}/10` : ''}${ap.atom.tm_conflicts ? ` · ${ap.atom.tm_conflicts} TM conflict(s)` : ''}</td></tr>`);
+    body += `<div class="ev-comp-block"><h4 class="ev-comp-h">Appraisals <span class="muted">(AI estimates — discounted to realizable in the model)</span></h4>`
+      + `<table class="ev-table"><thead><tr><th>Source</th><th>Estimate</th><th>Notes</th></tr></thead><tbody>${apRows.join('')}</tbody></table></div>`;
+  }
+  if (!body) body = `<p class="muted">No comparable sales, appraisals, or deal history found for this name.</p>`;
 
   // Value anchors (the model's math)
   const anchorRows = anchors.length
@@ -7807,7 +7827,7 @@ function evComps(data) {
       + `</tbody></table></details>`
     : '';
 
-  return `<div class="ev-card"><h3 class="ev-h3">Comparable sales</h3>${body}${anchorRows}</div>`;
+  return `<div class="ev-card"><h3 class="ev-h3">Comparable sales &amp; appraisals</h3>${body}${anchorRows}</div>`;
 }
 
 function evBuyers(data) {
@@ -7833,20 +7853,17 @@ function evContext(data) {
   const s = (data.evaluation && data.evaluation.signals) || {};
   const cu = s.current_use || {};
   const fs = s.for_sale || {};
-  const ap = (s.appraisals || {});
   const reg = s.registration || {};
   const parked = cu.parking && cu.parking.likely_parked;
   const use = !cu.reachable ? 'No reachable website'
     : (parked ? `Parked / for-sale page${cu.parking.platforms && cu.parking.platforms.length ? ` (${escapeHtml(cu.parking.platforms.join(', '))})` : ''}`
       : `Live site — "${escapeHtml((cu.title || '').slice(0, 90))}"`);
   const forSale = fs.listed ? `Listed${fs.price ? ` at <strong>${evM(fs.price)}</strong>` : ''}${fs.platform ? ` on ${escapeHtml(fs.platform)}` : ''}` : 'Not listed on tracked marketplaces';
-  const appr = [];
-  if (ap.appraise) appr.push(`Appraise.net ${evM(ap.appraise.mid)}`);
-  if (ap.atom) appr.push(`Atom ${evM(ap.atom.value)}${ap.atom.score != null ? ` (${ap.atom.score}/10${ap.atom.tm_conflicts ? `, ${ap.atom.tm_conflicts} TM` : ''})` : ''}`);
+  // Appraisals now have their own block in the comps card — keep this card to the
+  // domain's live state (use, listing, age).
   const rows = [
     ['Current use', use],
     ['For sale now', forSale],
-    ['AI appraisals', appr.length ? appr.join(' · ') : '—'],
     ['Registered', reg.created ? `${escapeHtml(reg.created)}${reg.age_years != null ? ` (~${reg.age_years}y)` : ''}${reg.registrar ? ` · ${escapeHtml(reg.registrar)}` : ''}` : 'unknown'],
   ];
   return `<div class="ev-card"><h3 class="ev-h3">The domain today</h3><table class="ev-kv">`

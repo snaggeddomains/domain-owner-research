@@ -29,6 +29,18 @@ export async function namebioComps(domain, env = process.env) {
   return null;
 }
 
+// NameBio comparable sales (Comps engine, ~25 credits) — up to 25 of the most
+// relevant recorded RETAIL sales for the name (similar keywords/extensions). This
+// is the real comp set when there's no exact-domain sale. Returns
+// { comps:[{domain,price,date,venue}], credits_remaining } or null. Fail-open.
+export async function namebioComparables(domain, env = process.env) {
+  try {
+    const r = await runTool('namebio_comps', { domain }, env);
+    if (r && r.ok && r.data) return r.data;
+  } catch { /* fail-open */ }
+  return null;
+}
+
 // Structurally-similar PRICED names from name_universe (the big automated
 // marketplace corpus). Same bare TLD, length within ±2, matching word-count /
 // dictionary class for a like-for-like compare. Unordered bounded sample (a sort
@@ -39,7 +51,7 @@ async function universeComps({ tld, len, numWords, isWord }) {
   try {
     let q = getNamingDb()
       .from('name_universe')
-      .select('domain, best_price')
+      .select('domain, best_price, best_price_source')
       .eq('tld', tld)
       .gt('best_price', 50)
       .lt('best_price', 5000000)
@@ -51,7 +63,7 @@ async function universeComps({ tld, len, numWords, isWord }) {
     const { data, error } = await q;
     if (error) return [];
     return (data || [])
-      .map((r) => ({ domain: r.domain, price: Number(r.best_price) || 0 }))
+      .map((r) => ({ domain: r.domain, price: Number(r.best_price) || 0, source: r.best_price_source || null }))
       .filter((r) => r.price > 0);
   } catch { return []; }
 }
@@ -63,7 +75,7 @@ async function masterComps({ tld, len, isWord }) {
   try {
     let q = getMasterlistDb()
       .from('Master Domain List')
-      .select('domain, price, sld_length')
+      .select('domain, price, sld_length, source')
       .eq('tld', tld)
       .gt('price', 50)
       .lt('price', 5000000)
@@ -74,7 +86,7 @@ async function masterComps({ tld, len, isWord }) {
     const { data, error } = await q;
     if (error) return [];
     return (data || [])
-      .map((r) => ({ domain: r.domain, price: Number(r.price) || 0 }))
+      .map((r) => ({ domain: r.domain, price: Number(r.price) || 0, source: r.source || null }))
       .filter((r) => r.price > 0);
   } catch { return []; }
 }
@@ -94,11 +106,14 @@ export async function internalComps({ tld, len, numWords, isWord }, _env = proce
     seen.add(r.domain);
     pool.push(r);
   }
-  if (!pool.length) return { count: 0, tld, examples: [] };
+  if (!pool.length) return { count: 0, tld, rows: [], examples: [] };
   const prices = pool.map((r) => r.price).sort((a, b) => a - b);
-  // Examples: a low, a median, and a high comp so the user sees the spread.
-  const sortedByPrice = [...pool].sort((a, b) => a.price - b.price);
-  const pick = (frac) => sortedByPrice[Math.min(sortedByPrice.length - 1, Math.floor(frac * (sortedByPrice.length - 1)))];
+  const sortedByPrice = [...pool].sort((a, b) => b.price - a.price);
+  // Actual comp ROWS to display — the strongest similar listings (price desc), up
+  // to 12, each with its marketplace source.
+  const rows = sortedByPrice.slice(0, 12).map((r) => ({ domain: r.domain, price: r.price, source: r.source || null }));
+  // A low/median/high spread for the one-line summary.
+  const pick = (frac) => sortedByPrice[Math.min(sortedByPrice.length - 1, Math.floor((1 - frac) * (sortedByPrice.length - 1)))];
   const examples = [...new Set([pick(0.15), pick(0.5), pick(0.85)].filter(Boolean))]
     .map((r) => ({ domain: r.domain, price: r.price }));
   return {
@@ -107,6 +122,7 @@ export async function internalComps({ tld, len, numWords, isWord }, _env = proce
     p50: percentile(prices, 50),
     p75: percentile(prices, 75),
     tld,
+    rows,
     examples,
   };
 }

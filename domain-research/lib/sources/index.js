@@ -28,6 +28,7 @@ import trademark from './trademark.js';
 import appraise from './appraise.js';
 import atomAppraise from './atom_appraise.js';
 import namebio from './namebio.js';
+import namebioComps from './namebio_comps.js';
 import namepros from './namepros.js';
 import nsSiblings from './ns_siblings.js';
 import { recordUsage } from '../db/usage.js';
@@ -37,7 +38,7 @@ import { recordUsage } from '../db/usage.js';
 const ALL = [
   rdap, whois, dns, wayback, livesite, marketplace, domainscout, cluster, masterlist, universeOwnership, rocketreach, readurl, analytics,
   whoisxml, domainiq, bigdomaindata, reversewhois, reversens, reverseip, websearch, bravesearch, trademark, appraise, atomAppraise,
-  rocketreachLookup, fullenrich, whoxyHistory, whoxyReverse, identify, namebio, namepros, nsSiblings,
+  rocketreachLookup, fullenrich, whoxyHistory, whoxyReverse, identify, namebio, namebioComps, namepros, nsSiblings,
 ];
 
 // Paid sources spend external API credits. They are withheld from the free
@@ -47,7 +48,7 @@ const PAID = new Set([
   'whoisxml_lookup', 'domainiq_lookup', 'bigdomaindata_lookup',
   'reverse_whois', 'reverse_ns', 'reverse_ip', 'web_search', 'brave_search', 'trademark_search', 'appraise_lookup',
   'rocketreach_lookup', 'fullenrich_lookup', 'whoxy_history', 'whoxy_reverse', 'identify_operator', 'namebio_sales',
-  'namepros_search',
+  'namebio_comps', 'namepros_search',
 ]);
 
 // Paid sources we nonetheless run on the FREE pre-flight pass (still cost-metered
@@ -90,6 +91,7 @@ const CATEGORY = {
   appraise_lookup: 'Valuation',
   atom_appraise: 'Valuation',
   namebio_sales: 'Sales history',
+  namebio_comps: 'Sales history',
 };
 
 export function getCategoryMap() {
@@ -142,6 +144,7 @@ function usageMeters(name, data) {
     case 'brave_search': return [['brave.search', 1]];
     case 'trademark_search': return [['signa.trademark', 1]];
     case 'namebio_sales': return [['namebio.sales', 1]];
+    case 'namebio_comps': return [['namebio.comps', 1]];
     case 'appraise_lookup':
       // 3 credits new / 1 cached; only count when an appraisal actually returns
       // (skip the async "pending" submit-poll churn).

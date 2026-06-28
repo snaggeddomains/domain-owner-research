@@ -19,7 +19,7 @@ import { getNamingDb, isNamingDbConfigured } from '../db/supabase-naming.js';
 import { searchEmailThreads, emailIngestConfigured } from '../email/threads.js';
 import { getDealComps } from '../db/dealComps.js';
 import { scoreQuality } from './quality.js';
-import { namebioComps, internalComps } from './comps.js';
+import { namebioComps, namebioComparables, internalComps } from './comps.js';
 
 // "$1,234" / "1.2k" / "$1.3M" / "1,300 USD" → 1234 / 1200 / 1300000 / 1300.
 export function parseMoney(v) {
@@ -145,7 +145,7 @@ export async function gatherSignals(domain, env = process.env) {
   const [
     rdapData, liveData, dsData, appraiseData, atomData,
     nameproData, webDomain, webTerm,
-    nbComps, intComps, dealHistory, emailThreads,
+    nbComps, nbComparables, intComps, dealHistory, emailThreads,
   ] = await Promise.all([
     tool('rdap_whois', { domain: d }, env),
     tool('livesite_inspect', { domain: d }, env),
@@ -156,6 +156,7 @@ export async function gatherSignals(domain, env = process.env) {
     tool('web_search', { query: `"${d}"` }, env),
     tool('web_search', { query: sld }, env),
     namebioComps(d, env),
+    namebioComparables(d, env),
     internalComps({ tld, len: sld.length, numWords, isWord }, env),
     getDealComps(d),
     emailIngestConfigured() ? withTimeout(searchEmailThreads(d), 12000, []) : Promise.resolve([]),
@@ -181,7 +182,7 @@ export async function gatherSignals(domain, env = process.env) {
     for_sale: forSale,
     listing,
     appraisals: { appraise, atom },
-    comps: { namebio: nbComps, internal: intComps, deal_history: dealHistory },
+    comps: { namebio: nbComps, namebio_comps: nbComparables, internal: intComps, deal_history: dealHistory },
     namepros: nameproData && Array.isArray(nameproData.results) ? nameproData.results.slice(0, 8) : [],
     web: {
       domain_search: webDomain && Array.isArray(webDomain.results) ? webDomain.results.slice(0, 8) : [],

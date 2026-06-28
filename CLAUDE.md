@@ -239,13 +239,18 @@ menu in the admin hub, alongside Research/Admin/Reports — see snagged-admin).
   comps (below), **NamePros** forum chatter, **straight Google** of the exact domain
   AND the SLD term (who's using it / competition), and a **Gmail sweep** (has anyone
   emailed us about it — via the admin internal endpoint, 12s-capped).
-- **Comps = three sources** (`lib/evaluate/comps.js` + `lib/db/dealComps.js`):
-  **NameBio** recorded public sales of the exact domain (paid, 1 credit), **internal
-  asking comps** (structurally-similar priced names from `name_universe` + Master,
-  same TLD/length/word-count — discounted to realizable), and **Snagged's own deal
-  history** (real offers/budgets from `marketplace_deal_reports`, read DIRECTLY via
-  `getDb()` since that table lives in the SAME main project — no cross-app call, no
-  Gmail/HubSpot cost; only present if generated in the admin app).
+- **Comps = four sources** (`lib/evaluate/comps.js` + `lib/db/dealComps.js`):
+  **NameBio exact** sales of the domain (`namebio_sales`, 1 credit), **NameBio
+  comparable sales** (`namebio_comps` → the Comps engine, ~25 credits, up to 25
+  recorded RETAIL sales of SIMILAR names — the real comp set when there's no exact
+  sale; `agentExcluded`, SNAP-Eval-only), **internal asking comps** (structurally-
+  similar priced ROWS from `name_universe` + Master with their marketplace source —
+  discounted to realizable), and **Snagged's own deal history** (real offers/budgets
+  from `marketplace_deal_reports`, read DIRECTLY via `getDb()` since that table lives
+  in the SAME main project — no cross-app call). **Appraisals** (Appraise.net + Atom)
+  are pulled per name and shown as their own block. The comps section lists ACTUAL
+  rows (domain · price · date/venue · source), not just a distribution. NameBio
+  comparable sales feed a value anchor (weight 2.0, discounted 0.75 to realizable).
 - **Quality** (`lib/evaluate/quality.js` + `tld.js`): deterministic 0–100 SLD score
   (length, dictionary class, word-count, pronounceability, cleanliness) × TLD
   liquidity tier × SLD/TLD synergy. Pure + inspectable.

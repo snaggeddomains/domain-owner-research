@@ -42,6 +42,7 @@ function contextBlock({ signals, buyers, valuation, price }) {
   const cu = s.current_use || {};
   const parked = cu.parking && cu.parking.likely_parked;
   const nb = s.comps.namebio;
+  const nbc = s.comps.namebio_comps;
   const intc = s.comps.internal;
   const dh = s.comps.deal_history;
 
@@ -62,6 +63,7 @@ APPRAISALS: Appraise.net ${s.appraisals.appraise ? money(s.appraisals.appraise.m
 
 COMPARABLE SALES:
   NameBio (exact domain): ${nb && nb.sales && nb.sales.length ? nb.sales.slice(0, 5).map((x) => `${money(x.price)} (${x.date || '?'}${x.venue ? `, ${x.venue}` : ''})`).join('; ') : 'no recorded public sales'}
+  NameBio comparable sales (similar names sold): ${nbc && nbc.comps && nbc.comps.length ? `${nbc.comps.length} comps — ${nbc.comps.slice(0, 6).map((x) => `${x.domain} ${money(x.price)}`).join('; ')}` : 'none found'}
   Internal similar-asking comps: ${intc && intc.count ? `${intc.count} names, median ask ${money(intc.p50)} (e.g. ${(intc.examples || []).map((e) => `${e.domain} ${money(e.price)}`).join(', ')})` : 'none found'}
   Snagged deal history: ${dh && dh.offers && dh.offers.length ? `${dh.offers.length} real figure(s) — ${dh.offers.slice(0, 4).map((o) => `${money(o.amountNum)} (${o.kind}${o.channel ? `, ${o.channel}` : ''})`).join('; ')}${dh.sale ? ` · sale stage: ${dh.sale.label || dh.sale.stage}` : ''}` : (dh ? `we've represented it (inbound ${dh.inbound})` : 'none')}
 

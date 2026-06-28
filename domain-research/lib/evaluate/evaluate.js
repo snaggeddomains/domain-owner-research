@@ -39,6 +39,7 @@ export async function evaluateDomain({ domain, price = null, env = process.env }
   const valuation = computeValuation({
     quality: signals.quality,
     namebio: signals.comps.namebio,
+    namebioComps: signals.comps.namebio_comps,
     internal: signals.comps.internal,
     dealOffers: signals.comps.deal_history && signals.comps.deal_history.offers,
     appraise: signals.appraisals.appraise,
