@@ -259,6 +259,7 @@ const els = {
   dsLenMin: $('ds-len-min'), dsLenMax: $('ds-len-max'),
   dsSingle: $('ds-single'), dsDict: $('ds-dict'),
   dsWordsMin: $('ds-words-min'), dsWordsMax: $('ds-words-max'),
+  dsSyllMin: $('ds-syll-min'), dsSyllMax: $('ds-syll-max'),
   dsNonum: $('ds-nonum'), dsFuzzy: $('ds-fuzzy'),
   dsSource: $('ds-source'), dsOwner: $('ds-owner'), dsKeyword: $('ds-keyword'),
   dsApply: $('ds-apply'), dsReset: $('ds-reset'),
@@ -916,6 +917,8 @@ function dsBuildParams() {
   if (v(els.dsDict)) p.set('dict_word', v(els.dsDict));
   if (v(els.dsWordsMin)) p.set('words_min', v(els.dsWordsMin));
   if (v(els.dsWordsMax)) p.set('words_max', v(els.dsWordsMax));
+  if (v(els.dsSyllMin)) p.set('syll_min', v(els.dsSyllMin));
+  if (v(els.dsSyllMax)) p.set('syll_max', v(els.dsSyllMax));
   if (els.dsNonum && els.dsNonum.checked) p.set('no_numbers', '1');
   if (els.dsFuzzy && els.dsFuzzy.checked) p.set('fuzzy', '1');
   if (v(els.dsSource)) p.set('source', v(els.dsSource));
@@ -7201,7 +7204,7 @@ els.dsApply?.addEventListener('click', () => { dsState.page = 0; fetchDbSearch()
 els.dsExport?.addEventListener('click', dsExportCsv);
 els.dsReset?.addEventListener('click', () => {
   [els.dsQ, els.dsPriceMin, els.dsPriceMax, els.dsLenMin, els.dsLenMax, els.dsWordsMin, els.dsWordsMax,
-   els.dsSource, els.dsOwner, els.dsKeyword].forEach((el) => { if (el) el.value = ''; });
+   els.dsSyllMin, els.dsSyllMax, els.dsSource, els.dsOwner, els.dsKeyword].forEach((el) => { if (el) el.value = ''; });
   if (els.dsSingle) els.dsSingle.value = '';
   if (els.dsDict) els.dsDict.value = '';
   if (els.dsNonum) els.dsNonum.checked = false;

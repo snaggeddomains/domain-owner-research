@@ -52,7 +52,7 @@ const tldVariants = (arr) => bareTlds(arr).flatMap((t) => [t, '.' + t]);
 // corpus is wasteful — use the fast planner estimate. Once filtered, the set is
 // small enough that an exact count is cheap AND the accuracy matters.
 const FILTER_KEYS = ['q', 'price_min', 'price_max', 'tld', 'len_exact', 'len_min', 'len_max',
-  'single_word', 'dict_word', 'words_min', 'words_max', 'no_numbers', 'source', 'category', 'emotion', 'connotation', 'industry', 'part_of_speech', 'exclude_forms', 'owner', 'keyword'];
+  'single_word', 'dict_word', 'words_min', 'words_max', 'syll_min', 'syll_max', 'no_numbers', 'source', 'category', 'emotion', 'connotation', 'industry', 'part_of_speech', 'exclude_forms', 'owner', 'keyword'];
 
 // Word-form exclusions (Plurals / Past tense / -ing / -ly): drop SLDs ending in
 // the form. Same heuristic as the Naming Exercise (plural = trailing 's' that
@@ -109,6 +109,8 @@ function buildUniverse(p, ascending, countMode) {
   if (p.dict_word === 'yes') q = q.eq('is_dictionary_word', true); else if (p.dict_word === 'no') q = q.eq('is_dictionary_word', false);
   const wmin = num(p.words_min); if (wmin != null) q = q.gte('num_words', wmin);
   const wmax = num(p.words_max); if (wmax != null) q = q.lte('num_words', wmax);
+  const symin = num(p.syll_min); if (symin != null) q = q.gte('num_syllables', symin);
+  const symax = num(p.syll_max); if (symax != null) q = q.lte('num_syllables', symax);
   if (p.no_numbers === '1') q = q.not('sld', 'match', '[0-9]');
   const sources = csv(p.source); if (sources) q = q.overlaps('sources', sources);
   const cats = csv(p.category); if (cats) q = q.in('category', cats);
@@ -162,6 +164,8 @@ function buildMaster(p, ascending, countMode) {
   if (p.dict_word === 'yes') q = q.eq('dictionary_word', 'Y'); else if (p.dict_word === 'no') q = q.eq('dictionary_word', 'N');
   const wmin = num(p.words_min); if (wmin != null) q = q.gte('number_of_words', wmin);
   const wmax = num(p.words_max); if (wmax != null) q = q.lte('number_of_words', wmax);
+  const symin = num(p.syll_min); if (symin != null) q = q.gte('syllables', symin);
+  const symax = num(p.syll_max); if (symax != null) q = q.lte('syllables', symax);
   // Master has no `sld` column, so apply "no numbers" to `domain` (digits only
   // appear in the SLD — the TLD is alphabetic).
   if (p.no_numbers === '1') q = q.not('domain', 'match', '[0-9]');
