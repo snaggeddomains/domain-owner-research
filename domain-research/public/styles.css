@@ -1175,6 +1175,11 @@ body.modal-open { overflow: hidden; }
    splitting mid-word ("absurdit\ny.com"). */
 .dbs-domain { font-weight: 600; overflow-wrap: anywhere; }
 .dbs-src { display: inline-block; padding: 2px 9px; border-radius: 999px; background: rgba(0,0,0,.05); font-size: 12px; }
+/* Clickable results: domain name → live site, Source pill → marketplace listing. */
+.dbs-domain-link { color: var(--navy); text-decoration: none; }
+.dbs-domain-link:hover { color: var(--coral-deep); text-decoration: underline; }
+.dbs-src-link { text-decoration: none; cursor: pointer; transition: background .15s ease, color .15s ease; }
+.dbs-src-link:hover { background: rgba(228,128,105,.16); color: var(--coral-deep); }
 .dbs-pager { display: flex; align-items: center; gap: 14px; justify-content: center; padding: 14px 0; }
 .dbs-pager button:disabled { opacity: .4; cursor: not-allowed; }
 @media (max-width: 760px) {
