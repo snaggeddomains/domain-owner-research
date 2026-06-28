@@ -7726,15 +7726,16 @@ function evResaleGrid(fv) {
   ];
   // Max bid for an 8–10× flip = resale ÷ 10 (10×) … resale ÷ 8 (8×).
   const bid = (R) => `${evM(evSig2(R * 0.10))} – ${evM(evSig2(R * 0.125))}`;
+  const rc = (c) => (c.rec ? ' class="ev-gt-rec"' : '');
   return `<div class="ev-grid">
-    <div class="ev-grid-title">Resale value scenarios <span class="muted">— and the 8–10× max bid for each</span></div>
-    <div class="ev-grid-cols">
-      ${cols.map((c) => `<div class="ev-gridcol${c.rec ? ' ev-gridcol-rec' : ''}">
-        <div class="ev-gridcol-label">${c.rec ? '★ ' : ''}${c.label}</div>
-        <div class="ev-gridcol-resale">${evM(c.v)}</div>
-        <div class="ev-gridcol-bid"><span class="muted">max bid (8–10×)</span><br>${bid(c.v)}</div>
-      </div>`).join('')}
-    </div>
+    <div class="ev-grid-title">Resale value scenarios <span class="muted">— pay at/under the max bid for an 8–10× flip</span></div>
+    <table class="ev-gridtable">
+      <thead><tr><th></th>${cols.map((c) => `<th${rc(c)}>${c.rec ? '★ ' : ''}${c.label}</th>`).join('')}</tr></thead>
+      <tbody>
+        <tr class="ev-gt-resale"><th>Resale value</th>${cols.map((c) => `<td${rc(c)}>${evM(c.v)}</td>`).join('')}</tr>
+        <tr class="ev-gt-bid"><th>Max bid (8–10×)</th>${cols.map((c) => `<td${rc(c)}>${bid(c.v)}</td>`).join('')}</tr>
+      </tbody>
+    </table>
     <div class="muted ev-grid-foot">★ = our most realistic resale estimate. Pay at or under a column's max bid to leave 8–10× resale margin.</div>
   </div>`;
 }
