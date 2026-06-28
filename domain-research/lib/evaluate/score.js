@@ -190,13 +190,23 @@ export function buildAnchors({ quality, namebio, namebioComps, tracker, dealOffe
   // grade-A name it's light (a conservative appraisal shouldn't cap a true premium).
   if (appraise && appraise.mid > 0) {
     const disc = 0.85;
+    const rawMid = appraise.mid * disc;
+    // Real SOLD comps are the ceiling of reality. Appraise.net is TRAFFIC-based and
+    // wildly over-appraises high-volume keywords (dog.app → $925K vs comps maxing at
+    // $65K), so when we have a comp reference, BOUND the appraisal anchor to a sane
+    // multiple of it. It still pulls DOWN freely when it's conservative (below comps —
+    // the alliteration case). And when the raw appraisal sits far ABOVE the comps it's
+    // unreliable, so it loses the heavy non-premium weight.
+    const apMid = compRef > 0 ? Math.min(rawMid, compRef * 1.6) : rawMid;
+    const farAbove = compRef > 0 && rawMid > compRef * 2.5;
+    const weight = qScore >= 85 ? 1.1 : (farAbove ? 1.0 : 2.6);
     anchors.push({
       source: 'appraise_net',
-      low: (appraise.low || appraise.mid) * disc * 0.8,
-      mid: appraise.mid * disc,
-      high: (appraise.high || appraise.mid) * disc * 1.25,
-      weight: qScore >= 85 ? 1.1 : 2.6,
-      note: `Appraise.net estimate $${niceRound(appraise.mid).toLocaleString()} — name-specific valuation (reflects brandability)${qScore >= 85 ? '' : '; weighted heavily for this tier'}.`,
+      low: Math.min((appraise.low || appraise.mid) * disc * 0.8, apMid * 0.85),
+      mid: apMid,
+      high: Math.min((appraise.high || appraise.mid) * disc * 1.25, apMid * 1.3),
+      weight,
+      note: `Appraise.net estimate $${niceRound(appraise.mid).toLocaleString()}${apMid < rawMid ? ` (bounded to comps — Appraise.net over-weights traffic)` : ' — name-specific valuation (reflects brandability)'}${qScore >= 85 || farAbove ? '' : '; weighted for this tier'}.`,
     });
   }
 

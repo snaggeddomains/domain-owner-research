@@ -3849,10 +3849,10 @@ function appraisalRange(a) {
     if (lo != null || hi != null) return [fmtMoney(lo), fmtMoney(hi)].filter(Boolean).join(' – ');
   }
   if (typeof r === 'string') return r.replace(/\d{4,}/g, (n) => Number(n).toLocaleString());
-  const lo = a.low_value ?? a.low ?? a.min_value ?? a.valueLow ?? a.priceLow;
-  const hi = a.high_value ?? a.high ?? a.max_value ?? a.valueHigh ?? a.priceHigh;
+  const lo = a.low_value ?? a.low ?? a.min_value ?? a.value_low ?? a.minValue ?? a.min ?? a.valueLow ?? a.priceLow;
+  const hi = a.high_value ?? a.high ?? a.max_value ?? a.value_high ?? a.maxValue ?? a.max ?? a.valueHigh ?? a.priceHigh;
   if (lo != null || hi != null) return [fmtMoney(lo), fmtMoney(hi)].filter(Boolean).join(' – ');
-  const v = pickr(a, ['estimated_value', 'estimatedValue', 'value', 'valuation', 'price', 'fair_market_value', 'fairMarketValue', 'marketValue', 'appraisedValue', 'estimate']);
+  const v = pickr(a, ['estimated_value', 'estimatedValue', 'value', 'valuation', 'price', 'fair_market_value', 'fairMarketValue', 'marketValue', 'appraisedValue', 'appraised_value', 'estimate']);
   return v ? fmtMoney(v) : '';
 }
 // Atom.com second-opinion valuation, shown alongside the Appraise.net result.
