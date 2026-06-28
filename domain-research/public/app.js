@@ -250,8 +250,9 @@ const els = {
   cpStatus: $('cp-status'), cpResults: $('cp-results'), cpSummary: $('cp-summary'), cpTable: $('cp-table'), cpCsv: $('cp-csv'),
   cpRecent: $('cp-recent'), cpRecentList: $('cp-recent-list'), cpRecentAll: $('cp-recent-all'),
   cpRunsSearch: $('cp-runs-search'), cpRunsList: $('cp-runs-list'),
-  navResearchGroup: $('nav-research-group'), navSnapGroup: $('nav-snap-group'),
+  navResearchGroup: $('nav-research-group'), navSnapGroup: $('nav-snap-group'), navReportsGroup: $('nav-reports-group'),
   navSnapEval: $('nav-snap-eval'), navSnapOpps: $('nav-snap-opps'),
+  navRepAnalytics: $('nav-rep-analytics'), navRepMarketplace: $('nav-rep-marketplace'), navRepChat: $('nav-rep-chat'), navRepCost: $('nav-rep-cost'),
   topbarResearch: $('topbar-research'),
   evForm: $('ev-form'), evDomain: $('ev-domain'), evPrice: $('ev-price'), evGo: $('ev-go'), evRefresh: $('ev-refresh'),
   evStatus: $('ev-status'), evResult: $('ev-result'), evRecent: $('ev-recent'),
@@ -1928,7 +1929,9 @@ async function checkAuth() {
       // to anyone who can use SNAP Eval (or, as owner/admin, everything).
       if (els.topbarSnap) els.topbarSnap.hidden = !(u.is_admin || (u.permissions && u.permissions.evaluate));
       if (els.topbarAdmin) els.topbarAdmin.hidden = !canEnterAdmin(u);
-      if (els.topbarReports) els.topbarReports.hidden = !canEnterReports(u);
+      // Reports section now also hosts Corporate Portfolios (a research-app page),
+      // so a portfolio-only user should see Reports in the header too.
+      if (els.topbarReports) els.topbarReports.hidden = !(canEnterReports(u) || u.is_admin || (u.permissions && u.permissions.portfolio));
       if (els.navAccount) els.navAccount.hidden = false;
       renderProfile(u);
       startNotifPolling();
@@ -2084,11 +2087,17 @@ function gateNavByPermissions(user) {
   if (els.navWhois) els.navWhois.hidden = !can('whois');
   if (els.navDiq) els.navDiq.hidden = !can('domain_owner');
   if (els.navSales) els.navSales.hidden = !can('sales');
-  if (els.navPortfolio) els.navPortfolio.hidden = !can('portfolio');
   // SNAP sub-nav: SNAP Eval needs `evaluate`; SNAP Opportunities (admin app) needs
   // reports access. Hidden buttons just don't render inside the SNAP group.
   if (els.navSnapEval) els.navSnapEval.hidden = !can('evaluate');
   if (els.navSnapOpps) els.navSnapOpps.hidden = !(Boolean(user && user.is_admin) || canEnterReports(user));
+  // Reports sub-nav: Corporate Portfolios (a research-app page) needs `portfolio`;
+  // the analytics tabs (admin app, full nav) need Reports access.
+  if (els.navPortfolio) els.navPortfolio.hidden = !can('portfolio');
+  const repAccess = canEnterReports(user);
+  for (const el of [els.navRepAnalytics, els.navRepMarketplace, els.navRepChat, els.navRepCost]) {
+    if (el) el.hidden = !repAccess;
+  }
   // "Suggest a Strategy" — anyone with Domain Owner Research access can submit a
   // playbook strategy (a super admin approves it). Lives on the Domain Owner page
   // + bottom of every report (inside #view-research), so it's scoped to that tool.
@@ -3315,6 +3324,21 @@ const VIEWS = {
   evaluate: { view: 'view-evaluate', nav: 'nav-snap-eval' },
   admin: { view: 'view-admin', nav: 'nav-admin' },
 };
+
+// ── Section registry (research SPA) ─────────────────────────────────────────
+// Top-level sections and their sub-nav group + top-header link. A view belongs to
+// a section via VIEW_SECTION (default 'research'). showView swaps the visible
+// sub-nav group + highlights the section in the top header. To add a section: add
+// a SECTION_NAV entry + its #nav-*-group span + topbar link; to move a tool to a
+// different section: add it to VIEW_SECTION and the matching group span.
+const SECTION_NAV = {
+  research: { group: 'nav-research-group', topbar: 'topbar-research' },
+  snap: { group: 'nav-snap-group', topbar: 'topbar-snap' },
+  reports: { group: 'nav-reports-group', topbar: 'topbar-reports' },
+};
+const VIEW_SECTION = { evaluate: 'snap', portfolio: 'reports', 'portfolio-runs': 'reports' };
+const sectionForView = (name) => VIEW_SECTION[name] || 'research';
+
 function showView(name) {
   for (const [k, v] of Object.entries(VIEWS)) {
     const view = document.getElementById(v.view);
@@ -3324,14 +3348,15 @@ function showView(name) {
   }
   if (name === 'projects') loadProjects(els.projectsSearch.value.trim());
   if (name === 'admin') loadLessons();
-  // Section switch: SNAP Eval lives in the SNAP section, so it swaps the research
-  // tool sub-nav for the SNAP sub-nav and lights up SNAP (not Research) in the top
-  // header. Every other view is the Research section.
-  const inSnap = name === 'evaluate';
-  if (els.navResearchGroup) els.navResearchGroup.hidden = inSnap;
-  if (els.navSnapGroup) els.navSnapGroup.hidden = !inSnap;
-  if (els.topbarSnap) els.topbarSnap.classList.toggle('active', inSnap);
-  if (els.topbarResearch) els.topbarResearch.classList.toggle('active', !inSnap);
+  // Section switch: each view belongs to a section (default Research). Swap the
+  // visible sub-nav group + light up that section in the top header.
+  const sec = sectionForView(name);
+  for (const [k, cfg] of Object.entries(SECTION_NAV)) {
+    const g = document.getElementById(cfg.group);
+    if (g) g.hidden = k !== sec;
+    const tb = document.getElementById(cfg.topbar);
+    if (tb) tb.classList.toggle('active', k === sec);
+  }
   // All modules use the full content width on desktop (matching the Naming
   // Exercise) so the space isn't wasted by a narrow centered column.
   const wrap = document.querySelector('.content > .wrap');

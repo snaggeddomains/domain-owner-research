@@ -281,6 +281,38 @@ menu in the admin hub, alongside Research/Admin/Reports — see snagged-admin).
   optional + fail-open. **One-time setup: grant `research.evaluate`** per-user in the
   snagged-admin Users editor (admins auto-pass).
 
+## Nav sections — research SPA (config-driven, 2026-06-28)
+
+The SPA's chrome is two layers: the **top header** (Research · Admin · SNAP ·
+Reports, in `index.html` `.topbar__nav` — `topbar-research/-snap/-admin/-reports`)
+and the **sub-nav** (per-section button groups). Both are config-driven so adding a
+section / moving a tool is small + local. Mirrors snagged-admin's `lib/navigation.ts`
+(keep the two in sync — same sections, same cross-app membership).
+
+- **Sub-nav groups** in `index.html`: each section's buttons are wrapped in a
+  `<span id="nav-<section>-group" class="nav-group">` (`nav-research-group` /
+  `nav-snap-group` / `nav-reports-group`). `.nav-group { display: contents }` so the
+  wrapper doesn't disturb the flex tab layout; `[hidden]` collapses the whole group.
+- **Config** (`public/app.js`): `SECTION_NAV` maps each section → its `{group, topbar}`
+  element ids; `VIEW_SECTION` maps a view → its section (default `research`; e.g.
+  `evaluate→snap`, `portfolio/portfolio-runs→reports`). `showView` reads these to swap
+  the visible group + light up the section in the top header (replaced the old
+  hard-coded `inSnap` toggle). `VIEWS.<tool>.nav` points at the tool's button id.
+- **Gating:** `gateNavByPermissions` hides per-button by permission; section topbar
+  links are gated in `checkAuth` (`topbar-snap` by `evaluate`; `topbar-reports` by
+  reports access **or** `portfolio`). A tab whose `href` is `/research/*` is SPA-routed
+  (needs an `els.nav*` click handler); a cross-app `href` (`/reports/*`) just full-navs.
+- **Runbook — move a tool to another section:** add it to `VIEW_SECTION` and move its
+  `<a class="nav-btn">` into the target `nav-*-group` span (+ gate it).
+  **Add a section:** add a `SECTION_NAV` entry + its `nav-*-group` span + a `topbar-*`
+  header link (gated in `checkAuth`).
+
+**Corporate Portfolios → Reports (2026-06-28):** moved `nav-portfolio` out of the
+research group into `nav-reports-group` (alongside cross-app analytics links to the
+admin Reports tabs); `VIEW_SECTION.portfolio = 'reports'`. So viewing it lights up
+Reports + shows the Reports sub-nav. Admin side: `research.portfolio` added to that
+repo's permissions + `REPORTS_TABS` (see snagged-admin CLAUDE.md).
+
 ## Domain data model — canonical (do not let this drift)
 
 Two domain corpora in **separate Supabase projects**; the search reads both.

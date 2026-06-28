@@ -199,15 +199,22 @@
         <!-- Sales Research — find companies that would buy a domain we're selling.
              Gated by the `sales` permission; shown by JS. -->
         <a id="nav-sales" class="nav-btn" href="/research/sales" hidden>Sales Research</a>
-        <!-- Corporate Portfolios — reverse-WHOIS a company to pull its premium
-             domains. Gated by the `portfolio` permission; shown by JS. -->
-        <a id="nav-portfolio" class="nav-btn" href="/research/portfolio" hidden>Corporate Portfolios</a>
         </span>
         <!-- SNAP sub-nav (shown in the SNAP section): SNAP Eval + SNAP Opportunities.
              SNAP Opportunities is the auctions/snap feed in the admin app (full nav). -->
         <span id="nav-snap-group" class="nav-group" hidden>
           <a id="nav-snap-eval" class="nav-btn" href="/research/evaluate">SNAP Eval</a>
           <a id="nav-snap-opps" class="nav-btn" href="/reports/opportunities">SNAP Opportunities</a>
+        </span>
+        <!-- Reports sub-nav (shown in the Reports section). Corporate Portfolios is
+             a research-app page that belongs to Reports; the analytics tabs are the
+             admin app (full nav), gated by JS to users with Reports access. -->
+        <span id="nav-reports-group" class="nav-group" hidden>
+          <a id="nav-rep-analytics" class="nav-btn" href="/reports" hidden>Site analytics</a>
+          <a id="nav-rep-marketplace" class="nav-btn" href="/reports/marketplace" hidden>Marketplace</a>
+          <a id="nav-rep-chat" class="nav-btn" href="/reports/chat" hidden>Chat</a>
+          <a id="nav-rep-cost" class="nav-btn" href="/reports/cost" hidden>Cost &amp; usage</a>
+          <a id="nav-portfolio" class="nav-btn" href="/research/portfolio" hidden>Corporate Portfolios</a>
         </span>
         <!-- Lessons (playbook curation) is admin-only and now lives in the
              umbrella Admin module; reachable directly at /research/admin. -->
@@ -1050,6 +1057,6 @@ The model parses it into structured filters (TLDs, length, budget, tone, etc.) a
     </div>
 
     <!-- Bump ?v= on any public/app.js or styles.css change to bust caches. -->
-    <script src="app.js?v=20260628snapeval3"></script>
+    <script src="app.js?v=20260628snapeval4"></script>
   </body>
 </html>
