@@ -249,6 +249,9 @@ const els = {
   cpStatus: $('cp-status'), cpResults: $('cp-results'), cpSummary: $('cp-summary'), cpTable: $('cp-table'), cpCsv: $('cp-csv'),
   cpRecent: $('cp-recent'), cpRecentList: $('cp-recent-list'), cpRecentAll: $('cp-recent-all'),
   cpRunsSearch: $('cp-runs-search'), cpRunsList: $('cp-runs-list'),
+  navEvaluate: $('nav-evaluate'),
+  evForm: $('ev-form'), evDomain: $('ev-domain'), evPrice: $('ev-price'), evGo: $('ev-go'), evRefresh: $('ev-refresh'),
+  evStatus: $('ev-status'), evResult: $('ev-result'), evRecent: $('ev-recent'),
   nsModeToggle: $('ns-modetoggle'), nsMatchToggle: $('ns-matchtoggle'),
   nsDomainForm: $('ns-domain-form'), nsDomain: $('ns-domain'),
   nsNsForm: $('ns-ns-form'), nsNs: $('ns-ns'), nsTld: $('ns-tld'),
@@ -323,10 +326,10 @@ function cleanDomainInput(raw, { requireValid = true } = {}) {
       !/^(?=.{1,253}$)(?!-)[a-z0-9-]{1,63}(?<!-)(\.(?!-)[a-z0-9-]{1,63}(?<!-))+$/i.test(host)) throw bad();
   return host;
 }
-const TOOL_PATH = { tm: 'trademark', ap: 'appraisal' };
-const TOOL_LABEL = { tm: 'trademark searches', ap: 'appraisals' };
+const TOOL_PATH = { tm: 'trademark', ap: 'appraisal', ev: 'evaluate' };
+const TOOL_LABEL = { tm: 'trademark searches', ap: 'appraisals', ev: 'SNAP evaluations' };
 // Per-tool history view state (collapsed recent-5 vs expanded searchable list).
-const toolHistory = { tm: { all: [], expanded: false, q: '' }, ap: { all: [], expanded: false, q: '' } };
+const toolHistory = { tm: { all: [], expanded: false, q: '' }, ap: { all: [], expanded: false, q: '' }, ev: { all: [], expanded: false, q: '' } };
 
 async function serverListTool(kind, limit = 5) {
   try {
@@ -482,7 +485,7 @@ function clearHash() {
 // the SPA): Domain DB Screen at /dbscreen, DB Search at /dbsearch.
 const VANITY_TOOLS = ['dbscreen', 'dbsearch'];
 function currentToolRoute() {
-  let m = location.pathname.match(/^\/research\/(trademark|appraisal|naming|dbscreen|dbsearch|nameserver|sales|portfolio|beeper|whois|diq|admin)(?:\/(.+?))?\/?$/);
+  let m = location.pathname.match(/^\/research\/(trademark|appraisal|naming|dbscreen|dbsearch|nameserver|sales|portfolio|evaluate|beeper|whois|diq|admin)(?:\/(.+?))?\/?$/);
   if (!m) m = location.pathname.match(/^\/(dbscreen|dbsearch)(?:\/(.+?))?\/?$/);
   if (!m) return null;
   return { tool: m[1], slug: m[2] ? decodeURIComponent(m[2]) : '' };
@@ -508,6 +511,7 @@ const TOOL_PERMISSION = {
   whois: 'whois',
   diq: 'domain_owner',
   portfolio: 'portfolio',
+  evaluate: 'evaluate',
 };
 
 // ── Cross-module domain context (action bar + ⌘K palette; workspace-ready) ──
@@ -726,6 +730,13 @@ function route() {
     showView('portfolio');
     if (tr.slug) openPortfolioRun(tr.slug);
     else resetPortfolioView();
+    return;
+  }
+  if (tr && tr.tool === 'evaluate') {
+    showView('evaluate');
+    refreshToolRecent(els.evRecent, 'ev');
+    if (tr.slug) { if (els.evDomain) els.evDomain.value = tr.slug; runEvaluate(tr.slug); }
+    else resetEvaluateView();
     return;
   }
   if (tr && tr.tool === 'admin') {
@@ -2068,6 +2079,7 @@ function gateNavByPermissions(user) {
   if (els.navDiq) els.navDiq.hidden = !can('domain_owner');
   if (els.navSales) els.navSales.hidden = !can('sales');
   if (els.navPortfolio) els.navPortfolio.hidden = !can('portfolio');
+  if (els.navEvaluate) els.navEvaluate.hidden = !can('evaluate');
   // "Suggest a Strategy" — anyone with Domain Owner Research access can submit a
   // playbook strategy (a super admin approves it). Lives on the Domain Owner page
   // + bottom of every report (inside #view-research), so it's scoped to that tool.
@@ -3291,6 +3303,7 @@ const VIEWS = {
   'sales-projects': { view: 'view-sales-projects', nav: 'nav-sales' },
   portfolio: { view: 'view-portfolio', nav: 'nav-portfolio' },
   'portfolio-runs': { view: 'view-portfolio-runs', nav: 'nav-portfolio' },
+  evaluate: { view: 'view-evaluate', nav: 'nav-evaluate' },
   admin: { view: 'view-admin', nav: 'nav-admin' },
 };
 function showView(name) {
@@ -7543,6 +7556,293 @@ els.projectsList?.addEventListener('click', (e) => {
 els.recentList?.addEventListener('click', (e) => {
   const li = e.target.closest('[data-id]');
   if (li && li.dataset.id) openProject(li.dataset.id);
+});
+
+// ── SNAP Eval — acquisition/resale scorecard for a single domain ────────────
+// Cache-first by domain (kind 'ev'): the heavy run happens once; changing the
+// price just re-overlays the band (the server computes price_overlay instantly).
+let evRunning = false;
+const evM = (n) => (n == null || !isFinite(Number(n)) || Number(n) <= 0) ? '—' : '$' + Math.round(Number(n)).toLocaleString();
+function setEvStatus(msg, isErr = false) {
+  if (!els.evStatus) return;
+  els.evStatus.hidden = !msg;
+  els.evStatus.textContent = msg || '';
+  els.evStatus.classList.toggle('error', !!isErr);
+}
+function resetEvaluateView() {
+  if (els.evResult) { els.evResult.hidden = true; els.evResult.innerHTML = ''; }
+  setEvStatus('');
+  if (els.evDomain) els.evDomain.value = '';
+  if (els.evPrice) els.evPrice.value = '';
+}
+function evParsePrice(v) {
+  const n = Number(String(v == null ? '' : v).replace(/[^0-9.]/g, ''));
+  return isFinite(n) && n > 0 ? n : null;
+}
+
+async function runEvaluate(domain, { price = null, refresh = false } = {}) {
+  const d = (domain || '').trim().toLowerCase();
+  if (!d) return;
+  if (evRunning) return;
+  evRunning = true;
+  setActiveDomain(d);
+  if (els.evDomain) els.evDomain.value = d;
+  if (els.evGo) els.evGo.disabled = true;
+  if (els.evResult) els.evResult.hidden = true;
+  setEvStatus(refresh ? `Re-running a fresh evaluation of ${d}…` : `Evaluating ${d} — pulling comps, appraisals, buyers & web…`);
+  try {
+    const params = new URLSearchParams({ domain: d });
+    if (price) params.set('price', String(price));
+    if (refresh) params.set('refresh', '1');
+    const res = await fetch(`/research/api/evaluate?${params.toString()}`);
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || `Evaluation failed (HTTP ${res.status})`);
+    setEvStatus('');
+    renderEvaluate(data);
+    refreshToolRecent(els.evRecent, 'ev');
+  } catch (e) {
+    setEvStatus(e.message || String(e), true);
+  } finally {
+    evRunning = false;
+    if (els.evGo) els.evGo.disabled = false;
+  }
+}
+
+// ── render ──────────────────────────────────────────────────────────────────
+function evBar(label, val) {
+  const pct = Math.max(0, Math.min(100, Number(val) || 0));
+  const col = pct >= 75 ? '#0b8f3a' : pct >= 55 ? '#5bbf3a' : pct >= 40 ? '#caa024' : '#e07b2c';
+  return `<div class="ev-bar"><span class="ev-bar-l">${escapeHtml(label)}</span>`
+    + `<span class="ev-bar-track"><span class="ev-bar-fill" style="width:${pct}%;background:${col}"></span></span>`
+    + `<span class="ev-bar-v">${Math.round(pct)}</span></div>`;
+}
+
+function evVerdictHeader(data) {
+  const ev = data.evaluation || {};
+  const v = ev.verdict || {};
+  const val = ev.valuation || {};
+  const fv = val.fair_value || {};
+  const ov = data.price_overlay; // {price, band:{key,label,color}, ratio}
+  const conf = v.confidence || val.confidence || 'low';
+  let pill = '';
+  if (ov && ov.band) {
+    pill = `<div class="ev-bigpill" style="background:${ov.band.color}">`
+      + `<span class="ev-bigpill-band">${escapeHtml(ov.band.label)}</span>`
+      + `<span class="ev-bigpill-sub">${evM(ov.price)} = ${ov.ratio}× fair resale value</span></div>`;
+  } else {
+    pill = `<div class="ev-bigpill ev-bigpill-neutral"><span class="ev-bigpill-band">Fair value read</span>`
+      + `<span class="ev-bigpill-sub">enter a price above to grade it</span></div>`;
+  }
+  const adj = v.adjust && v.adjust !== 1 && v.adjust_reason
+    ? `<div class="ev-adjust">Adjusted ${v.adjust > 1 ? '↑' : '↓'} ${Math.round((v.adjust - 1) * 100)}% — ${escapeHtml(v.adjust_reason)}</div>` : '';
+  return `<div class="ev-verdict">
+    <div class="ev-verdict-main">
+      <div class="ev-verdict-head">
+        <h2 class="ev-domain">${escapeHtml(ev.domain || '')}</h2>
+        <span class="ev-conf ev-conf-${escapeHtml(conf)}">${escapeHtml(conf)} confidence</span>
+      </div>
+      ${v.headline ? `<p class="ev-headline">${escapeHtml(v.headline)}</p>` : ''}
+      ${v.rationale ? `<p class="ev-rationale">${escapeHtml(v.rationale)}</p>` : ''}
+      ${adj}
+      <div class="ev-keymetrics">
+        <div class="ev-km"><span class="ev-km-l">Fair resale value</span><span class="ev-km-v">${evM(fv.low)} – ${evM(fv.high)}</span></div>
+        <div class="ev-km"><span class="ev-km-l">Recommended max bid</span><span class="ev-km-v">${evM(val.recommended_max_bid)}</span></div>
+        <div class="ev-km"><span class="ev-km-l">Quality grade</span><span class="ev-km-v">${escapeHtml((ev.signals && ev.signals.quality && ev.signals.quality.grade) || '—')} <span class="muted">(${(ev.signals && ev.signals.quality && ev.signals.quality.score) || '—'}/100)</span></span></div>
+      </div>
+    </div>
+    <div class="ev-verdict-pill">${pill}</div>
+  </div>`;
+}
+
+// The five-band price ladder. Equal-width segments, colored, each showing its $
+// ceiling, with the entered price's band highlighted.
+function evBandLadder(data) {
+  const ev = data.evaluation || {};
+  const bands = (ev.valuation && ev.valuation.bands) || [];
+  if (!bands.length) return '';
+  const activeKey = data.price_overlay && data.price_overlay.band && data.price_overlay.band.key;
+  const seg = bands.map((b, i) => {
+    const prev = i === 0 ? 0 : bands[i - 1].max;
+    const range = b.max === null || b.max === undefined || !isFinite(b.max)
+      ? `&gt; ${evM(prev)}`
+      : `${evM(prev)}–${evM(b.max)}`;
+    const on = b.key === activeKey;
+    return `<div class="ev-seg${on ? ' ev-seg-on' : ''}" style="--c:${b.color}">
+      <div class="ev-seg-bar"></div>
+      <div class="ev-seg-label">${escapeHtml(b.label)}</div>
+      <div class="ev-seg-range">${range}</div>
+      ${on ? `<div class="ev-seg-marker">▲ ${evM(data.price_overlay.price)}</div>` : ''}
+    </div>`;
+  }).join('');
+  return `<div class="ev-card"><h3 class="ev-h3">Price bands <span class="muted">— what we'd call each price</span></h3><div class="ev-ladder">${seg}</div></div>`;
+}
+
+function evReasons(data) {
+  const v = (data.evaluation || {}).verdict || {};
+  const fr = v.reasons_for || [];
+  const ag = v.reasons_against || [];
+  if (!fr.length && !ag.length) return '';
+  const col = (title, cls, mark, items) => items.length
+    ? `<div class="ev-reasons-col"><h4 class="ev-reasons-h ${cls}">${title}</h4><ul class="ev-reasons-list">${items.map((x) => `<li><span class="ev-mark ${cls}">${mark}</span>${escapeHtml(x)}</li>`).join('')}</ul></div>` : '';
+  return `<div class="ev-card ev-reasons">${col('Reasons to buy', 'ev-pos', '✓', fr)}${col('Risks / against', 'ev-neg', '⚠', ag)}</div>`;
+}
+
+function evQuality(data) {
+  const q = (data.evaluation && data.evaluation.signals && data.evaluation.signals.quality) || null;
+  if (!q) return '';
+  const c = q.components || {};
+  const synergy = (q.synergy && q.synergy.notes && q.synergy.notes.length) ? `<p class="muted ev-synergy">${q.synergy.notes.map(escapeHtml).join(' ')}</p>` : '';
+  const nq = (data.evaluation.verdict && data.evaluation.verdict.name_quality_read) ? `<p class="ev-nameread">${escapeHtml(data.evaluation.verdict.name_quality_read)}</p>` : '';
+  return `<div class="ev-card"><h3 class="ev-h3">Name quality <span class="muted">— grade ${escapeHtml(q.grade)} · ${escapeHtml(q.dictionary_class)} · ${q.length} chars · ${q.word_count} word(s) · .${escapeHtml(q.tld.tld)} (${escapeHtml(q.tld.tier)}, liquidity ${q.tld.liquidity})</span></h3>
+    <div class="ev-bars">
+      ${evBar('Length', c.length)}
+      ${evBar('Dictionary', c.dictionary)}
+      ${evBar('One word', c.wordCount)}
+      ${evBar('Pronounceable', c.pronounce)}
+      ${evBar('Clean (no -/#)', c.cleanliness)}
+    </div>${synergy}${nq}</div>`;
+}
+
+function evComps(data) {
+  const s = (data.evaluation && data.evaluation.signals) || {};
+  const comps = s.comps || {};
+  const nb = comps.namebio;
+  const intc = comps.internal;
+  const dh = comps.deal_history;
+  const val = (data.evaluation && data.evaluation.valuation) || {};
+  const anchors = val.anchors || [];
+
+  let body = '';
+  // NameBio exact sales
+  if (nb && nb.sales && nb.sales.length) {
+    body += `<div class="ev-comp-block"><h4 class="ev-comp-h">NameBio — recorded sales of this exact domain</h4>`
+      + `<table class="ev-table"><thead><tr><th>Price</th><th>Date</th><th>Venue</th></tr></thead><tbody>`
+      + nb.sales.slice(0, 8).map((x) => `<tr><td>${evM(x.price)}</td><td>${escapeHtml(x.date || '—')}</td><td>${escapeHtml(x.venue || '—')}</td></tr>`).join('')
+      + `</tbody></table></div>`;
+  }
+  // Snagged deal history (strongest)
+  if (dh && dh.offers && dh.offers.length) {
+    body += `<div class="ev-comp-block"><h4 class="ev-comp-h">Snagged deal history — real money on this domain ${dh.sale ? `<span class="ev-tag">${escapeHtml(dh.sale.label || dh.sale.stage)}</span>` : ''}</h4>`
+      + `<table class="ev-table"><thead><tr><th>Amount</th><th>Type</th><th>Channel</th><th>Date</th></tr></thead><tbody>`
+      + dh.offers.slice(0, 8).map((o) => `<tr><td>${evM(o.amountNum)}</td><td>${escapeHtml(o.kind)}</td><td>${escapeHtml(o.channel || 'email/CRM')}</td><td>${escapeHtml(o.date || '—')}</td></tr>`).join('')
+      + `</tbody></table></div>`;
+  } else if (dh) {
+    body += `<div class="ev-comp-block muted">Snagged has represented this domain (inbound ${dh.inbound || 0}) but no logged offers.</div>`;
+  }
+  // Internal asking comps
+  if (intc && intc.count) {
+    body += `<div class="ev-comp-block"><h4 class="ev-comp-h">Internal corpus — ${intc.count} similar .${escapeHtml(intc.tld || '')} names for sale</h4>`
+      + `<p class="muted">Median ask ${evM(intc.p50)} (asking, not realized — discounted in the model). Range ${evM(intc.p25)}–${evM(intc.p75)}.</p>`
+      + (intc.examples && intc.examples.length ? `<div class="ev-chips">${intc.examples.map((e) => `<span class="ev-chip">${escapeHtml(e.domain)} <strong>${evM(e.price)}</strong></span>`).join('')}</div>` : '')
+      + `</div>`;
+  }
+  if (!body) body = `<p class="muted">No comparable sales found for this name.</p>`;
+
+  // Value anchors (the model's math)
+  const anchorRows = anchors.length
+    ? `<details class="ev-anchors"><summary>How the fair value was built (${anchors.length} anchors)</summary><table class="ev-table"><thead><tr><th>Source</th><th>Mid</th><th>Weight</th><th>Note</th></tr></thead><tbody>`
+      + anchors.map((a) => `<tr><td>${escapeHtml(a.source)}</td><td>${evM(a.mid)}</td><td>${a.weight}</td><td class="muted">${escapeHtml(a.note || '')}</td></tr>`).join('')
+      + `</tbody></table></details>`
+    : '';
+
+  return `<div class="ev-card"><h3 class="ev-h3">Comparable sales</h3>${body}${anchorRows}</div>`;
+}
+
+function evBuyers(data) {
+  const b = (data.evaluation && data.evaluation.buyers) || {};
+  const v = (data.evaluation && data.evaluation.verdict) || {};
+  const angles = b.angles || [];
+  const active = b.active_users || [];
+  if (!angles.length && !active.length && !v.buyer_summary) return '';
+  const angleChips = angles.map((a) => {
+    const pot = a.buyer_potential || 'medium';
+    const ver = a.verified ? ` · <span class="ev-tier ev-tier-${escapeHtml(a.verified.tier)}">${escapeHtml(a.verified.name)} (${escapeHtml(a.verified.tier)})</span>` : '';
+    return `<div class="ev-angle ev-pot-${escapeHtml(pot)}"><span class="ev-angle-l">${a.product ? '🎯 ' : ''}${escapeHtml(a.label)}</span> <span class="ev-angle-pot">${escapeHtml(pot)} buyer potential</span>${ver}</div>`;
+  }).join('');
+  const activeBlock = active.length
+    ? `<div class="ev-active"><span class="ev-active-l">Already using the term:</span> ${active.map((u) => `<a href="https://${escapeHtml(u.domain)}" target="_blank" rel="noopener" class="ev-chip">${escapeHtml(u.domain)}</a>`).join('')}</div>` : '';
+  return `<div class="ev-card"><h3 class="ev-h3">Who would buy it <span class="muted">— ${b.fundable_buyer_count || 0} fundable buyer(s) verified</span></h3>
+    ${v.buyer_summary ? `<p class="ev-rationale">${escapeHtml(v.buyer_summary)}</p>` : ''}
+    ${angleChips ? `<div class="ev-angles">${angleChips}</div>` : ''}
+    ${activeBlock}</div>`;
+}
+
+function evContext(data) {
+  const s = (data.evaluation && data.evaluation.signals) || {};
+  const cu = s.current_use || {};
+  const fs = s.for_sale || {};
+  const ap = (s.appraisals || {});
+  const reg = s.registration || {};
+  const parked = cu.parking && cu.parking.likely_parked;
+  const use = !cu.reachable ? 'No reachable website'
+    : (parked ? `Parked / for-sale page${cu.parking.platforms && cu.parking.platforms.length ? ` (${escapeHtml(cu.parking.platforms.join(', '))})` : ''}`
+      : `Live site — "${escapeHtml((cu.title || '').slice(0, 90))}"`);
+  const forSale = fs.listed ? `Listed${fs.price ? ` at <strong>${evM(fs.price)}</strong>` : ''}${fs.platform ? ` on ${escapeHtml(fs.platform)}` : ''}` : 'Not listed on tracked marketplaces';
+  const appr = [];
+  if (ap.appraise) appr.push(`Appraise.net ${evM(ap.appraise.mid)}`);
+  if (ap.atom) appr.push(`Atom ${evM(ap.atom.value)}${ap.atom.score != null ? ` (${ap.atom.score}/10${ap.atom.tm_conflicts ? `, ${ap.atom.tm_conflicts} TM` : ''})` : ''}`);
+  const rows = [
+    ['Current use', use],
+    ['For sale now', forSale],
+    ['AI appraisals', appr.length ? appr.join(' · ') : '—'],
+    ['Registered', reg.created ? `${escapeHtml(reg.created)}${reg.age_years != null ? ` (~${reg.age_years}y)` : ''}${reg.registrar ? ` · ${escapeHtml(reg.registrar)}` : ''}` : 'unknown'],
+  ];
+  return `<div class="ev-card"><h3 class="ev-h3">The domain today</h3><table class="ev-kv">`
+    + rows.map((r) => `<tr><td class="ev-kv-k">${escapeHtml(r[0])}</td><td class="ev-kv-v">${r[1]}</td></tr>`).join('')
+    + `</table></div>`;
+}
+
+function evEvidence(data) {
+  const s = (data.evaluation && data.evaluation.signals) || {};
+  const np = s.namepros || [];
+  const web = (s.web && s.web.term_search) || [];
+  const emails = s.email_sweep || [];
+  if (!np.length && !web.length && !emails.length) return '';
+  const linkList = (items) => items.map((r) => `<li><a href="${escapeHtml(r.link)}" target="_blank" rel="noopener">${escapeHtml(r.title || r.link)}</a>${r.snippet ? `<span class="muted"> — ${escapeHtml(r.snippet.slice(0, 120))}</span>` : ''}</li>`).join('');
+  let body = '';
+  if (emails.length) body += `<div class="ev-ev-block"><h4 class="ev-comp-h">📬 Prior emails about this domain (${emails.length})</h4><ul class="ev-evlist">${emails.map((t) => `<li><strong>${escapeHtml(t.subject || '(no subject)')}</strong>${t.snippet ? `<span class="muted"> — ${escapeHtml(t.snippet.slice(0, 120))}</span>` : ''}</li>`).join('')}</ul></div>`;
+  if (np.length) body += `<div class="ev-ev-block"><h4 class="ev-comp-h">NamePros (investor forum)</h4><ul class="ev-evlist">${linkList(np)}</ul></div>`;
+  if (web.length) body += `<div class="ev-ev-block"><h4 class="ev-comp-h">Web — who's using "${escapeHtml(s.sld || '')}"</h4><ul class="ev-evlist">${linkList(web)}</ul></div>`;
+  return `<details class="ev-card ev-evidence"><summary class="ev-h3">Evidence & chatter <span class="muted">— forum / web / inbox</span></summary>${body}</details>`;
+}
+
+function renderEvaluate(data) {
+  if (!els.evResult) return;
+  const ev = data.evaluation || {};
+  const meta = data.cached
+    ? `<span class="ev-meta">cached ${data.updated_at ? new Date(data.updated_at).toLocaleString() : ''} · <a href="#" id="ev-refresh-link">re-run fresh</a></span>`
+    : `<span class="ev-meta">fresh · ${ev.generated_at ? new Date(ev.generated_at).toLocaleString() : ''}</span>`;
+  els.evResult.innerHTML = `<div class="ev-report">
+    ${evVerdictHeader(data)}
+    <div class="ev-toolbar">${meta}</div>
+    ${evBandLadder(data)}
+    ${evReasons(data)}
+    <div class="ev-grid">
+      ${evComps(data)}
+      ${evBuyers(data)}
+      ${evQuality(data)}
+      ${evContext(data)}
+    </div>
+    ${evEvidence(data)}
+  </div>`;
+  els.evResult.hidden = false;
+  const rl = document.getElementById('ev-refresh-link');
+  if (rl) rl.addEventListener('click', (e) => { e.preventDefault(); runEvaluate(ev.domain, { price: evParsePrice(els.evPrice && els.evPrice.value), refresh: true }); });
+}
+
+els.evForm?.addEventListener('submit', (e) => {
+  e.preventDefault();
+  const d = (els.evDomain.value || '').trim();
+  const price = evParsePrice(els.evPrice && els.evPrice.value);
+  if (!d) return;
+  setToolUrl('evaluate', d);
+  runEvaluate(d, { price });
+});
+// Re-grade instantly when the price changes on an already-loaded report (the
+// server re-overlays the band from cache — no re-spend).
+els.evPrice?.addEventListener('change', () => {
+  const d = (els.evDomain && els.evDomain.value || '').trim();
+  if (d && els.evResult && !els.evResult.hidden) runEvaluate(d, { price: evParsePrice(els.evPrice.value) });
 });
 
 // Deeplinks: open a report when the URL carries one, both on load and on
