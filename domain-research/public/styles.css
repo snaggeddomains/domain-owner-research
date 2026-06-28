@@ -1170,13 +1170,27 @@ body.modal-open { overflow: hidden; }
 .dbs-table tbody td { padding: 10px 14px; border-bottom: 1px solid #f0eadc; }
 .dbs-table tbody tr:last-child td { border-bottom: none; }
 .dbs-table tbody tr:hover { background: #faf5ea; }
-.dbs-domain { font-weight: 600; word-break: break-all; }
+/* overflow-wrap (not word-break:break-all) so a domain only breaks when it truly
+   can't fit — short names like absurdity.com stay on one line instead of
+   splitting mid-word ("absurdit\ny.com"). */
+.dbs-domain { font-weight: 600; overflow-wrap: anywhere; }
 .dbs-src { display: inline-block; padding: 2px 9px; border-radius: 999px; background: rgba(0,0,0,.05); font-size: 12px; }
 .dbs-pager { display: flex; align-items: center; gap: 14px; justify-content: center; padding: 14px 0; }
 .dbs-pager button:disabled { opacity: .4; cursor: not-allowed; }
 @media (max-width: 760px) {
   .dbs-layout { flex-direction: column; }
   .dbs-filters { flex-basis: auto; width: 100%; }
+}
+/* Phones: give the Domain column the width. Price/Source shrink to their content
+   (nowrap, width:1%), Owner shrinks but may wrap — so the domain name gets all
+   the remaining room. Tighter padding reclaims a few more pixels. */
+@media (max-width: 560px) {
+  .dbs-table { font-size: 13px; }
+  .dbs-table thead th, .dbs-table tbody td { padding: 9px 8px; }
+  .dbs-table th.dbs-num, .dbs-table td.dbs-num { white-space: nowrap; width: 1%; }
+  .dbs-table th:nth-child(3), .dbs-table td:nth-child(3) { white-space: nowrap; width: 1%; }   /* Source */
+  .dbs-table th:nth-child(4), .dbs-table td:nth-child(4) { width: 1%; overflow-wrap: anywhere; } /* Owner — may wrap */
+  .dbs-src { padding: 2px 6px; font-size: 11px; }
 }
 
 
