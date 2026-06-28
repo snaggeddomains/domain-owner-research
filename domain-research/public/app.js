@@ -7834,17 +7834,56 @@ function evComps(data) {
   return `<div class="ev-card"><h3 class="ev-h3">Comparable sales <span class="muted">— names that actually sold</span></h3>${rangeLine}${body}${anchorRows}</div>`;
 }
 
+// Appraise.net is an ASYNC job (a fresh name takes 10–60s) — too slow to block the
+// eval on. So after the report renders we load it here in the BACKGROUND, polling
+// the same api/lookup endpoint the Appraisal tool uses (which also caches the result
+// per domain, so the next eval shows it instantly), then fill the card in place.
+async function evLoadAppraise(domain) {
+  const host = document.getElementById('ev-appr-appraise');
+  if (!host || !domain) return;
+  const setCard = (inner, sub) => {
+    host.innerHTML = `<div class="ev-appr-src">Appraise.net</div>${inner}${sub ? `<div class="muted ev-appr-sub">${sub}</div>` : ''}`;
+  };
+  const show = (v) => {
+    const rng = appraisalRange(v);
+    if (rng) { setCard(`<div class="ev-appr-val" style="font-size:1.1rem">${escapeHtml(rng)}</div>`, 'Appraise.net AI estimate'); return true; }
+    return false;
+  };
+  try {
+    let res = await fetch(`/research/api/lookup?source=appraise_lookup&domain=${encodeURIComponent(domain)}`);
+    let data = await res.json();
+    if (!data || !data.ok) { setCard(`<div class="ev-appr-na">no estimate</div>`, 'Appraise.net unavailable'); return; }
+    let d = data.data || {};
+    if (d.appraisal != null && show(digAppraisal(d.appraisal))) return;
+    let jobId = d.job_id;
+    for (let i = 0; i < 25 && jobId; i++) {
+      await new Promise((r) => setTimeout(r, 3000));
+      res = await fetch(`/research/api/lookup?source=appraise_lookup&job_id=${encodeURIComponent(jobId)}&domain=${encodeURIComponent(domain)}`);
+      data = await res.json();
+      if (data && data.ok === false) break;
+      const st = (data && data.data) || {};
+      const got = digAppraisal(st);
+      if (((got && typeof got === 'object' && got !== st) || appraisalRange(got)) && show(got)) return;
+      if (/fail|error|cancel/i.test(String(st.status || st.state || ''))) break;
+      jobId = st.job_id || jobId;
+    }
+    if (!show(digAppraisal(d))) setCard(`<div class="ev-appr-na">no estimate</div>`, 'still computing — re-run shortly');
+  } catch (e) { /* leave the card as-is */ }
+}
+
 // Prominent appraisals card (Appraise.net + Atom) — always shown so it's clear we
 // pulled them; "no estimate" when a provider has nothing for this name.
 function evAppraisals(data) {
   const ap = (data.evaluation && data.evaluation.signals && data.evaluation.signals.appraisals) || {};
   const a = ap.appraise;
   const atom = ap.atom;
-  const card = (src, valHtml, sub) => `<div class="ev-appr-card"><div class="ev-appr-src">${src}</div>${valHtml}${sub ? `<div class="muted ev-appr-sub">${sub}</div>` : ''}</div>`;
+  const card = (src, valHtml, sub, id) => `<div class="ev-appr-card"${id ? ` id="${id}"` : ''}><div class="ev-appr-src">${src}</div>${valHtml}${sub ? `<div class="muted ev-appr-sub">${sub}</div>` : ''}</div>`;
   const naSub = (note) => note ? escapeHtml(String(note).slice(0, 90)) : 'no value for this name';
   const apCard = a && a.mid > 0
-    ? card('Appraise.net', `<div class="ev-appr-val">${evM(a.mid)}</div>`, a.low && a.high ? `range ${evM(a.low)}–${evM(a.high)}` : '')
-    : card('Appraise.net', `<div class="ev-appr-na">no estimate</div>`, naSub(ap.appraise_note));
+    ? card('Appraise.net', `<div class="ev-appr-val">${evM(a.mid)}</div>`, a.low && a.high ? `range ${evM(a.low)}–${evM(a.high)}` : '', 'ev-appr-appraise')
+    // Appraise.net is async + slow — the eval doesn't block on it. We load it in the
+    // background after render (evLoadAppraise) and fill this card in place.
+    : card('Appraise.net', `<div class="ev-appr-na">computing…</div>`, 'fetching Appraise.net estimate', 'ev-appr-appraise');
   const atomCard = atom && atom.value > 0
     ? card('Atom', `<div class="ev-appr-val">${evM(atom.value)}</div>`, `${atom.score != null ? `score ${atom.score}/10` : ''}${atom.tm_conflicts ? ` · ${atom.tm_conflicts} TM conflict(s)` : ''}`)
     : card('Atom', `<div class="ev-appr-na">no estimate</div>`, naSub(ap.atom_note));
@@ -7964,6 +8003,9 @@ function renderEvaluate(data) {
   if (els.evRecent && els.evResult.parentNode) els.evResult.after(els.evRecent);
   const rl = document.getElementById('ev-refresh-link');
   if (rl) rl.addEventListener('click', (e) => { e.preventDefault(); runEvaluate(ev.domain, { price: evParsePrice(els.evPrice && els.evPrice.value), refresh: true }); });
+  // Appraise.net loads async (decoupled) — only when the eval didn't already get it.
+  const apr = ev.signals && ev.signals.appraisals && ev.signals.appraisals.appraise;
+  if (ev.domain && !(apr && apr.mid > 0)) evLoadAppraise(ev.domain);
 }
 
 els.evForm?.addEventListener('submit', (e) => {

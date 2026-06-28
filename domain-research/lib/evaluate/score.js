@@ -285,8 +285,11 @@ export function computeValuation(input) {
   const synBonus = (input && input.quality && input.quality.synergy && Number(input.quality.synergy.bonus)) || 0;
   const synergyMult = 1 + Math.max(-6, Math.min(12, synBonus)) / 30; // +12→1.40, +10→1.33, -6→0.80
   const fairMid = niceRound(blended.mid * synergyMult);
-  const fairLow = niceRound(blended.low * synergyMult);
-  const fairHigh = niceRound(blended.high * synergyMult);
+  // Keep the displayed RANGE actionable: one outlier comp (e.g. a lone $299K sale in
+  // an otherwise $20–100K set) shouldn't push the top to multiples of the mid. Clamp
+  // the range to ~[0.6×, 1.6×] the mid. (Appraisals/comps still set the mid LEVEL.)
+  const fairLow = niceRound(Math.max(blended.low * synergyMult, fairMid * 0.6));
+  const fairHigh = niceRound(Math.min(blended.high * synergyMult, fairMid * 1.6));
   const confidence = confidenceOf(anchors, blended);
 
   // Dollar ranges for each band (from realizable mid). Best→worst.
