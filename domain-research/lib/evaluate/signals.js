@@ -18,6 +18,7 @@ import { sldOf, filterDictionaryWords } from '../db/dictionary.js';
 import { getNamingDb, isNamingDbConfigured } from '../db/supabase-naming.js';
 import { searchEmailThreads, emailIngestConfigured } from '../email/threads.js';
 import { getDealComps } from '../db/dealComps.js';
+import { getToolLookup, saveToolLookup } from '../db/tools.js';
 import { trackerComps, trackerCompsConfigured } from './trackerComps.js';
 import { scoreQuality } from './quality.js';
 import { namebioComps, namebioComparables } from './comps.js';
@@ -125,6 +126,65 @@ function withTimeout(promise, ms, fallback) {
   ]);
 }
 
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// Run a source, returning { data, note } — note carries the error/limit message
+// (e.g. Atom daily cap, Appraise.net Cloudflare challenge) so the UI can show WHY
+// a value is missing rather than a bare "no estimate".
+async function toolNote(name, args, env) {
+  try {
+    const r = await runTool(name, args, env);
+    return r && r.ok ? { data: r.data, note: null } : { data: null, note: r && r.error ? String(r.error) : null };
+  } catch (e) { return { data: null, note: String((e && e.message) || e) }; }
+}
+
+// Appraise.net is ASYNC — the first call may return a job to poll, not a value. So
+// poll the job to completion (bounded), and cache the result per domain (kind 'ap')
+// so re-runs don't re-spend / re-wait. Returns { data, note }.
+async function appraiseGather(d, env) {
+  try { const row = await getToolLookup('ap', d); if (row && row.data && row.data.appraisal) return { data: row.data, note: null }; } catch { /* cache miss */ }
+  let { data, note } = await toolNote('appraise_lookup', { domain: d }, env);
+  let jobId = data && data.job_id;
+  const start = Date.now();
+  let delay = 2500;
+  while (jobId && !(data && data.appraisal) && Date.now() - start < 14000) {
+    await sleep(delay); delay = Math.min(Math.round(delay * 1.4), 6000);
+    const r = await toolNote('appraise_lookup', { job_id: jobId }, env);
+    if (r.data && r.data.appraisal) { data = r.data; note = null; break; }
+    if (r.note) note = r.note;
+    jobId = (r.data && r.data.job_id) || jobId;
+    if (r.data && /fail|error|cancel/i.test(String(r.data.status || ''))) break;
+  }
+  if (data && data.appraisal) { try { await saveToolLookup('ap', d, data); } catch { /* best-effort */ } }
+  return { data, note };
+}
+
+// Atom has a HARD ~10/day cap — cache the value per domain (kind 'at') so re-runs
+// never re-spend a quota slot; surface the cap message as a note when exhausted.
+async function atomGather(d, env) {
+  try { const row = await getToolLookup('at', d); if (row && row.data && row.data.value > 0) return { data: row.data, note: null }; } catch { /* cache miss */ }
+  const r = await toolNote('atom_appraise', { domain: d }, env);
+  if (r.data && r.data.value > 0) { try { await saveToolLookup('at', d, r.data); } catch { /* best-effort */ } }
+  return r;
+}
+
+// NameBio exact-domain sales (1 credit) — cache per domain (kind 'nb').
+async function nbExactGather(d, env) {
+  try { const row = await getToolLookup('nb', d); if (row && row.data) return row.data; } catch { /* cache miss */ }
+  const data = await namebioComps(d, env);
+  if (data) { try { await saveToolLookup('nb', d, data); } catch { /* best-effort */ } }
+  return data;
+}
+
+// NameBio Comps engine (flat ~25 credits) — cache per domain (kind 'nbc'); only the
+// SUCCESS (comps present) is cached so a rate-limited empty retries later.
+async function nbCompsGather(d, env) {
+  try { const row = await getToolLookup('nbc', d); if (row && row.data && row.data.comps && row.data.comps.length) return row.data; } catch { /* cache miss */ }
+  const data = await namebioComparables(d, env);
+  if (data && data.comps && data.comps.length) { try { await saveToolLookup('nbc', d, data); } catch { /* best-effort */ } }
+  return data; // may carry a note (e.g. rate limit) when empty
+}
+
 export async function gatherSignals(domain, env = process.env) {
   const d = String(domain).toLowerCase();
   const dot = d.indexOf('.');
@@ -132,41 +192,52 @@ export async function gatherSignals(domain, env = process.env) {
   const tld = dot > 0 ? d.slice(dot + 1) : '';
   const sldWord = sldOf(d);
 
-  // Dictionary check + the target's own universe row run first (both cheap) so we
-  // can shape the comp query (word-count / dictionary like-for-like).
-  const [wordSet, self] = await Promise.all([
+  // Dictionary check, the target's own universe row, AND the FREE internal sold
+  // comps (Master Txns List) run first — both cheap, and the tracker count decides
+  // whether we need to spend on the paid NameBio Comps engine.
+  const [wordSet, self, trackerSold] = await Promise.all([
     sldWord ? filterDictionaryWords([sldWord]) : Promise.resolve(new Set()),
     universeSelf(d),
+    trackerCompsConfigured() ? withTimeout(trackerComps({ sld, tld, len: sld.length }, env), 12000, null) : Promise.resolve(null),
   ]);
   const isWord = Boolean(sldWord && wordSet.has(sldWord));
   const numWords = self && self.num_words != null ? self.num_words : null;
   const quality = scoreQuality({ sld, tld, isWord, numWords });
 
-  // Everything else in parallel — each fail-open.
+  // The NameBio Comps engine is a FLAT ~25-credit call (not per-comp). Only spend it
+  // when our free internal Master Txns comps are thin — most names already have
+  // plenty of internal sold comps, so this avoids the charge entirely.
+  const trackerCount = (trackerSold && Array.isArray(trackerSold.deals)) ? trackerSold.deals.length : 0;
+  const needNbComps = trackerCount < 6;
+
+  // Everything else in parallel — each fail-open. Appraisals poll-to-completion +
+  // cache per domain; the paid NameBio comps are gated + cached.
   const [
-    rdapData, liveData, dsData, appraiseData, atomData,
+    rdapData, liveData, dsData, appraiseRes, atomRes,
     nameproData, webDomain, webTerm,
-    nbComps, nbComparables, trackerSold, dealHistory, emailThreads,
+    nbComps, nbComparables, dealHistory, emailThreads,
   ] = await Promise.all([
     tool('rdap_whois', { domain: d }, env),
     tool('livesite_inspect', { domain: d }, env),
     tool('domainscout_lookup', { domain: d }, env),
-    tool('appraise_lookup', { domain: d }, env),
-    tool('atom_appraise', { domain: d }, env),
+    withTimeout(appraiseGather(d, env), 22000, { data: null, note: 'timed out' }),
+    atomGather(d, env),
     tool('namepros_search', { domain: d }, env),
     tool('web_search', { query: `"${d}"` }, env),
     tool('web_search', { query: sld }, env),
-    namebioComps(d, env),
-    namebioComparables(d, env),
-    trackerCompsConfigured() ? withTimeout(trackerComps({ sld, tld, len: sld.length }, env), 12000, null) : Promise.resolve(null),
+    nbExactGather(d, env),
+    needNbComps ? nbCompsGather(d, env) : Promise.resolve(null),
     getDealComps(d),
     emailIngestConfigured() ? withTimeout(searchEmailThreads(d), 12000, []) : Promise.resolve([]),
   ]);
 
-  const appraise = normalizeAppraise(appraiseData);
+  const appraise = normalizeAppraise(appraiseRes && appraiseRes.data);
+  const appraiseNote = (appraiseRes && appraiseRes.note) || null;
+  const atomData = atomRes && atomRes.data;
   const atom = atomData && atomData.value > 0
     ? { value: atomData.value, score: atomData.score, positive: atomData.positive_signals || [], negative: atomData.negative_signals || [], tm_conflicts: atomData.tm_conflicts }
     : null;
+  const atomNote = (atomRes && atomRes.note) || null;
   const forSale = normalizeForSale(dsData);
   // The domain's own current listing (asking) — distinct from "similar" comps.
   const listing = forSale.listed && forSale.price ? { price: forSale.price, platform: forSale.platform } : null;
@@ -182,7 +253,7 @@ export async function gatherSignals(domain, env = process.env) {
     current_use: liveData || null,
     for_sale: forSale,
     listing,
-    appraisals: { appraise, atom },
+    appraisals: { appraise, atom, appraise_note: appraiseNote, atom_note: atomNote },
     comps: { namebio: nbComps, namebio_comps: nbComparables, tracker: trackerSold, deal_history: dealHistory },
     namepros: nameproData && Array.isArray(nameproData.results) ? nameproData.results.slice(0, 8) : [],
     web: {

@@ -7841,12 +7841,13 @@ function evAppraisals(data) {
   const a = ap.appraise;
   const atom = ap.atom;
   const card = (src, valHtml, sub) => `<div class="ev-appr-card"><div class="ev-appr-src">${src}</div>${valHtml}${sub ? `<div class="muted ev-appr-sub">${sub}</div>` : ''}</div>`;
+  const naSub = (note) => note ? escapeHtml(String(note).slice(0, 90)) : 'no value for this name';
   const apCard = a && a.mid > 0
     ? card('Appraise.net', `<div class="ev-appr-val">${evM(a.mid)}</div>`, a.low && a.high ? `range ${evM(a.low)}–${evM(a.high)}` : '')
-    : card('Appraise.net', `<div class="ev-appr-na">no estimate</div>`, 'no value for this name');
+    : card('Appraise.net', `<div class="ev-appr-na">no estimate</div>`, naSub(ap.appraise_note));
   const atomCard = atom && atom.value > 0
     ? card('Atom', `<div class="ev-appr-val">${evM(atom.value)}</div>`, `${atom.score != null ? `score ${atom.score}/10` : ''}${atom.tm_conflicts ? ` · ${atom.tm_conflicts} TM conflict(s)` : ''}`)
-    : card('Atom', `<div class="ev-appr-na">no estimate</div>`, 'no value for this name');
+    : card('Atom', `<div class="ev-appr-na">no estimate</div>`, naSub(ap.atom_note));
   return `<div class="ev-card"><h3 class="ev-h3">Appraisals <span class="muted">— AI estimates (discounted to realizable in the value)</span></h3>`
     + `<div class="ev-appr-grid">${apCard}${atomCard}</div></div>`;
 }

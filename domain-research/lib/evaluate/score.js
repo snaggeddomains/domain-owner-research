@@ -67,42 +67,41 @@ export function buildAnchors({ quality, namebio, namebioComps, tracker, dealOffe
     });
   }
 
-  // 1b. NameBio COMPARABLE sales — recorded RETAIL sales of SIMILAR names (the comp
-  // set when there's no exact-domain sale). Real clearing prices, but for similar-
-  // not-this name, so discounted modestly to realizable and weighted below exact.
+  // Position THIS name within a comparable-sales distribution by its quality: a
+  // grade-A name sells near the TOP of comparable sales, a weak one near the bottom.
+  // (This is the calibration that stops a strong one-word name from being dragged to
+  // the median of a broad same-TLD band.) Returns {low, mid, high} from the prices.
+  const qScore = Math.max(0, Math.min(100, (quality && quality.score != null) ? quality.score : 50));
+  const positioned = (prices, discount) => {
+    const sorted = prices.filter((p) => p > 0).sort((a, b) => a - b);
+    if (!sorted.length) return null;
+    const at = (f) => sorted[Math.min(sorted.length - 1, Math.max(0, Math.round(f * (sorted.length - 1))))];
+    const pct = 0.30 + (qScore / 100) * 0.55; // grade A(87)→~p78, C(50)→~p58, F(20)→~p41
+    return { low: at(Math.max(0.08, pct - 0.20)) * discount, mid: at(pct) * discount, high: at(Math.min(0.95, pct + 0.12)) * discount, midPct: pct };
+  };
+
+  // 1b. NameBio COMPARABLE sales — recorded RETAIL sales of SIMILAR names. Real
+  // clearing prices; positioned by quality, lightly discounted (broader market).
   const nbComps = (namebioComps && Array.isArray(namebioComps.comps) ? namebioComps.comps : []).filter((c) => c && c.price > 0);
   if (nbComps.length) {
-    const prices = nbComps.map((c) => c.price).sort((a, b) => a - b);
-    const at = (frac) => prices[Math.min(prices.length - 1, Math.max(0, Math.round(frac * (prices.length - 1))))];
-    const DISCOUNT = 0.75; // retail comps run above this specific name's realistic resale
-    anchors.push({
-      source: 'namebio_comps',
-      low: at(0.25) * DISCOUNT,
-      mid: at(0.5) * DISCOUNT,
-      high: at(0.75) * DISCOUNT,
-      weight: 2.0,
-      note: `${nbComps.length} comparable NameBio sale${nbComps.length > 1 ? 's' : ''} of similar names (median $${niceRound(at(0.5)).toLocaleString()}).`,
+    const p = positioned(nbComps.map((c) => c.price), 0.85);
+    if (p) anchors.push({
+      source: 'namebio_comps', low: p.low, mid: p.mid, high: p.high, weight: 2.0,
+      note: `${nbComps.length} comparable NameBio sale${nbComps.length > 1 ? 's' : ''} of similar names; this name positioned at the ${Math.round(p.midPct * 100)}th pct → $${niceRound(p.mid).toLocaleString()}.`,
     });
   }
 
   // 1c. Snagged transaction comps — REAL prices comparable names changed hands at
-  // (the Domain Tracker's Deals tab). Verified transactions, so a strong anchor;
-  // the exact word on another TLD (same_sld) is the most telling. Light discount.
+  // (the Master Txns List). Verified realized sales, so only a light haircut; the
+  // exact word on another TLD (same_sld) counts double in the distribution.
   const trackerDeals = (tracker && Array.isArray(tracker.deals) ? tracker.deals : []).filter((t) => t && t.price > 0);
   if (trackerDeals.length) {
-    // Weight same-SLD-any-TLD comps double when computing the central price.
-    const weighted = [];
-    for (const t of trackerDeals) { weighted.push(t.price); if (t.relation === 'same_sld') weighted.push(t.price); }
-    const sorted = weighted.sort((a, b) => a - b);
-    const at = (frac) => sorted[Math.min(sorted.length - 1, Math.max(0, Math.round(frac * (sorted.length - 1))))];
-    const DISCOUNT = 0.85;
-    anchors.push({
-      source: 'snagged_transactions',
-      low: at(0.25) * DISCOUNT,
-      mid: at(0.5) * DISCOUNT,
-      high: at(0.75) * DISCOUNT,
-      weight: 2.4,
-      note: `${trackerDeals.length} comparable Snagged transaction${trackerDeals.length > 1 ? 's' : ''} (median $${niceRound(at(0.5)).toLocaleString()}).`,
+    const prices = [];
+    for (const t of trackerDeals) { prices.push(t.price); if (t.relation === 'same_sld') prices.push(t.price); }
+    const p = positioned(prices, 0.92);
+    if (p) anchors.push({
+      source: 'snagged_transactions', low: p.low, mid: p.mid, high: p.high, weight: 2.6,
+      note: `${trackerDeals.length} comparable Snagged transaction${trackerDeals.length > 1 ? 's' : ''}; this name positioned at the ${Math.round(p.midPct * 100)}th pct → $${niceRound(p.mid).toLocaleString()}.`,
     });
   }
 
