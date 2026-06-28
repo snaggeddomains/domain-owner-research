@@ -48,7 +48,7 @@ function qualityBaseline(quality) {
 // {source, low, mid, high, weight, note}. Asking prices (the domain's own listing,
 // internal "similar asking" comps, AI appraisals) are DISCOUNTED to realizable —
 // asks run well above what names actually clear at.
-export function buildAnchors({ quality, namebio, namebioComps, internal, dealOffers, appraise, atom, listing } = {}) {
+export function buildAnchors({ quality, namebio, namebioComps, tracker, internal, dealOffers, appraise, atom, listing } = {}) {
   const anchors = [];
 
   // 1. NameBio — recorded PUBLIC SALES of the EXACT domain. The strongest signal:
@@ -82,6 +82,27 @@ export function buildAnchors({ quality, namebio, namebioComps, internal, dealOff
       high: at(0.75) * DISCOUNT,
       weight: 2.0,
       note: `${nbComps.length} comparable NameBio sale${nbComps.length > 1 ? 's' : ''} of similar names (median $${niceRound(at(0.5)).toLocaleString()}).`,
+    });
+  }
+
+  // 1c. Snagged transaction comps — REAL prices comparable names changed hands at
+  // (the Domain Tracker's Deals tab). Verified transactions, so a strong anchor;
+  // the exact word on another TLD (same_sld) is the most telling. Light discount.
+  const trackerDeals = (tracker && Array.isArray(tracker.deals) ? tracker.deals : []).filter((t) => t && t.price > 0);
+  if (trackerDeals.length) {
+    // Weight same-SLD-any-TLD comps double when computing the central price.
+    const weighted = [];
+    for (const t of trackerDeals) { weighted.push(t.price); if (t.relation === 'same_sld') weighted.push(t.price); }
+    const sorted = weighted.sort((a, b) => a - b);
+    const at = (frac) => sorted[Math.min(sorted.length - 1, Math.max(0, Math.round(frac * (sorted.length - 1))))];
+    const DISCOUNT = 0.85;
+    anchors.push({
+      source: 'snagged_transactions',
+      low: at(0.25) * DISCOUNT,
+      mid: at(0.5) * DISCOUNT,
+      high: at(0.75) * DISCOUNT,
+      weight: 2.4,
+      note: `${trackerDeals.length} comparable Snagged transaction${trackerDeals.length > 1 ? 's' : ''} (median $${niceRound(at(0.5)).toLocaleString()}).`,
     });
   }
 
@@ -195,7 +216,7 @@ function blend(anchors) {
 // medium. Quality model alone → low.
 function confidenceOf(anchors, blended) {
   const has = (s) => anchors.some((a) => a.source === s);
-  const strong = (has('namebio') ? 1 : 0) + (has('snagged_deal_history') ? 1 : 0);
+  const strong = (has('namebio') ? 1 : 0) + (has('snagged_deal_history') ? 1 : 0) + (has('snagged_transactions') ? 1 : 0);
   const supporting = ['namebio_comps', 'internal_comps', 'appraise_net', 'atom'].filter(has).length;
   let band = 'low';
   if (strong >= 1 && supporting >= 1) band = 'high';

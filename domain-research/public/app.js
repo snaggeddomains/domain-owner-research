@@ -7770,11 +7770,13 @@ function evComps(data) {
   const comps = s.comps || {};
   const nb = comps.namebio;
   const nbc = comps.namebio_comps;
+  const trk = comps.tracker;
   const intc = comps.internal;
   const dh = comps.deal_history;
   const ap = (s.appraisals || {});
   const val = (data.evaluation && data.evaluation.valuation) || {};
   const anchors = val.anchors || [];
+  const relLabel = (r) => r === 'same_sld' ? 'same word' : r === 'same_tld' ? `same .${s.tld || ''}` : 'similar';
 
   let body = '';
   // NameBio exact sales
@@ -7782,6 +7784,13 @@ function evComps(data) {
     body += `<div class="ev-comp-block"><h4 class="ev-comp-h">NameBio — recorded sales of this exact domain</h4>`
       + `<table class="ev-table"><thead><tr><th>Price</th><th>Date</th><th>Venue</th></tr></thead><tbody>`
       + nb.sales.slice(0, 8).map((x) => `<tr><td>${evM(x.price)}</td><td>${escapeHtml(x.date || '—')}</td><td>${escapeHtml(x.venue || '—')}</td></tr>`).join('')
+      + `</tbody></table></div>`;
+  }
+  // Snagged transaction comps — the Master Txns List (real prices similar names sold at)
+  if (trk && trk.deals && trk.deals.length) {
+    body += `<div class="ev-comp-block"><h4 class="ev-comp-h">Snagged transactions — comparable names we've sold/acquired <span class="muted">(Master Txns List)</span></h4>`
+      + `<table class="ev-table"><thead><tr><th>Domain</th><th>Price</th><th>Match</th><th>Date</th></tr></thead><tbody>`
+      + trk.deals.slice(0, 15).map((x) => `<tr><td>${escapeHtml(x.domain)}</td><td>${evM(x.price)}</td><td class="muted">${escapeHtml(relLabel(x.relation))}</td><td class="muted">${escapeHtml(x.date || '—')}</td></tr>`).join('')
       + `</tbody></table></div>`;
   }
   // NameBio comparable sales (similar names that actually sold)

@@ -239,7 +239,16 @@ menu in the admin hub, alongside Research/Admin/Reports — see snagged-admin).
   comps (below), **NamePros** forum chatter, **straight Google** of the exact domain
   AND the SLD term (who's using it / competition), and a **Gmail sweep** (has anyone
   emailed us about it — via the admin internal endpoint, 12s-capped).
-- **Comps = four sources** (`lib/evaluate/comps.js` + `lib/db/dealComps.js`):
+- **Master Txns List comps (real sold prices)** (`lib/evaluate/trackerComps.js`):
+  pulls comparable REAL transaction prices from the Snagged Domain Tracker's
+  **"Master Txns List"** tab via snagged-admin's internal endpoint
+  `/api/internal/sales-comps` (shared-secret `RESEARCH_INTERNAL_SECRET`, columns
+  auto-detected by content, 5-min cached). Matches by `same_sld` (the exact word on
+  any TLD — strongest) / `same_tld` (same extension, similar length). This is the
+  gold-standard comp (verified prices, not asking) → value anchor weight 2.4
+  (discount 0.85) + counts as STRONG confidence. Reuses the existing internal-secret
+  + Google SA (no new env). Leads the comps UI section.
+- **Comps = four more sources** (`lib/evaluate/comps.js` + `lib/db/dealComps.js`):
   **NameBio exact** sales of the domain (`namebio_sales`, 1 credit), **NameBio
   comparable sales** (`namebio_comps` → the Comps engine, ~25 credits, up to 25
   recorded RETAIL sales of SIMILAR names — the real comp set when there's no exact

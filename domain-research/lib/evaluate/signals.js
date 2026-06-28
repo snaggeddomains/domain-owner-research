@@ -18,6 +18,7 @@ import { sldOf, filterDictionaryWords } from '../db/dictionary.js';
 import { getNamingDb, isNamingDbConfigured } from '../db/supabase-naming.js';
 import { searchEmailThreads, emailIngestConfigured } from '../email/threads.js';
 import { getDealComps } from '../db/dealComps.js';
+import { trackerComps, trackerCompsConfigured } from './trackerComps.js';
 import { scoreQuality } from './quality.js';
 import { namebioComps, namebioComparables, internalComps } from './comps.js';
 
@@ -142,10 +143,13 @@ export async function gatherSignals(domain, env = process.env) {
   const quality = scoreQuality({ sld, tld, isWord, numWords });
 
   // Everything else in parallel — each fail-open.
+  // A dictionary single word has word-count 1 even when the corpus row is missing
+  // it — so one-word targets compare against one-word names, not same-length noise.
+  const compWords = numWords != null ? numWords : (isWord ? 1 : null);
   const [
     rdapData, liveData, dsData, appraiseData, atomData,
     nameproData, webDomain, webTerm,
-    nbComps, nbComparables, intComps, dealHistory, emailThreads,
+    nbComps, nbComparables, intComps, trackerSold, dealHistory, emailThreads,
   ] = await Promise.all([
     tool('rdap_whois', { domain: d }, env),
     tool('livesite_inspect', { domain: d }, env),
@@ -157,7 +161,8 @@ export async function gatherSignals(domain, env = process.env) {
     tool('web_search', { query: sld }, env),
     namebioComps(d, env),
     namebioComparables(d, env),
-    internalComps({ tld, len: sld.length, numWords, isWord }, env),
+    internalComps({ tld, len: sld.length, numWords: compWords, isWord }, env),
+    trackerCompsConfigured() ? withTimeout(trackerComps({ sld, tld, len: sld.length }, env), 12000, null) : Promise.resolve(null),
     getDealComps(d),
     emailIngestConfigured() ? withTimeout(searchEmailThreads(d), 12000, []) : Promise.resolve([]),
   ]);
@@ -182,7 +187,7 @@ export async function gatherSignals(domain, env = process.env) {
     for_sale: forSale,
     listing,
     appraisals: { appraise, atom },
-    comps: { namebio: nbComps, namebio_comps: nbComparables, internal: intComps, deal_history: dealHistory },
+    comps: { namebio: nbComps, namebio_comps: nbComparables, tracker: trackerSold, internal: intComps, deal_history: dealHistory },
     namepros: nameproData && Array.isArray(nameproData.results) ? nameproData.results.slice(0, 8) : [],
     web: {
       domain_search: webDomain && Array.isArray(webDomain.results) ? webDomain.results.slice(0, 8) : [],
