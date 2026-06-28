@@ -28,7 +28,7 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="apple-mobile-web-app-title" content="Snagged Research" />
     <meta name="theme-color" content="#254254" />
-    <link rel="stylesheet" href="styles.css?v=20260628snapeval" />
+    <link rel="stylesheet" href="styles.css?v=20260628snapeval2" />
     <!-- Layout: horizontal tab nav (Admin-style), no sidebar. -->
   </head>
   <body>
@@ -74,12 +74,13 @@
           <span class="wm-a">Snagged</span>
         </a>
         <nav class="topbar__nav">
-          <!-- SNAP — top-level workspace (SNAP Eval + SNAP Opportunities). The
-               link lands on SNAP Eval; shown by JS to anyone who can use it. -->
-          <a href="/research/evaluate" id="topbar-snap" hidden>SNAP</a>
-          <a href="/research" class="active">Research</a>
+          <a href="/research" id="topbar-research" class="active">Research</a>
           <!-- Umbrella's Admin (user management); admin-only — shown by JS. -->
           <a href="/admin" id="topbar-admin" hidden>Admin</a>
+          <!-- SNAP — top-level workspace (SNAP Eval + SNAP Opportunities). The link
+               lands on SNAP Eval; shown by JS to anyone who can use it. Third spot,
+               between Admin and Reports. -->
+          <a href="/research/evaluate" id="topbar-snap" hidden>SNAP</a>
           <!-- Top-level Reports module; shown by JS to anyone with reports access. -->
           <a href="/reports" id="topbar-reports" hidden>Reports</a>
         </nav>
@@ -173,6 +174,9 @@
         <!-- Real <a href> so ⌘/ctrl/middle-click opens the tool in a new tab;
              plain clicks are intercepted in app.js for in-page SPA nav. Hrefs use
              /research/<tool> (vercel.json rewrites them to the SPA on full load). -->
+        <!-- Research-tools sub-nav (shown in the Research section). `display:contents`
+             so the group wrapper doesn't disturb the flex tab layout. -->
+        <span id="nav-research-group" class="nav-group">
         <a id="nav-research" class="nav-btn active" href="/research">Domain Owner</a>
         <a id="nav-trademark" class="nav-btn" href="/research/trademark">Trademark</a>
         <a id="nav-appraisal" class="nav-btn" href="/research/appraisal">Appraisal</a>
@@ -198,8 +202,13 @@
         <!-- Corporate Portfolios — reverse-WHOIS a company to pull its premium
              domains. Gated by the `portfolio` permission; shown by JS. -->
         <a id="nav-portfolio" class="nav-btn" href="/research/portfolio" hidden>Corporate Portfolios</a>
-        <!-- SNAP Eval is reached via the top-level SNAP header (topbar-snap),
-             not this research sub-nav. The /research/evaluate route still works. -->
+        </span>
+        <!-- SNAP sub-nav (shown in the SNAP section): SNAP Eval + SNAP Opportunities.
+             SNAP Opportunities is the auctions/snap feed in the admin app (full nav). -->
+        <span id="nav-snap-group" class="nav-group" hidden>
+          <a id="nav-snap-eval" class="nav-btn" href="/research/evaluate">SNAP Eval</a>
+          <a id="nav-snap-opps" class="nav-btn" href="/reports/opportunities">SNAP Opportunities</a>
+        </span>
         <!-- Lessons (playbook curation) is admin-only and now lives in the
              umbrella Admin module; reachable directly at /research/admin. -->
         <button id="nav-admin" class="nav-btn nav-btn-admin" type="button" hidden style="display:none">Lessons</button>
@@ -1041,6 +1050,6 @@ The model parses it into structured filters (TLDs, length, budget, tone, etc.) a
     </div>
 
     <!-- Bump ?v= on any public/app.js or styles.css change to bust caches. -->
-    <script src="app.js?v=20260628snapeval2"></script>
+    <script src="app.js?v=20260628snapeval3"></script>
   </body>
 </html>

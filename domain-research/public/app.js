@@ -250,7 +250,9 @@ const els = {
   cpStatus: $('cp-status'), cpResults: $('cp-results'), cpSummary: $('cp-summary'), cpTable: $('cp-table'), cpCsv: $('cp-csv'),
   cpRecent: $('cp-recent'), cpRecentList: $('cp-recent-list'), cpRecentAll: $('cp-recent-all'),
   cpRunsSearch: $('cp-runs-search'), cpRunsList: $('cp-runs-list'),
-  navEvaluate: $('nav-evaluate'),
+  navResearchGroup: $('nav-research-group'), navSnapGroup: $('nav-snap-group'),
+  navSnapEval: $('nav-snap-eval'), navSnapOpps: $('nav-snap-opps'),
+  topbarResearch: $('topbar-research'),
   evForm: $('ev-form'), evDomain: $('ev-domain'), evPrice: $('ev-price'), evGo: $('ev-go'), evRefresh: $('ev-refresh'),
   evStatus: $('ev-status'), evResult: $('ev-result'), evRecent: $('ev-recent'),
   nsModeToggle: $('ns-modetoggle'), nsMatchToggle: $('ns-matchtoggle'),
@@ -2083,7 +2085,10 @@ function gateNavByPermissions(user) {
   if (els.navDiq) els.navDiq.hidden = !can('domain_owner');
   if (els.navSales) els.navSales.hidden = !can('sales');
   if (els.navPortfolio) els.navPortfolio.hidden = !can('portfolio');
-  if (els.navEvaluate) els.navEvaluate.hidden = !can('evaluate');
+  // SNAP sub-nav: SNAP Eval needs `evaluate`; SNAP Opportunities (admin app) needs
+  // reports access. Hidden buttons just don't render inside the SNAP group.
+  if (els.navSnapEval) els.navSnapEval.hidden = !can('evaluate');
+  if (els.navSnapOpps) els.navSnapOpps.hidden = !(Boolean(user && user.is_admin) || canEnterReports(user));
   // "Suggest a Strategy" — anyone with Domain Owner Research access can submit a
   // playbook strategy (a super admin approves it). Lives on the Domain Owner page
   // + bottom of every report (inside #view-research), so it's scoped to that tool.
@@ -3307,7 +3312,7 @@ const VIEWS = {
   'sales-projects': { view: 'view-sales-projects', nav: 'nav-sales' },
   portfolio: { view: 'view-portfolio', nav: 'nav-portfolio' },
   'portfolio-runs': { view: 'view-portfolio-runs', nav: 'nav-portfolio' },
-  evaluate: { view: 'view-evaluate', nav: 'nav-evaluate' },
+  evaluate: { view: 'view-evaluate', nav: 'nav-snap-eval' },
   admin: { view: 'view-admin', nav: 'nav-admin' },
 };
 function showView(name) {
@@ -3319,6 +3324,14 @@ function showView(name) {
   }
   if (name === 'projects') loadProjects(els.projectsSearch.value.trim());
   if (name === 'admin') loadLessons();
+  // Section switch: SNAP Eval lives in the SNAP section, so it swaps the research
+  // tool sub-nav for the SNAP sub-nav and lights up SNAP (not Research) in the top
+  // header. Every other view is the Research section.
+  const inSnap = name === 'evaluate';
+  if (els.navResearchGroup) els.navResearchGroup.hidden = inSnap;
+  if (els.navSnapGroup) els.navSnapGroup.hidden = !inSnap;
+  if (els.topbarSnap) els.topbarSnap.classList.toggle('active', inSnap);
+  if (els.topbarResearch) els.topbarResearch.classList.toggle('active', !inSnap);
   // All modules use the full content width on desktop (matching the Naming
   // Exercise) so the space isn't wasted by a narrow centered column.
   const wrap = document.querySelector('.content > .wrap');
@@ -5533,6 +5546,9 @@ els.researchNew?.addEventListener('click', () => showEntry());
 els.homeLink?.addEventListener('click', (e) => { e.preventDefault(); closeNav(); showEntry(); });
 els.navTrademark?.addEventListener('click', (e) => { if (newTabClick(e)) return; e.preventDefault(); setToolUrl('trademark', ''); route(); });
 els.navAppraisal?.addEventListener('click', (e) => { if (newTabClick(e)) return; e.preventDefault(); setToolUrl('appraisal', ''); route(); });
+els.navSnapEval?.addEventListener('click', (e) => { if (newTabClick(e)) return; e.preventDefault(); setToolUrl('evaluate', ''); route(); });
+// nav-snap-opps is a cross-app link (/reports/opportunities, the admin app) — no
+// handler, so it does a normal full navigation.
 els.navDbscreen?.addEventListener('click', (e) => { if (newTabClick(e)) return; e.preventDefault(); setToolUrl('dbscreen', ''); route(); });
 els.navDbsearch?.addEventListener('click', (e) => { if (newTabClick(e)) return; e.preventDefault(); setToolUrl('dbsearch', ''); route(); });
 els.dbForm?.addEventListener('submit', (e) => {

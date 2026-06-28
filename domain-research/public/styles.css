@@ -1912,3 +1912,10 @@ a.sr-ag-co-link:hover { border-color: var(--coral); color: var(--coral-deep); ba
 .ev-error { background: #fdf3f0; border: 1px solid rgba(199,95,69,.35); border-radius: var(--radius-sm); padding: 18px 20px; box-shadow: var(--shadow-sm); }
 .ev-error strong { color: var(--coral-deep); display: block; margin-bottom: 4px; }
 .ev-error button { margin-top: 12px; }
+
+/* SNAP section swap — group wrappers use display:contents so the children flow as
+   direct flex items of the tab nav (the wrapper adds no box); [hidden] still
+   collapses the whole group. The attribute selector outranks the class, so a
+   hidden group is display:none even though .nav-group sets display:contents. */
+.nav-group { display: contents; }
+.nav-group[hidden] { display: none; }
