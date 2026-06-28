@@ -1819,8 +1819,8 @@ a.sr-ag-co-link:hover { border-color: var(--coral); color: var(--coral-deep); ba
 .ev-headline { margin: 10px 0 4px; font-size: 1.12rem; font-weight: 700; color: var(--navy); line-height: 1.35; }
 .ev-rationale { margin: 6px 0; color: var(--navy-2); line-height: 1.5; }
 .ev-adjust { margin: 6px 0; font-size: .82rem; color: var(--coral-deep); font-weight: 600; }
-/* Resale-scenario grid (top recap) */
-.ev-grid { margin-top: 16px; }
+/* Resale-scenario grid (top recap) — full-width row inside the verdict card */
+.ev-grid { margin-top: 16px; flex-basis: 100%; width: 100%; }
 .ev-grid-title { font-size: .82rem; font-weight: 700; color: var(--navy); margin-bottom: 8px; }
 .ev-grid-cols { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; }
 .ev-gridcol { border: 1px solid var(--line, #e6ddc9); border-radius: 10px; padding: 10px 8px; text-align: center; background: #fff; }

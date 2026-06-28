@@ -7766,13 +7766,13 @@ function evVerdictHeader(data) {
       ${v.headline ? `<p class="ev-headline">${escapeHtml(v.headline)}</p>` : ''}
       ${v.rationale ? `<p class="ev-rationale">${escapeHtml(v.rationale)}</p>` : ''}
       ${adj}
-      ${evResaleGrid(fv)}
       <div class="ev-keymetrics">
         <div class="ev-km"><span class="ev-km-l">Recommended max bid</span><span class="ev-km-v">${evM(val.recommended_max_bid)}</span></div>
         <div class="ev-km"><span class="ev-km-l">Quality grade</span><span class="ev-km-v">${escapeHtml((ev.signals && ev.signals.quality && ev.signals.quality.grade) || '—')} <span class="muted">(${(ev.signals && ev.signals.quality && ev.signals.quality.score) || '—'}/100)</span></span></div>
       </div>
     </div>
     <div class="ev-verdict-pill">${pill}</div>
+    ${evResaleGrid(fv)}
   </div>`;
 }
 
