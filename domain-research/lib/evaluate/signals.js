@@ -22,7 +22,7 @@ import { getToolLookup, saveToolLookup } from '../db/tools.js';
 import { trackerComps, trackerCompsConfigured } from './trackerComps.js';
 import { scoreQuality } from './quality.js';
 import { scoreBrandability } from './brandability.js';
-import { tldRenewal } from './renewal.js';
+import { domainRenewal } from './renewal.js';
 import { namebioComps, namebioComparables } from './comps.js';
 
 // "$1,234" / "1.2k" / "$1.3M" / "1,300 USD" → 1234 / 1200 / 1300000 / 1300.
@@ -278,7 +278,7 @@ export async function gatherSignals(domain, env = process.env) {
     getDealComps(d),
     emailIngestConfigured() ? withTimeout(searchEmailThreads(d), 8000, []) : Promise.resolve([]),
     withTimeout(tool('trademark_search', { query: sld }, env), 8000, null),
-    withTimeout(tldRenewal(tld), 5000, null),
+    withTimeout(domainRenewal(d, env), 8000, null),
   ]);
 
   const appraise = normalizeAppraise(appraiseRes && appraiseRes.data);

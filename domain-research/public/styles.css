@@ -1988,3 +1988,5 @@ a.sr-ag-co-link:hover { border-color: var(--coral); color: var(--coral-deep); ba
 .ev-tld-for_sale { border-color: rgba(224,123,44,.4); background: rgba(224,123,44,.07); }
 .ev-tld-for_sale .ev-tld-status { color: #c75f45; }
 .ev-tld-unused { opacity: .75; }
+
+.ev-prem { display:inline-block; background:#e07b2c; color:#fff; font-size:.6rem; font-weight:700; text-transform:uppercase; letter-spacing:.03em; padding:1px 6px; border-radius:6px; vertical-align:middle; }
