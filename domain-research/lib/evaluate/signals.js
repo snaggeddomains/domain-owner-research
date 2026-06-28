@@ -22,6 +22,7 @@ import { getToolLookup, saveToolLookup } from '../db/tools.js';
 import { trackerComps, trackerCompsConfigured } from './trackerComps.js';
 import { scoreQuality } from './quality.js';
 import { scoreBrandability } from './brandability.js';
+import { tldRenewal } from './renewal.js';
 import { namebioComps, namebioComparables } from './comps.js';
 
 // "$1,234" / "1.2k" / "$1.3M" / "1,300 USD" → 1234 / 1200 / 1300000 / 1300.
@@ -262,7 +263,7 @@ export async function gatherSignals(domain, env = process.env) {
   const [
     rdapData, liveData, dsData, appraiseRes, atomRes,
     nameproData, webDomain, webTerm,
-    nbComps, nbComparables, dealHistory, emailThreads, tmData,
+    nbComps, nbComparables, dealHistory, emailThreads, tmData, renewal,
   ] = await Promise.all([
     tool('rdap_whois', { domain: d }, env),
     tool('livesite_inspect', { domain: d }, env),
@@ -277,6 +278,7 @@ export async function gatherSignals(domain, env = process.env) {
     getDealComps(d),
     emailIngestConfigured() ? withTimeout(searchEmailThreads(d), 8000, []) : Promise.resolve([]),
     withTimeout(tool('trademark_search', { query: sld }, env), 8000, null),
+    withTimeout(tldRenewal(tld), 5000, null),
   ]);
 
   const appraise = normalizeAppraise(appraiseRes && appraiseRes.data);
@@ -304,6 +306,7 @@ export async function gatherSignals(domain, env = process.env) {
     listing,
     appraisals: { appraise, atom, appraise_note: appraiseNote, atom_note: atomNote },
     trademark: normalizeTrademark(tmData, sld),
+    renewal: renewal || null,
     comps: { namebio: nbComps, namebio_comps: nbComparables, tracker: trackerSold, deal_history: dealHistory },
     namepros: nameproData && Array.isArray(nameproData.results) ? nameproData.results.slice(0, 8) : [],
     web: {

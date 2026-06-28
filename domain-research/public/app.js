@@ -7770,6 +7770,7 @@ function evVerdictHeader(data) {
       <div class="ev-keymetrics">
         <div class="ev-km"><span class="ev-km-l">Recommended max bid</span><span class="ev-km-v">${evM(val.recommended_max_bid)}</span></div>
         <div class="ev-km"><span class="ev-km-l">Quality grade</span><span class="ev-km-v">${escapeHtml((ev.signals && ev.signals.quality && ev.signals.quality.grade) || '—')} <span class="muted">(${(ev.signals && ev.signals.quality && ev.signals.quality.score) || '—'}/100)</span></span></div>
+        ${ev.signals && ev.signals.renewal && ev.signals.renewal.cost ? `<div class="ev-km"><span class="ev-km-l">Annual renewal</span><span class="ev-km-v">${evM(ev.signals.renewal.cost)}<span class="muted">/yr${ev.signals.renewal.source === 'estimate' ? ' est' : ''}</span></span></div>` : ''}
       </div>
     </div>
     <div class="ev-verdict-pill">${pill}</div>

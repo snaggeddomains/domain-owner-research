@@ -47,6 +47,7 @@ function contextBlock({ signals, buyers, valuation, price }) {
 NAME QUALITY: grade ${q.grade} (${q.score}/100) — ${q.dictionary_class}, ${q.length} chars, ${q.word_count} word(s); extension .${q.tld.tld} tier=${q.tld.tier} liquidity=${q.tld.liquidity}. ${(q.synergy && q.synergy.notes && q.synergy.notes.join(' ')) || ''}
 BRANDABILITY: ${s.brandability ? `${s.brandability.tier} (${s.brandability.commonness} word${s.brandability.zipf != null ? `, zipf ${s.brandability.zipf}` : ''}) — a common, evocative word brands better than an obscure/academic one` : 'n/a'}
 REGISTERED: ${s.registration && s.registration.created ? `${s.registration.created} (~${s.registration.age_years}y old)` : 'unknown'}${s.registration && s.registration.registrar ? ` via ${s.registration.registrar}` : ''}
+ANNUAL RENEWAL (carrying cost): ${s.renewal && s.renewal.cost ? `${money(s.renewal.cost)}/yr${s.renewal.source === 'estimate' ? ' (est.)' : ''}` : 'unknown'}
 
 DETERMINISTIC MODEL (fair RESALE value, already discounted from asking):
   fair value: ${money(valuation.fair_value.low)} – ${money(valuation.fair_value.high)} (mid ${money(valuation.fair_value.mid)}), confidence ${valuation.confidence}
