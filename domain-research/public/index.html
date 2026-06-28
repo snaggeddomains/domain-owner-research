@@ -195,6 +195,9 @@
         <!-- Corporate Portfolios — reverse-WHOIS a company to pull its premium
              domains. Gated by the `portfolio` permission; shown by JS. -->
         <a id="nav-portfolio" class="nav-btn" href="/research/portfolio" hidden>Corporate Portfolios</a>
+        <!-- SNAP Eval — should-we-buy-it acquisition/resale scorecard for one
+             domain. Gated by the `evaluate` permission; shown by JS. -->
+        <a id="nav-evaluate" class="nav-btn" href="/research/evaluate" hidden>SNAP Eval</a>
         <!-- Lessons (playbook curation) is admin-only and now lives in the
              umbrella Admin module; reachable directly at /research/admin. -->
         <button id="nav-admin" class="nav-btn nav-btn-admin" type="button" hidden style="display:none">Lessons</button>
@@ -761,6 +764,25 @@
           <ul id="cp-runs-list" class="projects-list"></ul>
         </section>
 
+        <!-- SNAP Eval — acquisition/resale scorecard for a single domain -->
+        <section id="view-evaluate" hidden>
+          <div class="hero tool-hero">
+            <h1 class="hero-title">SNAP <span class="accent">Eval</span></h1>
+            <p class="hero-sub">Should we buy it? Enter a <strong>domain</strong> and (optionally) a <strong>price</strong>. I pull comparable sales (NameBio + our internal corpus + Snagged's own deal history), check who's using the term and who'd buy it, weigh the SLD/TLD quality, and grade the price: <em>immediate buy → bad purchase</em>.</p>
+          </div>
+          <form id="ev-form" class="search ev-form" autocomplete="off">
+            <input id="ev-domain" type="text" placeholder="outline.ai" autocapitalize="off" autocorrect="off" spellcheck="false" />
+            <input id="ev-price" type="text" inputmode="numeric" placeholder="price, e.g. 7000 (optional)" class="ev-price-input" />
+            <button id="ev-go" type="submit">Evaluate</button>
+          </form>
+          <div id="ev-recent" class="sr-recent" hidden>
+            <div class="sr-recent-head">Recent evaluations</div>
+            <ul id="ev-recent-list" class="sr-recent-list"></ul>
+          </div>
+          <div id="ev-status" class="sr-status" hidden></div>
+          <div id="ev-result" hidden></div>
+        </section>
+
         <!-- Naming exercise -->
         <section id="view-naming" hidden>
           <div class="tool-reshead">
@@ -1017,6 +1039,6 @@ The model parses it into structured filters (TLDs, length, budget, tone, etc.) a
     </div>
 
     <!-- Bump ?v= on any public/app.js or styles.css change to bust caches. -->
-    <script src="app.js?v=20260627abortfix"></script>
+    <script src="app.js?v=20260628snapeval"></script>
   </body>
 </html>

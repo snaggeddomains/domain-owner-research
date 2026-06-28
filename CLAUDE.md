@@ -224,6 +224,63 @@ ex-Squadhelp). Source `lib/sources/atom_appraise.js` → `atom_appraise`.
   $1,339,000/score 9. **One-time setup:** set `ATOM_APPRAISAL_KEY` + `ATOM_USER_ID`
   in Vercel (research project).
 
+## SNAP Eval — should-we-buy-it acquisition/resale scorecard (2026-06-28)
+
+A new module that takes ONE domain (+ optional purchase price) and returns a
+defensible **buy / don't-buy** verdict for investment/resale: a fair RESALE value
+range and five price bands (**immediate buy → decent → neutral → would avoid → bad
+purchase**). UI at **research.snagged.com/research/evaluate**, gated by the new
+`research.evaluate` module permission. Branded **SNAP Eval** (top-level **SNAP**
+menu in the admin hub, alongside Research/Admin/Reports — see snagged-admin).
+
+- **Comprehensive signal gather** (`lib/evaluate/signals.js` `gatherSignals`): runs
+  everything in parallel, each fail-open — SLD/TLD quality, RDAP age, live-site use
+  (parked/active), DomainScout for-sale + asking, Appraise.net + Atom appraisals,
+  comps (below), **NamePros** forum chatter, **straight Google** of the exact domain
+  AND the SLD term (who's using it / competition), and a **Gmail sweep** (has anyone
+  emailed us about it — via the admin internal endpoint, 12s-capped).
+- **Comps = three sources** (`lib/evaluate/comps.js` + `lib/db/dealComps.js`):
+  **NameBio** recorded public sales of the exact domain (paid, 1 credit), **internal
+  asking comps** (structurally-similar priced names from `name_universe` + Master,
+  same TLD/length/word-count — discounted to realizable), and **Snagged's own deal
+  history** (real offers/budgets from `marketplace_deal_reports`, read DIRECTLY via
+  `getDb()` since that table lives in the SAME main project — no cross-app call, no
+  Gmail/HubSpot cost; only present if generated in the admin app).
+- **Quality** (`lib/evaluate/quality.js` + `tld.js`): deterministic 0–100 SLD score
+  (length, dictionary class, word-count, pronounceability, cleanliness) × TLD
+  liquidity tier × SLD/TLD synergy. Pure + inspectable.
+- **Valuation = deterministic, LLM nudges** (`lib/evaluate/score.js` →
+  `lib/evaluate/verdict.js`): `computeValuation` builds weighted value ANCHORS
+  (NameBio×3, deal-history×2.5, internal comps, appraisals discounted, listing as a
+  ceiling, quality baseline) → realizable mid → the 5 bands as fractions of mid
+  (immediate ≤0.35 · decent ≤0.6 · neutral ≤0.95 · avoid ≤1.4 · bad >1.4). The LLM
+  (`EVALUATE_MODEL`||`OUTREACH_MODEL`, default sonnet) reads the full evidence + the
+  buyer pool, writes the narrative (headline/rationale/reasons_for/against/
+  buyer_summary), and may apply ONE **clamped [0.6,1.6]** adjustment to mid; bands
+  recompute from the adjusted mid. No key → pure-deterministic fallback narrative.
+- **Buyers/competition** (`lib/evaluate/buyers.js`): reuses Sales Research standalone
+  — `anglesForSeed` (LLM buyer angles + firmographic-verified headliners) +
+  `discoverUpgrade` (same SLD across extensions/affixes; `active` ones = who's
+  already using the term).
+- **API** (`api/evaluate.js`, gated `research.evaluate`, maxDuration 60): `GET
+  ?domain=&price=&refresh=` → `{evaluation, price_overlay}`; `GET ?list=1`. **Cache-
+  first by DOMAIN** (kind `ev` in `domain_research_tool_lookups`) — the heavy paid run
+  happens once per domain; changing the PRICE just re-overlays the band instantly
+  (`bandForPrice` over the cached mid), never re-spends. `refresh=1` forces fresh.
+  Cost posture = "one pass" (every fresh run gathers paid comps/appraisals/
+  firmographics) but cached per domain.
+- **UI** (`public/app.js` `ev*` helpers; `#view-evaluate` + `#nav-evaluate`; `.ev-*`
+  styles): verdict banner (colored band pill + fair value + max bid), price-band
+  ladder, reasons-for/against, comps tables (+ "how the fair value was built"
+  anchors), buyer angles, the-domain-today, and a collapsible evidence/chatter block.
+  Cache-bust `app.js?v=20260628snapeval`.
+- **No new table / migration** — reuses `domain_research_tool_lookups` (kind `ev`,
+  KIND_MODULE `evaluate` added to `api/lookup.js` for the recent-list). Uses existing
+  env keys (SERPER, NAMEBIO, APPRAISE_NET_*, ATOM_*, DOMAINSCOUT, APOLLO, ANTHROPIC,
+  and ADMIN_INTERNAL_BASE/RESEARCH_INTERNAL_SECRET for the email sweep) — each
+  optional + fail-open. **One-time setup: grant `research.evaluate`** per-user in the
+  snagged-admin Users editor (admins auto-pass).
+
 ## Domain data model — canonical (do not let this drift)
 
 Two domain corpora in **separate Supabase projects**; the search reads both.
