@@ -1828,8 +1828,11 @@ a.sr-ag-co-link:hover { border-color: var(--coral); color: var(--coral-deep); ba
 .ev-bigpill-neutral { background: var(--navy-3) !important; }
 .ev-bigpill-band { font-size: 1.25rem; font-weight: 800; letter-spacing: .01em; }
 .ev-bigpill-sub { font-size: .8rem; opacity: .92; }
-.ev-toolbar { font-size: .8rem; color: var(--navy-3); }
+.ev-toolbar { font-size: .8rem; color: var(--navy-3); display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .ev-meta a { color: var(--teal-deep); }
+.ev-rerun { flex: 0 0 auto; font-size: .82rem; font-weight: 700; color: var(--teal-deep); background: var(--paper); border: 1px solid var(--line); border-radius: 999px; padding: 5px 14px; cursor: pointer; box-shadow: var(--shadow-sm); }
+.ev-rerun:hover { background: var(--cream-2); border-color: var(--teal); }
+.ev-rerun:disabled { opacity: .55; cursor: default; }
 
 /* Price-band ladder */
 .ev-ladder { display: flex; gap: 6px; }

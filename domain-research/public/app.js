@@ -7897,9 +7897,13 @@ function evEvidence(data) {
 function renderEvaluate(data) {
   if (!els.evResult) return;
   const ev = data.evaluation || {};
-  const meta = data.cached
-    ? `<span class="ev-meta">cached ${data.updated_at ? new Date(data.updated_at).toLocaleString() : ''} · <a href="#" id="ev-refresh-link">re-run fresh</a></span>`
-    : `<span class="ev-meta">fresh · ${ev.generated_at ? new Date(ev.generated_at).toLocaleString() : ''}</span>`;
+  // Always offer a re-run (fresh), whether the result was cached or fresh — a fresh
+  // pass re-pulls every comp/appraisal (spends credits) and overwrites the cache.
+  const stamp = data.cached
+    ? `cached ${data.updated_at ? new Date(data.updated_at).toLocaleString() : ''}`
+    : `fresh · ${ev.generated_at ? new Date(ev.generated_at).toLocaleString() : ''}`;
+  const meta = `<span class="ev-meta">${stamp}</span>`
+    + `<button type="button" id="ev-refresh-link" class="ev-rerun" title="Re-pull comps, appraisals & buyers (spends credits)">↻ Re-run fresh</button>`;
   els.evResult.innerHTML = `<div class="ev-report">
     ${evVerdictHeader(data)}
     <div class="ev-toolbar">${meta}</div>
