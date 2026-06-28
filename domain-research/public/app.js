@@ -4025,7 +4025,14 @@ async function runAppraisal(domainInput, opts) {
       else throw new Error('The appraisal service is temporarily unavailable — please try again shortly.');
     }
   } catch (e) {
-    setToolStatus(els.apStatus, e.message || String(e), true);
+    const aborted = e && (e.name === 'AbortError' || /abort/i.test(String((e && e.message) || e)));
+    setToolStatus(
+      els.apStatus,
+      aborted
+        ? 'The request was interrupted (this can happen on mobile / when the tab loses focus) — tap Appraise to try again. A just-run appraisal is cached, so the retry is quick.'
+        : (e.message || String(e)),
+      true,
+    );
   }
 }
 
