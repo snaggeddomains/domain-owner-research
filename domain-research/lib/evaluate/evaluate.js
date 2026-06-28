@@ -29,7 +29,7 @@ export async function evaluateDomain({ domain, price = null, env = process.env }
   const EMPTY_BUYERS = { angles: [], active_users: [], for_sale_siblings: [], fundable_buyer_count: 0 };
   const cappedBuyers = Promise.race([
     findBuyers(domain, env).catch(() => EMPTY_BUYERS),
-    new Promise((resolve) => setTimeout(() => resolve(EMPTY_BUYERS), 22000)),
+    new Promise((resolve) => setTimeout(() => resolve(EMPTY_BUYERS), 16000)),
   ]);
   const [signals, buyers] = await Promise.all([
     gatherSignals(domain, env),

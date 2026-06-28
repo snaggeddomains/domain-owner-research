@@ -112,7 +112,7 @@ export async function synthesizeVerdict({ signals, buyers, valuation, price = nu
     try {
       // Bounded so a slow LLM falls back to the deterministic narrative well
       // within the function's 60s budget (rather than hanging it to a 504).
-      const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY, timeout: 25000, maxRetries: 1 });
+      const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY, timeout: 16000, maxRetries: 1 });
       const model = env.EVALUATE_MODEL || env.OUTREACH_MODEL || 'claude-sonnet-4-6';
       const resp = await client.messages.create({
         model,

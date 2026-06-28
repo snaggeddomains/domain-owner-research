@@ -126,8 +126,6 @@ function withTimeout(promise, ms, fallback) {
   ]);
 }
 
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-
 // Run a source, returning { data, note } — note carries the error/limit message
 // (e.g. Atom daily cap, Appraise.net Cloudflare challenge) so the UI can show WHY
 // a value is missing rather than a bare "no estimate".
@@ -143,18 +141,10 @@ async function toolNote(name, args, env) {
 // so re-runs don't re-spend / re-wait. Returns { data, note }.
 async function appraiseGather(d, env) {
   try { const row = await getToolLookup('ap', d); if (row && row.data && row.data.appraisal) return { data: row.data, note: null }; } catch { /* cache miss */ }
-  let { data, note } = await toolNote('appraise_lookup', { domain: d }, env);
-  let jobId = data && data.job_id;
-  const start = Date.now();
-  let delay = 2500;
-  while (jobId && !(data && data.appraisal) && Date.now() - start < 14000) {
-    await sleep(delay); delay = Math.min(Math.round(delay * 1.4), 6000);
-    const r = await toolNote('appraise_lookup', { job_id: jobId }, env);
-    if (r.data && r.data.appraisal) { data = r.data; note = null; break; }
-    if (r.note) note = r.note;
-    jobId = (r.data && r.data.job_id) || jobId;
-    if (r.data && /fail|error|cancel/i.test(String(r.data.status || ''))) break;
-  }
+  // ONE best-effort call — the source polls its async job internally (bounded), so
+  // we don't add another poll loop here (that blew the 60s function budget). The
+  // outer withTimeout caps our wait; if the job finishes it caches for next time.
+  const { data, note } = await toolNote('appraise_lookup', { domain: d }, env);
   if (data && data.appraisal) { try { await saveToolLookup('ap', d, data); } catch { /* best-effort */ } }
   return { data, note };
 }
@@ -198,7 +188,7 @@ export async function gatherSignals(domain, env = process.env) {
   const [wordSet, self, trackerSold] = await Promise.all([
     sldWord ? filterDictionaryWords([sldWord]) : Promise.resolve(new Set()),
     universeSelf(d),
-    trackerCompsConfigured() ? withTimeout(trackerComps({ sld, tld, len: sld.length }, env), 12000, null) : Promise.resolve(null),
+    trackerCompsConfigured() ? withTimeout(trackerComps({ sld, tld, len: sld.length }, env), 8000, null) : Promise.resolve(null),
   ]);
   const isWord = Boolean(sldWord && wordSet.has(sldWord));
   const numWords = self && self.num_words != null ? self.num_words : null;
@@ -220,7 +210,7 @@ export async function gatherSignals(domain, env = process.env) {
     tool('rdap_whois', { domain: d }, env),
     tool('livesite_inspect', { domain: d }, env),
     tool('domainscout_lookup', { domain: d }, env),
-    withTimeout(appraiseGather(d, env), 22000, { data: null, note: 'timed out' }),
+    withTimeout(appraiseGather(d, env), 9000, { data: null, note: 'still computing' }),
     atomGather(d, env),
     tool('namepros_search', { domain: d }, env),
     tool('web_search', { query: `"${d}"` }, env),
@@ -228,7 +218,7 @@ export async function gatherSignals(domain, env = process.env) {
     nbExactGather(d, env),
     needNbComps ? nbCompsGather(d, env) : Promise.resolve(null),
     getDealComps(d),
-    emailIngestConfigured() ? withTimeout(searchEmailThreads(d), 12000, []) : Promise.resolve([]),
+    emailIngestConfigured() ? withTimeout(searchEmailThreads(d), 8000, []) : Promise.resolve([]),
   ]);
 
   const appraise = normalizeAppraise(appraiseRes && appraiseRes.data);
