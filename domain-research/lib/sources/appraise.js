@@ -122,12 +122,14 @@ async function fetchAppraise(url, opts) {
   throw new Error(`Appraise.net unavailable: ${String(last).slice(0, 160)}`);
 }
 
-// Poll an async appraisal job to completion within a time budget (we run under a
-// 60s function ceiling, so leave headroom). Returns the finished appraisal, or
-// null if it's still pending when the budget runs out — in which case the caller
-// hands the job_id back to the client, whose own poll loop takes over. Best-effort:
-// a transient blip just retries within the budget rather than failing the request.
-async function pollJob(domain, jobId, h, budgetMs = 45000) {
+// Poll an async appraisal job for a SHORT budget, then hand the job_id back to
+// the client whose own poll loop takes over. Kept short (not the old 45s) because
+// a long-held HTTP request gets aborted by mobile browsers (iOS Safari kills
+// ~45-60s fetches → "This operation was aborted"). A quick job still returns
+// inline within this window; a slow one returns a job_id fast and the client
+// polls in short, mobile-safe requests. Best-effort: a transient blip just
+// retries within the budget rather than failing the request.
+async function pollJob(domain, jobId, h, budgetMs = 12000) {
   const start = Date.now();
   let delay = 1500;
   while (Date.now() - start < budgetMs) {
