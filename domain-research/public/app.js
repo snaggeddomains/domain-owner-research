@@ -945,17 +945,50 @@ function dsPrice(v) {
   return Number.isFinite(n) ? '$' + n.toLocaleString() : escapeHtml(String(v));
 }
 
+// Marketplace listing URL for a row's source, so the Source pill deep-links to
+// where the domain is actually listed. Returns null for non-marketplace sources
+// (owned / snagged / curated CSVs) — the caller falls back to the live site.
+function dsListingUrl(source, domain) {
+  const s = String(source || '').toLowerCase();
+  const d = encodeURIComponent(domain);
+  const sld = encodeURIComponent(String(domain || '').split('.')[0]);
+  if (s.includes('afternic')) return `https://www.afternic.com/domain/${domain}`;
+  if (s.includes('sedo')) return `https://sedo.com/search/?keyword=${d}`;
+  if (s.includes('atom') || s.includes('squadhelp')) return `https://www.atom.com/name/${sld}`;
+  if (s.includes('godaddy')) return `https://www.godaddy.com/domainsearch/find?domainToCheck=${d}`;
+  if (s.includes('namecheap')) return `https://www.namecheap.com/market/?term=${d}`;
+  if (s.includes('dynadot')) return `https://www.dynadot.com/domain/search?domain=${d}`;
+  if (s.includes('spaceship')) return `https://www.spaceship.com/domain-search/?query=${d}&tab=domains`;
+  if (s.includes('dan')) return `https://dan.com/buy-domain/${domain}`;
+  if (s.includes('hugedomains')) return `https://www.hugedomains.com/domain_profile.cfm?d=${d}`;
+  if (s.includes('sav')) return `https://www.sav.com/${domain}`;
+  if (s.includes('brandbucket')) return `https://www.brandbucket.com/search?search=${d}`;
+  if (s.includes('efty')) return `https://${domain}`;
+  return null; // owned / snagged / curated — no marketplace listing
+}
+
 function dsRenderRows(rows) {
   if (!rows.length) {
     els.dsTbody.innerHTML = '<tr><td colspan="4" class="muted" style="padding:18px">No domains match these filters.</td></tr>';
     return;
   }
   els.dsTbody.innerHTML = rows.map((r) => {
+    const domain = r.domain || '';
     const src = (r.best_price_source || (Array.isArray(r.sources) && r.sources[0]) || '');
+    const liveUrl = domain ? `https://${encodeURI(domain)}` : '';
+    // The domain name → the live site; the Source pill → the marketplace listing
+    // (or the live site when the source isn't a known marketplace).
+    const domCell = domain
+      ? `<a class="dbs-domain dbs-domain-link" href="${escapeHtml(liveUrl)}" target="_blank" rel="noopener" title="Open ${escapeHtml(domain)}">${escapeHtml(domain)}</a>`
+      : '<span class="muted">—</span>';
+    const srcUrl = src ? (dsListingUrl(src, domain) || liveUrl) : '';
+    const srcCell = src
+      ? `<a class="dbs-src dbs-src-link" href="${escapeHtml(srcUrl)}" target="_blank" rel="noopener" title="Open ${escapeHtml(src)} listing">${escapeHtml(src)} ↗</a>`
+      : '<span class="muted">—</span>';
     return `<tr>` +
-      `<td class="dbs-domain">${escapeHtml(r.domain || '')}</td>` +
+      `<td>${domCell}</td>` +
       `<td class="dbs-num">${dsPrice(r.best_price)}</td>` +
-      `<td>${src ? `<span class="dbs-src">${escapeHtml(src)}</span>` : '<span class="muted">—</span>'}</td>` +
+      `<td>${srcCell}</td>` +
       `<td>${r.owner ? escapeHtml(r.owner) : '<span class="muted">—</span>'}</td>` +
       `</tr>`;
   }).join('');
