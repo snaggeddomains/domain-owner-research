@@ -28,7 +28,7 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="apple-mobile-web-app-title" content="Snagged Research" />
     <meta name="theme-color" content="#254254" />
-    <link rel="stylesheet" href="styles.css?v=20260627rowlinks" />
+    <link rel="stylesheet" href="styles.css?v=20260628snapeval" />
     <!-- Layout: horizontal tab nav (Admin-style), no sidebar. -->
   </head>
   <body>
@@ -74,6 +74,9 @@
           <span class="wm-a">Snagged</span>
         </a>
         <nav class="topbar__nav">
+          <!-- SNAP — top-level workspace (SNAP Eval + SNAP Opportunities). The
+               link lands on SNAP Eval; shown by JS to anyone who can use it. -->
+          <a href="/research/evaluate" id="topbar-snap" hidden>SNAP</a>
           <a href="/research" class="active">Research</a>
           <!-- Umbrella's Admin (user management); admin-only — shown by JS. -->
           <a href="/admin" id="topbar-admin" hidden>Admin</a>
@@ -195,9 +198,8 @@
         <!-- Corporate Portfolios — reverse-WHOIS a company to pull its premium
              domains. Gated by the `portfolio` permission; shown by JS. -->
         <a id="nav-portfolio" class="nav-btn" href="/research/portfolio" hidden>Corporate Portfolios</a>
-        <!-- SNAP Eval — should-we-buy-it acquisition/resale scorecard for one
-             domain. Gated by the `evaluate` permission; shown by JS. -->
-        <a id="nav-evaluate" class="nav-btn" href="/research/evaluate" hidden>SNAP Eval</a>
+        <!-- SNAP Eval is reached via the top-level SNAP header (topbar-snap),
+             not this research sub-nav. The /research/evaluate route still works. -->
         <!-- Lessons (playbook curation) is admin-only and now lives in the
              umbrella Admin module; reachable directly at /research/admin. -->
         <button id="nav-admin" class="nav-btn nav-btn-admin" type="button" hidden style="display:none">Lessons</button>
@@ -1039,6 +1041,6 @@ The model parses it into structured filters (TLDs, length, budget, tone, etc.) a
     </div>
 
     <!-- Bump ?v= on any public/app.js or styles.css change to bust caches. -->
-    <script src="app.js?v=20260628snapeval"></script>
+    <script src="app.js?v=20260628snapeval2"></script>
   </body>
 </html>

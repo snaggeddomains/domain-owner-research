@@ -1903,3 +1903,12 @@ a.sr-ag-co-link:hover { border-color: var(--coral); color: var(--coral-deep); ba
 .ev-ev-block { margin-top: 12px; }
 .ev-evlist { margin: 4px 0 0; padding-left: 18px; font-size: .85rem; line-height: 1.5; }
 .ev-evlist a { color: var(--teal-deep); }
+
+/* Loading + error states */
+.ev-loading { display: flex; align-items: center; gap: 14px; background: var(--paper); border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 20px 22px; box-shadow: var(--shadow-sm); }
+.ev-loading strong { color: var(--navy); }
+.ev-spinner { flex: 0 0 auto; width: 26px; height: 26px; border-radius: 50%; border: 3px solid var(--line-2); border-top-color: var(--teal-deep); animation: ev-spin .8s linear infinite; }
+@keyframes ev-spin { to { transform: rotate(360deg); } }
+.ev-error { background: #fdf3f0; border: 1px solid rgba(199,95,69,.35); border-radius: var(--radius-sm); padding: 18px 20px; box-shadow: var(--shadow-sm); }
+.ev-error strong { color: var(--coral-deep); display: block; margin-bottom: 4px; }
+.ev-error button { margin-top: 12px; }

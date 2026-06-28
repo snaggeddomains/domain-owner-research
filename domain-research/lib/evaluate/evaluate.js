@@ -23,9 +23,17 @@ export async function evaluateDomain({ domain, price = null, env = process.env }
   const priceNum = Number(price) > 0 ? Number(price) : null;
 
   // Signals + buyers are independent — run them together.
+  // Buyers (angle LLM + firmographics + variant liveness) is the slowest branch.
+  // Hard-cap it so it can't push the whole eval past the function's 60s budget —
+  // a cold run that overruns degrades to an empty buyer pool rather than a 504.
+  const EMPTY_BUYERS = { angles: [], active_users: [], for_sale_siblings: [], fundable_buyer_count: 0 };
+  const cappedBuyers = Promise.race([
+    findBuyers(domain, env).catch(() => EMPTY_BUYERS),
+    new Promise((resolve) => setTimeout(() => resolve(EMPTY_BUYERS), 22000)),
+  ]);
   const [signals, buyers] = await Promise.all([
     gatherSignals(domain, env),
-    findBuyers(domain, env).catch(() => ({ angles: [], active_users: [], for_sale_siblings: [], fundable_buyer_count: 0 })),
+    cappedBuyers,
   ]);
 
   const valuation = computeValuation({

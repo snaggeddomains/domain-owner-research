@@ -7,6 +7,7 @@ const els = {
   navNotifyToggle: $('nav-notify-toggle'),
   // Umbrella topbar — Admin link is admin-only; account block carries the
   // signed-in email. Log out is a plain <a href="/api/logout"> — no JS handler.
+  topbarSnap: $('topbar-snap'),
   topbarAdmin: $('topbar-admin'),
   topbarReports: $('topbar-reports'),
   topbarAccount: $('topbar-account'),
@@ -1921,6 +1922,9 @@ async function checkAuth() {
       // (admin.imports, admin.sources, …). Mirrors permissions.ts#canEnterAdmin —
       // checking only is_admin||admin hid the chrome from granular admins (e.g. a
       // user with just admin.imports couldn't reach the dashboard from here).
+      // SNAP — top-level workspace; the header link lands on SNAP Eval, so show it
+      // to anyone who can use SNAP Eval (or, as owner/admin, everything).
+      if (els.topbarSnap) els.topbarSnap.hidden = !(u.is_admin || (u.permissions && u.permissions.evaluate));
       if (els.topbarAdmin) els.topbarAdmin.hidden = !canEnterAdmin(u);
       if (els.topbarReports) els.topbarReports.hidden = !canEnterReports(u);
       if (els.navAccount) els.navAccount.hidden = false;
@@ -7585,23 +7589,40 @@ async function runEvaluate(domain, { price = null, refresh = false } = {}) {
   if (!d) return;
   if (evRunning) return;
   evRunning = true;
-  setActiveDomain(d);
-  if (els.evDomain) els.evDomain.value = d;
   if (els.evGo) els.evGo.disabled = true;
-  if (els.evResult) els.evResult.hidden = true;
-  setEvStatus(refresh ? `Re-running a fresh evaluation of ${d}…` : `Evaluating ${d} — pulling comps, appraisals, buyers & web…`);
+  // Unmissable feedback FIRST (before anything that could throw), so a click always
+  // produces a visible response — a loading card that stays put for the ~30–60s run.
+  setEvStatus('');
+  if (els.evResult) {
+    els.evResult.hidden = false;
+    els.evResult.innerHTML = `<div class="ev-loading"><div class="ev-spinner"></div>`
+      + `<div><strong>${refresh ? 'Re-evaluating' : 'Evaluating'} ${escapeHtml(d)}…</strong>`
+      + `<div class="muted">Pulling comparable sales, appraisals, the buyer pool & web — this can take ~30–60 seconds.</div></div></div>`;
+  }
+  try { setActiveDomain(d); } catch { /* domain bar is decorative */ }
+  if (els.evDomain) els.evDomain.value = d;
   try {
     const params = new URLSearchParams({ domain: d });
     if (price) params.set('price', String(price));
     if (refresh) params.set('refresh', '1');
     const res = await fetch(`/research/api/evaluate?${params.toString()}`);
-    const data = await res.json();
+    const text = await res.text();
+    let data;
+    try { data = JSON.parse(text); } catch { throw new Error(res.ok ? 'Unexpected response from the server.' : `Server error (HTTP ${res.status}). ${text.slice(0, 140)}`); }
     if (!res.ok) throw new Error(data.error || `Evaluation failed (HTTP ${res.status})`);
-    setEvStatus('');
     renderEvaluate(data);
     refreshToolRecent(els.evRecent, 'ev');
   } catch (e) {
-    setEvStatus(e.message || String(e), true);
+    const msg = e && e.message ? e.message : String(e);
+    if (els.evResult) {
+      els.evResult.hidden = false;
+      els.evResult.innerHTML = `<div class="ev-error"><strong>Couldn't evaluate ${escapeHtml(d)}.</strong><div class="muted">${escapeHtml(msg)}</div>`
+        + `<button type="button" id="ev-retry" class="sr-btn">Try again</button></div>`;
+      const rb = document.getElementById('ev-retry');
+      if (rb) rb.addEventListener('click', () => runEvaluate(d, { price: evParsePrice(els.evPrice && els.evPrice.value), refresh: true }));
+    } else {
+      setEvStatus(msg, true);
+    }
   } finally {
     evRunning = false;
     if (els.evGo) els.evGo.disabled = false;
