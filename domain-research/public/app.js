@@ -7640,21 +7640,25 @@ async function runEvaluate(domain, { price = null, refresh = false } = {}) {
     els.evResult.hidden = false;
     els.evResult.innerHTML = `<div class="ev-loading"><div class="ev-spinner"></div>`
       + `<div><strong>${refresh ? 'Re-evaluating' : 'Evaluating'} ${escapeHtml(d)}…</strong>`
-      + `<div class="muted">Pulling comparable sales, appraisals, the buyer pool & web — this can take ~30–60 seconds.</div></div></div>`;
+      + `<div class="muted">Pulling comparable sales, appraisals, the buyer pool & web — this can take ~30–60 seconds (it'll auto-retry if the connection drops).</div></div></div>`;
   }
   try { setActiveDomain(d); } catch { /* domain bar is decorative */ }
   if (els.evDomain) els.evDomain.value = d;
   try {
+    // A long (~40–60s) eval can either REJECT (mobile/wifi drop, deploy swap →
+    // "Load failed") or silently HANG at the edge without ever returning. Guard both
+    // with an AbortController timeout so the spinner can't spin forever. The server
+    // usually FINISHED + cached anyway, so on a drop/timeout we retry ONCE cache-first
+    // (no refresh) — which returns the just-computed result fast.
     const doFetch = (useRefresh) => {
       const params = new URLSearchParams({ domain: d });
       if (price) params.set('price', String(price));
       if (useRefresh) params.set('refresh', '1');
-      return fetch(`/research/api/evaluate?${params.toString()}`);
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 70000);
+      return fetch(`/research/api/evaluate?${params.toString()}`, { signal: ctrl.signal })
+        .finally(() => clearTimeout(timer));
     };
-    // A long (~40–60s) eval can drop mid-flight on mobile/wifi (deploy swap, network
-    // blip) → fetch() REJECTS ("Load failed"/"Failed to fetch"). The server often
-    // FINISHED + cached anyway, so on a network drop wait briefly and retry ONCE
-    // cache-first (no refresh) — that usually returns the just-computed result fast.
     let res;
     try {
       res = await doFetch(refresh);
