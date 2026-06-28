@@ -38,22 +38,31 @@ export function parseMoney(v) {
 }
 
 // Pull a {low, mid, high} from Appraise.net's loosely-shaped appraisal object.
+// Field names drift across their API (and differ from what the client's digAppraisal
+// reads), so cover the WHOLE set the standalone Appraisal tool handles — otherwise we
+// get the data but extract no number and wrongly show "no value for this name".
 function normalizeAppraise(data) {
   const a = data && data.appraisal ? data.appraisal : data;
   if (!a || typeof a !== 'object') return null;
-  let low = parseMoney(a.low ?? a.value_low ?? a.minValue ?? a.min);
-  let high = parseMoney(a.high ?? a.value_high ?? a.maxValue ?? a.max);
-  // value_range / valueRange / range can be a "$a - $b" string or {low,high}.
-  const rng = a.value_range ?? a.valueRange ?? a.range;
-  if ((!low || !high) && rng) {
-    if (typeof rng === 'object') { low = low || parseMoney(rng.low ?? rng.min); high = high || parseMoney(rng.high ?? rng.max); }
-    else if (typeof rng === 'string') {
-      const parts = rng.split(/[-–—to]+/i).map((p) => parseMoney(p)).filter(Boolean);
+  const num = (...keys) => { for (const k of keys) { const v = parseMoney(a[k]); if (v) return v; } return null; };
+  let low = num('low', 'value_low', 'low_value', 'minValue', 'min', 'min_value', 'valueLow', 'priceLow');
+  let high = num('high', 'value_high', 'high_value', 'maxValue', 'max', 'max_value', 'valueHigh', 'priceHigh');
+  // A range can live under several keys, as an object ({low/min/from, high/max/to})
+  // or a "$a – $b" string.
+  for (const k of ['value_range', 'valueRange', 'range', 'priceRange', 'estimatedValue', 'estimated_value']) {
+    if (low && high) break;
+    const rng = a[k];
+    if (!rng) continue;
+    if (typeof rng === 'object') {
+      low = low || parseMoney(rng.low ?? rng.min ?? rng.from ?? rng.low_value);
+      high = high || parseMoney(rng.high ?? rng.max ?? rng.to ?? rng.high_value);
+    } else if (typeof rng === 'string') {
+      const parts = rng.split(/[-–—]|to/i).map((p) => parseMoney(p)).filter(Boolean);
       if (parts.length >= 2) { low = low || parts[0]; high = high || parts[1]; }
       else if (parts.length === 1) { low = low || parts[0]; }
     }
   }
-  const point = parseMoney(a.estimated_value ?? a.estimatedValue ?? a.value ?? a.fair_market_value ?? a.fairMarketValue ?? a.appraisedValue ?? a.appraised_value);
+  const point = num('estimated_value', 'estimatedValue', 'value', 'valuation', 'price', 'fair_market_value', 'fairMarketValue', 'marketValue', 'appraisedValue', 'appraised_value', 'estimate');
   const mid = point || (low && high ? (low + high) / 2 : low || high);
   if (!mid) return null;
   return { low: low || mid * 0.6, mid, high: high || mid * 1.8, confidence: a.confidence ?? null };
