@@ -41,7 +41,6 @@ export async function evaluateDomain({ domain, price = null, env = process.env }
     namebio: signals.comps.namebio,
     namebioComps: signals.comps.namebio_comps,
     tracker: signals.comps.tracker,
-    internal: signals.comps.internal,
     dealOffers: signals.comps.deal_history && signals.comps.deal_history.offers,
     appraise: signals.appraisals.appraise,
     atom: signals.appraisals.atom,

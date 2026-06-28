@@ -44,7 +44,6 @@ function contextBlock({ signals, buyers, valuation, price }) {
   const nb = s.comps.namebio;
   const nbc = s.comps.namebio_comps;
   const trk = s.comps.tracker;
-  const intc = s.comps.internal;
   const dh = s.comps.deal_history;
 
   return `DOMAIN: ${s.domain}   (SLD "${s.sld}" · .${s.tld})
@@ -66,13 +65,17 @@ COMPARABLE SALES:
   NameBio (exact domain): ${nb && nb.sales && nb.sales.length ? nb.sales.slice(0, 5).map((x) => `${money(x.price)} (${x.date || '?'}${x.venue ? `, ${x.venue}` : ''})`).join('; ') : 'no recorded public sales'}
   Snagged transactions (Master Txns List — real prices similar names sold at): ${trk && trk.deals && trk.deals.length ? `${trk.deals.length} comps — ${trk.deals.slice(0, 6).map((x) => `${x.domain} ${money(x.price)} (${x.relation === 'same_sld' ? 'same word' : 'same .' + s.tld})`).join('; ')}` : 'none found'}
   NameBio comparable sales (similar names sold): ${nbc && nbc.comps && nbc.comps.length ? `${nbc.comps.length} comps — ${nbc.comps.slice(0, 6).map((x) => `${x.domain} ${money(x.price)}`).join('; ')}` : 'none found'}
-  Internal similar-asking comps: ${intc && intc.count ? `${intc.count} names, median ask ${money(intc.p50)} (e.g. ${(intc.examples || []).map((e) => `${e.domain} ${money(e.price)}`).join(', ')})` : 'none found'}
   Snagged deal history: ${dh && dh.offers && dh.offers.length ? `${dh.offers.length} real figure(s) — ${dh.offers.slice(0, 4).map((o) => `${money(o.amountNum)} (${o.kind}${o.channel ? `, ${o.channel}` : ''})`).join('; ')}${dh.sale ? ` · sale stage: ${dh.sale.label || dh.sale.stage}` : ''}` : (dh ? `we've represented it (inbound ${dh.inbound})` : 'none')}
 
 NAMEPROS (investor forum): ${compactList(s.namepros, (r) => `   - ${r.title}`, 4)}
 WEB — term "${s.sld}": ${compactList(s.web.term_search, (r) => `   - ${r.title} — ${(r.snippet || '').slice(0, 90)}`, 5)}
 WEB — exact "${s.domain}": ${compactList(s.web.domain_search, (r) => `   - ${r.title}`, 3)}
 PRIOR EMAILS about this domain (Snagged inbox): ${s.email_sweep && s.email_sweep.length ? s.email_sweep.slice(0, 5).map((t) => `"${(t.subject || '').slice(0, 60)}"`).join('; ') : 'none'}
+
+TERM ACROSS OTHER EXTENSIONS (resale scarcity signal): ${(buyers.tld_landscape || []).length
+    ? (buyers.tld_landscape || []).map((t) => `.${t.tld}=${t.status}`).join(' · ')
+    : 'not checked'}
+  Read: a same-word .com that's an ACTIVE company means the word is locked up elsewhere → our extension is more valuable (scarcity). The same word FOR SALE cheaply across many extensions means it's a commodity → caps value. (active=${(buyers.scarcity || {}).active || 0}, for_sale=${(buyers.scarcity || {}).for_sale || 0}, unused=${(buyers.scarcity || {}).unused || 0})
 
 POTENTIAL BUYERS / COMPETITION:
   Buyer angles: ${compactList(buyers.angles, (a) => `   - ${a.label} [${a.buyer_potential}]${a.verified ? ` — ✓ ${a.verified.name}: ${a.verified.tier}` : ''}`, 6)}

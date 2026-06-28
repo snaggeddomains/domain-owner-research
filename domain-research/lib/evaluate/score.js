@@ -48,7 +48,7 @@ function qualityBaseline(quality) {
 // {source, low, mid, high, weight, note}. Asking prices (the domain's own listing,
 // internal "similar asking" comps, AI appraisals) are DISCOUNTED to realizable —
 // asks run well above what names actually clear at.
-export function buildAnchors({ quality, namebio, namebioComps, tracker, internal, dealOffers, appraise, atom, listing } = {}) {
+export function buildAnchors({ quality, namebio, namebioComps, tracker, dealOffers, appraise, atom, listing } = {}) {
   const anchors = [];
 
   // 1. NameBio — recorded PUBLIC SALES of the EXACT domain. The strongest signal:
@@ -124,22 +124,8 @@ export function buildAnchors({ quality, namebio, namebioComps, tracker, internal
     });
   }
 
-  // 3. Internal DB "similar asking" comps — ASKING prices for structurally-similar
-  // names (same TLD, similar length/word-count). Discounted hard to realizable
-  // (~0.4) and down-weighted (they're similar, not the same name). Weight scales
-  // with how many comps we found, capped.
-  if (internal && internal.count > 0 && Number.isFinite(internal.p50) && internal.p50 > 0) {
-    const DISCOUNT = 0.4;
-    const w = Math.min(1.4, 0.5 + internal.count / 40);
-    anchors.push({
-      source: 'internal_comps',
-      low: (internal.p25 || internal.p50) * DISCOUNT * 0.7,
-      mid: internal.p50 * DISCOUNT,
-      high: (internal.p75 || internal.p50) * DISCOUNT * 1.3,
-      weight: w,
-      note: `${internal.count} similar ${internal.tld ? `.${internal.tld} ` : ''}names listed (median ask $${niceRound(internal.p50).toLocaleString()}; discounted to realizable).`,
-    });
-  }
+  // (Asking-price "similar listing" comps are intentionally NOT a value anchor —
+  // we price off names that actually SOLD, not what others are asking.)
 
   // 4. Appraise.net AI valuation — discounted ~0.5 (AI appraisals skew high for a
   // resale exit).
@@ -217,7 +203,7 @@ function blend(anchors) {
 function confidenceOf(anchors, blended) {
   const has = (s) => anchors.some((a) => a.source === s);
   const strong = (has('namebio') ? 1 : 0) + (has('snagged_deal_history') ? 1 : 0) + (has('snagged_transactions') ? 1 : 0);
-  const supporting = ['namebio_comps', 'internal_comps', 'appraise_net', 'atom'].filter(has).length;
+  const supporting = ['namebio_comps', 'appraise_net', 'atom'].filter(has).length;
   let band = 'low';
   if (strong >= 1 && supporting >= 1) band = 'high';
   else if (strong >= 1 || supporting >= 2) band = 'medium';

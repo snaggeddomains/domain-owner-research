@@ -1922,3 +1922,50 @@ a.sr-ag-co-link:hover { border-color: var(--coral); color: var(--coral-deep); ba
    hidden group is display:none even though .nav-group sets display:contents. */
 .nav-group { display: contents; }
 .nav-group[hidden] { display: none; }
+
+/* ── SNAP Eval — restructured report (appraisals → comps → range → buyers) ──── */
+.ev-report { gap: 14px; }
+.ev-comprange { margin: 0 0 10px; font-size: .92rem; color: var(--navy-2); }
+.ev-comprange strong { color: var(--navy); }
+
+/* Collapsible secondary sections (name quality, domain today) */
+.ev-collapse > summary { cursor: pointer; list-style: none; display: flex; align-items: center; gap: 6px; }
+.ev-collapse > summary::-webkit-details-marker { display: none; }
+.ev-collapse > summary::before { content: "▸"; color: var(--navy-3); font-size: .8rem; }
+.ev-collapse[open] > summary::before { content: "▾"; }
+.ev-collapse > summary.ev-h3 { margin: 0; }
+.ev-collapse-body { padding-top: 12px; }
+
+/* Appraisals — two prominent cards */
+.ev-appr-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.ev-appr-card { border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 12px 14px; background: var(--cream-2); }
+.ev-appr-src { font-size: .72rem; text-transform: uppercase; letter-spacing: .04em; color: var(--navy-3); font-weight: 700; }
+.ev-appr-val { font-size: 1.4rem; font-weight: 800; color: var(--navy); font-variant-numeric: tabular-nums; margin-top: 2px; }
+.ev-appr-na { font-size: 1.05rem; font-weight: 700; color: var(--navy-3); margin-top: 2px; }
+.ev-appr-sub { font-size: .78rem; margin-top: 2px; }
+
+/* Who would buy — bulleted industries/company types */
+.ev-buyers-list { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.ev-buyer { border-left: 3px solid var(--navy-3); padding: 2px 0 2px 12px; }
+.ev-buyer.ev-pot-high { border-left-color: #0b8f3a; }
+.ev-buyer.ev-pot-medium { border-left-color: var(--gold); }
+.ev-buyer.ev-pot-low { border-left-color: var(--navy-3); }
+.ev-buyer-top { font-size: .98rem; color: var(--navy); }
+.ev-pot-badge { font-size: .66rem; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; border-radius: 999px; padding: 1px 8px; vertical-align: middle; margin-left: 4px; }
+.ev-pot-badge-high { color: #0b8f3a; background: rgba(11,143,58,.12); }
+.ev-pot-badge-medium { color: #b07d12; background: rgba(217,154,60,.14); }
+.ev-pot-badge-low { color: var(--navy-3); background: rgba(94,124,141,.12); }
+.ev-buyer-concept { font-size: .85rem; margin: 3px 0; line-height: 1.4; }
+.ev-buyer-players { display: flex; flex-wrap: wrap; gap: 5px; margin: 5px 0; }
+.ev-buyer-ver { font-size: .82rem; color: #0b8f3a; margin-top: 2px; }
+
+/* The word across extensions — scarcity grid */
+.ev-tldgrid { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; }
+.ev-tld { display: flex; flex-direction: column; gap: 1px; border: 1px solid var(--line); border-radius: 10px; padding: 7px 12px; min-width: 110px; }
+.ev-tld-name { font-weight: 800; color: var(--navy); font-variant-numeric: tabular-nums; }
+.ev-tld-status { font-size: .76rem; color: var(--navy-3); }
+.ev-tld-active { border-color: rgba(11,143,58,.4); background: rgba(11,143,58,.07); }
+.ev-tld-active .ev-tld-status { color: #0b8f3a; }
+.ev-tld-for_sale { border-color: rgba(224,123,44,.4); background: rgba(224,123,44,.07); }
+.ev-tld-for_sale .ev-tld-status { color: #c75f45; }
+.ev-tld-unused { opacity: .75; }

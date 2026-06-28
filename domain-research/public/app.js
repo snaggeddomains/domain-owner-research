@@ -7619,6 +7619,8 @@ function resetEvaluateView() {
   setEvStatus('');
   if (els.evDomain) els.evDomain.value = '';
   if (els.evPrice) els.evPrice.value = '';
+  // Move the recent list back above the (now empty) result/status on the entry view.
+  if (els.evRecent && els.evStatus && els.evStatus.parentNode) els.evStatus.before(els.evRecent);
 }
 function evParsePrice(v) {
   const n = Number(String(v == null ? '' : v).replace(/[^0-9.]/g, ''));
@@ -7755,14 +7757,15 @@ function evQuality(data) {
   const c = q.components || {};
   const synergy = (q.synergy && q.synergy.notes && q.synergy.notes.length) ? `<p class="muted ev-synergy">${q.synergy.notes.map(escapeHtml).join(' ')}</p>` : '';
   const nq = (data.evaluation.verdict && data.evaluation.verdict.name_quality_read) ? `<p class="ev-nameread">${escapeHtml(data.evaluation.verdict.name_quality_read)}</p>` : '';
-  return `<div class="ev-card"><h3 class="ev-h3">Name quality <span class="muted">— grade ${escapeHtml(q.grade)} · ${escapeHtml(q.dictionary_class)} · ${q.length} chars · ${q.word_count} word(s) · .${escapeHtml(q.tld.tld)} (${escapeHtml(q.tld.tier)}, liquidity ${q.tld.liquidity})</span></h3>
+  return `<details class="ev-card ev-collapse"><summary class="ev-h3">Name quality <span class="muted">— grade ${escapeHtml(q.grade)} · ${escapeHtml(q.dictionary_class)} · ${q.length} chars · .${escapeHtml(q.tld.tld)}</span></summary>
+    <div class="ev-collapse-body">
     <div class="ev-bars">
       ${evBar('Length', c.length)}
       ${evBar('Dictionary', c.dictionary)}
       ${evBar('One word', c.wordCount)}
       ${evBar('Pronounceable', c.pronounce)}
       ${evBar('Clean (no -/#)', c.cleanliness)}
-    </div>${synergy}${nq}</div>`;
+    </div>${synergy}${nq}</div></details>`;
 }
 
 function evComps(data) {
@@ -7771,11 +7774,19 @@ function evComps(data) {
   const nb = comps.namebio;
   const nbc = comps.namebio_comps;
   const trk = comps.tracker;
-  const intc = comps.internal;
   const dh = comps.deal_history;
-  const ap = (s.appraisals || {});
   const val = (data.evaluation && data.evaluation.valuation) || {};
   const anchors = val.anchors || [];
+
+  // Range across the ACTUAL sold comps (txns + NameBio + exact sale + offers).
+  const sold = [];
+  (nb && nb.sales || []).forEach((x) => x.price > 0 && sold.push(x.price));
+  (trk && trk.deals || []).forEach((x) => x.price > 0 && sold.push(x.price));
+  (nbc && nbc.comps || []).forEach((x) => x.price > 0 && sold.push(x.price));
+  (dh && dh.offers || []).forEach((x) => x.amountNum > 0 && sold.push(x.amountNum));
+  const rangeLine = sold.length
+    ? `<p class="ev-comprange">Comparable <strong>sold</strong> prices range <strong>${evM(Math.min(...sold))} – ${evM(Math.max(...sold))}</strong> across ${sold.length} comp${sold.length > 1 ? 's' : ''}.</p>`
+    : '';
 
   let body = '';
   // NameBio exact sales
@@ -7789,14 +7800,14 @@ function evComps(data) {
   if (trk && trk.deals && trk.deals.length) {
     body += `<div class="ev-comp-block"><h4 class="ev-comp-h">Snagged transactions — comparable names we've sold/acquired <span class="muted">(Master Txns List)</span></h4>`
       + `<table class="ev-table"><thead><tr><th>Domain</th><th>Price</th><th>Date</th></tr></thead><tbody>`
-      + trk.deals.slice(0, 15).map((x) => `<tr><td>${escapeHtml(x.domain)}</td><td>${evM(x.price)}</td><td class="muted">${escapeHtml(x.date || '—')}</td></tr>`).join('')
+      + trk.deals.slice(0, 8).map((x) => `<tr><td>${escapeHtml(x.domain)}</td><td>${evM(x.price)}</td><td class="muted">${escapeHtml(x.date || '—')}</td></tr>`).join('')
       + `</tbody></table></div>`;
   }
   // NameBio comparable sales (similar names that actually sold)
   if (nbc && nbc.comps && nbc.comps.length) {
     body += `<div class="ev-comp-block"><h4 class="ev-comp-h">NameBio — comparable sales <span class="muted">(${nbc.comps.length} similar names that sold)</span></h4>`
       + `<table class="ev-table"><thead><tr><th>Domain</th><th>Price</th><th>Date</th><th>Venue</th></tr></thead><tbody>`
-      + nbc.comps.slice(0, 15).map((x) => `<tr><td>${escapeHtml(x.domain || '—')}</td><td>${evM(x.price)}</td><td>${escapeHtml(x.date || '—')}</td><td>${escapeHtml(x.venue || '—')}</td></tr>`).join('')
+      + nbc.comps.slice(0, 8).map((x) => `<tr><td>${escapeHtml(x.domain || '—')}</td><td>${evM(x.price)}</td><td>${escapeHtml(x.date || '—')}</td><td>${escapeHtml(x.venue || '—')}</td></tr>`).join('')
       + `</tbody></table></div>`;
   } else if (nbc && nbc.note) {
     // Comps engine returned an error (e.g. plan doesn't include it) — show why.
@@ -7811,25 +7822,7 @@ function evComps(data) {
   } else if (dh) {
     body += `<div class="ev-comp-block muted">Snagged has represented this domain (inbound ${dh.inbound || 0}) but no logged offers.</div>`;
   }
-  // Internal corpus comparable listings (actual rows + marketplace source)
-  if (intc && intc.count) {
-    const rows = (intc.rows && intc.rows.length ? intc.rows : (intc.examples || []));
-    body += `<div class="ev-comp-block"><h4 class="ev-comp-h">Internal corpus — ${intc.count} similar .${escapeHtml(intc.tld || '')} names listed <span class="muted">(asking)</span></h4>`
-      + `<p class="muted">Median ask ${evM(intc.p50)} (asking, not realized — discounted in the model). Range ${evM(intc.p25)}–${evM(intc.p75)}.</p>`
-      + (rows.length ? `<table class="ev-table"><thead><tr><th>Domain</th><th>Ask</th><th>Source</th></tr></thead><tbody>`
-        + rows.slice(0, 12).map((e) => `<tr><td>${escapeHtml(e.domain)}</td><td>${evM(e.price)}</td><td class="muted">${escapeHtml(e.source || '—')}</td></tr>`).join('')
-        + `</tbody></table>` : '')
-      + `</div>`;
-  }
-  // Appraisals (Appraise.net + Atom)
-  if (ap.appraise || ap.atom) {
-    const apRows = [];
-    if (ap.appraise) apRows.push(`<tr><td>Appraise.net</td><td>${evM(ap.appraise.mid)}${ap.appraise.low && ap.appraise.high ? ` <span class="muted">(${evM(ap.appraise.low)}–${evM(ap.appraise.high)})</span>` : ''}</td><td class="muted">—</td></tr>`);
-    if (ap.atom) apRows.push(`<tr><td>Atom</td><td>${evM(ap.atom.value)}</td><td class="muted">${ap.atom.score != null ? `score ${ap.atom.score}/10` : ''}${ap.atom.tm_conflicts ? ` · ${ap.atom.tm_conflicts} TM conflict(s)` : ''}</td></tr>`);
-    body += `<div class="ev-comp-block"><h4 class="ev-comp-h">Appraisals <span class="muted">(AI estimates — discounted to realizable in the model)</span></h4>`
-      + `<table class="ev-table"><thead><tr><th>Source</th><th>Estimate</th><th>Notes</th></tr></thead><tbody>${apRows.join('')}</tbody></table></div>`;
-  }
-  if (!body) body = `<p class="muted">No comparable sales, appraisals, or deal history found for this name.</p>`;
+  if (!body) body = `<p class="muted">No comparable sales or deal history found for this name.</p>`;
 
   // Value anchors (the model's math)
   const anchorRows = anchors.length
@@ -7838,7 +7831,42 @@ function evComps(data) {
       + `</tbody></table></details>`
     : '';
 
-  return `<div class="ev-card"><h3 class="ev-h3">Comparable sales &amp; appraisals</h3>${body}${anchorRows}</div>`;
+  return `<div class="ev-card"><h3 class="ev-h3">Comparable sales <span class="muted">— names that actually sold</span></h3>${rangeLine}${body}${anchorRows}</div>`;
+}
+
+// Prominent appraisals card (Appraise.net + Atom) — always shown so it's clear we
+// pulled them; "no estimate" when a provider has nothing for this name.
+function evAppraisals(data) {
+  const ap = (data.evaluation && data.evaluation.signals && data.evaluation.signals.appraisals) || {};
+  const a = ap.appraise;
+  const atom = ap.atom;
+  const card = (src, valHtml, sub) => `<div class="ev-appr-card"><div class="ev-appr-src">${src}</div>${valHtml}${sub ? `<div class="muted ev-appr-sub">${sub}</div>` : ''}</div>`;
+  const apCard = a && a.mid > 0
+    ? card('Appraise.net', `<div class="ev-appr-val">${evM(a.mid)}</div>`, a.low && a.high ? `range ${evM(a.low)}–${evM(a.high)}` : '')
+    : card('Appraise.net', `<div class="ev-appr-na">no estimate</div>`, 'no value for this name');
+  const atomCard = atom && atom.value > 0
+    ? card('Atom', `<div class="ev-appr-val">${evM(atom.value)}</div>`, `${atom.score != null ? `score ${atom.score}/10` : ''}${atom.tm_conflicts ? ` · ${atom.tm_conflicts} TM conflict(s)` : ''}`)
+    : card('Atom', `<div class="ev-appr-na">no estimate</div>`, 'no value for this name');
+  return `<div class="ev-card"><h3 class="ev-h3">Appraisals <span class="muted">— AI estimates (discounted to realizable in the value)</span></h3>`
+    + `<div class="ev-appr-grid">${apCard}${atomCard}</div></div>`;
+}
+
+// The same WORD across other major extensions — active company / for sale / unused.
+// Drives resale scarcity (a live .com locks up the word; a cheap-for-sale spread
+// makes it a commodity).
+function evTldLandscape(data) {
+  const b = (data.evaluation && data.evaluation.buyers) || {};
+  const land = b.tld_landscape || [];
+  const sc = b.scarcity || {};
+  if (!land.length) return '';
+  const label = (st) => st === 'active' ? 'active company' : st === 'for_sale' ? 'for sale' : 'unused';
+  const chips = land.map((t) => `<div class="ev-tld ev-tld-${escapeHtml(t.status)}"><span class="ev-tld-name">.${escapeHtml(t.tld)}</span><span class="ev-tld-status">${escapeHtml(label(t.status))}${t.company ? ` · ${escapeHtml(t.company)}` : ''}</span></div>`).join('');
+  let read = '';
+  if (sc.com_active) read = `The .com is an active company — the word is locked up on the premium extension, so this is a realistic way into the name (supports value).`;
+  else if (sc.for_sale >= 3) read = `The word is for sale across several extensions — it reads more like a commodity, which caps resale value.`;
+  else if (sc.active >= 2) read = `Multiple extensions are live companies — the term is in real commercial use (mild positive for demand).`;
+  return `<div class="ev-card"><h3 class="ev-h3">The word across extensions <span class="muted">— resale scarcity</span></h3>`
+    + `${read ? `<p class="ev-rationale">${escapeHtml(read)}</p>` : ''}<div class="ev-tldgrid">${chips}</div></div>`;
 }
 
 function evBuyers(data) {
@@ -7847,16 +7875,26 @@ function evBuyers(data) {
   const angles = b.angles || [];
   const active = b.active_users || [];
   if (!angles.length && !active.length && !v.buyer_summary) return '';
-  const angleChips = angles.map((a) => {
+  // A specific, bulleted read of WHO buys this — each angle = an industry / company
+  // type, with example companies and (when verified) a real fundable headliner.
+  const items = angles.map((a) => {
     const pot = a.buyer_potential || 'medium';
-    const ver = a.verified ? ` · <span class="ev-tier ev-tier-${escapeHtml(a.verified.tier)}">${escapeHtml(a.verified.name)} (${escapeHtml(a.verified.tier)})</span>` : '';
-    return `<div class="ev-angle ev-pot-${escapeHtml(pot)}"><span class="ev-angle-l">${a.product ? '🎯 ' : ''}${escapeHtml(a.label)}</span> <span class="ev-angle-pot">${escapeHtml(pot)} buyer potential</span>${ver}</div>`;
+    const players = (a.players || []).map((p) => p.name).filter(Boolean).slice(0, 6);
+    const ver = a.verified
+      ? `<div class="ev-buyer-ver">✓ e.g. <strong>${escapeHtml(a.verified.name)}</strong>${a.verified.tier ? ` <span class="ev-tier ev-tier-${escapeHtml(a.verified.tier)}">${escapeHtml(a.verified.tier)} ability-to-pay</span>` : ''}${a.verified.funding ? ` · ${escapeHtml(a.verified.funding)}` : ''}</div>`
+      : '';
+    return `<li class="ev-buyer ev-pot-${escapeHtml(pot)}">
+      <div class="ev-buyer-top">${a.product ? '🎯 ' : ''}<strong>${escapeHtml(a.label)}</strong> <span class="ev-pot-badge ev-pot-badge-${escapeHtml(pot)}">${escapeHtml(pot)} fit</span></div>
+      ${a.concept ? `<div class="muted ev-buyer-concept">${escapeHtml(a.concept)}</div>` : ''}
+      ${players.length ? `<div class="ev-buyer-players">${players.map((p) => `<span class="ev-chip">${escapeHtml(p)}</span>`).join('')}</div>` : ''}
+      ${ver}
+    </li>`;
   }).join('');
   const activeBlock = active.length
-    ? `<div class="ev-active"><span class="ev-active-l">Already using the term:</span> ${active.map((u) => `<a href="https://${escapeHtml(u.domain)}" target="_blank" rel="noopener" class="ev-chip">${escapeHtml(u.domain)}</a>`).join('')}</div>` : '';
-  return `<div class="ev-card"><h3 class="ev-h3">Who would buy it <span class="muted">— ${b.fundable_buyer_count || 0} fundable buyer(s) verified</span></h3>
+    ? `<div class="ev-active"><span class="ev-active-l">Already using the term:</span> ${active.slice(0, 10).map((u) => `<a href="https://${escapeHtml(u.domain)}" target="_blank" rel="noopener" class="ev-chip">${escapeHtml(u.domain)}</a>`).join('')}</div>` : '';
+  return `<div class="ev-card"><h3 class="ev-h3">Who would buy it — companies &amp; industries that fit${b.fundable_buyer_count ? ` <span class="muted">· ${b.fundable_buyer_count} fundable verified</span>` : ''}</h3>
     ${v.buyer_summary ? `<p class="ev-rationale">${escapeHtml(v.buyer_summary)}</p>` : ''}
-    ${angleChips ? `<div class="ev-angles">${angleChips}</div>` : ''}
+    ${items ? `<ul class="ev-buyers-list">${items}</ul>` : ''}
     ${activeBlock}</div>`;
 }
 
@@ -7877,9 +7915,9 @@ function evContext(data) {
     ['For sale now', forSale],
     ['Registered', reg.created ? `${escapeHtml(reg.created)}${reg.age_years != null ? ` (~${reg.age_years}y)` : ''}${reg.registrar ? ` · ${escapeHtml(reg.registrar)}` : ''}` : 'unknown'],
   ];
-  return `<div class="ev-card"><h3 class="ev-h3">The domain today</h3><table class="ev-kv">`
+  return `<details class="ev-card ev-collapse"><summary class="ev-h3">The domain today</summary><div class="ev-collapse-body"><table class="ev-kv">`
     + rows.map((r) => `<tr><td class="ev-kv-k">${escapeHtml(r[0])}</td><td class="ev-kv-v">${r[1]}</td></tr>`).join('')
-    + `</table></div>`;
+    + `</table></div></details>`;
 }
 
 function evEvidence(data) {
@@ -7909,17 +7947,20 @@ function renderEvaluate(data) {
   els.evResult.innerHTML = `<div class="ev-report">
     ${evVerdictHeader(data)}
     <div class="ev-toolbar">${meta}</div>
-    ${evBandLadder(data)}
     ${evReasons(data)}
-    <div class="ev-grid">
-      ${evComps(data)}
-      ${evBuyers(data)}
-      ${evQuality(data)}
-      ${evContext(data)}
-    </div>
+    ${evAppraisals(data)}
+    ${evComps(data)}
+    ${evBandLadder(data)}
+    ${evTldLandscape(data)}
+    ${evBuyers(data)}
+    ${evQuality(data)}
+    ${evContext(data)}
     ${evEvidence(data)}
   </div>`;
   els.evResult.hidden = false;
+  // Once a report is open, send the recent-searches list to the very bottom (below
+  // the report), mirroring the other modules. resetEvaluateView() moves it back up.
+  if (els.evRecent && els.evResult.parentNode) els.evResult.after(els.evRecent);
   const rl = document.getElementById('ev-refresh-link');
   if (rl) rl.addEventListener('click', (e) => { e.preventDefault(); runEvaluate(ev.domain, { price: evParsePrice(els.evPrice && els.evPrice.value), refresh: true }); });
 }

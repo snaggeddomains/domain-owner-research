@@ -36,6 +36,31 @@ export async function findBuyers(domain, env = process.env, { verify = true } = 
     .slice(0, 12)
     .map((v) => ({ domain: v.domain, subtype: v.subtype || null }));
 
+  // The same WORD across other major extensions — is each an active company, sitting
+  // for sale, or unused? This drives resale SCARCITY: if the .com is a real company
+  // (can't be had), our extension is the way in → more valuable; if the word is for
+  // sale cheap across many extensions, it's a commodity → less valuable.
+  const TLD_ORDER = ['com', 'co', 'net', 'org', 'io', 'ai', 'app', 'xyz'];
+  const seenTld = new Set();
+  const tldLandscape = (Array.isArray(variants) ? variants : [])
+    .filter((v) => v && v.subtype === 'tld_variant')
+    .map((v) => {
+      const tld = String(v.domain || '').split('.').slice(1).join('.');
+      const status = v.status === 'active' ? 'active' : v.status === 'for_sale' ? 'for_sale' : 'unused';
+      return { domain: v.domain, tld, status, company: v.company || null };
+    })
+    .filter((v) => v.tld && !seenTld.has(v.tld) && seenTld.add(v.tld))
+    .sort((a, b) => {
+      const ai = TLD_ORDER.indexOf(a.tld); const bi = TLD_ORDER.indexOf(b.tld);
+      return (ai < 0 ? 99 : ai) - (bi < 0 ? 99 : bi);
+    });
+  const scarcity = {
+    active: tldLandscape.filter((v) => v.status === 'active').length,
+    for_sale: tldLandscape.filter((v) => v.status === 'for_sale').length,
+    unused: tldLandscape.filter((v) => v.status === 'unused').length,
+    com_active: tldLandscape.some((v) => v.tld === 'com' && v.status === 'active'),
+  };
+
   // A "fundable buyer" count from the angle headliners that verified to a strong/
   // medium ability-to-pay — a quick read on resale demand depth.
   const fundable = (Array.isArray(angles) ? angles : [])
@@ -57,6 +82,8 @@ export async function findBuyers(domain, env = process.env, { verify = true } = 
     })),
     active_users: activeUsers,
     for_sale_siblings: forSaleSiblings,
+    tld_landscape: tldLandscape,
+    scarcity,
     fundable_buyer_count: fundable,
   };
 }
