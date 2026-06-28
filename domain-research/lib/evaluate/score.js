@@ -78,8 +78,18 @@ export function buildAnchors({ quality, namebio, namebioComps, tracker, dealOffe
   // single point below a big gap.
   const qScore = Math.max(0, Math.min(100, (quality && quality.score != null) ? quality.score : 50));
   const positioned = (prices, discount) => {
-    const sorted = prices.filter((p) => p > 0).sort((a, b) => a - b);
+    let sorted = prices.filter((p) => p > 0).sort((a, b) => a - b);
     if (!sorted.length) return null;
+    // Trim outliers — drop ~10% off each end (a lone $2K drop-sale or a freak $299K
+    // shouldn't swing the estimate). QUALITY-AWARE: a grade-A name's TOP comp is
+    // SIGNAL (it belongs up there), so for premium names we keep the top and only
+    // trim the cheap bottom; weaker names get a symmetric trim. Keeps a core of ≥3.
+    const tBase = Math.min(
+      Math.floor(sorted.length * 0.1) || (sorted.length >= 6 ? 1 : 0),
+      Math.floor((sorted.length - 3) / 2),
+    );
+    const tTop = qScore >= 80 ? 0 : tBase;
+    if (tBase > 0 || tTop > 0) sorted = sorted.slice(tBase, sorted.length - tTop);
     const at = (f) => {
       const ff = Math.max(0, Math.min(1, f));
       const pos = ff * (sorted.length - 1);
@@ -284,12 +294,28 @@ export function computeValuation(input) {
   // relatedness is a first-order .ai value driver.
   const synBonus = (input && input.quality && input.quality.synergy && Number(input.quality.synergy.bonus)) || 0;
   const synergyMult = 1 + Math.max(-6, Math.min(12, synBonus)) / 30; // +12→1.40, +10→1.33, -6→0.80
-  const fairMid = niceRound(blended.mid * synergyMult);
+
+  // Trademark / brand-conflict discount — a LIVE registered mark on the EXACT term
+  // (esp. software/AI classes 9 & 42) narrows the realistic buyer pool toward that one
+  // holder, suppressing resale value (e.g. inkling.ai ↔ Echo360's "Inkling"). Tunable
+  // + inspectable; the strongest signal is an exact live tech-class mark and/or Atom's
+  // own TM-conflict count. Conservative by default — crank TM_* once we confirm it
+  // fires on the right names.
+  const tm = input && input.trademark;
+  const atomTm = (input && input.atom && Number(input.atom.tm_conflicts)) || 0;
+  let tmMult = 1;
+  let tmNote = '';
+  if (tm && tm.exact_live && tm.tech_class) { tmMult = 0.7; tmNote = `Live software/AI trademark on the exact term${tm.exact_live_count > 1 ? ` (${tm.exact_live_count} marks)` : ''} — buyer pool narrows to the brand holder.`; }
+  else if ((tm && tm.exact_live) || atomTm >= 2) { tmMult = 0.82; tmNote = `Live trademark conflict on the exact term — narrows the buyer pool.`; }
+  else if (atomTm === 1) { tmMult = 0.9; tmNote = `Possible trademark conflict flagged.`; }
+  const valueMult = synergyMult * tmMult;
+
+  const fairMid = niceRound(blended.mid * valueMult);
   // Keep the displayed RANGE actionable: one outlier comp (e.g. a lone $299K sale in
   // an otherwise $20–100K set) shouldn't push the top to multiples of the mid. Clamp
   // the range to ~[0.6×, 1.6×] the mid. (Appraisals/comps still set the mid LEVEL.)
-  const fairLow = niceRound(Math.max(blended.low * synergyMult, fairMid * 0.6));
-  const fairHigh = niceRound(Math.min(blended.high * synergyMult, fairMid * 1.6));
+  const fairLow = niceRound(Math.max(blended.low * valueMult, fairMid * 0.6));
+  const fairHigh = niceRound(Math.min(blended.high * valueMult, fairMid * 1.6));
   const confidence = confidenceOf(anchors, blended);
 
   // Dollar ranges for each band (from realizable mid). Best→worst.
@@ -313,6 +339,9 @@ export function computeValuation(input) {
     recommended_max_bid: niceRound(fairMid * BANDS[1].max),
     price: price || null,
     price_band: verdictBand,
+    // Multipliers applied on top of the blended comps (visible for audit).
+    synergy_mult: Math.round(synergyMult * 100) / 100,
+    trademark: tmNote ? { mult: Math.round(tmMult * 100) / 100, note: tmNote } : null,
     anchors: anchors.map((a) => ({
       source: a.source,
       low: niceRound(a.low),

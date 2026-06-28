@@ -57,6 +57,7 @@ ${price ? `  ENTERED PRICE: ${money(price)} → model band: ${valuation.price_ba
 CURRENT USE: ${cu.reachable ? `${parked ? 'PARKED/for-sale page' : 'live site'} — "${(cu.title || '').slice(0, 80)}"${cu.parking && cu.parking.platforms && cu.parking.platforms.length ? ` (parking: ${cu.parking.platforms.join(', ')})` : ''}` : 'not reachable / no site'}
 FOR SALE NOW: ${s.for_sale.listed ? `LISTED${s.for_sale.price ? ` at ${money(s.for_sale.price)}` : ''}${s.for_sale.platform ? ` on ${s.for_sale.platform}` : ''}` : 'not listed on tracked marketplaces'}
 APPRAISALS: Appraise.net ${s.appraisals.appraise ? money(s.appraisals.appraise.mid) : '—'} · Atom ${s.appraisals.atom ? `${money(s.appraisals.atom.value)} (score ${s.appraisals.atom.score}/10${s.appraisals.atom.tm_conflicts ? `, ${s.appraisals.atom.tm_conflicts} TM conflict(s)` : ''})` : '—'}
+TRADEMARK (exact term): ${s.trademark ? (s.trademark.exact_live ? `LIVE mark(s) on "${s.sld}"${s.trademark.tech_class ? ' incl. software/AI class' : ''} (${s.trademark.exact_live_count} exact) — model applied a buyer-pool discount` : `no live exact mark (${s.trademark.total} near matches)`) : 'not checked'}
 
 COMPARABLE SALES:
   NameBio (exact domain): ${nb && nb.sales && nb.sales.length ? nb.sales.slice(0, 5).map((x) => `${money(x.price)} (${x.date || '?'}${x.venue ? `, ${x.venue}` : ''})`).join('; ') : 'no recorded public sales'}

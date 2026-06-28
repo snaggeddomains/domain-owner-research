@@ -91,6 +91,31 @@ function normalizeRegistration(data) {
   };
 }
 
+// Read the trademark_search result (signa.so/USPTO) into a screening-level conflict
+// signal for the EXACT term. Field names vary, so parse defensively. A LIVE/registered
+// mark whose text == the SLD narrows the realistic buyer pool toward that holder
+// (esp. in software/AI classes 9 & 42) → a resale discount. NOT legal clearance.
+function normalizeTrademark(data, sld) {
+  const list = data && Array.isArray(data.trademarks) ? data.trademarks : [];
+  const target = String(sld || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+  if (!target || !list.length) return { exact_live: false, tech_class: false, exact_live_count: 0, total: list.length };
+  const txt = (it) => String(it.text ?? it.mark ?? it.markText ?? it.wordmark ?? it.name ?? it.keyword ?? it.title ?? '').toLowerCase().replace(/[^a-z0-9]/g, '');
+  const statusOf = (it) => String(it.status ?? it.statusType ?? it.legalStatus ?? it.state ?? it.markStatus ?? it.statusDescription ?? '').toLowerCase();
+  const live = (s) => !s ? true : (/(live|regist|active|publish|allowed|pending)/.test(s) && !/(dead|abandon|cancel|expir|withdraw|refus)/.test(s));
+  const classBlob = (it) => (JSON.stringify(it.classes ?? it.niceClasses ?? it.internationalClasses ?? it.classNumbers ?? it.intlClasses ?? it.class ?? '') + ' ' + String(it.goods ?? it.goodsAndServices ?? it.goods_services ?? it.description ?? '')).toLowerCase();
+  let exactLiveCount = 0;
+  let techClass = false;
+  for (const it of list) {
+    if (!it || typeof it !== 'object') continue;
+    if (txt(it) === target && live(statusOf(it))) {
+      exactLiveCount++;
+      const c = classBlob(it);
+      if (/(^|[^0-9])(9|42)([^0-9]|$)/.test(c) || /software|artificial intelligence|machine learning|\bai\b|computer|saas|platform|mobile app|downloadable/.test(c)) techClass = true;
+    }
+  }
+  return { exact_live: exactLiveCount > 0, tech_class: techClass, exact_live_count: exactLiveCount, total: list.length };
+}
+
 function normalizeForSale(ds) {
   if (!ds) return { listed: false, marketplaces: [] };
   const mkts = Array.isArray(ds.marketplaces) ? ds.marketplaces : [];
@@ -214,7 +239,7 @@ export async function gatherSignals(domain, env = process.env) {
   const [
     rdapData, liveData, dsData, appraiseRes, atomRes,
     nameproData, webDomain, webTerm,
-    nbComps, nbComparables, dealHistory, emailThreads,
+    nbComps, nbComparables, dealHistory, emailThreads, tmData,
   ] = await Promise.all([
     tool('rdap_whois', { domain: d }, env),
     tool('livesite_inspect', { domain: d }, env),
@@ -228,6 +253,7 @@ export async function gatherSignals(domain, env = process.env) {
     needNbComps ? nbCompsGather(d, env) : Promise.resolve(null),
     getDealComps(d),
     emailIngestConfigured() ? withTimeout(searchEmailThreads(d), 8000, []) : Promise.resolve([]),
+    withTimeout(tool('trademark_search', { query: sld }, env), 8000, null),
   ]);
 
   const appraise = normalizeAppraise(appraiseRes && appraiseRes.data);
@@ -253,6 +279,7 @@ export async function gatherSignals(domain, env = process.env) {
     for_sale: forSale,
     listing,
     appraisals: { appraise, atom, appraise_note: appraiseNote, atom_note: atomNote },
+    trademark: normalizeTrademark(tmData, sld),
     comps: { namebio: nbComps, namebio_comps: nbComparables, tracker: trackerSold, deal_history: dealHistory },
     namepros: nameproData && Array.isArray(nameproData.results) ? nameproData.results.slice(0, 8) : [],
     web: {

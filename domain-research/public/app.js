@@ -7824,10 +7824,16 @@ function evComps(data) {
   }
   if (!body) body = `<p class="muted">No comparable sales or deal history found for this name.</p>`;
 
-  // Value anchors (the model's math)
+  // Value anchors (the model's math) + the multipliers applied on top (synergy, TM).
+  const multRows = []
+    .concat(val.synergy_mult && val.synergy_mult !== 1
+      ? [`<tr><td>SLD↔TLD synergy</td><td>×${val.synergy_mult}</td><td>—</td><td class="muted">${val.synergy_mult > 1 ? 'tight fit amplifies value' : 'loose fit discounts value'}</td></tr>`] : [])
+    .concat(val.trademark
+      ? [`<tr><td>⚠ trademark</td><td>×${val.trademark.mult}</td><td>—</td><td class="muted">${escapeHtml(val.trademark.note)}</td></tr>`] : []);
   const anchorRows = anchors.length
-    ? `<details class="ev-anchors"><summary>How the fair value was built (${anchors.length} anchors)</summary><table class="ev-table"><thead><tr><th>Source</th><th>Mid</th><th>Weight</th><th>Note</th></tr></thead><tbody>`
+    ? `<details class="ev-anchors"><summary>How the fair value was built (${anchors.length} anchors${multRows.length ? ' + adjustments' : ''})</summary><table class="ev-table"><thead><tr><th>Source</th><th>Mid</th><th>Weight</th><th>Note</th></tr></thead><tbody>`
       + anchors.map((a) => `<tr><td>${escapeHtml(a.source)}</td><td>${evM(a.mid)}</td><td>${a.weight}</td><td class="muted">${escapeHtml(a.note || '')}</td></tr>`).join('')
+      + multRows.join('')
       + `</tbody></table></details>`
     : '';
 
