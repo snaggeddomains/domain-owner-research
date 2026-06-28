@@ -9,13 +9,18 @@
 // "decent" or "immediate buy". Every number is attributable to a named anchor so
 // the verdict can show its work; the LLM layer adjusts within these bounds.
 
-// Multipliers vs estimated realizable resale value (fairMid). Tunable knobs — the
-// whole product's risk appetite lives here.
+// Buy price as a fraction of estimated realizable RESALE value (fairMid), pegged to
+// Snagged's investment return posture: a resale flip is illiquid and slow, so you
+// only buy at a big margin. Target return = resale ÷ buy price:
+//   ≥12x (≤0.08) immediate buy · ~8x (≤0.13) decent · ~5x (≤0.20) neutral/borderline
+//   (5x is "almost certainly a no" unless dramatically underpriced + liquid) ·
+//   ~2.5x (≤0.40) would avoid · <2.5x (>0.40) bad. Tunable knobs — the whole
+// product's risk appetite lives here.
 const BANDS = [
-  { key: 'immediate_buy', label: 'Immediate buy', max: 0.35, color: '#0b8f3a' },
-  { key: 'decent_buy', label: 'Decent buy', max: 0.6, color: '#5bbf3a' },
-  { key: 'neutral', label: 'Neutral / fair', max: 0.95, color: '#caa024' },
-  { key: 'would_avoid', label: 'Would avoid', max: 1.4, color: '#e07b2c' },
+  { key: 'immediate_buy', label: 'Immediate buy', max: 0.08, color: '#0b8f3a' }, // ≥~12x return
+  { key: 'decent_buy', label: 'Decent buy', max: 0.13, color: '#5bbf3a' },       // ~8x
+  { key: 'neutral', label: 'Neutral / fair', max: 0.20, color: '#caa024' },      // ~5x (borderline no)
+  { key: 'would_avoid', label: 'Would avoid', max: 0.40, color: '#e07b2c' },      // ~2.5x
   { key: 'bad_purchase', label: 'Bad purchase', max: Infinity, color: '#cf3030' },
 ];
 
@@ -34,6 +39,19 @@ function median(nums) {
   return a.length % 2 ? a[m] : (a[m - 1] + a[m]) / 2;
 }
 
+// Age (in years) of the most-recent dated sale in a list, or null if undated.
+function newestSaleYears(sales) {
+  let newest = null;
+  for (const s of sales) {
+    const t = s && s.date ? Date.parse(s.date) : NaN;
+    if (Number.isFinite(t)) {
+      const yrs = (Date.now() - t) / (365.25 * 864e5);
+      if (newest == null || yrs < newest) newest = yrs;
+    }
+  }
+  return newest;
+}
+
 // Quality-only baseline value when comps are thin/absent. An exponential curve
 // over the SLD craft score, scaled by the extension's price multiplier. Calibrated
 // so a clean one-word .com (~score 90) ≈ $9k, mid (~70) ≈ $2k, weak (~50) ≈ $550.
@@ -48,60 +66,88 @@ function qualityBaseline(quality) {
 // {source, low, mid, high, weight, note}. Asking prices (the domain's own listing,
 // internal "similar asking" comps, AI appraisals) are DISCOUNTED to realizable —
 // asks run well above what names actually clear at.
-export function buildAnchors({ quality, namebio, namebioComps, tracker, dealOffers, appraise, atom, listing } = {}) {
+export function buildAnchors({ quality, namebio, namebioComps, tracker, dealOffers, appraise, atom, listing, activeUse = false } = {}) {
   const anchors = [];
-
-  // 1. NameBio — recorded PUBLIC SALES of the EXACT domain. The strongest signal:
-  // a real clearing price for this very name. (Older sales discounted slightly.)
-  const nbSales = (namebio && Array.isArray(namebio.sales) ? namebio.sales : []).filter((s) => s && s.price > 0);
-  if (nbSales.length) {
-    const prices = nbSales.map((s) => s.price);
-    const mid = median(prices);
-    anchors.push({
-      source: 'namebio',
-      low: Math.min(...prices) * 0.85,
-      mid,
-      high: Math.max(...prices) * 1.1,
-      weight: 3.0,
-      note: `${nbSales.length} recorded sale${nbSales.length > 1 ? 's' : ''} of this exact domain (median $${niceRound(mid).toLocaleString()}).`,
-    });
-  }
 
   // Position THIS name within a comparable-sales distribution by its quality: a
   // grade-A name sells near the TOP of comparable sales, a weak one near the bottom.
   // (This is the calibration that stops a strong one-word name from being dragged to
   // the median of a broad same-TLD band.) Returns {low, mid, high} from the prices.
+  // We INTERPOLATE between sorted prices (not nearest-index) so a top-tier name in a
+  // small, lumpy comp set can reach toward the top comp instead of snapping to a
+  // single point below a big gap.
   const qScore = Math.max(0, Math.min(100, (quality && quality.score != null) ? quality.score : 50));
   const positioned = (prices, discount) => {
     const sorted = prices.filter((p) => p > 0).sort((a, b) => a - b);
     if (!sorted.length) return null;
-    const at = (f) => sorted[Math.min(sorted.length - 1, Math.max(0, Math.round(f * (sorted.length - 1))))];
-    const pct = 0.30 + (qScore / 100) * 0.55; // grade A(87)→~p78, C(50)→~p58, F(20)→~p41
-    return { low: at(Math.max(0.08, pct - 0.20)) * discount, mid: at(pct) * discount, high: at(Math.min(0.95, pct + 0.12)) * discount, midPct: pct };
+    const at = (f) => {
+      const ff = Math.max(0, Math.min(1, f));
+      const pos = ff * (sorted.length - 1);
+      const lo = Math.floor(pos);
+      const hi = Math.ceil(pos);
+      return sorted[lo] + (sorted[hi] - sorted[lo]) * (pos - lo);
+    };
+    // grade A(85)→~p86, A+(92)→~p94, B(70)→~p68, C(50)→~p45, F(20)→~p9.
+    const pct = Math.max(0.10, Math.min(0.96, (qScore - 12) / 85));
+    return { low: at(pct - 0.22) * discount, mid: at(pct) * discount, high: at(Math.min(0.99, pct + 0.14)) * discount, midPct: pct };
   };
 
-  // 1b. NameBio COMPARABLE sales — recorded RETAIL sales of SIMILAR names. Real
+  // 1a. NameBio COMPARABLE sales — recorded RETAIL sales of SIMILAR names. Real
   // clearing prices; positioned by quality, lightly discounted (broader market).
   const nbComps = (namebioComps && Array.isArray(namebioComps.comps) ? namebioComps.comps : []).filter((c) => c && c.price > 0);
   if (nbComps.length) {
-    const p = positioned(nbComps.map((c) => c.price), 0.85);
+    const p = positioned(nbComps.map((c) => c.price), 0.9);
     if (p) anchors.push({
-      source: 'namebio_comps', low: p.low, mid: p.mid, high: p.high, weight: 2.0,
+      source: 'namebio_comps', low: p.low, mid: p.mid, high: p.high, weight: 1.3,
       note: `${nbComps.length} comparable NameBio sale${nbComps.length > 1 ? 's' : ''} of similar names; this name positioned at the ${Math.round(p.midPct * 100)}th pct → $${niceRound(p.mid).toLocaleString()}.`,
     });
   }
 
-  // 1c. Snagged transaction comps — REAL prices comparable names changed hands at
+  // 1b. Snagged transaction comps — REAL prices comparable names changed hands at
   // (the Master Txns List). Verified realized sales, so only a light haircut; the
   // exact word on another TLD (same_sld) counts double in the distribution.
   const trackerDeals = (tracker && Array.isArray(tracker.deals) ? tracker.deals : []).filter((t) => t && t.price > 0);
   if (trackerDeals.length) {
     const prices = [];
     for (const t of trackerDeals) { prices.push(t.price); if (t.relation === 'same_sld') prices.push(t.price); }
-    const p = positioned(prices, 0.92);
+    const p = positioned(prices, 0.95);
     if (p) anchors.push({
-      source: 'snagged_transactions', low: p.low, mid: p.mid, high: p.high, weight: 2.6,
+      source: 'snagged_transactions', low: p.low, mid: p.mid, high: p.high, weight: 3.4,
       note: `${trackerDeals.length} comparable Snagged transaction${trackerDeals.length > 1 ? 's' : ''}; this name positioned at the ${Math.round(p.midPct * 100)}th pct → $${niceRound(p.mid).toLocaleString()}.`,
+    });
+  }
+
+  // Strategic comp reference (weighted mid of the comparable-sales anchors) — used
+  // to judge whether an old exact-domain sale is stale relative to where similar
+  // names clear today.
+  const compAnchors = anchors.filter((a) => a.source === 'namebio_comps' || a.source === 'snagged_transactions');
+  const compRefW = compAnchors.reduce((s, a) => s + (a.weight || 0), 0);
+  const compRef = compRefW ? compAnchors.reduce((s, a) => s + (a.mid || 0) * (a.weight || 0), 0) / compRefW : 0;
+
+  // 1c. NameBio — recorded PUBLIC SALES of the EXACT domain. The strongest signal
+  // for a STABLE name (a real clearing price for this very name) — but an OLD, cheap
+  // aftermarket/drop sale of a name that has SINCE become a live, branded company is
+  // a STALE price, not today's clearing price. So weight it by recency + sale count,
+  // and when it sits far below where comparable names clear AND the name is now in
+  // live commercial use, treat it as a stale FLOOR rather than the anchor mid.
+  const nbSales = (namebio && Array.isArray(namebio.sales) ? namebio.sales : []).filter((s) => s && s.price > 0);
+  if (nbSales.length) {
+    const prices = nbSales.map((s) => s.price);
+    const mid = median(prices);
+    const yrs = newestSaleYears(nbSales);
+    const recencyW = yrs == null ? 0.7 : yrs < 1 ? 1.0 : yrs < 2 ? 0.7 : yrs < 3 ? 0.5 : 0.32;
+    const countW = nbSales.length >= 3 ? 1.0 : nbSales.length === 2 ? 0.85 : 0.7;
+    const stale = compRef > 0 && mid < compRef * 0.5 && activeUse;
+    const weight = 2.2 * recencyW * countW * (stale ? 0.4 : 1);
+    anchors.push({
+      source: 'namebio',
+      low: Math.min(...prices) * 0.85,
+      mid: stale ? Math.max(mid, compRef * 0.5) : mid,
+      high: Math.max(...prices) * (stale ? 1.8 : 1.1),
+      weight,
+      note: stale
+        ? `${nbSales.length} OLD exact-domain sale${nbSales.length > 1 ? 's' : ''} (median $${niceRound(mid).toLocaleString()}) predating the name's current live use — treated as a stale floor, not the clearing price.`
+        : `${nbSales.length} recorded sale${nbSales.length > 1 ? 's' : ''} of this exact domain (median $${niceRound(mid).toLocaleString()}${yrs != null && yrs >= 2 ? `, newest ~${Math.round(yrs)}y old` : ''}).`,
     });
   }
 
@@ -172,7 +218,7 @@ export function buildAnchors({ quality, namebio, namebioComps, tracker, dealOffe
     low: qb.low,
     mid: qb.mid,
     high: qb.high,
-    weight: anchors.length ? 0.6 : 1.2, // leans harder when it's the only signal
+    weight: anchors.length ? 0.35 : 1.2, // a sanity floor only — real comps should drive a well-comped name
     note: `Quality model baseline for a grade-${(quality && quality.grade) || '?'} ${quality && quality.tld ? `.${quality.tld.tld}` : ''} name.`,
   });
 
@@ -229,9 +275,18 @@ export function bandForPrice(price, fairMid) {
 export function computeValuation(input) {
   const anchors = buildAnchors(input);
   const blended = blend(anchors);
-  const fairMid = niceRound(blended.mid);
-  const fairLow = niceRound(blended.low);
-  const fairHigh = niceRound(blended.high);
+
+  // SLD↔TLD synergy premium — a tight semantic fit (cloud.ai, particle.ai) clears
+  // ABOVE its structural comps; a loose pairing (dog.ai) clears below. A visible,
+  // tunable lever on the blended value, derived from the quality synergy bonus
+  // ([-6,+12] pts → ~[0.9, 1.3]×). This is on TOP of the bonus already flowing
+  // through the quality score's comp positioning, deliberately amplified because
+  // relatedness is a first-order .ai value driver.
+  const synBonus = (input && input.quality && input.quality.synergy && Number(input.quality.synergy.bonus)) || 0;
+  const synergyMult = 1 + Math.max(-6, Math.min(12, synBonus)) / 30; // +12→1.40, +10→1.33, -6→0.80
+  const fairMid = niceRound(blended.mid * synergyMult);
+  const fairLow = niceRound(blended.low * synergyMult);
+  const fairHigh = niceRound(blended.high * synergyMult);
   const confidence = confidenceOf(anchors, blended);
 
   // Dollar ranges for each band (from realizable mid). Best→worst.

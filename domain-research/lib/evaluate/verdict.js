@@ -1,30 +1,27 @@
-// Verdict synthesis — the "deterministic score + LLM" layer. The numbers come
-// from the deterministic model (score.js computeValuation); the LLM reads the FULL
-// signal set and (a) writes the narrative verdict, (b) is allowed ONE bounded
-// nudge to fair value for things the formula can't see — a trademark conflict, a
-// red-hot exact-match buyer, a dead/contested term, a name that's clearly more or
-// less brandable than its structure implies. The nudge is clamped, then the price
-// bands recompute from the adjusted mid, so the output stays auditable. No key →
-// pure deterministic fallback.
+// Verdict synthesis — the LLM NARRATIVE layer. The numbers (fair value, bands,
+// recommended bid) are 100% DETERMINISTIC (score.js computeValuation: comps +
+// quality + rules) and the LLM does NOT move them — it reads the full signal set
+// and writes the readable verdict (headline, rationale, reasons for/against, buyer
+// read) that EXPLAINS the deterministic number and flags risks. Keeping the number
+// rule-based makes it auditable + reproducible: when a figure's off you tune a
+// rule, not a prompt. No key → deterministic fallback narrative.
 
 import Anthropic from '@anthropic-ai/sdk';
 import { recordModelUsage } from '../db/usage.js';
-import { BANDS, niceRound, bandForPrice } from './score.js';
 
-const ADJUST_MIN = 0.6;
-const ADJUST_MAX = 1.6;
-
-const SYSTEM = `You are the head of acquisitions at Snagged.com, a domain brokerage, evaluating whether to BUY a domain for INVESTMENT/RESALE. You are shown a deterministic valuation model's output plus the full evidence set (name quality, comparable sales, the current live use, marketplace listing, AI appraisals, domain-investor-forum chatter, web search on the term, any prior emails about it, and the potential-buyer pool).
+const SYSTEM = `You are the head of acquisitions at Snagged.com, a domain brokerage, evaluating whether to BUY a domain for INVESTMENT/RESALE. You are shown a DETERMINISTIC valuation model's output (fair resale value + price bands, already final) plus the full evidence set (name quality, comparable sales, the current live use, marketplace listing, AI appraisals, domain-investor-forum chatter, web search on the term, any prior emails about it, and the potential-buyer pool).
 
 Your lens is a reseller's: you make money buying BELOW realizable resale value, and an exit only happens if a real, fundable buyer wants the name. Be decisive and honest — most domains are bad buys at most prices.
 
-You may apply ONE bounded adjustment ("adjust", a multiplier in [${ADJUST_MIN}, ${ADJUST_MAX}]) to the model's fair RESALE value for things the formula can't see:
-- Push DOWN (<1) for: trademark/brand conflict, an unsayable/awkward name, a dead or hyper-contested term, no plausible fundable buyer, a name whose comps are all junk.
-- Push UP (>1) for: a hot exact-match product/company actively wanting it, a clean one-word in a moneyed vertical, strong corroborating real sales, demonstrated inbound demand (emails/offers).
-- Keep it 1.0 when the model already fits. Do NOT use the adjustment to chase a single optimistic appraisal.
+The valuation NUMBER is fixed (rule-based) — you do NOT change it. Your job is to EXPLAIN it and surface what a buyer must know. Apply this reasoning when you write:
+- OLD exact-domain sales (especially >2y, and on a fast-moving TLD like .ai where the market re-rated in the last ~24 months) are STALE — a cheap historical sale of a name that's now a live brand is NOT today's clearing price. Don't treat it as the value.
+- ACTIVE commercial use of a clean premium name is DEMAND evidence (the term is wanted) — it lowers acquirability/liquidity, but it does not make the name cheap; say both.
+- A TIGHT SLD↔TLD fit (a science/tech/data concept on .ai — particle/cloud/quantum) is a real premium; a loose pairing (dog.ai) is worth less. Reflect it.
+- A genuine TRADEMARK / brand conflict (a funded company owns the exact term) is the biggest real risk — it narrows the buyer pool to that one party. Call it out plainly in reasons_against and the buyer read.
+- Investment posture: a buy only makes sense at a big margin (target ~10–20x resale ÷ price; 8x ok; 5x is borderline-no). The bands already encode this.
 
 Return STRICT JSON only (no prose, no code fence):
-{"adjust": <number ${ADJUST_MIN}-${ADJUST_MAX}>, "adjust_reason": "<one line, or '' if 1.0>", "confidence": "low"|"medium"|"high", "headline": "<one punchy line>", "rationale": "<2-4 sentences: the core read>", "reasons_for": ["<concrete pro>", "..."], "reasons_against": ["<concrete risk>", "..."], "buyer_summary": "<1-2 sentences: who realistically buys this and how contested the term is>", "name_quality_read": "<1 sentence on the SLD/TLD as a brandable asset>"}`;
+{"confidence": "low"|"medium"|"high", "headline": "<one punchy line>", "rationale": "<2-4 sentences: the core read>", "reasons_for": ["<concrete pro>", "..."], "reasons_against": ["<concrete risk>", "..."], "buyer_summary": "<1-2 sentences: who realistically buys this and how contested the term is>", "name_quality_read": "<1 sentence on the SLD/TLD as a brandable asset>"}`;
 
 function money(n) {
   const v = Number(n);
@@ -91,25 +88,11 @@ function parseJsonLoose(text) {
   try { return JSON.parse(s.slice(a, b + 1)); } catch { return null; }
 }
 
-// Rebuild the price-band ladder + recommended bid from a (possibly adjusted) mid.
-function ladderFromMid(fairMid) {
-  let prev = 0;
-  const bands = BANDS.map((b) => {
-    const max = b.max === Infinity ? Infinity : niceRound(fairMid * b.max);
-    const row = { key: b.key, label: b.label, color: b.color, min: prev, max };
-    prev = max === Infinity ? prev : max;
-    return row;
-  });
-  return { bands, recommended_max_bid: niceRound(fairMid * BANDS[1].max) };
-}
-
 // Deterministic narrative when the LLM is unavailable — readable, not templated-ugly.
 function deterministicNarrative(valuation, price) {
   const band = valuation.price_band;
   const conf = valuation.confidence;
   return {
-    adjust: 1,
-    adjust_reason: '',
     confidence: conf,
     headline: price
       ? `${band ? band.label : 'Evaluate'} — fair resale value ~${money(valuation.fair_value.mid)}`
@@ -147,27 +130,14 @@ export async function synthesizeVerdict({ signals, buyers, valuation, price = nu
   }
 
   const base = llm || deterministicNarrative(valuation, price);
-  // Clamp the LLM's adjustment and recompute the numbers from the adjusted mid.
-  let adjust = Number(base.adjust);
-  if (!Number.isFinite(adjust)) adjust = 1;
-  adjust = Math.max(ADJUST_MIN, Math.min(ADJUST_MAX, adjust));
-  const adjMid = niceRound(valuation.fair_value.mid * adjust);
-  const adjusted = adjust !== 1 && adjMid > 0
-    ? {
-        fair_value: { low: niceRound(valuation.fair_value.low * adjust), mid: adjMid, high: niceRound(valuation.fair_value.high * adjust) },
-        ...ladderFromMid(adjMid),
-        price_band: price ? bandForPrice(price, adjMid) : null,
-      }
-    : null;
-
-  const finalMid = adjusted ? adjusted.fair_value.mid : valuation.fair_value.mid;
-  const finalBand = price ? (adjusted ? adjusted.price_band : valuation.price_band) : null;
+  // The number is deterministic — the LLM writes prose only, it never moves it.
+  const finalBand = price ? valuation.price_band : null;
 
   return {
     model: base.model || null,
     fallback: Boolean(base.fallback),
-    adjust,
-    adjust_reason: String(base.adjust_reason || '').trim(),
+    adjust: 1,
+    adjust_reason: '',
     confidence: ['low', 'medium', 'high'].includes(base.confidence) ? base.confidence : valuation.confidence,
     headline: String(base.headline || '').trim(),
     rationale: String(base.rationale || '').trim(),
@@ -175,11 +145,10 @@ export async function synthesizeVerdict({ signals, buyers, valuation, price = nu
     reasons_against: Array.isArray(base.reasons_against) ? base.reasons_against.map((x) => String(x).trim()).filter(Boolean).slice(0, 6) : [],
     buyer_summary: String(base.buyer_summary || '').trim(),
     name_quality_read: String(base.name_quality_read || '').trim(),
-    // The verdict band for an entered price (post-adjustment), else null.
     verdict_band: finalBand ? { key: finalBand.key, label: finalBand.label, color: finalBand.color } : null,
-    // Surface the adjusted valuation so the API/UI use the final numbers.
-    adjusted_valuation: adjusted ? { fair_value: adjusted.fair_value, bands: adjusted.bands, recommended_max_bid: adjusted.recommended_max_bid, price_band: adjusted.price_band } : null,
-    final_fair_mid: finalMid,
+    // No LLM adjustment — the deterministic valuation is final.
+    adjusted_valuation: null,
+    final_fair_mid: valuation.fair_value.mid,
   };
 }
 

@@ -36,6 +36,14 @@ export async function evaluateDomain({ domain, price = null, env = process.env }
     cappedBuyers,
   ]);
 
+  // Is the name in active commercial use (live, non-parked site)? A live premium
+  // name is real demand evidence — and it tells the model an OLD cheap exact-domain
+  // sale predates the current asset (stale), so don't let it drag the value.
+  const cu = signals.current_use || {};
+  const activeUse = Boolean(cu.reachable && !(cu.parking && cu.parking.likely_parked));
+
+  // The valuation is fully DETERMINISTIC (comps + quality + rules) — no LLM nudge.
+  // The LLM only writes the narrative; it never moves the price.
   const valuation = computeValuation({
     quality: signals.quality,
     namebio: signals.comps.namebio,
@@ -45,25 +53,13 @@ export async function evaluateDomain({ domain, price = null, env = process.env }
     appraise: signals.appraisals.appraise,
     atom: signals.appraisals.atom,
     listing: signals.listing,
+    activeUse,
     price: priceNum,
   });
 
   const verdict = await synthesizeVerdict({ signals, buyers, valuation, price: priceNum, env });
 
-  // Apply the LLM's bounded adjustment to the surfaced valuation so the UI shows
-  // the FINAL numbers (the raw model stays under valuation.model_* for audit).
-  const finalValuation = verdict.adjusted_valuation
-    ? {
-        ...valuation,
-        fair_value: verdict.adjusted_valuation.fair_value,
-        bands: verdict.adjusted_valuation.bands,
-        recommended_max_bid: verdict.adjusted_valuation.recommended_max_bid,
-        price_band: verdict.adjusted_valuation.price_band,
-        model_fair_value: valuation.fair_value, // pre-adjustment, for audit
-        adjusted: true,
-        adjust: verdict.adjust,
-      }
-    : { ...valuation, adjusted: false, adjust: 1 };
+  const finalValuation = { ...valuation, adjusted: false, adjust: 1 };
 
   return {
     domain: signals.domain,

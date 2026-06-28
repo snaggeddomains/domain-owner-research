@@ -65,17 +65,27 @@ export function comboSynergy(sld, tld) {
     notes.push(`Reads as a phrase across the dot (${s}.${t}).`);
   }
 
-  // On-theme extension: an SLD whose meaning matches the extension's audience
-  // amplifies it (a tech/AI-flavored SLD on .ai/.io, a media word on .tv).
-  const THEME = {
-    ai: /(^|[^a-z])(ai|ml|gpt|bot|neural|mind|brain|intelligen|agent|model|data)/,
-    io: /(^|[^a-z])(app|dev|cloud|api|stack|code|byte|data|net)/,
+  // On-theme extension: an SLD whose MEANING matches the extension's audience
+  // amplifies the name (a tech/science/AI concept on .ai is "tightly related" —
+  // cloud.ai, particle.ai — and commands a premium; a word with little overlap —
+  // dog.ai, lunch.ai — is just worth less on that TLD). Two strengths:
+  //  • LITERAL match (the word IS an AI/dev token) → strong.
+  //  • SEMANTIC match (a science/tech/data/compute concept) → strong; this is the
+  //    relatedness the old literal regex missed.
+  const LITERAL = {
+    ai: /(^|[^a-z])(ai|ml|gpt|llm|bot|neural|mind|brain|intelligen|agent|model|cognit|reason|predict|infer|automat|robot)/,
+    io: /(^|[^a-z])(app|dev|cloud|api|stack|code|byte|data|net|git|node|saas)/,
     tv: /(stream|watch|media|video|live|channel|show)/,
     gg: /(game|play|gg|esport|arena|guild|quest)/,
   };
-  if (THEME[t] && THEME[t].test(s)) {
-    bonus += 4;
+  // Science / deep-tech / data / compute concepts that "read" as AI-adjacent.
+  const AI_SEMANTIC = /(^|[^a-z])(particle|quantum|atom|photon|electron|neutron|proton|molecul|fusion|reactor|physic|science|chemi|genom|nano|micro|signal|vector|matrix|tensor|kernel|cipher|crypto|logic|cortex|neuron|synap|cloud|compute|comput|silicon|circuit|chip|processor|machine|engine|algorithm|graph|cluster|pixel|render|sentry|sentinel|oracle|nexus|cogn|percept|sense|vision|deep|smart|auto|flux|core|grid|node|spark|pulse|orbit|cosmos|nova|photon|laser|optic)/;
+  if (LITERAL[t] && LITERAL[t].test(s)) {
+    bonus += 10;
     notes.push(`SLD is on-theme for .${t}'s buyer pool.`);
+  } else if (t === 'ai' && AI_SEMANTIC.test(s)) {
+    bonus += 10;
+    notes.push(`"${s}" is a science/tech concept — tightly related to .ai (amplifies value).`);
   }
 
   // Redundant / awkward pair: SLD already ends in the extension word (e.g.
@@ -85,7 +95,7 @@ export function comboSynergy(sld, tld) {
     notes.push(`SLD already ends in "${t}" — slightly redundant with the extension.`);
   }
 
-  return { bonus: Math.max(-6, Math.min(8, bonus)), notes };
+  return { bonus: Math.max(-6, Math.min(12, bonus)), notes };
 }
 
 export default { tldQuality, comboSynergy };
