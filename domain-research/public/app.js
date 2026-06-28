@@ -7641,6 +7641,9 @@ async function runEvaluate(domain, { price = null, refresh = false } = {}) {
     els.evResult.innerHTML = `<div class="ev-loading"><div class="ev-spinner"></div>`
       + `<div><strong>${refresh ? 'Re-evaluating' : 'Evaluating'} ${escapeHtml(d)}…</strong>`
       + `<div class="muted">Pulling comparable sales, appraisals, the buyer pool & web — this can take ~30–60 seconds (it'll auto-retry if the connection drops).</div></div></div>`;
+    // Keep the running eval ON TOP — push the recent list below it so it's browsable
+    // while this one runs (mirrors where the finished report sits).
+    if (els.evRecent && els.evResult.parentNode) els.evResult.after(els.evRecent);
   }
   try { setActiveDomain(d); } catch { /* domain bar is decorative */ }
   if (els.evDomain) els.evDomain.value = d;
@@ -7698,6 +7701,44 @@ function evBar(label, val) {
     + `<span class="ev-bar-v">${Math.round(pct)}</span></div>`;
 }
 
+// Round to ~2 significant figures so derived prices read like real numbers.
+function evSig2(n) {
+  const v = Number(n);
+  if (!isFinite(v) || v <= 0) return 0;
+  const mag = Math.pow(10, Math.floor(Math.log10(v)) - 1);
+  return Math.round(v / mag) * mag;
+}
+
+// High-level resale recap as a GRID: 5 resale scenarios (conservative → high), each
+// with the 8–10× max bid you'd pay for it. The model's mid is starred as the
+// most-realistic, but the user sees every scenario and decides.
+function evResaleGrid(fv) {
+  const lo = Number(fv.low) || 0;
+  const mid = Number(fv.mid) || 0;
+  const hi = Number(fv.high) || 0;
+  if (!(mid > 0)) return '';
+  const cols = [
+    { label: 'Conservative', v: evSig2(lo) },
+    { label: 'Low–mid', v: evSig2((lo + mid) / 2) },
+    { label: 'Mid', v: evSig2(mid), rec: true },
+    { label: 'Mid–high', v: evSig2((mid + hi) / 2) },
+    { label: 'High', v: evSig2(hi) },
+  ];
+  // Max bid for an 8–10× flip = resale ÷ 10 (10×) … resale ÷ 8 (8×).
+  const bid = (R) => `${evM(evSig2(R * 0.10))} – ${evM(evSig2(R * 0.125))}`;
+  return `<div class="ev-grid">
+    <div class="ev-grid-title">Resale value scenarios <span class="muted">— and the 8–10× max bid for each</span></div>
+    <div class="ev-grid-cols">
+      ${cols.map((c) => `<div class="ev-gridcol${c.rec ? ' ev-gridcol-rec' : ''}">
+        <div class="ev-gridcol-label">${c.rec ? '★ ' : ''}${c.label}</div>
+        <div class="ev-gridcol-resale">${evM(c.v)}</div>
+        <div class="ev-gridcol-bid"><span class="muted">max bid (8–10×)</span><br>${bid(c.v)}</div>
+      </div>`).join('')}
+    </div>
+    <div class="muted ev-grid-foot">★ = our most realistic resale estimate. Pay at or under a column's max bid to leave 8–10× resale margin.</div>
+  </div>`;
+}
+
 function evVerdictHeader(data) {
   const ev = data.evaluation || {};
   const v = ev.verdict || {};
@@ -7725,8 +7766,8 @@ function evVerdictHeader(data) {
       ${v.headline ? `<p class="ev-headline">${escapeHtml(v.headline)}</p>` : ''}
       ${v.rationale ? `<p class="ev-rationale">${escapeHtml(v.rationale)}</p>` : ''}
       ${adj}
+      ${evResaleGrid(fv)}
       <div class="ev-keymetrics">
-        <div class="ev-km"><span class="ev-km-l">Fair resale value</span><span class="ev-km-v">${evM(fv.low)} – ${evM(fv.high)}</span></div>
         <div class="ev-km"><span class="ev-km-l">Recommended max bid</span><span class="ev-km-v">${evM(val.recommended_max_bid)}</span></div>
         <div class="ev-km"><span class="ev-km-l">Quality grade</span><span class="ev-km-v">${escapeHtml((ev.signals && ev.signals.quality && ev.signals.quality.grade) || '—')} <span class="muted">(${(ev.signals && ev.signals.quality && ev.signals.quality.score) || '—'}/100)</span></span></div>
       </div>
@@ -7772,9 +7813,12 @@ function evQuality(data) {
   const q = (data.evaluation && data.evaluation.signals && data.evaluation.signals.quality) || null;
   if (!q) return '';
   const c = q.components || {};
+  const b = (data.evaluation.signals && data.evaluation.signals.brandability) || null;
   const synergy = (q.synergy && q.synergy.notes && q.synergy.notes.length) ? `<p class="muted ev-synergy">${q.synergy.notes.map(escapeHtml).join(' ')}</p>` : '';
+  const brandLine = b ? `<p class="ev-brand"><strong>Brandability: ${escapeHtml(b.tier)}</strong> <span class="muted">— ${escapeHtml(b.commonness || '')} word${b.zipf != null ? ` (zipf ${b.zipf})` : ''}; a common, evocative word brands better than an obscure one.</span></p>` : '';
   const nq = (data.evaluation.verdict && data.evaluation.verdict.name_quality_read) ? `<p class="ev-nameread">${escapeHtml(data.evaluation.verdict.name_quality_read)}</p>` : '';
-  return `<details class="ev-card ev-collapse"><summary class="ev-h3">Name quality <span class="muted">— grade ${escapeHtml(q.grade)} · ${escapeHtml(q.dictionary_class)} · ${q.length} chars · .${escapeHtml(q.tld.tld)}</span></summary>
+  const summaryBrand = b ? ` · brandability ${escapeHtml(b.tier)}` : '';
+  return `<details class="ev-card ev-collapse"><summary class="ev-h3">Name quality <span class="muted">— grade ${escapeHtml(q.grade)} · ${escapeHtml(q.dictionary_class)} · ${q.length} chars · .${escapeHtml(q.tld.tld)}${summaryBrand}</span></summary>
     <div class="ev-collapse-body">
     <div class="ev-bars">
       ${evBar('Length', c.length)}
@@ -7782,7 +7826,8 @@ function evQuality(data) {
       ${evBar('One word', c.wordCount)}
       ${evBar('Pronounceable', c.pronounce)}
       ${evBar('Clean (no -/#)', c.cleanliness)}
-    </div>${synergy}${nq}</div></details>`;
+      ${b && b.score != null ? evBar('Brandability', b.score) : ''}
+    </div>${brandLine}${synergy}${nq}</div></details>`;
 }
 
 function evComps(data) {
@@ -7845,6 +7890,8 @@ function evComps(data) {
   const multRows = []
     .concat(val.synergy_mult && val.synergy_mult !== 1
       ? [`<tr><td>SLD↔TLD synergy</td><td>×${val.synergy_mult}</td><td>—</td><td class="muted">${val.synergy_mult > 1 ? 'tight fit amplifies value' : 'loose fit discounts value'}</td></tr>`] : [])
+    .concat(val.brandability && val.brandability.mult && val.brandability.mult !== 1
+      ? [`<tr><td>Brandability</td><td>×${val.brandability.mult}</td><td>—</td><td class="muted">${escapeHtml(val.brandability.commonness || '')} word${val.brandability.zipf != null ? ` (zipf ${val.brandability.zipf})` : ''} — ${val.brandability.mult > 1 ? 'common/evocative, brands well' : 'obscure, brands weaker'}</td></tr>`] : [])
     .concat(val.trademark
       ? [`<tr><td>⚠ trademark</td><td>×${val.trademark.mult}</td><td>—</td><td class="muted">${escapeHtml(val.trademark.note)}</td></tr>`] : []);
   const anchorRows = anchors.length

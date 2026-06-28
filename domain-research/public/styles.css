@@ -1819,6 +1819,18 @@ a.sr-ag-co-link:hover { border-color: var(--coral); color: var(--coral-deep); ba
 .ev-headline { margin: 10px 0 4px; font-size: 1.12rem; font-weight: 700; color: var(--navy); line-height: 1.35; }
 .ev-rationale { margin: 6px 0; color: var(--navy-2); line-height: 1.5; }
 .ev-adjust { margin: 6px 0; font-size: .82rem; color: var(--coral-deep); font-weight: 600; }
+/* Resale-scenario grid (top recap) */
+.ev-grid { margin-top: 16px; }
+.ev-grid-title { font-size: .82rem; font-weight: 700; color: var(--navy); margin-bottom: 8px; }
+.ev-grid-cols { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; }
+.ev-gridcol { border: 1px solid var(--line, #e6ddc9); border-radius: 10px; padding: 10px 8px; text-align: center; background: #fff; }
+.ev-gridcol-label { font-size: .64rem; text-transform: uppercase; letter-spacing: .03em; color: var(--navy-3); font-weight: 700; }
+.ev-gridcol-resale { font-size: 1.12rem; font-weight: 800; color: var(--navy); font-variant-numeric: tabular-nums; margin: 4px 0 6px; }
+.ev-gridcol-bid { font-size: .74rem; color: var(--navy-2); font-variant-numeric: tabular-nums; line-height: 1.3; }
+.ev-gridcol-rec { border-color: #0b8f3a; box-shadow: 0 0 0 1px #0b8f3a inset; background: #f1faf2; }
+.ev-grid-foot { font-size: .72rem; margin-top: 8px; }
+@media (max-width: 720px) { .ev-grid-cols { grid-template-columns: repeat(2, 1fr); } }
+.ev-brand { margin: 10px 0 0; font-size: .85rem; line-height: 1.45; color: var(--navy); }
 .ev-keymetrics { display: flex; gap: 22px; flex-wrap: wrap; margin-top: 14px; }
 .ev-km { display: flex; flex-direction: column; gap: 2px; }
 .ev-km-l { font-size: .68rem; text-transform: uppercase; letter-spacing: .04em; color: var(--navy-3); font-weight: 600; }

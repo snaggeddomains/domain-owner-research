@@ -313,7 +313,13 @@ export function computeValuation(input) {
   if (tm && tm.exact_live && tm.tech_class) { tmMult = 0.7; tmNote = `Live software/AI trademark on the exact term${tm.exact_live_count > 1 ? ` (${tm.exact_live_count} marks)` : ''} — buyer pool narrows to the brand holder.`; }
   else if ((tm && tm.exact_live) || atomTm >= 2) { tmMult = 0.82; tmNote = `Live trademark conflict on the exact term — narrows the buyer pool.`; }
   else if (atomTm === 1) { tmMult = 0.9; tmNote = `Possible trademark conflict flagged.`; }
-  const valueMult = synergyMult * tmMult;
+  // Word-commonness lever — an obscure/academic word (alliteration) brands worse than
+  // a common evocative one (vision/flora), so it clears below its structural comps.
+  // The multiplier is commonness-ONLY (length/ease already shaped the quality grade).
+  const brand = input && input.brandability;
+  const brandMult = (brand && Number(brand.mult)) || 1;
+
+  const valueMult = synergyMult * tmMult * brandMult;
 
   let fairMid = niceRound(blended.mid * valueMult);
 
@@ -358,6 +364,7 @@ export function computeValuation(input) {
     price_band: verdictBand,
     // Multipliers applied on top of the blended comps (visible for audit).
     synergy_mult: Math.round(synergyMult * 100) / 100,
+    brandability: brand ? { score: brand.score, tier: brand.tier, commonness: brand.commonness, zipf: brand.zipf, mult: Math.round(brandMult * 100) / 100 } : null,
     trademark: tmNote ? { mult: Math.round(tmMult * 100) / 100, note: tmNote } : null,
     anchors: anchors.map((a) => ({
       source: a.source,

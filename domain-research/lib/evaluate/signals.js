@@ -21,6 +21,7 @@ import { getDealComps } from '../db/dealComps.js';
 import { getToolLookup, saveToolLookup } from '../db/tools.js';
 import { trackerComps, trackerCompsConfigured } from './trackerComps.js';
 import { scoreQuality } from './quality.js';
+import { scoreBrandability } from './brandability.js';
 import { namebioComps, namebioComparables } from './comps.js';
 
 // "$1,234" / "1.2k" / "$1.3M" / "1,300 USD" → 1234 / 1200 / 1300000 / 1300.
@@ -143,6 +144,24 @@ async function universeSelf(domain) {
   } catch { return null; }
 }
 
+// Word COMMONNESS for the SLD — the corpus stores a wordfreq `zipf_score` per row.
+// Look it up by SLD across ANY extension (better coverage than the exact domain),
+// so a common word (flora/vision) scores high and an obscure one (alliteration) low.
+// Free, fail-open → null when the word isn't in the corpus.
+async function universeZipf(sld) {
+  if (!isNamingDbConfigured() || !sld) return null;
+  try {
+    const { data } = await getNamingDb()
+      .from('name_universe')
+      .select('zipf_score')
+      .eq('sld', sld)
+      .not('zipf_score', 'is', null)
+      .limit(1)
+      .maybeSingle();
+    return data && data.zipf_score != null ? Number(data.zipf_score) : null;
+  } catch { return null; }
+}
+
 // Run one source via runTool, returning its .data or null (never throws).
 async function tool(name, args, env) {
   try {
@@ -219,14 +238,18 @@ export async function gatherSignals(domain, env = process.env) {
   // Dictionary check, the target's own universe row, AND the FREE internal sold
   // comps (Master Txns List) run first — both cheap, and the tracker count decides
   // whether we need to spend on the paid NameBio Comps engine.
-  const [wordSet, self, trackerSold] = await Promise.all([
+  const [wordSet, self, trackerSold, zipf] = await Promise.all([
     sldWord ? filterDictionaryWords([sldWord]) : Promise.resolve(new Set()),
     universeSelf(d),
     trackerCompsConfigured() ? withTimeout(trackerComps({ sld, tld, len: sld.length }, env), 8000, null) : Promise.resolve(null),
+    withTimeout(universeZipf(sld), 4000, null),
   ]);
   const isWord = Boolean(sldWord && wordSet.has(sldWord));
   const numWords = self && self.num_words != null ? self.num_words : null;
   const quality = scoreQuality({ sld, tld, isWord, numWords });
+  // Brandability — length + ease + word commonness (zipf). The VALUE lever is the
+  // commonness component (length/ease already live in the quality grade).
+  const brandability = scoreBrandability({ sld, pronounce: quality.components && quality.components.pronounce, zipf });
 
   // The NameBio Comps engine is a FLAT ~25-credit call (not per-comp). Only spend it
   // when our free internal Master Txns comps are thin — most names already have
@@ -273,6 +296,7 @@ export async function gatherSignals(domain, env = process.env) {
     tld,
     is_word: isWord,
     quality,
+    brandability,
     self: self ? { asking: self.best_price || null, asking_source: self.best_price_source || null, quality_score: self.quality_score ?? null, category: self.category || null, keywords: self.keywords || [], industries: self.industries || [] } : null,
     registration: normalizeRegistration(rdapData),
     current_use: liveData || null,

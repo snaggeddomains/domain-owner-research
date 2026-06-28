@@ -53,6 +53,7 @@ export async function evaluateDomain({ domain, price = null, env = process.env }
     appraise: signals.appraisals.appraise,
     atom: signals.appraisals.atom,
     trademark: signals.trademark,
+    brandability: signals.brandability,
     listing: signals.listing,
     activeUse,
     price: priceNum,
