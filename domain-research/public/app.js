@@ -7799,6 +7799,9 @@ function evComps(data) {
       + `<table class="ev-table"><thead><tr><th>Domain</th><th>Price</th><th>Date</th><th>Venue</th></tr></thead><tbody>`
       + nbc.comps.slice(0, 15).map((x) => `<tr><td>${escapeHtml(x.domain || '—')}</td><td>${evM(x.price)}</td><td>${escapeHtml(x.date || '—')}</td><td>${escapeHtml(x.venue || '—')}</td></tr>`).join('')
       + `</tbody></table></div>`;
+  } else if (nbc && nbc.note) {
+    // Comps engine returned an error (e.g. plan doesn't include it) — show why.
+    body += `<div class="ev-comp-block muted">NameBio comparable sales unavailable — ${escapeHtml(nbc.note)}</div>`;
   }
   // Snagged deal history (strongest)
   if (dh && dh.offers && dh.offers.length) {

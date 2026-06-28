@@ -43,8 +43,14 @@ export default {
         order_dir: 'desc',
       }).toString(),
     });
-    const json = await resp.json().catch(() => null);
-    if (!json) throw new Error(`NameBio comps: non-JSON response (HTTP ${resp.status})`);
+    const text = await resp.text();
+    let json;
+    try { json = JSON.parse(text); } catch { json = null; }
+    // Surface the reason instead of throwing, so the UI/diag can show WHY it's empty
+    // (e.g. a plan that doesn't include the Comps engine, or insufficient credits).
+    if (!json) {
+      return { domain: d, comps: [], note: `HTTP ${resp.status}: ${String(text).slice(0, 160)}` };
+    }
     if (json.status && json.status !== 'success') {
       return { domain: d, comps: [], credits_remaining: json.credits_remaining ?? null, note: json.status_message || json.status };
     }
