@@ -182,16 +182,21 @@ export function buildAnchors({ quality, namebio, namebioComps, tracker, dealOffe
   // (Asking-price "similar listing" comps are intentionally NOT a value anchor —
   // we price off names that actually SOLD, not what others are asking.)
 
-  // 4. Appraise.net AI valuation — discounted ~0.5 (AI appraisals skew high for a
-  // resale exit).
+  // 4. Appraise.net AI valuation — the NAME-SPECIFIC read (it bakes in brandability:
+  // length, how desirable the concept is, ease/spelling). Appraise.net is already a
+  // conservative/realizable estimate, so only a light haircut. Weighted by quality
+  // TIER: for a NON-premium name it's the reality check (a rich .ai comp set otherwise
+  // over-positions a so-so name like alliteration.ai), so it anchors hard; for a
+  // grade-A name it's light (a conservative appraisal shouldn't cap a true premium).
   if (appraise && appraise.mid > 0) {
+    const disc = 0.85;
     anchors.push({
       source: 'appraise_net',
-      low: (appraise.low || appraise.mid) * 0.5 * 0.7,
-      mid: appraise.mid * 0.5,
-      high: (appraise.high || appraise.mid) * 0.5 * 1.4,
-      weight: 1.0,
-      note: `Appraise.net estimate $${niceRound(appraise.mid).toLocaleString()} (discounted to a realistic resale exit).`,
+      low: (appraise.low || appraise.mid) * disc * 0.8,
+      mid: appraise.mid * disc,
+      high: (appraise.high || appraise.mid) * disc * 1.25,
+      weight: qScore >= 85 ? 1.1 : 2.6,
+      note: `Appraise.net estimate $${niceRound(appraise.mid).toLocaleString()} — name-specific valuation (reflects brandability)${qScore >= 85 ? '' : '; weighted heavily for this tier'}.`,
     });
   }
 
@@ -310,12 +315,24 @@ export function computeValuation(input) {
   else if (atomTm === 1) { tmMult = 0.9; tmNote = `Possible trademark conflict flagged.`; }
   const valueMult = synergyMult * tmMult;
 
-  const fairMid = niceRound(blended.mid * valueMult);
-  // Keep the displayed RANGE actionable: one outlier comp (e.g. a lone $299K sale in
-  // an otherwise $20–100K set) shouldn't push the top to multiples of the mid. Clamp
-  // the range to ~[0.6×, 1.6×] the mid. (Appraisals/comps still set the mid LEVEL.)
-  const fairLow = niceRound(Math.max(blended.low * valueMult, fairMid * 0.6));
-  const fairHigh = niceRound(Math.min(blended.high * valueMult, fairMid * 1.6));
+  let fairMid = niceRound(blended.mid * valueMult);
+
+  // Brandability / appraisal sanity cap — a rich .ai comp set can over-position a
+  // NON-premium name (long, niche, so-so brandability) far above its own name-specific
+  // appraisal. For a sub-grade-A name with a real appraisal, cap the mid relative to
+  // it (the appraisal already judged the brandability). Premium names (grade A) are
+  // exempt — a conservative appraisal shouldn't cap a true premium like flora.ai.
+  const qScore = Math.max(0, Math.min(100, (input && input.quality && input.quality.score != null) ? input.quality.score : 50));
+  const appr = input && input.appraise;
+  if (appr && appr.mid > 0 && qScore < 85) {
+    const cap = niceRound(Math.max(appr.mid * 1.9, (appr.high || appr.mid) * 1.5));
+    if (fairMid > cap) fairMid = cap;
+  }
+
+  // Keep the displayed RANGE actionable + always valid (low ≤ mid ≤ high): a single
+  // outlier comp or a capped mid shouldn't break the band. Range ~[0.6×, 1.6×] mid.
+  const fairLow = niceRound(Math.max(fairMid * 0.6, Math.min(fairMid * 0.95, blended.low * valueMult)));
+  const fairHigh = niceRound(Math.min(fairMid * 1.6, Math.max(fairMid * 1.05, blended.high * valueMult)));
   const confidence = confidenceOf(anchors, blended);
 
   // Dollar ranges for each band (from realizable mid). Best→worst.
