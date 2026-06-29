@@ -68,44 +68,65 @@ export async function tldRenewal(tld) {
   return null;
 }
 
+// Porkbun prices are strings WITH COMMAS ("1,746.09") — strip non-numeric before Number.
+function parseNum(v) {
+  const n = Number(String(v == null ? '' : v).replace(/[^0-9.]/g, ''));
+  return Number.isFinite(n) ? n : 0;
+}
+
+function porkbunKeys(env) {
+  return {
+    apikey: env.PORKBUN_API_KEY || env.PORKBUN_KEY || env.PORKBUN_APIKEY,
+    secret: env.PORKBUN_SECRET_KEY || env.PORKBUN_SECRET_API_KEY || env.PORKBUN_SECRET || env.PORKBUN_SECRETAPIKEY,
+  };
+}
+
 // Per-domain renewal, PREMIUM-aware when a (free) Porkbun API key is configured —
-// `checkDomain` returns the domain's real price + premium flag. Without keys, falls
-// back to the STANDARD TLD price and flags TLDs where premium renewals are common.
+// `checkDomain` returns the domain's real price + premium flag (and DOES price already-
+// registered/premium names). Cached per domain (kind 'rn') because checkDomain is rate-
+// limited to 1 call / 10s. Without keys / on failure, falls back to the STANDARD TLD
+// price and flags TLDs where premium renewals are common.
 //   → { cost, source, premium, premium_possible, standard }
-export async function domainRenewal(domain, env = {}) {
+export async function domainRenewal(domain, env = {}, opts = {}) {
   const d = String(domain || '').toLowerCase().trim();
   const dot = d.indexOf('.');
   const tld = dot > 0 ? d.slice(dot + 1) : '';
   const std = await tldRenewal(tld);
   const stdCost = std && std.cost;
-  // Flexible env-var names (Porkbun's params are apikey / secretapikey).
-  const apikey = env.PORKBUN_API_KEY || env.PORKBUN_KEY || env.PORKBUN_APIKEY;
-  const secret = env.PORKBUN_SECRET_KEY || env.PORKBUN_SECRET_API_KEY || env.PORKBUN_SECRET || env.PORKBUN_SECRETAPIKEY;
 
+  // Per-domain cache (premium renewal is stable) — also keeps us under the 1/10s cap.
+  if (!opts.debug && d) {
+    try { const row = await getToolLookup('rn', d); if (row && row.data && row.data.cost) return row.data; } catch { /* miss */ }
+  }
+
+  const { apikey, secret } = porkbunKeys(env);
+  let result = null;
+  let raw = null;
   if (apikey && secret && d) {
     try {
       const ctrl = new AbortController();
       const timer = setTimeout(() => ctrl.abort(), 7000);
-      let body = null;
       try {
         const res = await fetch(`https://api.porkbun.com/api/json/v3/domain/checkDomain/${encodeURIComponent(d)}`, {
           method: 'POST', headers: { 'content-type': 'application/json' },
           body: JSON.stringify({ apikey, secretapikey: secret }), signal: ctrl.signal,
         });
-        if (res.ok) body = await res.json();
+        raw = await res.json().catch(() => null);
       } finally { clearTimeout(timer); }
-      const resp = body && body.response;
+      const resp = raw && raw.response;
       if (resp) {
         const premium = String(resp.premium || '').toLowerCase() === 'yes';
-        const ren = resp.additional && resp.additional.renewal && Number(resp.additional.renewal.price);
-        if (ren > 0) return { cost: Math.round(ren), source: 'porkbun_domain', premium, standard: stdCost };
-        if (premium && stdCost) return { cost: stdCost, source: std.source, premium: true, standard: stdCost };
+        const ren = parseNum(resp.additional && resp.additional.renewal && resp.additional.renewal.price);
+        if (ren > 0) result = { cost: Math.round(ren), source: 'porkbun_domain', premium, standard: stdCost };
+        else if (premium && stdCost) result = { cost: stdCost, source: std.source, premium: true, standard: stdCost };
       }
     } catch { /* fall back to standard */ }
   }
 
-  if (!std) return null;
-  return { cost: std.cost, source: std.source, premium: false, premium_possible: PREMIUM_PRONE.has(tld), standard: std.cost };
+  if (!result && std) result = { cost: std.cost, source: std.source, premium: false, premium_possible: PREMIUM_PRONE.has(tld), standard: std.cost };
+  // Cache only the authoritative per-domain result (not the TLD-fallback estimate).
+  if (result && result.source === 'porkbun_domain' && d) { try { await saveToolLookup('rn', d, result); } catch { /* best-effort */ } }
+  return opts.debug ? { ...(result || {}), _raw: raw } : result;
 }
 
 // Debug: raw Porkbun checkDomain response for a domain (so we can verify keys +

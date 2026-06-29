@@ -1,7 +1,7 @@
 import { isAuthed } from '../lib/auth.js';
 import { runTool } from '../lib/sources/index.js';
 import { normalizeDomain } from '../lib/util.js';
-import { domainRenewal, debugCheckDomain } from '../lib/evaluate/renewal.js';
+import { domainRenewal } from '../lib/evaluate/renewal.js';
 
 // Some sources (e.g. registration_cluster) do multi-step lookups; give them room.
 export const config = { maxDuration: 60 };
@@ -34,10 +34,11 @@ export default async function handler(req, res) {
   // pricing). Not a registered "source", so handle it before runTool.
   if (source === 'renewal') {
     const d = args.domain || '';
-    const [renewal, raw] = await Promise.all([
-      domainRenewal(d, process.env).catch((e) => ({ error: String((e && e.message) || e) })),
-      debugCheckDomain(d, process.env).catch((e) => ({ error: String((e && e.message) || e) })),
-    ]);
+    // ONE checkDomain call (it's rate-limited to 1/10s) — debug:true returns the raw
+    // Porkbun response alongside the parsed renewal so we can see both.
+    const renewal = await domainRenewal(d, process.env, { debug: true }).catch((e) => ({ error: String((e && e.message) || e) }));
+    const raw = renewal && renewal._raw;
+    if (renewal && renewal._raw !== undefined) delete renewal._raw;
     res.status(200).json({ source, domain: d, renewal, raw_checkDomain: raw });
     return;
   }
