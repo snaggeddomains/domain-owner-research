@@ -1,6 +1,7 @@
 import { isAuthed } from '../lib/auth.js';
 import { runTool } from '../lib/sources/index.js';
 import { normalizeDomain } from '../lib/util.js';
+import { domainRenewal, debugCheckDomain } from '../lib/evaluate/renewal.js';
 
 // Some sources (e.g. registration_cluster) do multi-step lookups; give them room.
 export const config = { maxDuration: 60 };
@@ -27,6 +28,19 @@ export default async function handler(req, res) {
   const args = {};
   for (const [k, v] of Object.entries(rest)) args[k] = Array.isArray(v) ? v[0] : v;
   if (args.domain) args.domain = normalizeDomain(args.domain);
+
+  // Special case: ?source=renewal&domain= → premium-aware renewal + raw Porkbun
+  // checkDomain response (verifies the keys + shows whether registered domains carry
+  // pricing). Not a registered "source", so handle it before runTool.
+  if (source === 'renewal') {
+    const d = args.domain || '';
+    const [renewal, raw] = await Promise.all([
+      domainRenewal(d, process.env).catch((e) => ({ error: String((e && e.message) || e) })),
+      debugCheckDomain(d, process.env).catch((e) => ({ error: String((e && e.message) || e) })),
+    ]);
+    res.status(200).json({ source, domain: d, renewal, raw_checkDomain: raw });
+    return;
+  }
 
   const started = Date.now();
   const result = await runTool(source, args, process.env);

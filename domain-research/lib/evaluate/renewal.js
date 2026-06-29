@@ -78,8 +78,9 @@ export async function domainRenewal(domain, env = {}) {
   const tld = dot > 0 ? d.slice(dot + 1) : '';
   const std = await tldRenewal(tld);
   const stdCost = std && std.cost;
-  const apikey = env.PORKBUN_API_KEY;
-  const secret = env.PORKBUN_SECRET_KEY || env.PORKBUN_SECRET_API_KEY;
+  // Flexible env-var names (Porkbun's params are apikey / secretapikey).
+  const apikey = env.PORKBUN_API_KEY || env.PORKBUN_KEY || env.PORKBUN_APIKEY;
+  const secret = env.PORKBUN_SECRET_KEY || env.PORKBUN_SECRET_API_KEY || env.PORKBUN_SECRET || env.PORKBUN_SECRETAPIKEY;
 
   if (apikey && secret && d) {
     try {
@@ -107,4 +108,25 @@ export async function domainRenewal(domain, env = {}) {
   return { cost: std.cost, source: std.source, premium: false, premium_possible: PREMIUM_PRONE.has(tld), standard: std.cost };
 }
 
-export default { tldRenewal, domainRenewal };
+// Debug: raw Porkbun checkDomain response for a domain (so we can verify keys +
+// see whether registered domains carry pricing). Returns {configured, status, error?, response?}.
+export async function debugCheckDomain(domain, env = {}) {
+  const apikey = env.PORKBUN_API_KEY || env.PORKBUN_KEY || env.PORKBUN_APIKEY;
+  const secret = env.PORKBUN_SECRET_KEY || env.PORKBUN_SECRET_API_KEY || env.PORKBUN_SECRET || env.PORKBUN_SECRETAPIKEY;
+  if (!apikey || !secret) return { configured: false, note: 'No Porkbun API key/secret in env' };
+  try {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 9000);
+    let body;
+    try {
+      const res = await fetch(`https://api.porkbun.com/api/json/v3/domain/checkDomain/${encodeURIComponent(String(domain).toLowerCase())}`, {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ apikey, secretapikey: secret }), signal: ctrl.signal,
+      });
+      body = await res.json().catch(() => null);
+      return { configured: true, http: res.status, body };
+    } finally { clearTimeout(timer); }
+  } catch (e) { return { configured: true, error: String((e && e.message) || e) }; }
+}
+
+export default { tldRenewal, domainRenewal, debugCheckDomain };
