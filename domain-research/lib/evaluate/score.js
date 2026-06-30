@@ -340,9 +340,22 @@ export function computeValuation(input) {
   // exempt — a conservative appraisal shouldn't cap a true premium like flora.ai.
   const qScore = Math.max(0, Math.min(100, (input && input.quality && input.quality.score != null) ? input.quality.score : 50));
   const appr = input && input.appraise;
-  if (appr && appr.mid > 0 && qScore < 85) {
-    const cap = niceRound(Math.max(appr.mid * 1.9, (appr.high || appr.mid) * 1.5));
-    if (fairMid > cap) fairMid = cap;
+  if (appr && appr.mid > 0) {
+    let cap = niceRound(Math.max(appr.mid * 1.9, (appr.high || appr.mid) * 1.5));
+    // LENGTH-ONLY grade-A guard: a short random coinage (e.g. ziaf.com — 4 chars → grade
+    // A on length alone) that the appraiser itself rates mediocre (Atom score ≤ 6). The
+    // rich short-.com comp set over-positions it on freak high comps (a lone $1.15M sale),
+    // but it is NOT a true premium. When Atom scores the name low, trust it: bound the mid
+    // to a few× Atom's realizable estimate. Premium grade-A names (strong Atom score) stay
+    // exempt — a conservative appraisal shouldn't cap a real premium like flora.ai. Falls
+    // back to no-op when Atom data is absent (no key / daily cap) → unchanged behavior.
+    const atomScore = (input && input.atom && Number(input.atom.score)) || null; // 0–10
+    const atomVal = (input && input.atom && Number(input.atom.value)) || 0;
+    const lengthOnlyGradeA = qScore >= 85 && atomScore != null && atomScore <= 6;
+    if (lengthOnlyGradeA && atomVal > 0) cap = Math.min(cap, niceRound(atomVal * 3));
+    // Sub-grade-A always caps to the name-specific appraisal; a length-only grade-A caps
+    // too (regardless of the inflated grade). True premiums (grade A + strong Atom) don't.
+    if ((qScore < 85 || lengthOnlyGradeA) && fairMid > cap) fairMid = cap;
   }
 
   // Keep the displayed RANGE actionable + always valid (low ≤ mid ≤ high): a single
