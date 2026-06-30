@@ -16,6 +16,11 @@
 //   (5x is "almost certainly a no" unless dramatically underpriced + liquid) ·
 //   ~2.5x (≤0.40) would avoid · <2.5x (>0.40) bad. Tunable knobs — the whole
 // product's risk appetite lives here.
+// Appraisal sanity ceiling: the fair mid may not exceed the LOWER available appraisal
+// (Appraise.net / Atom) times this multiple. Calibrated against gut targets (dials/foggy/
+// flirty/brazen) — the realizable resale sits ~1.5–2× the conservative appraisal.
+const APPRAISAL_CAP_MULT = 2.0;
+
 const BANDS = [
   { key: 'immediate_buy', label: 'Immediate buy', max: 0.08, color: '#0b8f3a' }, // ≥~12x return
   { key: 'decent_buy', label: 'Decent buy', max: 0.13, color: '#5bbf3a' },       // ~8x
@@ -88,7 +93,10 @@ export function buildAnchors({ quality, namebio, namebioComps, tracker, dealOffe
       Math.floor(sorted.length * 0.1) || (sorted.length >= 6 ? 1 : 0),
       Math.floor((sorted.length - 3) / 2),
     );
-    const tTop = qScore >= 80 ? 0 : tBase;
+    // Symmetric trim — drop the freak high comp too (a lone $1.15M sale in a short-.com
+    // set was anchoring grade-A names at absurd mids; the top comp is NOT reliable signal
+    // for a coined/borderline name). Keeps a core of ≥3.
+    const tTop = tBase;
     if (tBase > 0 || tTop > 0) sorted = sorted.slice(tBase, sorted.length - tTop);
     const at = (f) => {
       const ff = Math.max(0, Math.min(1, f));
@@ -97,8 +105,11 @@ export function buildAnchors({ quality, namebio, namebioComps, tracker, dealOffe
       const hi = Math.ceil(pos);
       return sorted[lo] + (sorted[hi] - sorted[lo]) * (pos - lo);
     };
-    // grade A(85)→~p86, A+(92)→~p94, B(70)→~p68, C(50)→~p45, F(20)→~p9.
-    const pct = Math.max(0.10, Math.min(0.96, (qScore - 12) / 85));
+    // Position the name within the (trimmed) comp distribution by quality. CEILING
+    // LOWERED to ~p82 (was p96): even a near-perfect grade A sits at the ~80th pct of
+    // comparable clearing prices, not the very top — grade-A names were landing 2–8×
+    // above their own appraisals. grade A+(99)→~p83, A(90)→~p74, A-(86)→~p69, B(78)→~p61.
+    const pct = Math.max(0.10, Math.min(0.85, (qScore - 18) / 95));
     return { low: at(pct - 0.22) * discount, mid: at(pct) * discount, high: at(Math.min(0.99, pct + 0.14)) * discount, midPct: pct };
   };
 
@@ -338,24 +349,19 @@ export function computeValuation(input) {
   // appraisal. For a sub-grade-A name with a real appraisal, cap the mid relative to
   // it (the appraisal already judged the brandability). Premium names (grade A) are
   // exempt — a conservative appraisal shouldn't cap a true premium like flora.ai.
-  const qScore = Math.max(0, Math.min(100, (input && input.quality && input.quality.score != null) ? input.quality.score : 50));
-  const appr = input && input.appraise;
-  if (appr && appr.mid > 0) {
-    let cap = niceRound(Math.max(appr.mid * 1.9, (appr.high || appr.mid) * 1.5));
-    // LENGTH-ONLY grade-A guard: a short random coinage (e.g. ziaf.com — 4 chars → grade
-    // A on length alone) that the appraiser itself rates mediocre (Atom score ≤ 6). The
-    // rich short-.com comp set over-positions it on freak high comps (a lone $1.15M sale),
-    // but it is NOT a true premium. When Atom scores the name low, trust it: bound the mid
-    // to a few× Atom's realizable estimate. Premium grade-A names (strong Atom score) stay
-    // exempt — a conservative appraisal shouldn't cap a real premium like flora.ai. Falls
-    // back to no-op when Atom data is absent (no key / daily cap) → unchanged behavior.
-    const atomScore = (input && input.atom && Number(input.atom.score)) || null; // 0–10
-    const atomVal = (input && input.atom && Number(input.atom.value)) || 0;
-    const lengthOnlyGradeA = qScore >= 85 && atomScore != null && atomScore <= 6;
-    if (lengthOnlyGradeA && atomVal > 0) cap = Math.min(cap, niceRound(atomVal * 3));
-    // Sub-grade-A always caps to the name-specific appraisal; a length-only grade-A caps
-    // too (regardless of the inflated grade). True premiums (grade A + strong Atom) don't.
-    if ((qScore < 85 || lengthOnlyGradeA) && fairMid > cap) fairMid = cap;
+  // Appraisal sanity cap (ALL grades — no grade-A free pass). The comp machinery was
+  // over-positioning grade-A names many multiples above their OWN name-specific appraisals
+  // (flirty.com $1M vs Appraise.net $167K). Appraisals are noisy and sometimes inflated, so
+  // anchor the ceiling to the LOWER available appraisal (the conservative realizable read)
+  // and allow APPRAISAL_CAP_MULT for upside. It's a CEILING only — it never raises a mid
+  // (so a name comps already place BELOW its appraisal, like researchers.com, is untouched).
+  // No-ops entirely when no appraisal is available (no key / daily cap).
+  const apprMid = (input && input.appraise && Number(input.appraise.mid)) || 0;
+  const atomVal = (input && input.atom && Number(input.atom.value)) || 0;
+  const appraisalRefs = [apprMid, atomVal].filter((x) => x > 0);
+  if (appraisalRefs.length) {
+    const cap = niceRound(Math.min(...appraisalRefs) * APPRAISAL_CAP_MULT);
+    if (fairMid > cap) fairMid = cap;
   }
 
   // Keep the displayed RANGE actionable + always valid (low ≤ mid ≤ high): a single

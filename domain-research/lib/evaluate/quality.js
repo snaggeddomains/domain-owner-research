@@ -122,8 +122,9 @@ export function scoreQuality({ sld, tld, isWord = false, numWords = null }) {
     pronounce: pronounceScore(s),
     cleanliness: cleanlinessScore(s),
   };
-  // Weights sum to 1. Dictionary + length carry the most resale signal.
-  const WEIGHTS = { length: 0.26, dictionary: 0.28, wordCount: 0.16, pronounce: 0.14, cleanliness: 0.16 };
+  // Weights sum to 1. Dictionary + length carry the most resale signal; pronounceability
+  // is now a heavy input (a name you can't say doesn't brand) AND a hard gate below.
+  const WEIGHTS = { length: 0.24, dictionary: 0.26, wordCount: 0.14, pronounce: 0.22, cleanliness: 0.14 };
   let sldScore = 0;
   for (const k of Object.keys(WEIGHTS)) sldScore += components[k] * WEIGHTS[k];
 
@@ -133,9 +134,16 @@ export function scoreQuality({ sld, tld, isWord = false, numWords = null }) {
   // capped by liquidity. The TLD contributes via its liquidity (how resellable the
   // pair is at all), not just price. 70% SLD craft, 30% extension liquidity, then
   // the synergy nudge.
-  const combo = Math.max(0, Math.min(100, sldScore * 0.7 + tldq.liquidity * 100 * 0.3 + synergy.bonus));
+  let combo = Math.max(0, Math.min(100, sldScore * 0.7 + tldq.liquidity * 100 * 0.3 + synergy.bonus));
 
-  const grade = combo >= 80 ? 'A' : combo >= 66 ? 'B' : combo >= 50 ? 'C' : combo >= 34 ? 'D' : 'F';
+  // Pronounceability is a HARD gate, not just a weighted input: a name you can't say
+  // can't be a premium brand regardless of how short or dictionary-clean it is. Below a
+  // sayability floor, knock the combined score down sharply (the lower the pron, the
+  // harder the hit), and never grade an unsayable name A.
+  const pron = components.pronounce;
+  if (pron < 60) combo = Math.round(combo * Math.max(0.5, pron / 60));
+
+  const grade = (combo >= 80 && pron >= 62) ? 'A' : combo >= 66 ? 'B' : combo >= 50 ? 'C' : combo >= 34 ? 'D' : 'F';
 
   return {
     sld: s,
