@@ -1820,7 +1820,7 @@ a.sr-ag-co-link:hover { border-color: var(--coral); color: var(--coral-deep); ba
 .ev-rationale { margin: 6px 0; color: var(--navy-2); line-height: 1.5; }
 .ev-adjust { margin: 6px 0; font-size: .82rem; color: var(--coral-deep); font-weight: 600; }
 /* Resale-scenario grid (top recap) — full-width table inside the verdict card */
-.ev-grid { margin-top: 16px; flex-basis: 100%; width: 100%; }
+.ev-resalegrid { margin-top: 16px; flex-basis: 100%; width: 100%; }
 .ev-grid-title { font-size: .82rem; font-weight: 700; color: var(--navy); margin-bottom: 8px; }
 .ev-gridtable { width: 100%; border-collapse: separate; border-spacing: 0; font-variant-numeric: tabular-nums; }
 .ev-gridtable th, .ev-gridtable td { padding: 9px 10px; text-align: center; border-bottom: 1px solid var(--line); }
@@ -1875,9 +1875,7 @@ a.sr-ag-co-link:hover { border-color: var(--coral); color: var(--coral-deep); ba
 .ev-mark.ev-pos { color: #0b8f3a; }
 .ev-mark.ev-neg { color: var(--coral-deep); }
 
-/* Grid of detail cards */
-.ev-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
-@media (max-width: 760px) { .ev-grid { grid-template-columns: 1fr; } .ev-verdict-pill { flex-basis: 100%; } }
+@media (max-width: 760px) { .ev-verdict-pill { flex-basis: 100%; } }
 
 /* Quality bars */
 .ev-bars { display: flex; flex-direction: column; gap: 7px; }

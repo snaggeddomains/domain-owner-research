@@ -7727,7 +7727,7 @@ function evResaleGrid(fv) {
   // Max bid for an 8–10× flip = resale ÷ 10 (10×) … resale ÷ 8 (8×).
   const bid = (R) => `${evM(evSig2(R * 0.10))} – ${evM(evSig2(R * 0.125))}`;
   const rc = (c) => (c.rec ? ' class="ev-gt-rec"' : '');
-  return `<div class="ev-grid">
+  return `<div class="ev-resalegrid">
     <div class="ev-grid-title">Resale value scenarios <span class="muted">— pay at/under the max bid for an 8–10× flip</span></div>
     <table class="ev-gridtable">
       <thead><tr><th></th>${cols.map((c) => `<th${rc(c)}>${c.rec ? '★ ' : ''}${c.label}</th>`).join('')}</tr></thead>
