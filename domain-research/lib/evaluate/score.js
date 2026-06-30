@@ -339,8 +339,13 @@ export function computeValuation(input) {
   // The multiplier is commonness-ONLY (length/ease already shaped the quality grade).
   const brand = input && input.brandability;
   const brandMult = (brand && Number(brand.mult)) || 1;
+  // Brand-fit / connotation lever — a genuinely unfavorable word (scam/toxic) is heavily
+  // disfavored; a NARROW-fit word (flirty, lager) takes a modest buyer-pool haircut (smaller
+  // resale audience), while a broad/positive word holds or gets a slight boost. Two axes →
+  // one multiplier (lib/evaluate/brandfit.js). Defaults to 1 when the signal is absent.
+  const fitMult = (input && input.connotation && Number(input.connotation.mult)) || 1;
 
-  const valueMult = synergyMult * tmMult * brandMult;
+  const valueMult = synergyMult * tmMult * brandMult * fitMult;
 
   let fairMid = niceRound(blended.mid * valueMult);
 
@@ -395,6 +400,11 @@ export function computeValuation(input) {
     synergy_mult: Math.round(synergyMult * 100) / 100,
     brandability: brand ? { score: brand.score, tier: brand.tier, commonness: brand.commonness, zipf: brand.zipf, mult: Math.round(brandMult * 100) / 100 } : null,
     trademark: tmNote ? { mult: Math.round(tmMult * 100) / 100, note: tmNote } : null,
+    connotation: (input && input.connotation) ? {
+      tone: input.connotation.tone, breadth: input.connotation.breadth,
+      best_fits: input.connotation.best_fits || [], note: input.connotation.note || '',
+      mult: Math.round(fitMult * 100) / 100,
+    } : null,
     anchors: anchors.map((a) => ({
       source: a.source,
       low: niceRound(a.low),

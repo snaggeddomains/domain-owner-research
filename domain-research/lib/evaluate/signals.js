@@ -22,6 +22,7 @@ import { getToolLookup, saveToolLookup } from '../db/tools.js';
 import { trackerComps, trackerCompsConfigured } from './trackerComps.js';
 import { scoreQuality } from './quality.js';
 import { scoreBrandability } from './brandability.js';
+import { classifyBrandFit } from './brandfit.js';
 import { domainRenewal } from './renewal.js';
 import { namebioComps, namebioComparables } from './comps.js';
 
@@ -138,7 +139,7 @@ async function universeSelf(domain) {
   try {
     const { data } = await getNamingDb()
       .from('name_universe')
-      .select('domain, sld_length, num_words, is_dictionary_word, best_price, best_price_source, quality_score, category, keywords, industries')
+      .select('domain, sld_length, num_words, is_dictionary_word, best_price, best_price_source, quality_score, category, connotation, keywords, industries')
       .eq('domain', domain)
       .maybeSingle();
     return data || null;
@@ -263,7 +264,7 @@ export async function gatherSignals(domain, env = process.env) {
   const [
     rdapData, liveData, dsData, appraiseRes, atomRes,
     nameproData, webDomain, webTerm,
-    nbComps, nbComparables, dealHistory, emailThreads, tmData, renewal,
+    nbComps, nbComparables, dealHistory, emailThreads, tmData, renewal, brandFit,
   ] = await Promise.all([
     tool('rdap_whois', { domain: d }, env),
     tool('livesite_inspect', { domain: d }, env),
@@ -279,6 +280,7 @@ export async function gatherSignals(domain, env = process.env) {
     emailIngestConfigured() ? withTimeout(searchEmailThreads(d), 8000, []) : Promise.resolve([]),
     withTimeout(tool('trademark_search', { query: sld }, env), 8000, null),
     withTimeout(domainRenewal(d, env), 8000, null),
+    withTimeout(classifyBrandFit(sld, env, self && self.connotation), 9000, null),
   ]);
 
   const appraise = normalizeAppraise(appraiseRes && appraiseRes.data);
@@ -299,6 +301,7 @@ export async function gatherSignals(domain, env = process.env) {
     is_word: isWord,
     quality,
     brandability,
+    connotation: brandFit || null,
     self: self ? { asking: self.best_price || null, asking_source: self.best_price_source || null, quality_score: self.quality_score ?? null, category: self.category || null, keywords: self.keywords || [], industries: self.industries || [] } : null,
     registration: normalizeRegistration(rdapData),
     current_use: liveData || null,

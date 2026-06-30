@@ -7822,6 +7822,9 @@ function evQuality(data) {
   const b = (data.evaluation.signals && data.evaluation.signals.brandability) || null;
   const synergy = (q.synergy && q.synergy.notes && q.synergy.notes.length) ? `<p class="muted ev-synergy">${q.synergy.notes.map(escapeHtml).join(' ')}</p>` : '';
   const brandLine = b ? `<p class="ev-brand"><strong>Brandability: ${escapeHtml(b.tier)}</strong> <span class="muted">— ${escapeHtml(b.commonness || '')} word${b.zipf != null ? ` (zipf ${b.zipf})` : ''}; a common, evocative word brands better than an obscure one.</span></p>` : '';
+  const con = (data.evaluation.signals && data.evaluation.signals.connotation) || null;
+  const conNeg = con && (con.tone === 'negative' || con.tone === 'somewhat negative');
+  const conLine = con && (con.breadth || conNeg) ? `<p class="ev-brand"><strong>Connotation / fit: ${escapeHtml(con.breadth || 'broad')}${conNeg ? ` · ${escapeHtml(con.tone)}` : ''}</strong>${con.mult && con.mult !== 1 ? ` <span class="ev-prem">×${con.mult}</span>` : ''} <span class="muted">— ${con.best_fits && con.best_fits.length ? `best for ${con.best_fits.map(escapeHtml).join(', ')}. ` : ''}${escapeHtml(con.note || '')}${con.breadth === 'narrow' ? ' Narrow buyer pool → modest resale haircut.' : (conNeg ? ' Unfavorable associations heavily disfavored.' : '')}</span></p>` : '';
   const nq = (data.evaluation.verdict && data.evaluation.verdict.name_quality_read) ? `<p class="ev-nameread">${escapeHtml(data.evaluation.verdict.name_quality_read)}</p>` : '';
   const summaryBrand = b ? ` · brandability ${escapeHtml(b.tier)}` : '';
   return `<details class="ev-card ev-collapse"><summary class="ev-h3">Name quality <span class="muted">— grade ${escapeHtml(q.grade)} · ${escapeHtml(q.dictionary_class)} · ${q.length} chars · .${escapeHtml(q.tld.tld)}${summaryBrand}</span></summary>
@@ -7833,7 +7836,7 @@ function evQuality(data) {
       ${evBar('Pronounceable', c.pronounce)}
       ${evBar('Clean (no -/#)', c.cleanliness)}
       ${b && b.score != null ? evBar('Brandability', b.score) : ''}
-    </div>${brandLine}${synergy}${nq}</div></details>`;
+    </div>${brandLine}${conLine}${synergy}${nq}</div></details>`;
 }
 
 function evComps(data) {
@@ -7899,7 +7902,9 @@ function evComps(data) {
     .concat(val.brandability && val.brandability.mult && val.brandability.mult !== 1
       ? [`<tr><td>Brandability</td><td>×${val.brandability.mult}</td><td>—</td><td class="muted">${escapeHtml(val.brandability.commonness || '')} word${val.brandability.zipf != null ? ` (zipf ${val.brandability.zipf})` : ''} — ${val.brandability.mult > 1 ? 'common/evocative, brands well' : 'obscure, brands weaker'}</td></tr>`] : [])
     .concat(val.trademark
-      ? [`<tr><td>⚠ trademark</td><td>×${val.trademark.mult}</td><td>—</td><td class="muted">${escapeHtml(val.trademark.note)}</td></tr>`] : []);
+      ? [`<tr><td>⚠ trademark</td><td>×${val.trademark.mult}</td><td>—</td><td class="muted">${escapeHtml(val.trademark.note)}</td></tr>`] : [])
+    .concat(val.connotation && val.connotation.mult && val.connotation.mult !== 1
+      ? [`<tr><td>Connotation / fit</td><td>×${val.connotation.mult}</td><td>—</td><td class="muted">${escapeHtml(val.connotation.breadth || '')}${val.connotation.tone && val.connotation.tone !== 'neutral' ? ` · ${escapeHtml(val.connotation.tone)}` : ''} — ${val.connotation.mult < 1 ? (val.connotation.breadth === 'narrow' ? 'narrow buyer pool' : 'unfavorable/limited fit') : 'broad, positive fit'}${val.connotation.best_fits && val.connotation.best_fits.length ? ` (best for ${val.connotation.best_fits.map(escapeHtml).join(', ')})` : ''}</td></tr>`] : []);
   const anchorRows = anchors.length
     ? `<details class="ev-anchors"><summary>How the fair value was built (${anchors.length} anchors${multRows.length ? ' + adjustments' : ''})</summary><table class="ev-table"><thead><tr><th>Source</th><th>Mid</th><th>Weight</th><th>Note</th></tr></thead><tbody>`
       + anchors.map((a) => `<tr><td>${escapeHtml(a.source)}</td><td>${evM(a.mid)}</td><td>${a.weight}</td><td class="muted">${escapeHtml(a.note || '')}</td></tr>`).join('')
