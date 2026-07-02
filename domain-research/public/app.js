@@ -1785,12 +1785,38 @@ function renderSummary(d) {
       return `<div class="lead-card">${head}${rows.length ? list(rows) : ''}${enh}</div>`;
     };
     const leadCards = (arr) => `<div class="lead-cards">${groupLeads(arr).map(leadCard).join('')}</div>`;
+    // Render the primary tier as ONE CARD PER PERSON. The agent sometimes lumps two
+    // people (e.g. the owner + their general counsel) into the primary tier as a flat
+    // list; card() would then nest the second person's name as a plain row under the
+    // first. Instead, give each `name` its own card and attribute each channel
+    // (email / LinkedIn / phone) to the person it belongs to — matched by name tokens
+    // against the value/URL/note, falling back to the primary (first) person. A single
+    // org shows once, on the first person's card.
+    const renderPrimary = (arr) => {
+      const people = arr.filter((c) => String(c.type || '').toLowerCase() === 'name');
+      if (people.length <= 1) return card(arr); // single person → existing consolidated card
+      const org = arr.find((c) => String(c.type || '').toLowerCase() === 'org');
+      const channels = arr.filter((c) => !['name', 'org'].includes(String(c.type || '').toLowerCase()));
+      const tokensOf = (n) => (String(n || '').toLowerCase().match(/[a-z]+/g) || []).filter((t) => t.length >= 3);
+      const ownerOf = (c) => {
+        const hay = `${liCanon(c.value) || ''} ${String(c.value || '').toLowerCase()} ${String(c.note || '').toLowerCase()}`;
+        let best = 0, bestScore = 0;
+        people.forEach((p, i) => {
+          const score = tokensOf(p.value).reduce((s, t) => s + (hay.includes(t) ? 1 : 0), 0);
+          if (score > bestScore) { bestScore = score; best = i; }
+        });
+        return best; // fallback → first (primary) person when nothing matches
+      };
+      const buckets = people.map(() => []);
+      channels.forEach((c) => { buckets[ownerOf(c)].push(c); });
+      return people.map((p, i) => card([p, ...(i === 0 && org ? [org] : []), ...buckets[i]])).join('');
+    };
     // Group into the primary target vs. other (secondary/tertiary/untagged)
     // leads when the report tags tiers; otherwise show grouped per-entity cards.
     if (contacts.some(isPrimary)) {
       const primary = contacts.filter(isPrimary);
       const other = contacts.filter((c) => !isPrimary(c));
-      html += `<div class="sum-block"><h3>Primary target — how to reach the likely owner</h3>${card(primary)}</div>`;
+      html += `<div class="sum-block"><h3>Primary target — how to reach the likely owner</h3>${renderPrimary(primary)}</div>`;
       if (other.length) html += `<div class="sum-block"><h3>Other &amp; historical leads</h3>${leadCards(other)}</div>`;
     } else {
       html += `<div class="sum-block"><h3>Key contacts</h3>${leadCards(contacts)}</div>`;

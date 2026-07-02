@@ -472,6 +472,7 @@ a.naming-card-domain:hover { color: var(--coral-deep); text-decoration: underlin
 .contacts .ctype { display: inline-block; min-width: 54px; font-size: .72rem; font-weight: 700; text-transform: uppercase; color: var(--navy-3); letter-spacing: .04em; }
 /* Consolidated primary-target contact card */
 .contact-card { padding: 14px 16px; background: var(--cream); border: 1.5px solid var(--line); border-radius: var(--radius-sm); }
+.contact-card + .contact-card { margin-top: 12px; } /* each primary person is its own pill */
 .contact-card .cc-name { font-family: var(--body); font-weight: 800; font-size: 1.15rem; color: var(--navy); }
 .contact-card .cc-role { font-size: .92rem; color: var(--navy-2); margin: 3px 0 6px; }
 .contact-card .cc-org { font-size: .95rem; color: var(--navy-2); margin: 2px 0 10px; }
