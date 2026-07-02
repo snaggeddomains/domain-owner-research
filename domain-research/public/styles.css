@@ -1836,7 +1836,17 @@ a.sr-ag-co-link:hover { border-color: var(--coral); color: var(--coral-deep); ba
 .ev-gridtable thead th.ev-gt-rec { background: #f1faf2; border-top-left-radius: 8px; border-top-right-radius: 8px; }
 .ev-gt-bid td.ev-gt-rec { border-bottom-left-radius: 8px; border-bottom-right-radius: 8px; }
 .ev-grid-foot { font-size: .72rem; margin-top: 8px; }
+/* Mobile: the 5-column table can't fit a phone — swap to stacked cards. */
+.ev-gtcards { display: none; }
+.ev-gtc { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; background: var(--paper); }
+.ev-gtc-rec { border-color: #0b8f3a; background: #f1faf2; }
+.ev-gtc-label { font-size: .62rem; text-transform: uppercase; letter-spacing: .03em; color: var(--navy-3); font-weight: 700; }
+.ev-gtc-rec .ev-gtc-label { color: #0b8f3a; }
+.ev-gtc-resale { font-size: 1.15rem; font-weight: 800; color: var(--navy); margin-top: 2px; font-variant-numeric: tabular-nums; }
+.ev-gtc-bid { font-size: .78rem; color: var(--navy-2); margin-top: 2px; font-variant-numeric: tabular-nums; }
 @media (max-width: 720px) { .ev-gridtable th, .ev-gridtable td { padding: 7px 5px; } .ev-gt-resale td { font-size: .92rem; } .ev-gt-bid td { font-size: .7rem; } .ev-gridtable thead th { font-size: .56rem; } }
+@media (max-width: 620px) { .ev-gridtable { display: none; } .ev-gtcards { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; } }
+@media (max-width: 380px) { .ev-gtcards { grid-template-columns: 1fr; } }
 .ev-brand { margin: 10px 0 0; font-size: .85rem; line-height: 1.45; color: var(--navy); }
 .ev-keymetrics { display: flex; gap: 22px; flex-wrap: wrap; margin-top: 14px; }
 .ev-km { display: flex; flex-direction: column; gap: 2px; }

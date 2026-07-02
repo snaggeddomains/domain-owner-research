@@ -739,7 +739,13 @@ function route() {
   if (tr && tr.tool === 'evaluate') {
     showView('evaluate');
     refreshToolRecent(els.evRecent, 'ev');
-    if (tr.slug) { if (els.evDomain) els.evDomain.value = tr.slug; runEvaluate(tr.slug); }
+    if (tr.slug) {
+      // If a run is already in flight, DON'T hijack the active run's search box or its
+      // loading card — just peek at the clicked/deep-linked report (cache-first). Only a
+      // navigation with no active run drives the box + the (cache-first) runEvaluate.
+      if (evRunning) { evViewCached(tr.slug); }
+      else { if (els.evDomain) els.evDomain.value = tr.slug; runEvaluate(tr.slug); }
+    }
     else resetEvaluateView();
     return;
   }
@@ -7627,6 +7633,19 @@ function evParsePrice(v) {
   return isFinite(n) && n > 0 ? n : null;
 }
 
+// View a previously-run report cache-first, WITHOUT starting a paid run, touching the
+// search box, or disturbing an in-flight eval's loading card. Used when the user clicks a
+// recent report while another evaluation is still running.
+async function evViewCached(domain) {
+  const d = (domain || '').trim().toLowerCase();
+  if (!d) return;
+  try {
+    const res = await fetch(`/research/api/evaluate?domain=${encodeURIComponent(d)}`);
+    const data = await res.json().catch(() => null);
+    if (res.ok && data && data.evaluation) renderEvaluate(data);
+  } catch { /* leave whatever's on screen as-is */ }
+}
+
 async function runEvaluate(domain, { price = null, refresh = false } = {}) {
   const d = (domain || '').trim().toLowerCase();
   if (!d) return;
@@ -7727,6 +7746,12 @@ function evResaleGrid(fv) {
   // Max bid for an 8–10× flip = resale ÷ 10 (10×) … resale ÷ 8 (8×).
   const bid = (R) => `${evM(evSig2(R * 0.10))} – ${evM(evSig2(R * 0.125))}`;
   const rc = (c) => (c.rec ? ' class="ev-gt-rec"' : '');
+  // Two layouts share the same data: a wide TABLE (desktop) and a stacked CARD grid
+  // (mobile — a 5-column table can't fit a phone). CSS shows exactly one by width.
+  const cards = cols.map((c) => `<div class="ev-gtc${c.rec ? ' ev-gtc-rec' : ''}">`
+    + `<div class="ev-gtc-label">${c.rec ? '★ ' : ''}${c.label}</div>`
+    + `<div class="ev-gtc-resale">${evM(c.v)}</div>`
+    + `<div class="ev-gtc-bid"><span class="muted">max bid</span> ${bid(c.v)}</div></div>`).join('');
   return `<div class="ev-resalegrid">
     <div class="ev-grid-title">Resale value scenarios <span class="muted">— pay at/under the max bid for an 8–10× flip</span></div>
     <table class="ev-gridtable">
@@ -7736,6 +7761,7 @@ function evResaleGrid(fv) {
         <tr class="ev-gt-bid"><th>Max bid (8–10×)</th>${cols.map((c) => `<td${rc(c)}>${bid(c.v)}</td>`).join('')}</tr>
       </tbody>
     </table>
+    <div class="ev-gtcards">${cards}</div>
     <div class="muted ev-grid-foot">★ = our most realistic resale estimate. Pay at or under a column's max bid to leave 8–10× resale margin.</div>
   </div>`;
 }
