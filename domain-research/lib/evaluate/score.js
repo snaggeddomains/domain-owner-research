@@ -18,8 +18,15 @@
 // product's risk appetite lives here.
 // Appraisal sanity ceiling: the fair mid may not exceed the LOWER available appraisal
 // (Appraise.net / Atom) times this multiple. Calibrated against gut targets (dials/foggy/
-// flirty/brazen) — the realizable resale sits ~1.5–2× the conservative appraisal.
-const APPRAISAL_CAP_MULT = 2.0;
+// flirty/brazen) — the realizable resale of a real WORD sits ~1.5–2× the conservative
+// appraisal, because word scarcity/brand value is something traffic-based appraisals
+// systematically under-read. A COINED / made-up name (somera, ziaf) has NO dictionary
+// scarcity — its entire value IS its brandability, which the appraisals already price
+// directly, so the appraisals ARE the realistic ceiling and the cap is tight. (A coined
+// MUB was landing 2× its own appraisals off a length-matched same-TLD comp set.)
+const APPRAISAL_CAP_MULT = 2.0;      // real dictionary word
+const APPRAISAL_CAP_MULT_COINED = 1.25; // coined / brandable (appraisal already prices it)
+const APPRAISAL_CAP_MULT_JUNK = 1.1;    // awkward/junk string — no upside past appraisal
 
 const BANDS = [
   { key: 'immediate_buy', label: 'Immediate buy', max: 0.08, color: '#0b8f3a' }, // ≥~12x return
@@ -365,7 +372,14 @@ export function computeValuation(input) {
   const atomVal = (input && input.atom && Number(input.atom.value)) || 0;
   const appraisalRefs = [apprMid, atomVal].filter((x) => x > 0);
   if (appraisalRefs.length) {
-    const cap = niceRound(Math.min(...appraisalRefs) * APPRAISAL_CAP_MULT);
+    // Cap multiple by name TYPE: a real word carries scarcity value appraisals miss
+    // (2.0×), a coined/brandable name's value IS its brandability which the appraisal
+    // already scores (1.25×), a junk string has no upside past its appraisal (1.1×).
+    const dclass = (input && input.quality && input.quality.dictionary_class) || 'word';
+    const capMult = dclass === 'brandable' ? APPRAISAL_CAP_MULT_COINED
+      : dclass === 'junk' ? APPRAISAL_CAP_MULT_JUNK
+      : APPRAISAL_CAP_MULT;
+    const cap = niceRound(Math.min(...appraisalRefs) * capMult);
     if (fairMid > cap) fairMid = cap;
   }
 
