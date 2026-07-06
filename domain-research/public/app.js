@@ -5981,9 +5981,15 @@ async function runNsDomain(domain) {
   try {
     const data = await nsFetch(`mode=domain&domain=${encodeURIComponent(domain)}`);
     setToolStatus(els.nsStatus, '');
-    if (data.found) nsRecentAdd(data.domain);
+    if (data.found) nsRecentAdd(data.domain || domain);
     if (!data.found) {
-      els.nsResult.innerHTML = `<div class="ns-card"><p>Couldn’t find nameservers for <strong>${escapeHtml(data.domain)}</strong> — not in our index and no live DNS/WHOIS record.</p></div>`;
+      // Use the queried `domain` (the arg) — a zone-DB error can return found:false with
+      // no domain field, which previously rendered a blank, misleading "not found".
+      const who = escapeHtml(data.domain || domain);
+      const msg = data.notLoaded
+        ? `The nameserver index is temporarily unavailable — couldn’t resolve nameservers for <strong>${who}</strong> right now. Try again in a moment.`
+        : `Couldn’t find nameservers for <strong>${who}</strong> — not in our index and no live DNS/WHOIS record.`;
+      els.nsResult.innerHTML = `<div class="ns-card"><p>${msg}</p></div>`;
     } else {
       const nsList = (data.nameservers || []).map((n) => `<code>${escapeHtml(n)}</code>`).join(' ');
       const liveNote = data.source === 'live'

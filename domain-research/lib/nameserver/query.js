@@ -84,6 +84,17 @@ function clampLimit(n, max = MAX_LIMIT) {
 }
 
 // domain → { domain, tld, nameservers[] } | null
+// A hung/paused zone DB (its own Supabase project) must NOT hang the whole request —
+// supabase-js has no query timeout, so a stalled connection would run the function to its
+// 60s limit → a non-JSON 504 the client can't parse. Race every zone query against a short
+// deadline so callers can fail fast (and, for a plain domain lookup, fall back to live DNS).
+const ZONE_TIMEOUT_MS = 7000;
+function zoneRace(promise, ms = ZONE_TIMEOUT_MS) {
+  let timer;
+  const timeout = new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('zone_db_timeout')), ms); });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+}
+
 export async function lookupDomain(domain) {
   const d = String(domain || '').trim().toLowerCase();
   if (!d) return null;
@@ -94,7 +105,7 @@ export async function lookupDomain(domain) {
   const tld = dot > 0 ? d.slice(dot + 1) : '';
   let q = getZoneDb().from(TABLE).select('domain, tld, nameservers').eq('domain', d);
   if (tld) q = q.eq('tld', tld);
-  const { data, error } = await q.limit(1);
+  const { data, error } = await zoneRace(q.limit(1));
   if (error) rethrow(error);
   return (data && data[0]) || null;
 }
@@ -118,7 +129,7 @@ export async function domainsByNameservers({ nameservers, mode = 'all', tld = ''
   // returned page in JS. Fetch one extra to detect a next page without a COUNT.
   q = q.range(off, off + lim);
 
-  const { data, error } = await q;
+  const { data, error } = await zoneRace(q);
   if (error) rethrow(error);
   const all = data || [];
   const hasMore = all.length > lim;
@@ -138,8 +149,8 @@ export async function nsTldFacets({ nameservers, mode = 'all' } = {}) {
   const ns = (nameservers || []).map(normalizeNs).filter(Boolean);
   if (!ns.length) return [];
   try {
-    const { data, error } = await getZoneDb()
-      .rpc('ns_tld_counts', { p_ns: ns, p_match: mode === 'any' ? 'any' : 'all' });
+    const { data, error } = await zoneRace(getZoneDb()
+      .rpc('ns_tld_counts', { p_ns: ns, p_match: mode === 'any' ? 'any' : 'all' }));
     if (error) return [];
     return (data || []).map((r) => ({ tld: r.tld, count: Number(r.n) || 0 })).filter((x) => x.tld);
   } catch {
@@ -226,7 +237,11 @@ export async function liveNameservers(domain, env = process.env) {
 // A domain's nameservers from our zone index if present, else resolved live.
 // Returns { nameservers[], source: 'zone' | 'live' | null, tld }.
 export async function resolveNameservers(domain, env = process.env) {
-  const row = await lookupDomain(domain);
+  // The zone index is an OPTIMIZATION, not a hard dependency for a plain domain→NS
+  // lookup: if it's down/paused/slow, don't fail the request — fall through to live DNS
+  // (independent of the zone DB) so the lookup still works, just without the index.
+  let row = null;
+  try { row = await lookupDomain(domain); } catch { row = null; }
   if (row && Array.isArray(row.nameservers) && row.nameservers.length) {
     return { nameservers: row.nameservers, source: 'zone', tld: row.tld || null };
   }
