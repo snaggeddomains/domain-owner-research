@@ -235,18 +235,26 @@ export async function liveNameservers(domain, env = process.env) {
 }
 
 // A domain's nameservers from our zone index if present, else resolved live.
-// Returns { nameservers[], source: 'zone' | 'live' | null, tld }.
+// Returns { nameservers[], source: 'live' | 'zone' | null, tld }.
 export async function resolveNameservers(domain, env = process.env) {
-  // The zone index is an OPTIMIZATION, not a hard dependency for a plain domain→NS
-  // lookup: if it's down/paused/slow, don't fail the request — fall through to live DNS
-  // (independent of the zone DB) so the lookup still works, just without the index.
+  // LIVE is authoritative + FRESH for a single domain's own NS. The zone index is a
+  // point-in-time CZDS snapshot that goes STALE the moment a domain changes nameservers
+  // (e.g. stuut.com moving to Cloudflare after the load — the index still shows its old
+  // parking NS). So resolve live FIRST and fall back to the (possibly stale) index only
+  // when live can't resolve at all. The index's real job is the REVERSE lookup (NS →
+  // domains), which can't be done live. Also: live is independent of the zone DB, so a
+  // paused/down zone project no longer breaks a plain lookup.
+  const d = String(domain || '').toLowerCase();
+  const dot = d.lastIndexOf('.');
+  const tld = dot > 0 ? d.slice(dot + 1) : null;
+  const live = await liveNameservers(d, env);
+  if (live.length) return { nameservers: live, source: 'live', tld };
   let row = null;
-  try { row = await lookupDomain(domain); } catch { row = null; }
+  try { row = await lookupDomain(d); } catch { row = null; }
   if (row && Array.isArray(row.nameservers) && row.nameservers.length) {
-    return { nameservers: row.nameservers, source: 'zone', tld: row.tld || null };
+    return { nameservers: row.nameservers, source: 'zone', tld: row.tld || tld };
   }
-  const live = await liveNameservers(domain, env);
-  return { nameservers: live, source: live.length ? 'live' : null, tld: null };
+  return { nameservers: [], source: null, tld };
 }
 
 // domain → other domains on its EXACT nameserver set (the pairing). Gets the

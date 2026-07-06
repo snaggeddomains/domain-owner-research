@@ -5992,8 +5992,8 @@ async function runNsDomain(domain) {
       els.nsResult.innerHTML = `<div class="ns-card"><p>${msg}</p></div>`;
     } else {
       const nsList = (data.nameservers || []).map((n) => `<code>${escapeHtml(n)}</code>`).join(' ');
-      const liveNote = data.source === 'live'
-        ? `<p class="muted ns-livenote">Not in our zone index — nameservers resolved live; pairing matches against the TLDs we’ve loaded.</p>`
+      const liveNote = data.source === 'zone'
+        ? `<p class="muted ns-livenote">⚠ Live DNS didn’t respond — showing our index snapshot, which may be out of date.</p>`
         : '';
       els.nsResult.innerHTML =
         `<div class="ns-card">` +
