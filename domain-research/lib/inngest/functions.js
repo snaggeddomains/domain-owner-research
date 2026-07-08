@@ -12,6 +12,7 @@ import { loadLessonsAddendum, bumpAppliedCounts } from '../db/lessons.js';
 import { sendEmail, isEmailConfigured } from '../email.js';
 import { reportUrl, salesUrl } from '../reportUrl.js';
 import { summarizeReport } from '../reportSummary.js';
+import { maybeCrackOwner } from '../owner/fallback.js';
 import { discoverUpgrade } from '../sales/discovery/upgrade.js';
 import { discoverOperators } from '../sales/discovery/operators.js';
 import { discoverAngles } from '../sales/discovery/keyword.js';
@@ -344,6 +345,18 @@ export const runResearch = inngest.createFunction(
           trace = refined.trace;
         }
       }
+
+      // Phase 3: auto owner-crack fallback — when the report did NOT confidently
+      // name the owner, triangulate off ccTLD/affix/brand-root siblings for a
+      // public registrant sharing the DNS fingerprint, and fold any find into the
+      // report as a transparent section. Free + fail-open; skipped at High confidence.
+      const crack = await step.run('owner-crack-fallback', () =>
+        maybeCrackOwner({ domain, markdown: report, env: process.env }).catch((err) => {
+          console.error('owner-crack-fallback failed:', err && err.message);
+          return null;
+        }),
+      );
+      if (crack && crack.section) report = `${report}\n\n${crack.section}`;
 
       await step.run('save-report', () =>
         saveRunReport(runId, {
