@@ -68,6 +68,7 @@ const els = {
   namebioStrip: $('namebio-strip'),
   apNamebio: $('ap-namebio'),
   report: $('report'),
+  reportAddons: $('report-addons'),
   reportDomain: $('report-domain'),
   researchNew: $('research-new'),
   reportConfidence: $('report-confidence'),
@@ -1886,6 +1887,7 @@ function renderReport(report) {
   const narrative = data ? stripJsonBlock(md) : stripConfidenceLine(md);
   els.report.hidden = false;
   els.report.innerHTML = summaryHtml + renderMarkdown(narrative);
+  renderAddons(data);
   renderTrace(report && report.trace, report && report.toolsAvailable, report && report.categories);
   resetFeedback();
   if (els.reportChat && currentRunId) {
@@ -1902,6 +1904,143 @@ function renderReport(report) {
   const canDeep = canPhase(currentUser, 'deep');
   els.deepenTop.hidden = !(low && canDeep);
   els.deepenBar.hidden = !(shallow && !low && canDeep);
+}
+
+// ── Report add-ons — deeper dives that SUPPLEMENT the report ─────────────────
+// One-click owner-focused deeper research (family, colleagues, related domains,
+// still-alive), each fired through the async chat/research endpoint with a
+// templated prompt and rendered as a CARD embedded in the report (not only in the
+// chat). Reuses the whole agent + web-search machinery — no new endpoint.
+const ADDON_DEFS = [
+  {
+    kind: 'family', label: '👥 Family', title: 'Family & relatives', needsOwner: true,
+    prompt: (o, d) => `Focus specifically on ${o || `the likely owner of ${d}`}. Identify their immediate family — spouse/partner, children, parents, siblings — and any relatives connected to the domain or their businesses. For each person give the relationship and the public source. If you cannot verify family, say so plainly. Keep it concise.`,
+  },
+  {
+    kind: 'colleagues', label: '🤝 Colleagues', title: 'Colleagues & associates', needsOwner: true,
+    prompt: (o, d) => `Focus on ${o || `the likely owner of ${d}`}. Identify their co-founders, current and former business partners, and key colleagues/close professional associates at their companies. For each: name, role/company, and the source. If none can be verified, say so.`,
+  },
+  {
+    kind: 'related_domains', label: '🔗 Related domains', title: 'Related domains', needsOwner: false,
+    prompt: (o, d) => `Find other domains connected to ${o ? `${o} / ` : ''}${d} — via the same registrant, email, or a shared nameserver/DNS fingerprint (check ccTLD and brand-variant siblings). For each related domain: the connection evidence and any owner/contact it reveals. Prioritize a sibling with PUBLIC WHOIS that unmasks the owner.`,
+  },
+  {
+    kind: 'alive', label: '🫀 Verify alive', title: 'Owner still alive?', needsOwner: true,
+    prompt: (o, d) => `Verify whether ${o || `the likely owner of ${d}`} is still alive. Search obituaries, death notices, memorials and "in memoriam" pages matching THIS specific person (use their location/company/age to disambiguate — do not match a same-name stranger). If you find a credible death record, report the date and source link. If you find NO evidence of death, state clearly there is no indication they are deceased. Never assume.`,
+  },
+];
+
+// The best owner name to focus a dive on: the JSON likely_owner, else the primary-tier
+// named contact.
+function reportOwnerName(data) {
+  if (!data) return '';
+  if (data.likely_owner && String(data.likely_owner).trim()) return String(data.likely_owner).trim();
+  const named = (Array.isArray(data.contacts) ? data.contacts : [])
+    .find((c) => (c.type === 'name' || c.type === 'org') && c.tier === 'primary' && c.value);
+  return named ? String(named.value).trim() : '';
+}
+
+let addonBusy = false;
+
+function renderAddons(data) {
+  const el = els.reportAddons;
+  if (!el) return;
+  if (!currentRunId) { el.hidden = true; el.innerHTML = ''; return; }
+  bindAddons();
+  const owner = reportOwnerName(data);
+  el.dataset.owner = owner;
+  const btns = ADDON_DEFS.map((a) => {
+    const off = a.needsOwner && !owner;
+    return `<button type="button" class="addon-btn" data-addon="${a.kind}"${off ? ' disabled title="No named owner yet — run a deeper report first"' : ''}>${a.label}</button>`;
+  }).join('');
+  const ownerLine = owner
+    ? `<span class="addon-owner">on <strong>${escapeHtml(owner)}</strong></span>`
+    : '<span class="addon-owner addon-owner--none">no owner named yet</span>';
+  el.innerHTML =
+    `<div class="addon-head"><span class="addon-title">🔎 Deeper dives</span> ${ownerLine}</div>`
+    + `<div class="addon-bar">${btns}</div>`
+    + '<div class="addon-cards" id="addon-cards"></div>';
+  el.hidden = false;
+}
+
+// One delegated click handler for the whole add-ons block.
+function bindAddons() {
+  const el = els.reportAddons;
+  if (!el || el.dataset.bound) return;
+  el.dataset.bound = '1';
+  el.addEventListener('click', (e) => {
+    const btn = e.target.closest('.addon-btn');
+    if (!btn || btn.disabled) return;
+    runAddon(btn.dataset.addon);
+  });
+}
+
+// Re-enable the add-on buttons per their owner requirement (used after a dive ends).
+function resetAddonButtons(owner) {
+  els.reportAddons.querySelectorAll('.addon-btn').forEach((b) => {
+    const d = ADDON_DEFS.find((a) => a.kind === b.dataset.addon);
+    b.disabled = !!(d && d.needsOwner && !owner);
+  });
+}
+
+async function runAddon(kind) {
+  const def = ADDON_DEFS.find((a) => a.kind === kind);
+  if (!def || addonBusy || !currentRunId) return;
+  const owner = (els.reportAddons && els.reportAddons.dataset.owner) || '';
+  const domain = currentReportDomain || '';
+  const message = def.prompt(owner, domain);
+  const cards = document.getElementById('addon-cards');
+  if (!cards) return;
+  addonBusy = true;
+  els.reportAddons.querySelectorAll('.addon-btn').forEach((b) => { b.disabled = true; });
+
+  const cardId = `addon-${kind}-${Date.now()}`;
+  cards.insertAdjacentHTML('afterbegin',
+    `<div class="addon-card" id="${cardId}"><div class="addon-card-head">${escapeHtml(def.title)}<span class="addon-card-status">researching…</span></div><div class="addon-card-body addon-loading">Researching… this can take a minute.</div></div>`);
+  const card = document.getElementById(cardId);
+  const setBody = (html, isErr) => {
+    const body = card.querySelector('.addon-card-body');
+    const status = card.querySelector('.addon-card-status');
+    body.classList.remove('addon-loading');
+    if (isErr) card.classList.add('addon-err');
+    body.innerHTML = renderMarkdown(html);
+    if (status) status.remove();
+  };
+  const done = () => { addonBusy = false; resetAddonButtons(owner); };
+
+  let turnId;
+  try {
+    const res = await fetch('/research/api/chat', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ run_id: currentRunId, domain, message }),
+    });
+    const raw = await res.text();
+    let d = {}; try { d = JSON.parse(raw); } catch { /* non-JSON */ }
+    if (!res.ok || !d.turn_id) { setBody(`⚠️ ${d.error || `Couldn't start (${res.status}).`}`, true); done(); return; }
+    turnId = d.turn_id;
+  } catch (e) { setBody(`⚠️ ${e.message || e}`, true); done(); return; }
+
+  const started = Date.now();
+  const poll = async () => {
+    if (Date.now() - started > 5 * 60 * 1000) { setBody('⚠️ Timed out — try again.', true); done(); return; }
+    try {
+      const r = await fetch(`/research/api/chat?turn_id=${encodeURIComponent(turnId)}`);
+      const d = await r.json();
+      if (d.status === 'done') {
+        const { cleaned } = detectRegenMarker(d.content || '');
+        setBody(cleaned || d.content || '(no response)', false);
+        // The dive is also persisted as a chat turn — drop the cache so the chat
+        // panel reloads it next time the report is opened.
+        if (chatLoadedFor === currentRunId) chatLoadedFor = null;
+        done(); return;
+      }
+      if (d.status === 'error') { setBody(d.content || '⚠️ Failed.', true); done(); return; }
+      const st = card.querySelector('.addon-card-status');
+      if (st) st.textContent = `researching… (${Math.round((Date.now() - started) / 1000)}s)`;
+    } catch { /* keep polling */ }
+    setTimeout(poll, 2500);
+  };
+  setTimeout(poll, 2500);
 }
 
 // ── Auth ────────────────────────────────────────────────────────────────────
