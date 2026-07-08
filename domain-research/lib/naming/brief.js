@@ -97,8 +97,11 @@ export async function parseBrief(brief, env) {
   let response;
   try {
     response = await callWithRetry(() => client.messages.create({
+      // 2000 (was 512): the schema asks for 25-50 semantic_keywords, which on a
+      // rich brief overran a 512-token budget and TRUNCATED the JSON mid-array,
+      // hard-failing the parse ("model returned non-JSON"). 2000 leaves ample room.
       model,
-      max_tokens: 512,
+      max_tokens: 2000,
       system: SYSTEM,
       messages: [{ role: 'user', content: String(brief).slice(0, 4000) }],
     }));
@@ -116,15 +119,24 @@ export async function parseBrief(brief, env) {
     .map((b) => b.text)
     .join('\n')
     .trim();
-  // Strip a leading code fence if the model added one despite the instruction.
-  const json = text.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/i, '').trim();
-  let parsed;
-  try {
-    parsed = JSON.parse(json);
-  } catch (e) {
-    throw new Error(`Could not parse brief — model returned non-JSON: ${text.slice(0, 200)}`);
-  }
+  const parsed = extractJsonObject(text);
+  if (!parsed) throw new Error(`Could not parse brief — model returned non-JSON: ${text.slice(0, 200)}`);
   return validateFilters(parsed);
+}
+
+// Tolerantly pull the filter object out of the model's reply. Handles a bare
+// object, a ```json fenced block, prose wrapped around the JSON, and a dangling
+// unclosed fence — so a stray code fence never hard-fails the whole search.
+export function extractJsonObject(text) {
+  const stripped = String(text || '').replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/i, '').trim();
+  try { return JSON.parse(stripped); } catch { /* try the brace-slice below */ }
+  // Fall back to the outermost { ... } — survives leading prose or a trailing fence.
+  const s = stripped.indexOf('{');
+  const e = stripped.lastIndexOf('}');
+  if (s >= 0 && e > s) {
+    try { return JSON.parse(stripped.slice(s, e + 1)); } catch { /* give up */ }
+  }
+  return null;
 }
 
 // Clamp / coerce to safe values before letting the SQL builder see them. Spec
