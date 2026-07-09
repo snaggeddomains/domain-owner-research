@@ -154,6 +154,12 @@ const els = {
   navNaming: $('nav-naming'),
   namingInput: $('naming-input'),
   namingTitle: $('naming-title'),
+  namingMode: $('naming-mode'),
+  namingVariations: $('naming-variations'),
+  nmvTable: $('nmv-table'),
+  nmvCount: $('nmv-count'),
+  nmvNote: $('nmv-note'),
+  nmvDownload: $('nmv-download'),
   namingGo: $('naming-go'),
   namingNew: $('naming-new'),
   namingApply: $('naming-apply'),
@@ -4627,7 +4633,40 @@ function namingFilterPayload() {
   };
 }
 
+// Naming has two modes: 'theme' (parse a brief → search the marketplace corpus by
+// theme — the default) and 'variations' (take a LOCKED word and enumerate its
+// prefix/suffix/TLD variants with live for-sale/availability). The mode toggle
+// swaps the input hint + which results section renders.
+let namingMode = 'theme';
+let variationsLast = null;
+
+function setNamingMode(mode) {
+  namingMode = mode === 'variations' ? 'variations' : 'theme';
+  if (els.namingMode) {
+    els.namingMode.querySelectorAll('.naming-mode-btn').forEach((b) => {
+      b.classList.toggle('is-active', b.dataset.mode === namingMode);
+    });
+  }
+  const variations = namingMode === 'variations';
+  if (els.namingInput) {
+    els.namingInput.rows = variations ? 2 : 9;
+    els.namingInput.placeholder = variations
+      ? 'Enter the locked brand word — e.g. "sentinel". I\'ll build prefix / suffix / .[tld] variations and check each for sale + availability (.ai excluded).'
+      : 'Paste a brief — e.g. "Tech startup, B2B SaaS, premium feel. One-word .com, easy to spell, under $5,000. Keywords: cloud, data, ops."';
+  }
+  if (els.namingGo) els.namingGo.textContent = variations ? 'Build Variations' : 'Find Names';
+  // Only one results section shows at a time; the filters panel is theme-only.
+  if (variations) {
+    if (els.namingResults) els.namingResults.hidden = true;
+    if (els.namingFiltersPanel) els.namingFiltersPanel.hidden = true;
+    if (els.namingChat) els.namingChat.hidden = true;
+  } else if (els.namingVariations) {
+    els.namingVariations.hidden = true;
+  }
+}
+
 async function runNaming() {
+  if (namingMode === 'variations') return runVariations();
   const brief = (els.namingInput?.value || '').trim();
   if (!brief) return;
   if (els.namingError) { els.namingError.hidden = true; els.namingError.textContent = ''; }
@@ -4675,6 +4714,91 @@ async function runNaming() {
   } finally {
     if (els.namingGo) els.namingGo.disabled = false;
   }
+}
+
+async function runVariations() {
+  const seed = (els.namingInput?.value || '').trim();
+  if (!seed) return;
+  if (els.namingError) { els.namingError.hidden = true; els.namingError.textContent = ''; }
+  if (els.namingGo) els.namingGo.disabled = true;
+  setNamingStatus('Enumerating variations and checking each for sale + availability…');
+  try {
+    const res = await fetch('/research/api/naming', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ action: 'variations', seed, exclude_tlds: ['ai'] }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || `Failed (${res.status})`);
+    variationsLast = data;
+    renderVariations(data);
+    setNamingStatus('');
+  } catch (e) {
+    setNamingStatus('');
+    if (els.namingError) { els.namingError.textContent = String(e.message || e); els.namingError.hidden = false; }
+  } finally {
+    if (els.namingGo) els.namingGo.disabled = false;
+  }
+}
+
+function fmtVarPrice(p, cur) {
+  const n = Number(p);
+  if (!(n > 0)) return '';
+  const s = n >= 1000 ? `$${Math.round(n).toLocaleString()}` : `$${n}`;
+  return cur && cur !== 'USD' ? `${s} ${cur}` : s;
+}
+
+function renderVariations(data) {
+  if (els.namingResults) els.namingResults.hidden = true;
+  if (els.namingChat) els.namingChat.hidden = true;
+  const rows = (data && Array.isArray(data.results)) ? data.results : [];
+  const forSale = rows.filter((r) => r.for_sale).length;
+  const avail = rows.filter((r) => r.status === 'available').length;
+  if (els.nmvCount) els.nmvCount.textContent = `${rows.length}`;
+  if (els.nmvNote) {
+    const bits = [`${forSale} for sale`, `${avail} available to register`];
+    if (!data.domainscout) bits.push('for-sale pricing needs DomainScout (not configured)');
+    els.nmvNote.textContent = `Built around “${data.seed}”. ${bits.join(' · ')}. .com first; .ai excluded.`;
+  }
+  const kindLabel = { prefix: 'prefix', suffix: 'suffix', tld: 'extension' };
+  const statusPill = (r) => {
+    if (r.for_sale) return '<span class="nmv-pill nmv-forsale">For sale</span>';
+    if (r.status === 'available') return '<span class="nmv-pill nmv-avail">Available</span>';
+    if (r.status === 'unknown') return '<span class="nmv-pill nmv-unknown">Unknown</span>';
+    return '<span class="nmv-pill nmv-taken">Registered</span>';
+  };
+  const cell = (r) => {
+    const price = fmtVarPrice(r.price, r.currency);
+    const priceCell = r.for_sale
+      ? (price ? `${price}${r.marketplace ? ` <span class="nmv-mkt">${escapeHtml(r.marketplace)}</span>` : ''}`
+        : (r.marketplace ? `listed <span class="nmv-mkt">${escapeHtml(r.marketplace)}</span>` : 'listed'))
+      : '—';
+    const dom = r.link ? `<a href="${escapeHtml(r.link)}" target="_blank" rel="noopener">${escapeHtml(r.domain)}</a>` : escapeHtml(r.domain);
+    const typ = `${kindLabel[r.kind] || r.kind}${r.kind !== 'tld' ? ` (${escapeHtml(r.affix)})` : ''}`;
+    return `<tr><td class="nmv-dom">${dom}</td><td>${statusPill(r)}</td><td>${priceCell}</td><td class="nmv-kind">${typ}</td></tr>`;
+  };
+  const html = `<table class="nmv-table"><thead><tr><th>Domain</th><th>Status</th><th>For sale</th><th>Type</th></tr></thead><tbody>${rows.map(cell).join('')}</tbody></table>`;
+  if (els.nmvTable) els.nmvTable.innerHTML = html;
+  if (els.namingVariations) els.namingVariations.hidden = false;
+}
+
+function variationsToCsv(data) {
+  const rows = (data && Array.isArray(data.results)) ? data.results : [];
+  const head = ['Domain', 'Status', 'For sale', 'Price', 'Marketplace', 'Type', 'Affix', 'Link'];
+  const esc = (v) => { const s = String(v == null ? '' : v); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
+  const lines = [head.join(',')];
+  for (const r of rows) lines.push([r.domain, r.status, r.for_sale ? 'yes' : 'no', r.price || '', r.marketplace || '', r.kind, r.affix, r.link || ''].map(esc).join(','));
+  return lines.join('\n');
+}
+
+function downloadVariationsCsv() {
+  if (!variationsLast) return;
+  const csv = variationsToCsv(variationsLast);
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = `${variationsLast.seed || 'variations'}-variations.csv`;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 function setNamingStatus(text, isError = false) {
@@ -7680,6 +7804,12 @@ els.apForm?.addEventListener('submit', (e) => {
 });
 els.namingGo?.addEventListener('click', runNaming);
 els.namingApply?.addEventListener('click', runNaming);
+// Mode toggle: theme search vs build-around-a-word variations.
+els.namingMode?.addEventListener('click', (e) => {
+  const btn = e.target.closest('.naming-mode-btn');
+  if (btn) setNamingMode(btn.dataset.mode);
+});
+els.nmvDownload?.addEventListener('click', downloadVariationsCsv);
 
 // Collapse/expand the whole Filters block — the grid + Apply row + the parsed-
 // filters chips — leaving just the "▾ Filters" handle, to keep results clean.

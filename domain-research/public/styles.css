@@ -334,6 +334,28 @@ button:disabled { opacity: .55; cursor: progress; }
 .naming-new { background: none; border: 1.5px solid #d9d2c2; border-radius: 999px; padding: 8px 18px; font-size: 14px; font-weight: 600; color: var(--navy-2); cursor: pointer; }
 .naming-new:hover { background: var(--cream-2, #fbf7ee); color: var(--navy); }
 .naming-input::placeholder { color: var(--navy-3); }
+/* Mode toggle — theme search vs build-around-a-word variations */
+.naming-mode { display: inline-flex; gap: 4px; margin: 0 0 12px; padding: 4px; background: var(--cream-2); border: 2px solid var(--line); border-radius: 999px; }
+.naming-mode-btn { background: transparent; border: none; box-shadow: none; color: var(--navy-2); padding: 7px 16px; font-size: .9rem; font-weight: 600; border-radius: 999px; cursor: pointer; }
+.naming-mode-btn:hover { color: var(--navy); background: transparent; transform: none; box-shadow: none; }
+.naming-mode-btn.is-active { background: var(--coral); color: #fff; }
+
+/* Variations results */
+.naming-variations { max-width: none; margin: 24px 0 0; }
+.nmv-table { width: 100%; border-collapse: collapse; font-size: .95rem; }
+.nmv-table th { text-align: left; padding: 10px 14px; background: var(--cream); color: var(--navy-3); font-size: .78rem; text-transform: uppercase; letter-spacing: .04em; border-bottom: 2px solid var(--line); }
+.nmv-table td { padding: 10px 14px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+.nmv-table tr:last-child td { border-bottom: none; }
+.nmv-dom { font-weight: 600; color: var(--navy); }
+.nmv-dom a { color: var(--navy); text-decoration: underline; }
+.nmv-kind { color: var(--navy-3); font-size: .88rem; }
+.nmv-mkt { color: var(--navy-3); font-size: .82rem; margin-left: 4px; }
+.nmv-pill { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: .78rem; font-weight: 700; }
+.nmv-forsale { background: #e7f6ec; color: #0b8f3a; }
+.nmv-avail { background: #e9f0fb; color: #2f6fd0; }
+.nmv-taken { background: #f0ece8; color: #8a7f76; }
+.nmv-unknown { background: #f4f1ee; color: #a89f96; }
+
 .naming-actions { display: flex; align-items: center; gap: 14px; margin-top: 14px; flex-wrap: wrap; }
 .naming-go:disabled { opacity: .55; cursor: not-allowed; box-shadow: none; transform: none; }
 .naming-go:disabled:hover { transform: none; box-shadow: none; }

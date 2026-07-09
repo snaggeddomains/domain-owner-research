@@ -295,6 +295,31 @@ menu in the admin hub, alongside Research/Admin/Reports — see snagged-admin).
   optional + fail-open. **One-time setup: grant `research.evaluate`** per-user in the
   snagged-admin Users editor (admins auto-pass).
 
+## Naming Exercise — "Build around a word" variations mode (2026-07-09)
+
+Second mode of the Naming Exercise (`/research/naming`), for a client who's LOCKED
+their name and wants the domain landscape around it (Sentinel engagement drove this).
+The existing theme search matches the marketplace corpus by `semantic_keywords` and
+can NEVER hold a specific word fixed — so it returned public-safety-*themed* names
+(convict.ai) instead of `sentinel*` variants. This mode enumerates instead of searches.
+
+- **Engine** `lib/variations/{enumerate,sweep}.js`: `enumerateVariations(seed, {excludeTlds})`
+  builds friction-clean candidates — `PREFIXES`+seed / seed+`SUFFIXES` on `.com`, plus the
+  exact word across `TLDS` — dropping any **seam-doubled** SLD (`sentinel`+`labs`→double-L)
+  and excluded TLDs. `sweepVariations` checks each live, bounded-concurrency + fail-open:
+  **for-sale + price + marketplace via DomainScout** (`lib/domainscout.js` `lookupDomain`,
+  no key → column blank) and **registered/available via DNS NS** (`dns.resolveNs`; NXDOMAIN
+  = available). Ranks for-sale (cheapest first) → available → registered; `.com` first.
+- **API**: `api/naming.js` action `variations` (`POST {action:'variations', seed, exclude_tlds?}`
+  → `{seed, domainscout, count, results:[{domain,kind,affix,status,for_sale,price,currency,marketplace,link}]}`).
+  Same `research.naming` gate; no run persisted. `withCategory('naming')`.
+- **UI** (`public/app.js`): a **mode toggle** (`#naming-mode`, 🔍 Find by theme / 🎯 Build
+  around a word) swaps the input hint + `runNaming()` branches to `runVariations()`; results
+  render in `#naming-variations` (`renderVariations`, `.nmv-*` styles) with a for-sale/
+  available/registered pill + price + marketplace + CSV download. `.ai` excluded by default
+  (public-safety buyers). Cache-bust `?v=20260709variations`.
+- **No new permission / table / env** — reuses the naming gate + DomainScout key.
+
 ## Nav sections — research SPA (config-driven, 2026-06-28)
 
 The SPA's chrome is two layers: the **top header** (Research · Admin · SNAP ·

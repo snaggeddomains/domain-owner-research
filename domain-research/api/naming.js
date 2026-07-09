@@ -2,6 +2,7 @@ import { isAuthed, currentUser, userCan } from '../lib/auth.js';
 import { isNamingDbConfigured } from '../lib/db/supabase-naming.js';
 import { parseBrief } from '../lib/naming/brief.js';
 import { searchUniverse } from '../lib/naming/query.js';
+import { sweepVariations } from '../lib/variations/sweep.js';
 import { runNamingChatTurn } from '../lib/naming/chat.js';
 import { saveNamingRun, updateNamingRun, listNamingRuns, getNamingRun, renameNamingRun, setNamingRunStar } from '../lib/db/naming-runs.js';
 import { listNamingChat, addNamingChatMessage } from '../lib/db/naming-chat.js';
@@ -88,6 +89,7 @@ export default async function handler(req, res) {
   const action = String(body.action || 'search');
 
   if (action === 'search') return handleSearch(body, res, user);
+  if (action === 'variations') return handleVariations(body, res, user);
   if (action === 'export') return handleExport(body, res, user);
   if (action === 'chat') return handleChat(body, res, user);
   if (action === 'rename') return handleRename(body, res, user);
@@ -97,6 +99,25 @@ export default async function handler(req, res) {
 }
 
 // Star/unstar a run (owner or admin only).
+// Brand-variation sweep — enumerate a LOCKED word's prefix/suffix/TLD variations
+// and check each live for for-sale status + price (DomainScout) and availability
+// (DNS). The tool for a client committed to their name (the theme search can't
+// hold a word fixed). Fast + fail-open; no run is persisted.
+async function handleVariations(body, res, user) {
+  const seed = String(body.seed || '').trim();
+  if (!seed) { res.status(400).json({ error: 'Enter a word to build variations around (e.g. "sentinel").' }); return; }
+  if (!/[a-z0-9]/i.test(seed) || seed.replace(/[^a-z0-9]/gi, '').length < 2) {
+    res.status(400).json({ error: 'That doesn’t look like a usable brand word.' }); return;
+  }
+  const excludeTlds = Array.isArray(body.exclude_tlds) ? body.exclude_tlds.map((t) => String(t)) : [];
+  try {
+    const out = await withCategory('naming', () => sweepVariations(seed, { env: process.env, excludeTlds }));
+    res.status(200).json(out);
+  } catch (e) {
+    res.status(500).json({ error: String((e && e.message) || e) });
+  }
+}
+
 async function handleStar(body, res, user) {
   const id = typeof body.id === 'string' ? body.id : '';
   if (!id) { res.status(400).json({ error: 'id is required' }); return; }
