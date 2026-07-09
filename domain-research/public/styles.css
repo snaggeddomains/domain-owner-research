@@ -349,6 +349,10 @@ button:disabled { opacity: .55; cursor: progress; }
 .nmv-dom { font-weight: 600; color: var(--navy); }
 .nmv-dom a { color: var(--navy); text-decoration: underline; }
 .nmv-kind { color: var(--navy-3); font-size: .88rem; }
+.nmv-kindchip { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: .78rem; font-weight: 700; }
+.nmv-k-prefix { background: #eae7f6; color: #5a49b0; }
+.nmv-k-suffix { background: #e7f1f4; color: #2f7d92; }
+.nmv-k-tld { background: #f4ece7; color: #a5623a; }
 .nmv-mkt { color: var(--navy-3); font-size: .82rem; margin-left: 4px; }
 a.nmv-mkt { text-decoration: underline; }
 .nmv-price { font-weight: 700; color: var(--navy); }

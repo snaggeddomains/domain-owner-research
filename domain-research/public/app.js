@@ -4767,7 +4767,11 @@ function renderVariations(data) {
     if (!data.domainscout) bits.push('prices need DomainScout (not configured)');
     els.nmvNote.textContent = `Built around “${data.seed}”. ${bits.join(' · ')}. .com first; .ai excluded.`;
   }
-  const kindLabel = { prefix: 'prefix', suffix: 'suffix', tld: 'extension' };
+  const kindChip = (r) => {
+    const label = { prefix: 'Prefix', suffix: 'Suffix', tld: 'Extension' }[r.kind] || r.kind;
+    const affix = r.kind !== 'tld' ? ` · ${escapeHtml(r.affix)}` : '';
+    return `<span class="nmv-kindchip nmv-k-${escapeHtml(r.kind)}">${label}${affix}</span>`;
+  };
   const catPill = (r) => {
     const c = NMV_CAT[r.category] || NMV_CAT.unknown;
     const src = r.category === 'for_sale' && r.for_sale_source === 'page' ? ' (own page)'
@@ -4786,8 +4790,7 @@ function renderVariations(data) {
     // The name ALWAYS links to its own live page.
     const dom = `<a href="https://${escapeHtml(r.domain)}" target="_blank" rel="noopener">${escapeHtml(r.domain)}</a>`;
     const ev = r.evidence ? `<div class="nmv-ev">${escapeHtml(r.evidence)}</div>` : '';
-    const typ = `${kindLabel[r.kind] || r.kind}${r.kind !== 'tld' ? ` (${escapeHtml(r.affix)})` : ''}`;
-    return `<tr><td class="nmv-dom">${dom}${ev}</td><td>${catPill(r)}</td><td>${forSaleCell}</td><td class="nmv-kind">${typ}</td></tr>`;
+    return `<tr><td class="nmv-dom">${dom}${ev}</td><td>${catPill(r)}</td><td>${forSaleCell}</td><td class="nmv-kind">${kindChip(r)}</td></tr>`;
   };
   const html = `<table class="nmv-table"><thead><tr><th>Domain</th><th>Status</th><th>For sale</th><th>Type</th></tr></thead><tbody>${rows.map(cell).join('')}</tbody></table>`;
   if (els.nmvTable) els.nmvTable.innerHTML = html;
