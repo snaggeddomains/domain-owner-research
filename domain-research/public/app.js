@@ -4655,10 +4655,12 @@ function setNamingMode(mode) {
       : 'Paste a brief — e.g. "Tech startup, B2B SaaS, premium feel. One-word .com, easy to spell, under $5,000. Keywords: cloud, data, ops."';
   }
   if (els.namingGo) els.namingGo.textContent = variations ? 'Build Variations' : 'Find Names';
-  // Only one results section shows at a time; the filters panel is theme-only.
+  // Only one results section shows at a time; the theme filters (panel + parsed-
+  // filter chips) are theme-only and must be hidden in variations mode.
   if (variations) {
     if (els.namingResults) els.namingResults.hidden = true;
     if (els.namingFiltersPanel) els.namingFiltersPanel.hidden = true;
+    if (els.namingFilters) els.namingFilters.hidden = true;
     if (els.namingChat) els.namingChat.hidden = true;
   } else if (els.namingVariations) {
     els.namingVariations.hidden = true;
@@ -4725,13 +4727,24 @@ async function runVariations() {
   try {
     const res = await fetch('/research/api/naming', {
       method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ action: 'variations', seed, exclude_tlds: ['ai'] }),
+      body: JSON.stringify({
+        action: 'variations', seed, exclude_tlds: ['ai'],
+        run_id: currentNamingRunId || null,
+        title: (els.namingTitle && els.namingTitle.value.trim()) || null,
+      }),
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.error || `Failed (${res.status})`);
     variationsLast = data;
     renderVariations(data);
     setNamingStatus('');
+    // Persist + deep-link the run so it lands in Recent and can be reopened.
+    if (data.run_id) {
+      currentNamingRunId = data.run_id;
+      const path = `/research/naming/${encodeURIComponent(data.run_id)}`;
+      if (location.pathname !== path) history.replaceState(null, '', path);
+      loadNamingRecent();
+    }
   } catch (e) {
     setNamingStatus('');
     if (els.namingError) { els.namingError.textContent = String(e.message || e); els.namingError.hidden = false; }
@@ -4758,14 +4771,28 @@ const NMV_CAT = {
 
 function renderVariations(data) {
   if (els.namingResults) els.namingResults.hidden = true;
+  if (els.namingFilters) els.namingFilters.hidden = true;
+  if (els.namingFiltersPanel) els.namingFiltersPanel.hidden = true;
   if (els.namingChat) els.namingChat.hidden = true;
   const rows = (data && Array.isArray(data.results)) ? data.results : [];
   const n = (cat) => rows.filter((r) => r.category === cat).length;
   if (els.nmvCount) els.nmvCount.textContent = `${rows.length}`;
   if (els.nmvNote) {
     const bits = [`${n('for_sale')} for sale`, `${n('available')} available`, `${n('active')} active`, `${n('parked') + n('registered')} held`];
-    if (!data.domainscout) bits.push('prices need DomainScout (not configured)');
-    els.nmvNote.textContent = `Built around “${data.seed}”. ${bits.join(' · ')}. .com first; .ai excluded.`;
+    if (!data.domainscout) bits.push('prices need DomainScout');
+    const summary = `Built around “${escapeHtml(data.seed || '')}”. ${bits.join(' · ')}.`;
+    const c = data.criteria || {};
+    const chips = (arr, pre = '') => (Array.isArray(arr) ? arr : []).map((x) => `<span class="nmv-crit">${escapeHtml(pre)}${escapeHtml(x)}</span>`).join('');
+    const critHtml = c && (c.prefixes || c.suffixes || c.tlds) ? (
+      `<div class="nmv-criteria">`
+      + (c.prefixes && c.prefixes.length ? `<div class="nmv-critrow"><span class="nmv-critlbl">Prefixes</span> ${chips(c.prefixes)}</div>` : '')
+      + (c.suffixes && c.suffixes.length ? `<div class="nmv-critrow"><span class="nmv-critlbl">Suffixes</span> ${chips(c.suffixes)}</div>` : '')
+      + (c.tlds && c.tlds.length ? `<div class="nmv-critrow"><span class="nmv-critlbl">Extensions</span> ${chips(c.tlds, '.')}</div>` : '')
+      + (c.exclude_tlds && c.exclude_tlds.length ? `<div class="nmv-critrow nmv-critexcl">Excluded: ${chips(c.exclude_tlds, '.')}</div>` : '')
+      + (c.word_aware ? `<div class="nmv-critnote">Prefix/suffix set tuned to this word; seam-doubled options kept but flagged.</div>` : '')
+      + `</div>`
+    ) : '';
+    els.nmvNote.innerHTML = `<span class="nmv-summary">${summary}</span>${critHtml}`;
   }
   const kindChip = (r) => {
     const label = { prefix: 'Prefix', suffix: 'Suffix', tld: 'Extension' }[r.kind] || r.kind;
@@ -4803,7 +4830,11 @@ function variationsToCsv(data) {
   const head = ['Domain', 'Category', 'For sale', 'Source', 'Price', 'Marketplace', 'Site', 'Friction', 'Evidence', 'Type', 'Affix', 'Link'];
   const esc = (v) => { const s = String(v == null ? '' : v); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
   const lines = [head.join(',')];
-  for (const r of rows) lines.push([r.domain, r.category, r.for_sale ? 'yes' : 'no', r.for_sale_source || '', r.price || '', r.marketplace || '', r.site || '', r.friction || '', r.evidence || '', r.kind, r.affix, r.link || ''].map(esc).join(','));
+  for (const r of rows) {
+    // Price lives in its own column — strip the redundant "· $X" tail from evidence.
+    const evidence = String(r.evidence || '').replace(/\s*·\s*\$[\d,]+\s*$/, '');
+    lines.push([r.domain, r.category, r.for_sale ? 'yes' : 'no', r.for_sale_source || '', r.price || '', r.marketplace || '', r.site || '', r.friction || '', evidence, r.kind, r.affix, r.link || ''].map(esc).join(','));
+  }
   return lines.join('\n');
 }
 
@@ -5225,6 +5256,16 @@ async function openNamingRun(id) {
     if (els.namingTitle) els.namingTitle.value = String(r.title || '');
     // Collapse the hero+brief into the compact header (labelled by the project title).
     toolReport('view-naming', String(r.title || r.brief || 'project').slice(0, 60), true);
+    // A saved VARIATIONS run — re-render the variations grid (not the theme buckets).
+    if (r.filters && r.filters.mode === 'variations') {
+      setNamingMode('variations');
+      const vdata = { seed: (r.filters.seed || r.brief || ''), criteria: r.filters.criteria || null, results: Array.isArray(r.buy_ready) ? r.buy_ready : [], domainscout: true };
+      variationsLast = vdata;
+      renderVariations(vdata);
+      setNamingStatus('');
+      return;
+    }
+    setNamingMode('theme');
     const buy = Array.isArray(r.buy_ready) ? r.buy_ready : [];
     const stretch = Array.isArray(r.stretch) ? r.stretch : [];
     namingLastResults = { run_id: r.id, filters: r.filters, buyReady: buy, stretch };

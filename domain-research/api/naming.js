@@ -99,11 +99,11 @@ export default async function handler(req, res) {
   res.status(400).json({ error: `Unknown action: ${action}` });
 }
 
-// Star/unstar a run (owner or admin only).
 // Brand-variation sweep — enumerate a LOCKED word's prefix/suffix/TLD variations
-// and check each live for for-sale status + price (DomainScout) and availability
-// (DNS). The tool for a client committed to their name (the theme search can't
-// hold a word fixed). Fast + fail-open; no run is persisted.
+// and check each live for for-sale status + price (crawl/DomainScout) and
+// availability (DNS). The tool for a client committed to their name (the theme
+// search can't hold a word fixed). Persisted as a naming_run (filters.mode =
+// 'variations') so it shows in Recent and can be reopened like a theme run.
 async function handleVariations(body, res, user) {
   const seed = String(body.seed || '').trim();
   if (!seed) { res.status(400).json({ error: 'Enter a word to build variations around (e.g. "sentinel").' }); return; }
@@ -111,12 +111,23 @@ async function handleVariations(body, res, user) {
     res.status(400).json({ error: 'That doesn’t look like a usable brand word.' }); return;
   }
   const excludeTlds = Array.isArray(body.exclude_tlds) ? body.exclude_tlds.map((t) => String(t)) : [];
+  const runId = typeof body.run_id === 'string' && body.run_id ? body.run_id : null;
+  const title = (typeof body.title === 'string' && body.title.trim()) ? body.title.trim() : null;
   try {
     const out = await withCategory('naming', async () => {
       // Word-aware affixes first (goswimming ✓ / gobathroom ✗) — fail-open to defaults.
       const { prefixes, suffixes } = await pickAffixes(seed, process.env).catch(() => ({}));
       return sweepVariations(seed, { env: process.env, excludeTlds, prefixes, suffixes });
     });
+    // Persist so it lands in Recent + is reopenable (best-effort — never block the
+    // result on a DB hiccup). Results ride in buy_ready; filters carries the mode.
+    try {
+      const filters = { mode: 'variations', seed, criteria: out.criteria || null };
+      const payload = { user_id: user && user.id, brief: seed, filters, buyReady: out.results, stretch: [], title: title || seed };
+      const saved = runId ? await updateNamingRun(runId, payload) : await saveNamingRun(payload);
+      if (saved && saved.id) { out.run_id = saved.id; out.created_at = saved.created_at; }
+      else if (runId) out.run_id = runId;
+    } catch (e) { console.error('variations save failed:', e && e.message); }
     res.status(200).json(out);
   } catch (e) {
     res.status(500).json({ error: String((e && e.message) || e) });

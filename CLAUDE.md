@@ -331,6 +331,12 @@ can NEVER hold a specific word fixed — so it returned public-safety-*themed* n
   render in `#naming-variations` (`renderVariations`, `.nmv-*` styles) with a category pill
   (for sale / available / active / parked / registered) + evidence line + price + marketplace
   + CSV download. `.ai` excluded by default (public-safety buyers). Cache-bust `?v=20260709variations2`.
+- **Saved like a theme run** — persisted to `naming_runs` (`filters.mode='variations'`,
+  seed in `brief`, rows in `buy_ready`, `criteria` in filters); shows in Recent, deep-links
+  `/research/naming/:id`, reopens via the variations branch in `openNamingRun`. In variations
+  mode the theme parsed-filters panel is hidden; a **criteria panel** (`nmv-criteria`) shows the
+  actual prefixes/suffixes/extensions used + exclusions. **active vs parked** requires a real
+  branded `<title>` (a GoDaddy/registrar lander renders no server title → `parked`, not active).
 - **No new permission / table / env** — reuses the naming gate + DomainScout key.
 
 ## Nav sections — research SPA (config-driven, 2026-06-28)

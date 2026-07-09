@@ -5,7 +5,7 @@
 // it. Everything is best-effort + fail-open; a missing DomainScout key just drops
 // the price column (availability still resolves via DNS).
 import dns from 'node:dns/promises';
-import { enumerateVariations } from './enumerate.js';
+import { enumerateVariations, PREFIXES, SUFFIXES, TLDS } from './enumerate.js';
 import { lookupDomain, isConfigured } from '../domainscout.js';
 import { fetchText, extractClues } from '../util.js';
 
@@ -70,6 +70,8 @@ function marketplaceFromNs(nameservers, domain) {
 // { site: 'for_sale'|'active'|'parked'|'no_resolve'|'error', title, for_sale_page,
 // evidence } — where for_sale_page means an EXPLICIT for-sale page (own or marketplace).
 const MARKETPLACE_HOST_RE = /(^|\.)(dan\.com|afternic\.com|sedo\.com|atom\.com|hugedomains\.com|undeveloped\.com|efty\.com|sav\.com|above\.com|squadhelp\.com)$/i;
+// Registrar/holding landing pages — registered but NOT in active use. GoDaddy et al.
+const HOLDING_RE = /future home of|website coming soon|coming soon|under construction|domain (name )?is parked|parked (free|page)|this domain (name )?is (parked|registered|not configured|available)|default (web ?page|server page|page)|welcome to nginx|apache\b.{0,30}default|it works!|test page|this is the default|new site|placeholder|buy now this domain|this webpage is parked/i;
 
 // Pull the asking price off a for-sale/marketplace page's HTML. Domain landers show
 // the ask directly ($6,195 on HugeDomains, $29,888 on a custom page). Take the
@@ -114,12 +116,21 @@ async function inspectSite(domain) {
     const price = extractPrice(r.body);
     return { site: 'for_sale', title: clues.title, for_sale_page: true, price, listing_url: r.finalUrl || null, evidence: `for-sale page — ${where}${price ? ` · $${price.toLocaleString()}` : ''}` };
   }
-  if (parked) return { site: 'parked', title: clues.title, for_sale_page: false, evidence: 'parked page (no explicit for-sale text)' };
-  if (r.ok && (clues.title || (clues.text_excerpt || '').length > 120)) {
-    return { site: 'active', title: clues.title, for_sale_page: false, evidence: `active site${clues.title ? ` — "${clues.title}"` : ''}` };
-  }
-  if (r.status >= 400) return { site: 'error', title: clues.title, for_sale_page: false, evidence: `HTTP ${r.status}` };
-  return { site: 'active', title: clues.title, for_sale_page: false, evidence: 'responds, minimal content' };
+  const title = clues.title;
+  const holding = HOLDING_RE.test(clues.text_excerpt || '') || HOLDING_RE.test(title || '');
+  if (holding) return { site: 'parked', title, for_sale_page: false, evidence: 'registrar/holding landing page — registered, not in active use' };
+  if (parked) return { site: 'parked', title, for_sale_page: false, evidence: 'parked page (no explicit for-sale text)' };
+  // ACTIVE requires a real, BRANDED <title>. A registrar/GoDaddy lander renders no
+  // server-side title (sentinelcentral.com = 200 but empty title+body); a live site
+  // (joinsentinel.com = "Sentinel — the agentic layer…") brands it.
+  const sld = domain.split('.')[0];
+  const generic = !title
+    || title.toLowerCase() === domain.toLowerCase() || title.toLowerCase() === sld
+    || /^(index of|default|domain|welcome|coming soon|under construction|parked|home ?page|new site|untitled|website)/i.test(title.trim());
+  if (r.ok && title && !generic) return { site: 'active', title, for_sale_page: false, evidence: `active site — "${title}"` };
+  if (r.status >= 400) return { site: 'error', title, for_sale_page: false, evidence: `HTTP ${r.status} — registered, no live site` };
+  // 200 but no branded title / empty body → a registrar holding or idle domain.
+  return { site: 'parked', title, for_sale_page: false, evidence: 'resolves but no real site — registrar/holding or idle' };
 }
 
 // Rank by category: for-sale first (cheapest first — the buy-ready options), then
@@ -193,7 +204,15 @@ export async function sweepVariations(seed, { env = process.env, excludeTlds = [
     const ka = rankKey(a); const kb = rankKey(b);
     return (ka[0] - kb[0]) || (ka[1] - kb[1]) || (ka[2] - kb[2]) || a.domain.localeCompare(b.domain);
   });
-  return { seed: String(seed || '').trim(), domainscout: dsOn, count: results.length, results };
+  const drop = new Set((excludeTlds || []).map((t) => String(t).replace(/^\./, '').toLowerCase()));
+  const criteria = {
+    prefixes: (prefixes && prefixes.length ? prefixes : PREFIXES),
+    suffixes: (suffixes && suffixes.length ? suffixes : SUFFIXES),
+    tlds: TLDS.filter((t) => !drop.has(t)),
+    exclude_tlds: [...drop],
+    word_aware: !!(prefixes || suffixes),
+  };
+  return { seed: String(seed || '').trim(), domainscout: dsOn, count: results.length, criteria, results };
 }
 
 export default { sweepVariations };
