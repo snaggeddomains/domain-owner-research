@@ -70,6 +70,28 @@ function marketplaceFromNs(nameservers, domain) {
 // { site: 'for_sale'|'active'|'parked'|'no_resolve'|'error', title, for_sale_page,
 // evidence } — where for_sale_page means an EXPLICIT for-sale page (own or marketplace).
 const MARKETPLACE_HOST_RE = /(^|\.)(dan\.com|afternic\.com|sedo\.com|atom\.com|hugedomains\.com|undeveloped\.com|efty\.com|sav\.com|above\.com|squadhelp\.com)$/i;
+
+// Pull the asking price off a for-sale/marketplace page's HTML. Domain landers show
+// the ask directly ($6,195 on HugeDomains, $29,888 on a custom page). Take the
+// MOST-REPEATED sane amount (the real ask usually appears several times), tie-break
+// to the max (a two-tier page's higher figure is the buy-now, the lower a lease/
+// installment). Best-effort → null. Filters out financing noise ($100, $258.13).
+function extractPrice(html) {
+  const matches = String(html || '').match(/(?:USD|US\$|\$)\s?[\d][\d,]{1,9}(?:\.\d{2})?/gi) || [];
+  const counts = new Map();
+  for (const m of matches) {
+    const n = Number(m.replace(/[^\d.]/g, ''));
+    if (!Number.isFinite(n) || n < 100 || n > 5_000_000 || /\.\d{2}$/.test(m)) continue; // drop cents (financing/monthly)
+    counts.set(n, (counts.get(n) || 0) + 1);
+  }
+  if (!counts.size) return null;
+  let best = null;
+  for (const [n, c] of counts) {
+    if (!best || c > best.c || (c === best.c && n > best.n)) best = { n, c };
+  }
+  return best ? best.n : null;
+}
+
 async function inspectSite(domain) {
   let r;
   try {
@@ -89,7 +111,8 @@ async function inspectSite(domain) {
     const where = MARKETPLACE_HOST_RE.test(finalHost) ? `redirects to ${finalHost}`
       : (clues.parking.platforms || [])[0] ? `${clues.parking.platforms[0]} landing page`
         : 'a custom "for sale" page';
-    return { site: 'for_sale', title: clues.title, for_sale_page: true, evidence: `for-sale page — ${where}` };
+    const price = extractPrice(r.body);
+    return { site: 'for_sale', title: clues.title, for_sale_page: true, price, listing_url: r.finalUrl || null, evidence: `for-sale page — ${where}${price ? ` · $${price.toLocaleString()}` : ''}` };
   }
   if (parked) return { site: 'parked', title: clues.title, for_sale_page: false, evidence: 'parked page (no explicit for-sale text)' };
   if (r.ok && (clues.title || (clues.text_excerpt || '').length > 120)) {
@@ -117,9 +140,10 @@ export async function sweepVariations(seed, { env = process.env, excludeTlds = [
   const cands = enumerateVariations(seed, { excludeTlds, ...(prefixes ? { prefixes } : {}), ...(suffixes ? { suffixes } : {}) });
   const dsOn = isConfigured(env);
   const results = await mapPool(cands, CONCURRENCY, async (c) => {
-    const [reg, ds, insp] = await Promise.all([
+    // Two live signals in parallel: DNS (registered/available + nameservers) and a
+    // page crawl (for-sale page / active / parked + the listed price off the page).
+    const [reg, insp] = await Promise.all([
       registrationStatus(c.domain),
-      dsOn ? lookupDomain(c.domain, env, { track: false }).catch(() => null) : Promise.resolve(null),
       inspectSite(c.domain).catch(() => ({ site: 'error', title: null, for_sale_page: false, evidence: 'crawl failed' })),
     ]);
     let for_sale = false; let for_sale_source = null; let price = null; let currency = null; let marketplace = null; let link = null;
@@ -127,20 +151,13 @@ export async function sweepVariations(seed, { env = process.env, excludeTlds = [
     const mkNs = marketplaceFromNs(reg.nameservers, c.domain);
     if (mkNs && !mkNs.parkingOnly) { for_sale = true; for_sale_source = 'nameserver'; marketplace = mkNs.name; link = mkNs.link; }
     // (2) Live page crawl — catches a CUSTOM "for sale" page (owner-built) or a
-    // marketplace landing the NS didn't reveal; also tells active vs parked vs dead.
-    if (insp.for_sale_page) { for_sale = true; for_sale_source = for_sale_source || 'page'; }
-    // (3) DomainScout — adds the PRICE (and listings on non-marketplace NS) when it
-    // already monitors the name; never downgrades a confirmed listing.
-    if (ds) {
-      const listed = (ds.marketplaces || []).filter((m) => m.listed);
-      if (listed.length) {
-        const best = listed.slice().sort((a, b) => (a.price ?? Infinity) - (b.price ?? Infinity))[0];
-        for_sale = true; for_sale_source = for_sale_source || 'domainscout';
-        price = best.price ?? price; currency = best.currency || 'USD';
-        marketplace = marketplace || best.name || null; link = link || best.url || null;
-      } else if (ds.for_sale) { for_sale = true; for_sale_source = for_sale_source || 'domainscout'; }
+    // marketplace landing the NS missed, AND reads the asking price off the page.
+    if (insp.for_sale_page) {
+      for_sale = true; for_sale_source = for_sale_source || 'page';
+      if (insp.price) { price = insp.price; currency = 'USD'; }
+      link = link || insp.listing_url || null;
     }
-    // Final category from all three signals.
+    // Final category from the two signals.
     let category;
     if (for_sale) category = 'for_sale';
     else if (reg.status === 'available') category = 'available';
@@ -154,6 +171,24 @@ export async function sweepVariations(seed, { env = process.env, excludeTlds = [
       status: reg.status, site: insp.site, title: insp.title || null, evidence: insp.evidence || null,
     };
   });
+  // Targeted DomainScout PRICE fallback — ONLY for names we found for-sale but
+  // couldn't price off the page (JS-rendered listers). Purposeful, small (not fired
+  // on all candidates), track:false so nothing is added to the watchlist. Skips
+  // entirely when DomainScout isn't configured.
+  if (dsOn) {
+    const needPrice = results.filter((r) => r.for_sale && !(r.price > 0));
+    await mapPool(needPrice, CONCURRENCY, async (r) => {
+      const ds = await lookupDomain(r.domain, env, { track: false }).catch(() => null);
+      const listed = ds && (ds.marketplaces || []).filter((m) => m.listed && m.price > 0);
+      if (listed && listed.length) {
+        const best = listed.slice().sort((a, b) => a.price - b.price)[0];
+        r.price = best.price; r.currency = best.currency || 'USD';
+        r.marketplace = r.marketplace || best.name || null;
+        r.link = r.link || best.url || null;
+        if (r.evidence && !/\$/.test(r.evidence)) r.evidence += ` · $${best.price.toLocaleString()}`;
+      }
+    });
+  }
   results.sort((a, b) => {
     const ka = rankKey(a); const kb = rankKey(b);
     return (ka[0] - kb[0]) || (ka[1] - kb[1]) || (ka[2] - kb[2]) || a.domain.localeCompare(b.domain);

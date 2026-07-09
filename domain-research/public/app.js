@@ -4776,11 +4776,15 @@ function renderVariations(data) {
   };
   const cell = (r) => {
     const price = fmtVarPrice(r.price, r.currency);
+    // The marketplace/listing link (where to buy it), shown in the For-sale cell.
+    const mkt = r.marketplace
+      ? (r.link ? `<a class="nmv-mkt" href="${escapeHtml(r.link)}" target="_blank" rel="noopener">${escapeHtml(r.marketplace)} ↗</a>` : `<span class="nmv-mkt">${escapeHtml(r.marketplace)}</span>`)
+      : (r.link ? `<a class="nmv-mkt" href="${escapeHtml(r.link)}" target="_blank" rel="noopener">view listing ↗</a>` : '');
     const forSaleCell = r.for_sale
-      ? (price ? `${price}${r.marketplace ? ` <span class="nmv-mkt">${escapeHtml(r.marketplace)}</span>` : ''}`
-        : (r.marketplace ? `listed <span class="nmv-mkt">${escapeHtml(r.marketplace)}</span>` : 'listed'))
+      ? (price ? `<span class="nmv-price">${price}</span>${mkt ? ` ${mkt}` : ''}` : (mkt || 'listed'))
       : '—';
-    const dom = r.link ? `<a href="${escapeHtml(r.link)}" target="_blank" rel="noopener">${escapeHtml(r.domain)}</a>` : escapeHtml(r.domain);
+    // The name ALWAYS links to its own live page.
+    const dom = `<a href="https://${escapeHtml(r.domain)}" target="_blank" rel="noopener">${escapeHtml(r.domain)}</a>`;
     const ev = r.evidence ? `<div class="nmv-ev">${escapeHtml(r.evidence)}</div>` : '';
     const typ = `${kindLabel[r.kind] || r.kind}${r.kind !== 'tld' ? ` (${escapeHtml(r.affix)})` : ''}`;
     return `<tr><td class="nmv-dom">${dom}${ev}</td><td>${catPill(r)}</td><td>${forSaleCell}</td><td class="nmv-kind">${typ}</td></tr>`;

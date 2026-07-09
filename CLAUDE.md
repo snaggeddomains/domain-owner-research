@@ -313,10 +313,13 @@ can NEVER hold a specific word fixed — so it returned public-safety-*themed* n
   bounded-concurrency, all fail-open) — we do NOT trust any one alone:
   (1) **nameservers** (`dns.resolveNs` → `MARKETPLACE_NS` map: dan/atom/afternic/sedo/…) =
   listed NOW, immediate, no scan; (2) **live page crawl** (`inspectSite` → `fetchText` +
-  `extractClues`) catches an owner's **custom "for sale" page** + marketplace redirects, and
-  classifies **active vs parked vs no-resolve**; (3) **DomainScout** adds the **price** when it
-  already monitors the name (**`track:false` — the sweep never ADDS names to the watchlist**,
-  so no cleanup needed; that's why we can't lean on it alone). Merged into one `category`
+  `extractClues`) catches an owner's **custom "for sale" page** + marketplace redirects,
+  classifies **active vs parked vs no-resolve**, AND reads the **asking price off the page**
+  (`extractPrice`; gets HugeDomains/Atom/custom-page prices, misses JS-only Afternic/Dan
+  landers); (3) **DomainScout** is a **targeted price-only fallback** — called ONLY for
+  for-sale names the crawl couldn't price, returns data only for names it ALREADY monitors
+  (**`track:false` — never ADDS names to the watchlist**), does NOT gate results and adds
+  ~nothing for a fresh word (the crawl is the real price source). Merged into one `category`
   (`for_sale`/`available`/`active`/`parked`/`registered`) + `for_sale_source` + `evidence`.
   Ranks for-sale (cheapest first) → available → parked → active → registered; `.com` first.
   `api/naming.js` `maxDuration` bumped to 60 for the crawl.
