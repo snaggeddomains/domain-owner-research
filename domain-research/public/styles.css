@@ -343,20 +343,26 @@ button:disabled { opacity: .55; cursor: progress; }
 /* Variations results */
 .naming-variations { max-width: none; margin: 24px 0 0; }
 .nmv-table { width: 100%; border-collapse: collapse; font-size: .95rem; }
-.nmv-table th { text-align: left; padding: 10px 14px; background: var(--cream); color: var(--navy-3); font-size: .78rem; text-transform: uppercase; letter-spacing: .04em; border-bottom: 2px solid var(--line); }
-.nmv-table td { padding: 10px 14px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+.nmv-table th { text-align: left; padding: 10px 14px; background: var(--cream); color: var(--navy-3); font-size: .78rem; text-transform: uppercase; letter-spacing: .04em; border-bottom: 2px solid var(--line); white-space: nowrap; }
+.nmv-table td { padding: 10px 14px; border-bottom: 1px solid var(--line); vertical-align: middle; white-space: nowrap; }
+/* Domain column takes the slack; the rest shrink to content. Nothing wraps on
+   desktop except the (rare) friction note under the name. */
+.nmv-table td.nmv-dom { width: 100%; }
+.nmv-fric { white-space: normal; }
+.nmv-pricecell { text-align: right; }
+.nmv-dash { color: #b7ada4; }
 .nmv-table tr:last-child td { border-bottom: none; }
 .nmv-dom { font-weight: 600; color: var(--navy); }
 .nmv-dom a { color: var(--navy); text-decoration: underline; }
 .nmv-kind { color: var(--navy-3); font-size: .88rem; }
-.nmv-kindchip { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: .78rem; font-weight: 700; }
+.nmv-kindchip { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: .78rem; font-weight: 700; white-space: nowrap; }
 .nmv-k-prefix { background: #eae7f6; color: #5a49b0; }
 .nmv-k-suffix { background: #e7f1f4; color: #2f7d92; }
 .nmv-k-tld { background: #f4ece7; color: #a5623a; }
 .nmv-mkt { color: var(--navy-3); font-size: .82rem; margin-left: 4px; }
 a.nmv-mkt { text-decoration: underline; }
 .nmv-price { font-weight: 700; color: var(--navy); }
-.nmv-pill { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: .78rem; font-weight: 700; }
+.nmv-pill { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: .78rem; font-weight: 700; white-space: nowrap; }
 .nmv-forsale { background: #e7f6ec; color: #0b8f3a; }
 .nmv-avail { background: #e9f0fb; color: #2f6fd0; }
 .nmv-active { background: #fdeee7; color: #c2591f; }

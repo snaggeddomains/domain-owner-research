@@ -94,6 +94,19 @@ function extractPrice(html) {
   return best ? best.n : null;
 }
 
+// Friendly marketplace name from a listing page's host.
+function mktName(host) {
+  const h = (host || '').toLowerCase();
+  if (h.includes('hugedomains')) return 'HugeDomains';
+  if (h.includes('atom.com')) return 'Atom';
+  if (h.includes('dan.com') || h.includes('undeveloped')) return 'Dan';
+  if (h.includes('afternic') || h.includes('above.com')) return 'Afternic';
+  if (h.includes('sedo')) return 'Sedo';
+  if (h.includes('sav.com')) return 'Sav';
+  if (h.includes('efty')) return 'Efty';
+  return null;
+}
+
 async function inspectSite(domain) {
   let r;
   try {
@@ -114,7 +127,7 @@ async function inspectSite(domain) {
       : (clues.parking.platforms || [])[0] ? `${clues.parking.platforms[0]} landing page`
         : 'a custom "for sale" page';
     const price = extractPrice(r.body);
-    return { site: 'for_sale', title: clues.title, for_sale_page: true, price, listing_url: r.finalUrl || null, evidence: `for-sale page — ${where}${price ? ` · $${price.toLocaleString()}` : ''}` };
+    return { site: 'for_sale', title: clues.title, for_sale_page: true, price, marketplace: mktName(finalHost), listing_url: r.finalUrl || null, evidence: `for-sale page — ${where}${price ? ` · $${price.toLocaleString()}` : ''}` };
   }
   const title = clues.title;
   const holding = HOLDING_RE.test(clues.text_excerpt || '') || HOLDING_RE.test(title || '');
@@ -166,6 +179,7 @@ export async function sweepVariations(seed, { env = process.env, excludeTlds = [
     if (insp.for_sale_page) {
       for_sale = true; for_sale_source = for_sale_source || 'page';
       if (insp.price) { price = insp.price; currency = 'USD'; }
+      marketplace = marketplace || insp.marketplace || null;
       link = link || insp.listing_url || null;
     }
     // Final category from the two signals.
@@ -174,8 +188,9 @@ export async function sweepVariations(seed, { env = process.env, excludeTlds = [
     else if (reg.status === 'available') category = 'available';
     else if (insp.site === 'active') category = 'active';
     else if (insp.site === 'parked') category = 'parked';
-    else if (reg.status === 'registered') category = 'registered';
-    else category = 'unknown';
+    // Everything else is registered — a DNS hiccup ('unknown') defaults to registered
+    // (a name that answered on some path is far likelier registered than free).
+    else category = 'registered';
     return {
       domain: c.domain, kind: c.kind, affix: c.affix, category, friction: c.friction || null,
       for_sale, for_sale_source, price, currency, marketplace, link,

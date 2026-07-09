@@ -4799,28 +4799,40 @@ function renderVariations(data) {
     const affix = r.kind !== 'tld' ? ` · ${escapeHtml(r.affix)}` : '';
     return `<span class="nmv-kindchip nmv-k-${escapeHtml(r.kind)}">${label}${affix}</span>`;
   };
+  // Display the SLD camel-cased at the morpheme boundary so the affix reads at a
+  // glance — GetSentinel.com, MySentinel.com, SentinelIO.com. Short acronym affixes
+  // (io/ai/os/hq/api…) go all-caps. Display-only; link + CSV keep the real lowercase.
+  const seed = String(data.seed || '');
+  const ACRO = new Set(['io', 'ai', 'os', 'hq', 'api', 'ux', 'hr', 'pr', 'crm', 'seo', 'ceo']);
+  const cap = (s) => (s ? s[0].toUpperCase() + s.slice(1) : s);
+  const affixCase = (a) => (ACRO.has(a) ? a.toUpperCase() : cap(a));
+  const prettyDomain = (r) => {
+    const dot = r.domain.lastIndexOf('.');
+    const tld = dot >= 0 ? r.domain.slice(dot) : '';
+    const s = cap(seed);
+    if (r.kind === 'prefix') return `${affixCase(r.affix)}${s}${tld}`;
+    if (r.kind === 'suffix') return `${s}${affixCase(r.affix)}${tld}`;
+    return `${s}${tld}`;
+  };
+  // Status is a single clean label — the marketplace + price live in their own columns.
   const catPill = (r) => {
-    const c = NMV_CAT[r.category] || NMV_CAT.unknown;
-    const src = r.category === 'for_sale' && r.for_sale_source === 'page' ? ' (own page)'
-      : r.category === 'for_sale' && r.marketplace ? ` · ${escapeHtml(r.marketplace)}` : '';
-    return `<span class="nmv-pill ${c.cls}">${c.label}${src}</span>`;
+    const c = NMV_CAT[r.category] || NMV_CAT.registered;
+    return `<span class="nmv-pill ${c.cls}">${c.label}</span>`;
   };
   const cell = (r) => {
     const price = fmtVarPrice(r.price, r.currency);
-    // The marketplace/listing link (where to buy it), shown in the For-sale cell.
-    const mkt = r.marketplace
-      ? (r.link ? `<a class="nmv-mkt" href="${escapeHtml(r.link)}" target="_blank" rel="noopener">${escapeHtml(r.marketplace)} ↗</a>` : `<span class="nmv-mkt">${escapeHtml(r.marketplace)}</span>`)
-      : (r.link ? `<a class="nmv-mkt" href="${escapeHtml(r.link)}" target="_blank" rel="noopener">view listing ↗</a>` : '');
-    const forSaleCell = r.for_sale
-      ? (price ? `<span class="nmv-price">${price}</span>${mkt ? ` ${mkt}` : ''}` : (mkt || 'listed'))
-      : '—';
-    // The name ALWAYS links to its own live page.
-    const dom = `<a href="https://${escapeHtml(r.domain)}" target="_blank" rel="noopener">${escapeHtml(r.domain)}</a>`;
-    const ev = r.evidence ? `<div class="nmv-ev">${escapeHtml(r.evidence)}</div>` : '';
+    const priceCell = price ? `<span class="nmv-price">${price}</span>` : '<span class="nmv-dash">—</span>';
+    // Listing = a link to where it's for sale (marketplace name, or "view" for a
+    // custom page). Its OWN column, separate from price.
+    let listing = '<span class="nmv-dash">—</span>';
+    if (r.link) listing = `<a class="nmv-mkt" href="${escapeHtml(r.link)}" target="_blank" rel="noopener">${escapeHtml(r.marketplace || 'view')} ↗</a>`;
+    else if (r.marketplace) listing = `<span class="nmv-mkt">${escapeHtml(r.marketplace)}</span>`;
+    // The name ALWAYS links to its own live page (href/CSV keep the real lowercase).
+    const dom = `<a href="https://${escapeHtml(r.domain)}" target="_blank" rel="noopener">${escapeHtml(prettyDomain(r))}</a>`;
     const fric = r.friction ? `<div class="nmv-fric">⚠ ${escapeHtml(r.friction)}</div>` : '';
-    return `<tr><td class="nmv-dom">${dom}${fric}${ev}</td><td>${catPill(r)}</td><td>${forSaleCell}</td><td class="nmv-kind">${kindChip(r)}</td></tr>`;
+    return `<tr><td class="nmv-dom">${dom}${fric}</td><td>${catPill(r)}</td><td class="nmv-pricecell">${priceCell}</td><td>${listing}</td><td class="nmv-kind">${kindChip(r)}</td></tr>`;
   };
-  const html = `<table class="nmv-table"><thead><tr><th>Domain</th><th>Status</th><th>For sale</th><th>Type</th></tr></thead><tbody>${rows.map(cell).join('')}</tbody></table>`;
+  const html = `<table class="nmv-table"><thead><tr><th>Domain</th><th>Status</th><th>Price</th><th>Listing</th><th>Type</th></tr></thead><tbody>${rows.map(cell).join('')}</tbody></table>`;
   if (els.nmvTable) els.nmvTable.innerHTML = html;
   if (els.namingVariations) els.namingVariations.hidden = false;
 }
