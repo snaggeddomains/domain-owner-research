@@ -303,21 +303,31 @@ The existing theme search matches the marketplace corpus by `semantic_keywords` 
 can NEVER hold a specific word fixed — so it returned public-safety-*themed* names
 (convict.ai) instead of `sentinel*` variants. This mode enumerates instead of searches.
 
-- **Engine** `lib/variations/{enumerate,sweep}.js`: `enumerateVariations(seed, {excludeTlds})`
-  builds friction-clean candidates — `PREFIXES`+seed / seed+`SUFFIXES` on `.com`, plus the
-  exact word across `TLDS` — dropping any **seam-doubled** SLD (`sentinel`+`labs`→double-L)
-  and excluded TLDs. `sweepVariations` checks each live, bounded-concurrency + fail-open:
-  **for-sale + price + marketplace via DomainScout** (`lib/domainscout.js` `lookupDomain`,
-  no key → column blank) and **registered/available via DNS NS** (`dns.resolveNs`; NXDOMAIN
-  = available). Ranks for-sale (cheapest first) → available → registered; `.com` first.
+- **Engine** `lib/variations/{enumerate,sweep,affixes}.js`: `enumerateVariations(seed,
+  {excludeTlds,prefixes,suffixes})` builds friction-clean candidates — `PREFIXES`+seed /
+  seed+`SUFFIXES` on `.com`, plus the exact word across `TLDS` — dropping any **seam-doubled**
+  SLD (`sentinel`+`labs`→double-L) and excluded TLDs. **Word-aware affixes** (`pickAffixes`,
+  Haiku, fail-open to full lists): one cheap call filters the affix set to what reads
+  naturally for THIS word (`goswimming` ✓ / `gobathroom` ✗) + may add a few word-specific ones.
+- **Three independent for-sale/disposition signals per candidate** (`sweepVariations`,
+  bounded-concurrency, all fail-open) — we do NOT trust any one alone:
+  (1) **nameservers** (`dns.resolveNs` → `MARKETPLACE_NS` map: dan/atom/afternic/sedo/…) =
+  listed NOW, immediate, no scan; (2) **live page crawl** (`inspectSite` → `fetchText` +
+  `extractClues`) catches an owner's **custom "for sale" page** + marketplace redirects, and
+  classifies **active vs parked vs no-resolve**; (3) **DomainScout** adds the **price** when it
+  already monitors the name (**`track:false` — the sweep never ADDS names to the watchlist**,
+  so no cleanup needed; that's why we can't lean on it alone). Merged into one `category`
+  (`for_sale`/`available`/`active`/`parked`/`registered`) + `for_sale_source` + `evidence`.
+  Ranks for-sale (cheapest first) → available → parked → active → registered; `.com` first.
+  `api/naming.js` `maxDuration` bumped to 60 for the crawl.
 - **API**: `api/naming.js` action `variations` (`POST {action:'variations', seed, exclude_tlds?}`
   → `{seed, domainscout, count, results:[{domain,kind,affix,status,for_sale,price,currency,marketplace,link}]}`).
   Same `research.naming` gate; no run persisted. `withCategory('naming')`.
 - **UI** (`public/app.js`): a **mode toggle** (`#naming-mode`, 🔍 Find by theme / 🎯 Build
   around a word) swaps the input hint + `runNaming()` branches to `runVariations()`; results
-  render in `#naming-variations` (`renderVariations`, `.nmv-*` styles) with a for-sale/
-  available/registered pill + price + marketplace + CSV download. `.ai` excluded by default
-  (public-safety buyers). Cache-bust `?v=20260709variations`.
+  render in `#naming-variations` (`renderVariations`, `.nmv-*` styles) with a category pill
+  (for sale / available / active / parked / registered) + evidence line + price + marketplace
+  + CSV download. `.ai` excluded by default (public-safety buyers). Cache-bust `?v=20260709variations2`.
 - **No new permission / table / env** — reuses the naming gate + DomainScout key.
 
 ## Nav sections — research SPA (config-driven, 2026-06-28)

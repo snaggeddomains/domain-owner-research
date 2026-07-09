@@ -353,8 +353,11 @@ button:disabled { opacity: .55; cursor: progress; }
 .nmv-pill { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: .78rem; font-weight: 700; }
 .nmv-forsale { background: #e7f6ec; color: #0b8f3a; }
 .nmv-avail { background: #e9f0fb; color: #2f6fd0; }
+.nmv-active { background: #fdeee7; color: #c2591f; }
+.nmv-parked { background: #f4efe4; color: #9a8228; }
 .nmv-taken { background: #f0ece8; color: #8a7f76; }
 .nmv-unknown { background: #f4f1ee; color: #a89f96; }
+.nmv-ev { color: var(--navy-3); font-size: .8rem; margin-top: 3px; }
 
 .naming-actions { display: flex; align-items: center; gap: 14px; margin-top: 14px; flex-wrap: wrap; }
 .naming-go:disabled { opacity: .55; cursor: not-allowed; box-shadow: none; transform: none; }

@@ -4747,34 +4747,43 @@ function fmtVarPrice(p, cur) {
   return cur && cur !== 'USD' ? `${s} ${cur}` : s;
 }
 
+const NMV_CAT = {
+  for_sale: { cls: 'nmv-forsale', label: 'For sale' },
+  available: { cls: 'nmv-avail', label: 'Available' },
+  active: { cls: 'nmv-active', label: 'Active site' },
+  parked: { cls: 'nmv-parked', label: 'Parked' },
+  registered: { cls: 'nmv-taken', label: 'Registered' },
+  unknown: { cls: 'nmv-unknown', label: 'Unknown' },
+};
+
 function renderVariations(data) {
   if (els.namingResults) els.namingResults.hidden = true;
   if (els.namingChat) els.namingChat.hidden = true;
   const rows = (data && Array.isArray(data.results)) ? data.results : [];
-  const forSale = rows.filter((r) => r.for_sale).length;
-  const avail = rows.filter((r) => r.status === 'available').length;
+  const n = (cat) => rows.filter((r) => r.category === cat).length;
   if (els.nmvCount) els.nmvCount.textContent = `${rows.length}`;
   if (els.nmvNote) {
-    const bits = [`${forSale} for sale`, `${avail} available to register`];
-    if (!data.domainscout) bits.push('for-sale pricing needs DomainScout (not configured)');
+    const bits = [`${n('for_sale')} for sale`, `${n('available')} available`, `${n('active')} active`, `${n('parked') + n('registered')} held`];
+    if (!data.domainscout) bits.push('prices need DomainScout (not configured)');
     els.nmvNote.textContent = `Built around “${data.seed}”. ${bits.join(' · ')}. .com first; .ai excluded.`;
   }
   const kindLabel = { prefix: 'prefix', suffix: 'suffix', tld: 'extension' };
-  const statusPill = (r) => {
-    if (r.for_sale) return '<span class="nmv-pill nmv-forsale">For sale</span>';
-    if (r.status === 'available') return '<span class="nmv-pill nmv-avail">Available</span>';
-    if (r.status === 'unknown') return '<span class="nmv-pill nmv-unknown">Unknown</span>';
-    return '<span class="nmv-pill nmv-taken">Registered</span>';
+  const catPill = (r) => {
+    const c = NMV_CAT[r.category] || NMV_CAT.unknown;
+    const src = r.category === 'for_sale' && r.for_sale_source === 'page' ? ' (own page)'
+      : r.category === 'for_sale' && r.marketplace ? ` · ${escapeHtml(r.marketplace)}` : '';
+    return `<span class="nmv-pill ${c.cls}">${c.label}${src}</span>`;
   };
   const cell = (r) => {
     const price = fmtVarPrice(r.price, r.currency);
-    const priceCell = r.for_sale
+    const forSaleCell = r.for_sale
       ? (price ? `${price}${r.marketplace ? ` <span class="nmv-mkt">${escapeHtml(r.marketplace)}</span>` : ''}`
         : (r.marketplace ? `listed <span class="nmv-mkt">${escapeHtml(r.marketplace)}</span>` : 'listed'))
       : '—';
     const dom = r.link ? `<a href="${escapeHtml(r.link)}" target="_blank" rel="noopener">${escapeHtml(r.domain)}</a>` : escapeHtml(r.domain);
+    const ev = r.evidence ? `<div class="nmv-ev">${escapeHtml(r.evidence)}</div>` : '';
     const typ = `${kindLabel[r.kind] || r.kind}${r.kind !== 'tld' ? ` (${escapeHtml(r.affix)})` : ''}`;
-    return `<tr><td class="nmv-dom">${dom}</td><td>${statusPill(r)}</td><td>${priceCell}</td><td class="nmv-kind">${typ}</td></tr>`;
+    return `<tr><td class="nmv-dom">${dom}${ev}</td><td>${catPill(r)}</td><td>${forSaleCell}</td><td class="nmv-kind">${typ}</td></tr>`;
   };
   const html = `<table class="nmv-table"><thead><tr><th>Domain</th><th>Status</th><th>For sale</th><th>Type</th></tr></thead><tbody>${rows.map(cell).join('')}</tbody></table>`;
   if (els.nmvTable) els.nmvTable.innerHTML = html;
@@ -4783,10 +4792,10 @@ function renderVariations(data) {
 
 function variationsToCsv(data) {
   const rows = (data && Array.isArray(data.results)) ? data.results : [];
-  const head = ['Domain', 'Status', 'For sale', 'Price', 'Marketplace', 'Type', 'Affix', 'Link'];
+  const head = ['Domain', 'Category', 'For sale', 'Source', 'Price', 'Marketplace', 'Site', 'Evidence', 'Type', 'Affix', 'Link'];
   const esc = (v) => { const s = String(v == null ? '' : v); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
   const lines = [head.join(',')];
-  for (const r of rows) lines.push([r.domain, r.status, r.for_sale ? 'yes' : 'no', r.price || '', r.marketplace || '', r.kind, r.affix, r.link || ''].map(esc).join(','));
+  for (const r of rows) lines.push([r.domain, r.category, r.for_sale ? 'yes' : 'no', r.for_sale_source || '', r.price || '', r.marketplace || '', r.site || '', r.evidence || '', r.kind, r.affix, r.link || ''].map(esc).join(','));
   return lines.join('\n');
 }
 

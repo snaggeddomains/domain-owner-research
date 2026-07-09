@@ -3,6 +3,7 @@ import { isNamingDbConfigured } from '../lib/db/supabase-naming.js';
 import { parseBrief } from '../lib/naming/brief.js';
 import { searchUniverse } from '../lib/naming/query.js';
 import { sweepVariations } from '../lib/variations/sweep.js';
+import { pickAffixes } from '../lib/variations/affixes.js';
 import { runNamingChatTurn } from '../lib/naming/chat.js';
 import { saveNamingRun, updateNamingRun, listNamingRuns, getNamingRun, renameNamingRun, setNamingRunStar } from '../lib/db/naming-runs.js';
 import { listNamingChat, addNamingChatMessage } from '../lib/db/naming-chat.js';
@@ -10,7 +11,7 @@ import { fetchText, extractClues } from '../lib/util.js';
 import { withCategory } from '../lib/db/usage.js';
 import { getFreshLiveChecks, saveLiveChecks } from '../lib/db/livechecks.js';
 
-export const config = { maxDuration: 30 };
+export const config = { maxDuration: 60 };
 
 // Single endpoint for the v1 Naming Exercise (spec §1-5) plus the Recent /
 // Past Naming Runs affordance. Action-multiplexed so the whole feature
@@ -111,7 +112,11 @@ async function handleVariations(body, res, user) {
   }
   const excludeTlds = Array.isArray(body.exclude_tlds) ? body.exclude_tlds.map((t) => String(t)) : [];
   try {
-    const out = await withCategory('naming', () => sweepVariations(seed, { env: process.env, excludeTlds }));
+    const out = await withCategory('naming', async () => {
+      // Word-aware affixes first (goswimming ✓ / gobathroom ✗) — fail-open to defaults.
+      const { prefixes, suffixes } = await pickAffixes(seed, process.env).catch(() => ({}));
+      return sweepVariations(seed, { env: process.env, excludeTlds, prefixes, suffixes });
+    });
     res.status(200).json(out);
   } catch (e) {
     res.status(500).json({ error: String((e && e.message) || e) });
