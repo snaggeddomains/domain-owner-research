@@ -356,6 +356,20 @@ can NEVER hold a specific word fixed — so it returned public-safety-*themed* n
   distinct `min_offer` field (never `price`), UI renders it as the number + a "min offer"
   tag, CSV gets a **Price type** column (buy now / min offer / make offer). `mktName`
   now recognizes Spaceship (was showing a bare "view").
+- **Availability confirmed via RDAP (2026-07-09).** A DNS NS lookup that throws
+  NXDOMAIN marked a name "available" — but a registered-but-**undelegated** name
+  (atlas.tech: taken, no active nameservers) throws the SAME error, so it showed
+  Available when GoDaddy says "Domain Taken". The sweep now RDAP-confirms the
+  (small) available set against the **registry's authoritative RDAP**
+  (`rdapDomainStatus` in `lib/nameserver/query.js`, IANA bootstrap + ccTLD overrides
+  — NOT rdap.org, which false-404s `.io`/`.me`): `registered` → reclassify (not free),
+  `available`/`unknown` → keep. Only the DNS-NXDOMAIN names are checked (bounded).
+- **Clickable criteria chips = filters (2026-07-09).** The prefixes/suffixes/extensions
+  chips in the criteria panel are now toggle buttons that narrow the table (extension
+  → only that TLD, e.g. `.com`; prefix/suffix → only that affix). Within a facet = OR,
+  across facets (affix × extension) = AND; a "✕ clear filter" resets. Client-side over
+  the loaded `variationsLast` (no re-fetch); the count shows `N / total`; the CSV export
+  respects the active filter (`rowMatchesFilter`). State in `variationsFilter`.
 - **active vs parked — content rescue (2026-07-09).** A branded `<title>` alone
   wrongly demoted real personal SPAs that title themselves after their own name
   (nolan.so→"Nolan", nolan.dev→"nolan.dev"). `inspectSite` now ALSO rescues to `active`

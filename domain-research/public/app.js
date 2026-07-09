@@ -4639,6 +4639,17 @@ function namingFilterPayload() {
 // swaps the input hint + which results section renders.
 let namingMode = 'theme';
 let variationsLast = null;
+// Click-to-filter state for the criteria chips. `affix` holds "prefix:get" /
+// "suffix:hq" keys (a row's kind+affix); `tld` holds bare extensions ("com").
+// Empty = show all. Across the two facets it's AND; within a facet it's OR.
+const variationsFilter = { affix: new Set(), tld: new Set() };
+function resetVariationsFilter() { variationsFilter.affix.clear(); variationsFilter.tld.clear(); }
+function rowMatchesFilter(r) {
+  const af = variationsFilter.affix; const tf = variationsFilter.tld;
+  if (af.size) { if (r.kind === 'tld' || !af.has(`${r.kind}:${r.affix}`)) return false; }
+  if (tf.size) { const dot = r.domain.lastIndexOf('.'); const tld = dot >= 0 ? r.domain.slice(dot + 1).toLowerCase() : ''; if (!tf.has(tld)) return false; }
+  return true;
+}
 
 function setNamingMode(mode) {
   namingMode = mode === 'variations' ? 'variations' : 'theme';
@@ -4736,6 +4747,7 @@ async function runVariations() {
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.error || `Failed (${res.status})`);
     variationsLast = data;
+    resetVariationsFilter();
     renderVariations(data);
     setNamingStatus('');
     // Persist + deep-link the run so it lands in Recent and can be reopened.
@@ -4797,21 +4809,33 @@ function renderVariations(data) {
   if (els.namingFiltersPanel) els.namingFiltersPanel.hidden = true;
   if (els.namingChat) els.namingChat.hidden = true;
   const rows = (data && Array.isArray(data.results)) ? data.results : [];
+  const filtered = rows.filter(rowMatchesFilter);
+  const anyFilter = variationsFilter.affix.size || variationsFilter.tld.size;
   const n = (cat) => rows.filter((r) => r.category === cat).length;
-  if (els.nmvCount) els.nmvCount.textContent = `${rows.length}`;
+  if (els.nmvCount) els.nmvCount.textContent = anyFilter ? `${filtered.length} / ${rows.length}` : `${rows.length}`;
   if (els.nmvNote) {
     const bits = [`${n('for_sale')} for sale`, `${n('available')} available`, `${n('active')} active`, `${n('parked') + n('registered')} held`];
     if (!data.domainscout) bits.push('prices need DomainScout');
     const summary = `Built around “${escapeHtml(data.seed || '')}”. ${bits.join(' · ')}.`;
     const c = data.criteria || {};
-    const chips = (arr, pre = '') => (Array.isArray(arr) ? arr : []).map((x) => `<span class="nmv-crit">${escapeHtml(pre)}${escapeHtml(x)}</span>`).join('');
+    // Clickable chips — click one to narrow the table to it (extension → only that
+    // TLD; prefix/suffix → only that affix). Toggle off to clear. Within a facet =
+    // OR, across facets (affix × extension) = AND. `key` = the filter identity.
+    const chip = (val, facet, key, pre = '') => {
+      const on = variationsFilter[facet].has(key);
+      return `<button type="button" class="nmv-crit${on ? ' nmv-crit-on' : ''}" data-vf="${facet}" data-key="${escapeHtml(key)}">${escapeHtml(pre)}${escapeHtml(val)}</button>`;
+    };
+    const affixChips = (arr, kind) => (Array.isArray(arr) ? arr : []).map((x) => chip(x, 'affix', `${kind}:${x}`)).join('');
+    const tldChips = (arr) => (Array.isArray(arr) ? arr : []).map((x) => chip(x, 'tld', String(x).toLowerCase(), '.')).join('');
+    const staticChips = (arr, pre = '') => (Array.isArray(arr) ? arr : []).map((x) => `<span class="nmv-crit nmv-crit-static">${escapeHtml(pre)}${escapeHtml(x)}</span>`).join('');
+    const clearBtn = anyFilter ? ` <button type="button" class="nmv-crit-clear" data-vf="clear">✕ clear filter</button>` : '';
     const critHtml = c && (c.prefixes || c.suffixes || c.tlds) ? (
       `<div class="nmv-criteria">`
-      + (c.prefixes && c.prefixes.length ? `<div class="nmv-critrow"><span class="nmv-critlbl">Prefixes</span> ${chips(c.prefixes)}</div>` : '')
-      + (c.suffixes && c.suffixes.length ? `<div class="nmv-critrow"><span class="nmv-critlbl">Suffixes</span> ${chips(c.suffixes)}</div>` : '')
-      + (c.tlds && c.tlds.length ? `<div class="nmv-critrow"><span class="nmv-critlbl">Extensions</span> ${chips(c.tlds, '.')}</div>` : '')
-      + (c.exclude_tlds && c.exclude_tlds.length ? `<div class="nmv-critrow nmv-critexcl">Excluded: ${chips(c.exclude_tlds, '.')}</div>` : '')
-      + (c.word_aware ? `<div class="nmv-critnote">Prefix/suffix set tuned to this word; seam-doubled options kept but flagged.</div>` : '')
+      + (c.prefixes && c.prefixes.length ? `<div class="nmv-critrow"><span class="nmv-critlbl">Prefixes</span> ${affixChips(c.prefixes, 'prefix')}</div>` : '')
+      + (c.suffixes && c.suffixes.length ? `<div class="nmv-critrow"><span class="nmv-critlbl">Suffixes</span> ${affixChips(c.suffixes, 'suffix')}</div>` : '')
+      + (c.tlds && c.tlds.length ? `<div class="nmv-critrow"><span class="nmv-critlbl">Extensions</span> ${tldChips(c.tlds)}</div>` : '')
+      + (c.exclude_tlds && c.exclude_tlds.length ? `<div class="nmv-critrow nmv-critexcl">Excluded: ${staticChips(c.exclude_tlds, '.')}</div>` : '')
+      + `<div class="nmv-critnote">Click a chip to filter${c.word_aware ? '. Prefix/suffix set tuned to this word; seam-doubled options kept but flagged' : ''}.${clearBtn}</div>`
       + `</div>`
     ) : '';
     els.nmvNote.innerHTML = `<span class="nmv-summary">${summary}</span>${critHtml}`;
@@ -4853,13 +4877,18 @@ function renderVariations(data) {
     const comment = r.friction ? `<span class="nmv-comment">⚠ ${escapeHtml(r.friction)}</span>` : '';
     return `<tr><td class="nmv-dom">${dom}</td><td>${catPill(r)}</td><td class="nmv-pricecell">${priceCell}</td><td>${listing}</td><td class="nmv-kind">${kindChip(r)}</td><td class="nmv-comments">${comment}</td></tr>`;
   };
-  const html = `<table class="nmv-table"><thead><tr><th>Domain</th><th>Status</th><th>Price</th><th>Listing</th><th>Type</th><th class="nmv-comments-h">Comments</th></tr></thead><tbody>${rows.map(cell).join('')}</tbody></table>`;
+  const body = filtered.length
+    ? filtered.map(cell).join('')
+    : `<tr><td colspan="6" class="nmv-empty">No variations match this filter — click the highlighted chip again to clear.</td></tr>`;
+  const html = `<table class="nmv-table"><thead><tr><th>Domain</th><th>Status</th><th>Price</th><th>Listing</th><th>Type</th><th class="nmv-comments-h">Comments</th></tr></thead><tbody>${body}</tbody></table>`;
   if (els.nmvTable) els.nmvTable.innerHTML = html;
   if (els.namingVariations) els.namingVariations.hidden = false;
 }
 
 function variationsToCsv(data) {
-  const rows = (data && Array.isArray(data.results)) ? data.results : [];
+  // Export what's shown — respect an active chip filter (falls through to all rows
+  // when nothing is selected, since rowMatchesFilter returns true for every row).
+  const rows = ((data && Array.isArray(data.results)) ? data.results : []).filter(rowMatchesFilter);
   const seed = String((data && data.seed) || '');
   const head = ['Domain', 'Category', 'For sale', 'Source', 'Price', 'Price type', 'Currency', 'Marketplace', 'Site', 'Friction', 'Evidence', 'Type', 'Affix', 'Link'];
   const esc = (v) => { const s = String(v == null ? '' : v); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
@@ -5217,6 +5246,7 @@ function resetNamingView() {
   if (els.nmvCount) els.nmvCount.textContent = '';
   if (els.nmvNote) els.nmvNote.innerHTML = '';
   variationsLast = null;
+  resetVariationsFilter();
   setNamingMode('theme');
   namingLastResults = null;
   currentNamingRunId = null;
@@ -5309,6 +5339,7 @@ async function openNamingRun(id) {
       setNamingMode('variations');
       const vdata = { seed: (r.filters.seed || r.brief || ''), criteria: r.filters.criteria || null, results: Array.isArray(r.buy_ready) ? r.buy_ready : [], domainscout: true };
       variationsLast = vdata;
+      resetVariationsFilter();
       renderVariations(vdata);
       setNamingStatus('');
       return;
@@ -7916,6 +7947,18 @@ els.namingMode?.addEventListener('click', (e) => {
   if (btn) setNamingMode(btn.dataset.mode);
 });
 els.nmvDownload?.addEventListener('click', downloadVariationsCsv);
+// Click-to-filter on the criteria chips (event-delegated on the note container).
+els.nmvNote?.addEventListener('click', (e) => {
+  const el = e.target.closest('[data-vf]');
+  if (!el || !variationsLast) return;
+  const facet = el.dataset.vf;
+  if (facet === 'clear') { resetVariationsFilter(); renderVariations(variationsLast); return; }
+  const key = el.dataset.key;
+  if (!key || !variationsFilter[facet]) return;
+  const set = variationsFilter[facet];
+  if (set.has(key)) set.delete(key); else set.add(key);
+  renderVariations(variationsLast);
+});
 
 // Collapse/expand the whole Filters block — the grid + Apply row + the parsed-
 // filters chips — leaving just the "▾ Filters" handle, to keep results clean.

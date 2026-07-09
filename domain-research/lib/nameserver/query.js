@@ -193,6 +193,28 @@ async function rdapBaseForTld(tld) {
   return (await _rdapBootstrap).get(t) || null;
 }
 
+// Authoritative RDAP registration status via the registry's own RDAP server
+// (IANA bootstrap + the ccTLD overrides). Returns 'registered' (200 domain
+// object), 'available' (404), or 'unknown' (no base / network / other). Use this
+// to disambiguate a name whose DNS NS lookup threw NXDOMAIN — which can mean
+// EITHER truly-unregistered OR registered-but-undelegated (e.g. atlas.tech: a
+// taken name with no active nameservers, which a DNS-only check calls "available").
+// Goes straight to the registry (NOT rdap.org, which false-404s .io/.me/etc).
+export async function rdapDomainStatus(domain, { timeoutMs = 6000 } = {}) {
+  const d = String(domain || '').trim().toLowerCase();
+  const dot = d.lastIndexOf('.');
+  const base = await rdapBaseForTld(dot > 0 ? d.slice(dot + 1) : '');
+  if (!base) return 'unknown';
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), timeoutMs);
+  try {
+    const res = await fetch(`${base}/domain/${encodeURIComponent(d)}`, { headers: { accept: 'application/rdap+json' }, redirect: 'follow', signal: ctrl.signal });
+    if (res.status === 404) return 'available';
+    if (res.status >= 200 && res.status < 300) return 'registered';
+    return 'unknown';
+  } catch { return 'unknown'; } finally { clearTimeout(t); }
+}
+
 // Pull a domain's delegation nameservers straight from its registry RDAP, via
 // the IANA bootstrap. Works for TLDs rdap.org can't bootstrap.
 async function registryRdapNameservers(domain) {

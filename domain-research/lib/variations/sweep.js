@@ -7,6 +7,7 @@
 import dns from 'node:dns/promises';
 import { enumerateVariations, PREFIXES, SUFFIXES, TLDS } from './enumerate.js';
 import { lookupDomain, isConfigured } from '../domainscout.js';
+import { rdapDomainStatus } from '../nameserver/query.js';
 import { fetchText, extractClues } from '../util.js';
 
 const CONCURRENCY = 12;
@@ -354,6 +355,20 @@ export async function sweepVariations(seed, { env = process.env, excludeTlds = [
         r.marketplace = r.marketplace || best.name || null;
         r.link = r.link || best.url || null;
         if (r.evidence && !/\$/.test(r.evidence)) r.evidence += ` · $${best.price.toLocaleString()}`;
+      }
+    });
+  }
+  // Confirm AVAILABILITY via authoritative RDAP. A DNS NS lookup that throws
+  // NXDOMAIN marks a name "available", but a registered-but-undelegated name
+  // (atlas.tech — taken, no active nameservers) throws the SAME error. RDAP at the
+  // registry knows the difference: 'registered' → reclassify (it's NOT free).
+  {
+    const maybeFree = results.filter((r) => r.category === 'available');
+    await mapPool(maybeFree, CONCURRENCY, async (r) => {
+      const st = await rdapDomainStatus(r.domain).catch(() => 'unknown');
+      if (st === 'registered') {
+        r.category = 'registered'; r.status = 'registered';
+        r.evidence = 'registered (RDAP) — no active nameservers, not available';
       }
     });
   }
