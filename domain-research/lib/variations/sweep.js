@@ -69,9 +69,9 @@ function marketplaceFromNs(nameservers, domain) {
 // page the owner built, be a real active site, or not resolve at all). Returns
 // { site: 'for_sale'|'active'|'parked'|'no_resolve'|'error', title, for_sale_page,
 // evidence } — where for_sale_page means an EXPLICIT for-sale page (own or marketplace).
-const MARKETPLACE_HOST_RE = /(^|\.)(dan\.com|afternic\.com|sedo\.com|atom\.com|hugedomains\.com|undeveloped\.com|efty\.com|sav\.com|above\.com|squadhelp\.com)$/i;
+const MARKETPLACE_HOST_RE = /(^|\.)(dan\.com|afternic\.com|sedo\.com|atom\.com|hugedomains\.com|undeveloped\.com|efty\.com|sav\.com|above\.com|squadhelp\.com|brandbucket\.com)$/i;
 // Registrar/holding landing pages — registered but NOT in active use. GoDaddy et al.
-const HOLDING_RE = /future home of|website coming soon|coming soon|under construction|domain (name )?is parked|parked (free|page)|this domain (name )?is (parked|registered|not configured|available)|default (web ?page|server page|page)|welcome to nginx|apache\b.{0,30}default|it works!|test page|this is the default|new site|placeholder|buy now this domain|this webpage is parked/i;
+const HOLDING_RE = /future home of|website coming soon|coming soon|under construction|domain (name )?is parked|parked (free|page)|parking page|parked domain|domain parked|is parked|this domain (name )?is (parked|registered|not configured|available)|default (web ?page|server page|page)|welcome to nginx|apache\b.{0,30}default|it works!|test page|this is the default|new site|placeholder|buy now this domain|this webpage is parked/i;
 
 // Pull the asking price off a for-sale/marketplace page's HTML. Domain landers show
 // the ask directly ($6,195 on HugeDomains, $29,888 on a custom page). Take the
@@ -79,7 +79,11 @@ const HOLDING_RE = /future home of|website coming soon|coming soon|under constru
 // to the max (a two-tier page's higher figure is the buy-now, the lower a lease/
 // installment). Best-effort → null. Filters out financing noise ($100, $258.13).
 function extractPrice(html) {
-  const matches = String(html || '').match(/(?:USD|US\$|\$)\s?[\d][\d,]{1,9}(?:\.\d{2})?/gi) || [];
+  const h = String(html || '');
+  // schema.org Offer price (BrandBucket + others) — the authoritative ask, no "$".
+  const jsonld = h.match(/"price"\s*:\s*"?(\d{2,7})(?:\.\d+)?"?/i);
+  if (jsonld) { const n = Number(jsonld[1]); if (n >= 100 && n <= 5_000_000) return n; }
+  const matches = h.match(/(?:USD|US\$|\$)\s?[\d][\d,]{1,9}(?:\.\d{2})?/gi) || [];
   const counts = new Map();
   for (const m of matches) {
     const n = Number(m.replace(/[^\d.]/g, ''));
@@ -120,18 +124,20 @@ function mktName(host) {
   if (h.includes('sedo')) return 'Sedo';
   if (h.includes('sav.com')) return 'Sav';
   if (h.includes('efty')) return 'Efty';
+  if (h.includes('brandbucket')) return 'BrandBucket';
   return null;
 }
 
 async function inspectSite(domain) {
-  let r;
-  try {
-    r = await fetchText(`https://${domain}`, {}, SITE_TIMEOUT_MS);
-  } catch (e) {
-    // https failed — try http once (some parked/for-sale pages are http-only).
-    try { r = await fetchText(`http://${domain}`, {}, SITE_TIMEOUT_MS); }
-    catch { return { site: 'no_resolve', title: null, for_sale_page: false, evidence: 'site did not resolve / no response' }; }
+  let r = null;
+  try { r = await fetchText(`https://${domain}`, {}, SITE_TIMEOUT_MS); } catch { r = null; }
+  // Fall back to http when https THREW (SSL error) OR returned a bad status (a
+  // parked page often 503s on https but serves the lander on http — withsentinel.com
+  // 503→https, "porkbun.com | parked domain" on http).
+  if (!r || r.status >= 400) {
+    try { const h = await fetchText(`http://${domain}`, {}, SITE_TIMEOUT_MS); if (h && (!r || h.status < r.status)) r = h; } catch { /* keep r */ }
   }
+  if (!r) return { site: 'no_resolve', title: null, for_sale_page: false, evidence: 'site did not resolve / no response' };
   let finalHost = '';
   try { finalHost = new URL(r.finalUrl || `https://${domain}`).host.replace(/^www\./, ''); } catch { /* ignore */ }
   const clues = extractClues(r.body || '');
