@@ -8,6 +8,7 @@ import dns from 'node:dns/promises';
 import { enumerateVariations, PREFIXES, SUFFIXES, TLDS } from './enumerate.js';
 import { lookupDomain, isConfigured } from '../domainscout.js';
 import { rdapDomainStatus } from '../nameserver/query.js';
+import { lookupInternal, internalForRow } from './corpus.js';
 import { fetchText, extractClues } from '../util.js';
 
 const CONCURRENCY = 12;
@@ -271,6 +272,9 @@ function rankKey(r) {
 export async function sweepVariations(seed, { env = process.env, excludeTlds = [], prefixes, suffixes } = {}) {
   const cands = enumerateVariations(seed, { excludeTlds, ...(prefixes ? { prefixes } : {}), ...(suffixes ? { suffixes } : {}) });
   const dsOn = isConfigured(env);
+  // Cross-reference OUR corpora (name_universe + Master) in parallel with the live
+  // sweep — one batched exact-domain lookup, fail-open. Merged in after the sweep.
+  const internalP = lookupInternal(cands.map((c) => c.domain)).catch(() => new Map());
   const results = await mapPool(cands, CONCURRENCY, async (c) => {
     // Two live signals in parallel: DNS (registered/available + nameservers) and a
     // page crawl (for-sale page / active / parked + the listed price off the page).
@@ -371,6 +375,25 @@ export async function sweepVariations(seed, { env = process.env, excludeTlds = [
         r.evidence = 'registered (RDAP) — no active nameservers, not available';
       }
     });
+  }
+  // Merge our internal-corpus signal onto each row. Pure signal (badges); the only
+  // behavior change is filling a for-sale row's MISSING price from our stored price
+  // (a name we track on e.g. Afternic the live crawl couldn't price). We never flip
+  // an "available"/"active" row on stale corpus data.
+  {
+    const internal = await internalP;
+    for (const r of results) {
+      const info = internalForRow(internal.get(r.domain.toLowerCase()));
+      if (!info) continue;
+      r.internal = info;
+      if (r.for_sale && !(r.price > 0)) {
+        const ip = info.universe_price || info.master_price;
+        if (ip > 0) {
+          r.price = ip; r.currency = r.currency || 'USD'; r.price_internal = true;
+          r.marketplace = r.marketplace || info.universe_source || info.master_source || 'our corpus';
+        }
+      }
+    }
   }
   results.sort((a, b) => {
     const ka = rankKey(a); const kb = rankKey(b);

@@ -368,6 +368,7 @@ a.nmv-mkt { text-decoration: underline; }
 .nmv-price { font-weight: 700; color: var(--navy); }
 .nmv-makeoffer { font-size: .8rem; font-weight: 600; color: #9a7b3f; font-style: italic; }
 .nmv-pricetag { display: block; font-size: .68rem; font-weight: 600; color: #9a7b3f; text-transform: uppercase; letter-spacing: .02em; margin-top: 1px; }
+.nmv-ours { margin-top: 3px; font-size: .72rem; color: #0b6b3a; font-weight: 600; }
 .nmv-pill { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: .78rem; font-weight: 700; white-space: nowrap; }
 .nmv-forsale { background: #e7f6ec; color: #0b8f3a; }
 .nmv-avail { background: #e9f0fb; color: #2f6fd0; }

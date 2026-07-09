@@ -364,6 +364,16 @@ can NEVER hold a specific word fixed — so it returned public-safety-*themed* n
   (`rdapDomainStatus` in `lib/nameserver/query.js`, IANA bootstrap + ccTLD overrides
   — NOT rdap.org, which false-404s `.io`/`.me`): `registered` → reclassify (not free),
   `available`/`unknown` → keep. Only the DNS-NXDOMAIN names are checked (bounded).
+- **Cross-references OUR corpora (2026-07-09).** The sweep now ALSO batch-looks-up the
+  enumerated set against `name_universe` + the `Master Domain List` (`lib/variations/
+  corpus.js` `lookupInternal`, one exact-domain `.in()` per corpus, parallel to the live
+  sweep, fail-open). Each row gets `r.internal` — `in_universe`/`in_master`, our stored
+  `best_price`/`price` + source, and an `owner` (owned-feed universe → Snagged/Rob, or a
+  Master attribution). UI shows a "📇 In our corpus · $X · afternic" / "🏷 <owner>" badge
+  under the domain; CSV gains In-our-corpus / Owner / Our-price columns. Behavior change
+  is minimal + safe: a FOR-SALE row the live crawl couldn't price is filled from our
+  stored price (`price_internal`, tagged "our corpus"); we never flip an available/active
+  row on stale corpus data.
 - **Clickable criteria chips = filters (2026-07-09).** The prefixes/suffixes/extensions
   chips in the criteria panel are now toggle buttons that narrow the table (extension
   → only that TLD, e.g. `.com`; prefix/suffix → only that affix). Within a facet = OR,

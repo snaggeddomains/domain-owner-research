@@ -4878,7 +4878,7 @@ function renderVariations(data) {
     // Firm buy-now vs a minimum-offer floor vs offer-only-no-number — kept distinct so
     // a "$69,500 minimum offer" (Spaceship) never reads as a price you can just pay.
     let priceCell;
-    if (price) priceCell = `<span class="nmv-price">${price}</span>`;
+    if (price) priceCell = `<span class="nmv-price">${price}</span>${r.price_internal ? '<span class="nmv-pricetag">our corpus</span>' : ''}`;
     else if (r.min_offer > 0) priceCell = `<span class="nmv-price">${fmtVarPrice(r.min_offer, r.currency)}</span><span class="nmv-pricetag">min offer</span>`;
     else if (r.make_offer) priceCell = '<span class="nmv-makeoffer">Make offer</span>';
     else priceCell = '<span class="nmv-dash">—</span>';
@@ -4895,8 +4895,20 @@ function renderVariations(data) {
     // real lowercase domain.)
     const nameHref = r.category === 'available' ? registerUrl : `https://${r.domain}`;
     const dom = `<a href="${escapeHtml(nameHref)}" target="_blank" rel="noopener">${escapeHtml(prettyDomain(r))}</a>`;
+    // Internal-corpus badge — a name we already own / track / have owner intel on.
+    const inf = r.internal;
+    let ours = '';
+    if (inf && (inf.in_universe || inf.in_master)) {
+      const bits = [];
+      bits.push(inf.owner ? `🏷 ${escapeHtml(inf.owner)}` : '📇 In our corpus');
+      const oursPrice = inf.universe_price || inf.master_price;
+      if (oursPrice > 0 && !r.price_internal) bits.push(`our price $${Number(oursPrice).toLocaleString()}`);
+      const src = inf.universe_source || inf.master_source;
+      if (src && !inf.owner) bits.push(escapeHtml(src));
+      ours = `<div class="nmv-ours">${bits.join(' · ')}</div>`;
+    }
     const comment = r.friction ? `<span class="nmv-comment">⚠ ${escapeHtml(r.friction)}</span>` : '';
-    return `<tr><td class="nmv-dom">${dom}</td><td>${catPill(r)}</td><td class="nmv-pricecell">${priceCell}</td><td>${listing}</td><td class="nmv-kind">${kindChip(r)}</td><td class="nmv-comments">${comment}</td></tr>`;
+    return `<tr><td class="nmv-dom">${dom}${ours}</td><td>${catPill(r)}</td><td class="nmv-pricecell">${priceCell}</td><td>${listing}</td><td class="nmv-kind">${kindChip(r)}</td><td class="nmv-comments">${comment}</td></tr>`;
   };
   const body = filtered.length
     ? filtered.map(cell).join('')
@@ -4911,7 +4923,7 @@ function variationsToCsv(data) {
   // when nothing is selected, since rowMatchesFilter returns true for every row).
   const rows = ((data && Array.isArray(data.results)) ? data.results : []).filter(rowMatchesFilter);
   const seed = String((data && data.seed) || '');
-  const head = ['Domain', 'Category', 'For sale', 'Source', 'Price', 'Price type', 'Currency', 'Marketplace', 'Site', 'Friction', 'Evidence', 'Type', 'Affix', 'Link'];
+  const head = ['Domain', 'Category', 'For sale', 'Source', 'Price', 'Price type', 'Currency', 'Marketplace', 'In our corpus', 'Owner', 'Our price', 'Site', 'Friction', 'Evidence', 'Type', 'Affix', 'Link'];
   const esc = (v) => { const s = String(v == null ? '' : v); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
   const lines = [head.join(',')];
   for (const r of rows) {
@@ -4923,7 +4935,10 @@ function variationsToCsv(data) {
     else if (r.min_offer > 0) { priceOut = String(r.min_offer); priceType = 'min offer'; }
     else if (r.make_offer) { priceType = 'make offer'; }
     const cur = (r.price > 0 || r.min_offer > 0) ? (r.currency || 'USD') : '';
-    lines.push([prettyVarDomain(r, seed), r.category, r.for_sale ? 'yes' : 'no', r.for_sale_source || '', priceOut, priceType, cur, r.marketplace || '', r.site || '', r.friction || '', evidence, r.kind, r.affix, r.link || ''].map(esc).join(','));
+    const inf = r.internal || null;
+    const inCorpus = inf && (inf.in_universe || inf.in_master) ? (inf.in_universe && inf.in_master ? 'universe+master' : inf.in_universe ? 'universe' : 'master') : '';
+    const ourPrice = inf ? (inf.universe_price || inf.master_price || '') : '';
+    lines.push([prettyVarDomain(r, seed), r.category, r.for_sale ? 'yes' : 'no', r.for_sale_source || '', priceOut, priceType, cur, r.marketplace || '', inCorpus, (inf && inf.owner) || '', ourPrice, r.site || '', r.friction || '', evidence, r.kind, r.affix, r.link || ''].map(esc).join(','));
   }
   return lines.join('\n');
 }
