@@ -71,7 +71,13 @@ function marketplaceFromNs(nameservers, domain) {
 // evidence } — where for_sale_page means an EXPLICIT for-sale page (own or marketplace).
 const MARKETPLACE_HOST_RE = /(^|\.)(dan\.com|afternic\.com|sedo\.com|atom\.com|hugedomains\.com|undeveloped\.com|efty\.com|sav\.com|above\.com|squadhelp\.com|brandbucket\.com)$/i;
 // Registrar/holding landing pages — registered but NOT in active use. GoDaddy et al.
-const HOLDING_RE = /future home of|website coming soon|coming soon|under construction|domain (name )?is parked|parked (free|page)|parking page|parked domain|domain parked|is parked|this domain (name )?is (parked|registered|not configured|available)|default (web ?page|server page|page)|welcome to nginx|apache\b.{0,30}default|it works!|test page|this is the default|new site|placeholder|buy now this domain|this webpage is parked/i;
+const HOLDING_RE = /future home of|website coming soon|coming soon|under construction|en construction|construction en cours|im aufbau|in aanbouw|domain (name )?is parked|parked (free|page)|parking page|parked domain|domain parked|is parked|this domain (name )?is (parked|registered|not configured|available)|default (web ?page|server page|page)|welcome to nginx|apache\b.{0,30}default|it works!|test page|this is the default|new site|placeholder|buy now this domain|this webpage is parked|account suspended|just another wordpress|example domain|new wordpress site/i;
+// Website-builder DEFAULT template titles (Wix/Squarespace/GoDaddy Websites+Marketing/
+// WordPress starters) — a site that was set up but never customized. Matched on the
+// <title> ONLY: these strings ("My Company", "Site Title") are too generic to test
+// against body prose (a real site can say "at my company…"), but as an exact page
+// title they're an unmistakable never-launched placeholder.
+const HOLDING_TITLE_RE = /^\s*(my (company|site|blog|website|store|shop|page)|site title|home\s*\|\s*my site|untitled|website builder|create your website)\s*$/i;
 
 // Pull the asking price off a for-sale/marketplace page's HTML. Domain landers show
 // the ask directly ($6,195 on HugeDomains, $29,888 on a custom page). Take the
@@ -152,7 +158,7 @@ async function inspectSite(domain) {
     return { site: 'for_sale', title: clues.title, for_sale_page: true, price, marketplace: mktName(finalHost), listing_url: r.finalUrl || null, evidence: `for-sale page — ${where}${price ? ` · $${price.toLocaleString()}` : ''}` };
   }
   const title = clues.title;
-  const holding = HOLDING_RE.test(clues.text_excerpt || '') || HOLDING_RE.test(title || '');
+  const holding = HOLDING_RE.test(clues.text_excerpt || '') || HOLDING_RE.test(title || '') || HOLDING_TITLE_RE.test((title || '').trim());
   if (holding) return { site: 'parked', title, for_sale_page: false, evidence: 'registrar/holding landing page — registered, not in active use' };
   if (parked) return { site: 'parked', title, for_sale_page: false, evidence: 'parked page (no explicit for-sale text)' };
   // ACTIVE requires a real, BRANDED <title>. A registrar/GoDaddy lander renders no
