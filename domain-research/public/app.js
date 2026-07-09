@@ -4753,6 +4753,22 @@ async function runVariations() {
   }
 }
 
+// Display the SLD camel-cased at the morpheme boundary so the affix reads at a
+// glance — GetSentinel.com, MySentinel.com, SentinelIO.com. Short acronym affixes
+// (io/ai/os/hq/api…) go all-caps. Shared by the on-screen table AND the CSV export
+// (the CSV must match what's shown). The link href keeps the real lowercase domain.
+const VAR_ACRO = new Set(['io', 'ai', 'os', 'hq', 'api', 'ux', 'hr', 'pr', 'crm', 'seo', 'ceo']);
+function prettyVarDomain(r, seed) {
+  const capw = (s) => (s ? s[0].toUpperCase() + s.slice(1) : s);
+  const affixCase = (a) => (VAR_ACRO.has(a) ? String(a).toUpperCase() : capw(a));
+  const dot = r.domain.lastIndexOf('.');
+  const tld = dot >= 0 ? r.domain.slice(dot) : '';
+  const s = capw(String(seed || ''));
+  if (r.kind === 'prefix') return `${affixCase(r.affix)}${s}${tld}`;
+  if (r.kind === 'suffix') return `${s}${affixCase(r.affix)}${tld}`;
+  return `${s}${tld}`;
+}
+
 const CUR_SYMBOL = { USD: '$', EUR: '€', GBP: '£' };
 function fmtVarPrice(p, cur, opts = {}) {
   const n = Number(p);
@@ -4805,21 +4821,8 @@ function renderVariations(data) {
     const affix = r.kind !== 'tld' ? ` · ${escapeHtml(r.affix)}` : '';
     return `<span class="nmv-kindchip nmv-k-${escapeHtml(r.kind)}">${label}${affix}</span>`;
   };
-  // Display the SLD camel-cased at the morpheme boundary so the affix reads at a
-  // glance — GetSentinel.com, MySentinel.com, SentinelIO.com. Short acronym affixes
-  // (io/ai/os/hq/api…) go all-caps. Display-only; link + CSV keep the real lowercase.
   const seed = String(data.seed || '');
-  const ACRO = new Set(['io', 'ai', 'os', 'hq', 'api', 'ux', 'hr', 'pr', 'crm', 'seo', 'ceo']);
-  const cap = (s) => (s ? s[0].toUpperCase() + s.slice(1) : s);
-  const affixCase = (a) => (ACRO.has(a) ? a.toUpperCase() : cap(a));
-  const prettyDomain = (r) => {
-    const dot = r.domain.lastIndexOf('.');
-    const tld = dot >= 0 ? r.domain.slice(dot) : '';
-    const s = cap(seed);
-    if (r.kind === 'prefix') return `${affixCase(r.affix)}${s}${tld}`;
-    if (r.kind === 'suffix') return `${s}${affixCase(r.affix)}${tld}`;
-    return `${s}${tld}`;
-  };
+  const prettyDomain = (r) => prettyVarDomain(r, seed);
   // Status is a single clean label — the marketplace + price live in their own columns.
   const catPill = (r) => {
     const c = NMV_CAT[r.category] || NMV_CAT.registered;
@@ -4857,6 +4860,7 @@ function renderVariations(data) {
 
 function variationsToCsv(data) {
   const rows = (data && Array.isArray(data.results)) ? data.results : [];
+  const seed = String((data && data.seed) || '');
   const head = ['Domain', 'Category', 'For sale', 'Source', 'Price', 'Price type', 'Currency', 'Marketplace', 'Site', 'Friction', 'Evidence', 'Type', 'Affix', 'Link'];
   const esc = (v) => { const s = String(v == null ? '' : v); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
   const lines = [head.join(',')];
@@ -4869,7 +4873,7 @@ function variationsToCsv(data) {
     else if (r.min_offer > 0) { priceOut = String(r.min_offer); priceType = 'min offer'; }
     else if (r.make_offer) { priceType = 'make offer'; }
     const cur = (r.price > 0 || r.min_offer > 0) ? (r.currency || 'USD') : '';
-    lines.push([r.domain, r.category, r.for_sale ? 'yes' : 'no', r.for_sale_source || '', priceOut, priceType, cur, r.marketplace || '', r.site || '', r.friction || '', evidence, r.kind, r.affix, r.link || ''].map(esc).join(','));
+    lines.push([prettyVarDomain(r, seed), r.category, r.for_sale ? 'yes' : 'no', r.for_sale_source || '', priceOut, priceType, cur, r.marketplace || '', r.site || '', r.friction || '', evidence, r.kind, r.affix, r.link || ''].map(esc).join(','));
   }
   return lines.join('\n');
 }
