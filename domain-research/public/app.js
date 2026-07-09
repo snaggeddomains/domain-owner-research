@@ -4753,11 +4753,17 @@ async function runVariations() {
   }
 }
 
-function fmtVarPrice(p, cur) {
+const CUR_SYMBOL = { USD: '$', EUR: '€', GBP: '£' };
+function fmtVarPrice(p, cur, opts = {}) {
   const n = Number(p);
   if (!(n > 0)) return '';
-  const s = n >= 1000 ? `$${Math.round(n).toLocaleString()}` : `$${n}`;
-  return cur && cur !== 'USD' ? `${s} ${cur}` : s;
+  const code = (cur || 'USD').toUpperCase();
+  const sym = CUR_SYMBOL[code] || '';
+  const money = (v) => (sym ? `${sym}${Math.round(v).toLocaleString()}` : `${Math.round(v).toLocaleString()} ${code}`);
+  // Buy-Now-Plus range (Sedo): an offer floor up to a fixed buy-now ceiling.
+  const min = Number(opts.priceMin);
+  const body = (opts.range && min > 0 && min < n) ? `${money(min)}–${money(n)}` : money(n);
+  return (!sym && !opts.range) ? `${Math.round(n).toLocaleString()} ${code}` : body;
 }
 
 const NMV_CAT = {
@@ -4820,8 +4826,14 @@ function renderVariations(data) {
     return `<span class="nmv-pill ${c.cls}">${c.label}</span>`;
   };
   const cell = (r) => {
-    const price = fmtVarPrice(r.price, r.currency);
-    const priceCell = price ? `<span class="nmv-price">${price}</span>` : '<span class="nmv-dash">—</span>';
+    const price = fmtVarPrice(r.price, r.currency, { priceMin: r.price_min, range: r.price_range });
+    // Firm buy-now vs a minimum-offer floor vs offer-only-no-number — kept distinct so
+    // a "$69,500 minimum offer" (Spaceship) never reads as a price you can just pay.
+    let priceCell;
+    if (price) priceCell = `<span class="nmv-price">${price}</span>`;
+    else if (r.min_offer > 0) priceCell = `<span class="nmv-price">${fmtVarPrice(r.min_offer, r.currency)}</span><span class="nmv-pricetag">min offer</span>`;
+    else if (r.make_offer) priceCell = '<span class="nmv-makeoffer">Make offer</span>';
+    else priceCell = '<span class="nmv-dash">—</span>';
     // GoDaddy registration-search link for a name that's available to hand-register.
     const registerUrl = `https://www.godaddy.com/domainsearch/find?domainToCheck=${encodeURIComponent(r.domain)}`;
     // Listing = where to buy/register it. For-sale → marketplace link; available →
@@ -4845,13 +4857,19 @@ function renderVariations(data) {
 
 function variationsToCsv(data) {
   const rows = (data && Array.isArray(data.results)) ? data.results : [];
-  const head = ['Domain', 'Category', 'For sale', 'Source', 'Price', 'Marketplace', 'Site', 'Friction', 'Evidence', 'Type', 'Affix', 'Link'];
+  const head = ['Domain', 'Category', 'For sale', 'Source', 'Price', 'Price type', 'Currency', 'Marketplace', 'Site', 'Friction', 'Evidence', 'Type', 'Affix', 'Link'];
   const esc = (v) => { const s = String(v == null ? '' : v); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
   const lines = [head.join(',')];
   for (const r of rows) {
-    // Price lives in its own column — strip the redundant "· $X" tail from evidence.
-    const evidence = String(r.evidence || '').replace(/\s*·\s*\$[\d,]+\s*$/, '');
-    lines.push([r.domain, r.category, r.for_sale ? 'yes' : 'no', r.for_sale_source || '', r.price || '', r.marketplace || '', r.site || '', r.friction || '', evidence, r.kind, r.affix, r.link || ''].map(esc).join(','));
+    // Price lives in its own column — strip the redundant "· $/€/£ X" (or "offers from") tail from evidence.
+    const evidence = String(r.evidence || '').replace(/\s*·\s*(?:offers from\s*)?[$€£][\d,]+(?:–[$€£][\d,]+)?\s*$/i, '');
+    // Distinguish a firm buy-now from a minimum-offer floor from an offer-only listing.
+    let priceOut = ''; let priceType = '';
+    if (r.price > 0) { priceOut = (r.price_range && r.price_min > 0 ? `${r.price_min}-${r.price}` : String(r.price)); priceType = 'buy now'; }
+    else if (r.min_offer > 0) { priceOut = String(r.min_offer); priceType = 'min offer'; }
+    else if (r.make_offer) { priceType = 'make offer'; }
+    const cur = (r.price > 0 || r.min_offer > 0) ? (r.currency || 'USD') : '';
+    lines.push([r.domain, r.category, r.for_sale ? 'yes' : 'no', r.for_sale_source || '', priceOut, priceType, cur, r.marketplace || '', r.site || '', r.friction || '', evidence, r.kind, r.affix, r.link || ''].map(esc).join(','));
   }
   return lines.join('\n');
 }

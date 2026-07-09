@@ -120,6 +120,62 @@ async function afternicBin(domain) {
   } catch { return null; }
 }
 
+// Sedo asking price. Sedo's lander is a JS shell (the price is loaded client-side),
+// and the /search/details page IP-allowlist-blocks scrapers — but the SAME data the
+// browser reads sits behind a plain JSON endpoint the page's bundle calls:
+//   GET /api/domain-details/information/<domain>  →  { domainPriceType, buynow:{
+//     priceOptions:{ price, priceMin, currency:{name} } }, makeoffer }
+// `price`/`priceMin` are in CENTS (nolan.io → 500000 eur = €5,000; sentinel.me →
+// 500000/250000 usd = a $2,500–$5,000 Buy-Now-Plus range). 404 = Sedo doesn't list
+// it; a `makeoffer` with no buynow = no fixed price (offer-only). Best-effort → null.
+const SEDO_UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Safari/537.36';
+const CUR_SYMBOL = { usd: '$', eur: '€', gbp: '£' };
+async function sedoPrice(domain) {
+  try {
+    const r = await fetchText(`https://sedo.com/api/domain-details/information/${domain}`,
+      { headers: { 'user-agent': SEDO_UA, accept: 'application/json', 'accept-language': 'us' } }, SITE_TIMEOUT_MS);
+    let data; try { data = JSON.parse(r.body || 'null'); } catch { return null; }
+    if (!data || data.status === 404) return null;
+    const po = data.buynow && data.buynow.priceOptions;
+    const raw = po && Number(po.price);
+    if (!raw || !Number.isFinite(raw) || raw <= 0) {
+      // Listed but offer-only (no Buy-Now price) — a real signal, just no number.
+      if (data.domainPriceType === 'makeoffer' || data.makeoffer) return { makeOffer: true };
+      return null;
+    }
+    const price = Math.round(raw / 100);
+    if (price < 100 || price > 5_000_000) return null;
+    const cur = ((po.currency && po.currency.name) || 'usd').toLowerCase();
+    const min = po.priceMin > 0 ? Math.round(Number(po.priceMin) / 100) : 0;
+    return { price, currency: cur, symbol: CUR_SYMBOL[cur] || '$', priceMin: min, buyNowPlus: !!po.isBuyNowPlus };
+  } catch { return null; }
+}
+
+// Spaceship for-sale lander. The page is served IN PLACE on the domain (not a
+// redirect) and embeds `window.DOMAIN_CONFIG` with the authoritative listing terms —
+// which tell us the crucial difference between a FIRM buy-now price and a MINIMUM-
+// OFFER floor (a name you can't just buy — you must offer AT LEAST $X and negotiate):
+//   • buyItNowOnlyEnabled / ltoConfig.totalPrice → a real buy-now price (heysentinel
+//     .com = $16,000);
+//   • offerEnabled + minOfferPrice with NO buy-now → an offer floor only (nolan.ai =
+//     "Requires a minimum $69,500 offer" — NOT a price you can pay).
+// Returns { marketplace:'Spaceship', price?|minOffer? } or null when it's not a
+// Spaceship lander. Best-effort — the config isn't strict JSON, so we regex fields.
+function parseSpaceship(body) {
+  if (!body || !/DOMAIN_CONFIG/.test(body) || !/spaceship/i.test(body)) return null;
+  const bool = (k) => { const m = body.match(new RegExp(k + '\\s*:\\s*(true|false)')); return m ? m[1] === 'true' : null; };
+  const money = (s) => { if (!s) return null; const n = Number(String(s).replace(/[^\d.]/g, '')); return Number.isFinite(n) && n >= 100 && n <= 5_000_000 ? Math.round(n) : null; };
+  const minOffer = money((body.match(/minOfferPrice:\s*parseFloat\('([\d.]+)'\)/) || body.match(/minOfferPrice:\s*'?([\d.]+)'?/) || [])[1])
+    || money((body.match(/formattedMinOfferPrice:\s*'([^']+)'/) || [])[1]);
+  const buyNow = money((body.match(/totalPrice:\s*'([^']+)'/) || [])[1]);
+  const offerEnabled = bool('offerEnabled');
+  // A firm buy-now (LTO total or buy-it-now-only) wins; otherwise it's offer-floor-only.
+  if (buyNow) return { marketplace: 'Spaceship', price: buyNow };
+  if (offerEnabled && minOffer) return { marketplace: 'Spaceship', minOffer };
+  if (minOffer) return { marketplace: 'Spaceship', minOffer };
+  return { marketplace: 'Spaceship' };
+}
+
 // Friendly marketplace name from a listing page's host.
 function mktName(host) {
   const h = (host || '').toLowerCase();
@@ -131,6 +187,7 @@ function mktName(host) {
   if (h.includes('sav.com')) return 'Sav';
   if (h.includes('efty')) return 'Efty';
   if (h.includes('brandbucket')) return 'BrandBucket';
+  if (h.includes('spaceship')) return 'Spaceship';
   return null;
 }
 
@@ -147,28 +204,50 @@ async function inspectSite(domain) {
   let finalHost = '';
   try { finalHost = new URL(r.finalUrl || `https://${domain}`).host.replace(/^www\./, ''); } catch { /* ignore */ }
   const clues = extractClues(r.body || '');
+  const ss = parseSpaceship(r.body || '');
   const forSaleText = clues.parking && clues.parking.for_sale_signals && clues.parking.for_sale_signals.length > 0;
   const onMarketplace = MARKETPLACE_HOST_RE.test(finalHost) || (clues.parking && clues.parking.platforms && clues.parking.platforms.length > 0);
   const parked = clues.parking && clues.parking.likely_parked;
-  if (forSaleText || onMarketplace) {
-    const where = MARKETPLACE_HOST_RE.test(finalHost) ? `redirects to ${finalHost}`
-      : (clues.parking.platforms || [])[0] ? `${clues.parking.platforms[0]} landing page`
-        : 'a custom "for sale" page';
-    const price = extractPrice(r.body);
-    return { site: 'for_sale', title: clues.title, for_sale_page: true, price, marketplace: mktName(finalHost), listing_url: r.finalUrl || null, evidence: `for-sale page — ${where}${price ? ` · $${price.toLocaleString()}` : ''}` };
+  if (forSaleText || onMarketplace || ss) {
+    const mk = (ss && ss.marketplace) || mktName(finalHost);
+    // Spaceship config is authoritative on price vs offer-floor; otherwise scrape.
+    let price = ss ? (ss.price || null) : null;
+    const minOffer = ss ? (ss.minOffer || null) : null;
+    if (!price && !minOffer) price = extractPrice(r.body);
+    const where = ss ? 'Spaceship landing page'
+      : MARKETPLACE_HOST_RE.test(finalHost) ? `redirects to ${finalHost}`
+        : (clues.parking.platforms || [])[0] ? `${clues.parking.platforms[0]} landing page`
+          : 'a custom "for sale" page';
+    const tail = price ? ` · $${price.toLocaleString()}` : (minOffer ? ` · offers from $${minOffer.toLocaleString()}` : '');
+    return { site: 'for_sale', title: clues.title, for_sale_page: true, price, min_offer: minOffer, marketplace: mk, listing_url: r.finalUrl || null, evidence: `for-sale page — ${where}${tail}` };
   }
   const title = clues.title;
   const holding = HOLDING_RE.test(clues.text_excerpt || '') || HOLDING_RE.test(title || '') || HOLDING_TITLE_RE.test((title || '').trim());
   if (holding) return { site: 'parked', title, for_sale_page: false, evidence: 'registrar/holding landing page — registered, not in active use' };
   if (parked) return { site: 'parked', title, for_sale_page: false, evidence: 'parked page (no explicit for-sale text)' };
-  // ACTIVE requires a real, BRANDED <title>. A registrar/GoDaddy lander renders no
-  // server-side title (sentinelcentral.com = 200 but empty title+body); a live site
-  // (joinsentinel.com = "Sentinel — the agentic layer…") brands it.
+  // ACTIVE vs registrar-holding. A branded <title> is the clearest signal — but many
+  // real personal sites title themselves after their OWN name (nolan.so → "Nolan",
+  // nolan.dev → "nolan.dev"), which a title-only check wrongly demotes. So we ALSO
+  // rescue on real page CONTENT: a headline that isn't just the domain, a meta
+  // description, or a genuinely navigable page (multiple links + real text). A
+  // registrar holding has none of these (empty body, or h1 == the domain, ≤1 link).
   const sld = domain.split('.')[0];
-  const generic = !title
-    || title.toLowerCase() === domain.toLowerCase() || title.toLowerCase() === sld
-    || /^(index of|default|domain|welcome|coming soon|under construction|parked|home ?page|new site|untitled|website)/i.test(title.trim());
-  if (r.ok && title && !generic) return { site: 'active', title, for_sale_page: false, evidence: `active site — "${title}"` };
+  const dl = domain.toLowerCase();
+  const body = r.body || '';
+  const text = (clues.text_excerpt || '').trim();
+  const linkCount = (body.match(/<a\s/gi) || []).length;
+  const h1 = ((body.match(/<h1[^>]*>([\s\S]{0,160}?)<\/h1>/i) || [])[1] || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+  const desc = (body.match(/<meta[^>]+name=["']description["'][^>]+content=["']([^"']{12,})/i) || [])[1] || '';
+  const isName = (s) => { const t = (s || '').toLowerCase().trim(); return !t || t === dl || t === sld; };
+  const genericTitle = isName(title)
+    || /^(index of|default|domain|welcome|coming soon|under construction|parked|home ?page|new site|untitled|website)/i.test((title || '').trim());
+  const hasRealH1 = h1.length >= 3 && !isName(h1);
+  const hasDesc = desc.trim().length >= 12;
+  const richNav = linkCount >= 5 && text.length >= 50;
+  if (r.ok && ((title && !genericTitle) || hasRealH1 || hasDesc || richNav)) {
+    const label = (title && !genericTitle) ? title : (hasRealH1 ? h1 : (title || sld));
+    return { site: 'active', title: title || h1 || null, for_sale_page: false, evidence: `active site — "${label}"` };
+  }
   if (r.status >= 400) return { site: 'error', title, for_sale_page: false, evidence: `HTTP ${r.status} — registered, no live site` };
   // 200 but no branded title / empty body → a registrar holding or idle domain.
   return { site: 'parked', title, for_sale_page: false, evidence: 'resolves but no real site — registrar/holding or idle' };
@@ -179,8 +258,8 @@ async function inspectSite(domain) {
 const CATEGORY_ORDER = { for_sale: 0, available: 1, parked: 2, active: 3, registered: 4, unknown: 5 };
 function rankKey(r) {
   const isCom = r.domain.endsWith('.com') ? 0 : 1;
-  const price = Number.isFinite(r.price) ? r.price : Infinity;
-  return [CATEGORY_ORDER[r.category] ?? 5, price, isCom];
+  const priced = (Number.isFinite(r.price) && r.price > 0) ? r.price : (r.min_offer > 0 ? r.min_offer : Infinity);
+  return [CATEGORY_ORDER[r.category] ?? 5, priced, isCom];
 }
 
 // Sweep a seed word. Each candidate gets THREE independent signals — nameservers,
@@ -198,7 +277,7 @@ export async function sweepVariations(seed, { env = process.env, excludeTlds = [
       registrationStatus(c.domain),
       inspectSite(c.domain).catch(() => ({ site: 'error', title: null, for_sale_page: false, evidence: 'crawl failed' })),
     ]);
-    let for_sale = false; let for_sale_source = null; let price = null; let currency = null; let marketplace = null; let link = null;
+    let for_sale = false; let for_sale_source = null; let price = null; let currency = null; let marketplace = null; let link = null; let min_offer = null;
     // (1) Nameservers — a marketplace pair = listed now (immediate, no scan needed).
     const mkNs = marketplaceFromNs(reg.nameservers, c.domain);
     if (mkNs && !mkNs.parkingOnly) { for_sale = true; for_sale_source = 'nameserver'; marketplace = mkNs.name; link = mkNs.link; }
@@ -207,6 +286,9 @@ export async function sweepVariations(seed, { env = process.env, excludeTlds = [
     if (insp.for_sale_page) {
       for_sale = true; for_sale_source = for_sale_source || 'page';
       if (insp.price) { price = insp.price; currency = 'USD'; }
+      // A minimum-offer floor (Spaceship "requires a minimum $X offer") — NOT a firm
+      // price. Kept distinct so the UI never presents it as a buy-now.
+      if (insp.min_offer && !price) { min_offer = insp.min_offer; currency = 'USD'; }
       marketplace = marketplace || insp.marketplace || null;
       link = link || insp.listing_url || null;
     }
@@ -221,7 +303,7 @@ export async function sweepVariations(seed, { env = process.env, excludeTlds = [
     else category = 'registered';
     return {
       domain: c.domain, kind: c.kind, affix: c.affix, category, friction: c.friction || null,
-      for_sale, for_sale_source, price, currency, marketplace, link,
+      for_sale, for_sale_source, price, currency, marketplace, link, min_offer,
       status: reg.status, site: insp.site, title: insp.title || null, evidence: insp.evidence || null,
     };
   });
@@ -240,7 +322,29 @@ export async function sweepVariations(seed, { env = process.env, excludeTlds = [
         r.link = r.link || `https://www.afternic.com/domain/${r.domain}`;
         return;
       }
-      // (b) DomainScout — secondary, only for names it already monitors (track:false).
+      // (b) Sedo — its lander is JS-only, but the buy-now price sits behind a plain
+      // JSON endpoint (the browser's own call). Covers Sedo-listed names the crawl
+      // couldn't price (the biggest gap — Sedo make-offer/JS landers). Free, no key.
+      const sedo = await sedoPrice(r.domain);
+      if (sedo && sedo.price > 0) {
+        // Buy-Now-Plus shows a floor only when it's a MEANINGFUL fraction of the
+        // buy-now ceiling — a nominal $20 floor under a $49,995 ask isn't a range.
+        const range = sedo.buyNowPlus && sedo.priceMin > 0 && sedo.priceMin >= sedo.price * 0.2;
+        r.price = sedo.price; r.currency = sedo.currency ? sedo.currency.toUpperCase() : 'USD';
+        r.price_min = range ? sedo.priceMin : null; r.price_range = range;
+        r.marketplace = r.marketplace || 'Sedo';
+        r.link = r.link || `https://sedo.com/search/details/?domain=${r.domain}`;
+        const disp = `${sedo.symbol}${sedo.price.toLocaleString()}`;
+        if (r.evidence && !/[$€£]/.test(r.evidence)) r.evidence += ` · ${range ? `${sedo.symbol}${sedo.priceMin.toLocaleString()}–` : ''}${disp}`;
+        return;
+      }
+      if (sedo && sedo.makeOffer) {
+        // Listed on Sedo but offer-only — mark it so the UI shows "Make offer", not blank.
+        r.make_offer = true; r.marketplace = r.marketplace || 'Sedo';
+        r.link = r.link || `https://sedo.com/search/details/?domain=${r.domain}`;
+        return;
+      }
+      // (c) DomainScout — secondary, only for names it already monitors (track:false).
       if (!dsOn) return;
       const ds = await lookupDomain(r.domain, env, { track: false }).catch(() => null);
       const listed = ds && (ds.marketplaces || []).filter((m) => m.listed && m.price > 0);

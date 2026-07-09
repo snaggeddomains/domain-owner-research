@@ -338,6 +338,32 @@ can NEVER hold a specific word fixed — so it returned public-safety-*themed* n
   actual prefixes/suffixes/extensions used + exclusions. **active vs parked** requires a real
   branded `<title>` (a GoDaddy/registrar lander renders no server title → `parked`, not active).
 - **No new permission / table / env** — reuses the naming gate + DomainScout key.
+- **Marketplace price extraction (2026-07-09).** The crawl now prices the two big
+  JS-lander gaps directly (both free, no key), so DomainScout is rarely needed:
+  (a) **Afternic BIN** (`afternicBin` — `"buyNow":<micros>`/1e6); (b) **Sedo**
+  (`sedoPrice`) — Sedo's lander is a JS shell that IP-allowlist-blocks scrapers, but
+  the SAME data the browser reads sits behind a plain JSON endpoint
+  `GET sedo.com/api/domain-details/information/<domain>` → `buynow.priceOptions.{price,
+  priceMin,currency}` (in **cents**; `isBuyNowPlus` = an offer floor→buy-now ceiling
+  RANGE, shown only when the floor is ≥20% of the ceiling); a `makeoffer`-with-no-buynow
+  = offer-only (row flagged `make_offer`, UI shows "Make offer"). Currency preserved
+  (€/£/$). Order in the price fallback: afternicBin → sedoPrice → DomainScout.
+- **Buy-now vs minimum-offer (Spaceship).** A Spaceship lander (served in-place on the
+  domain) embeds `window.DOMAIN_CONFIG` — `parseSpaceship` reads it to tell a FIRM
+  buy-now (`buyItNowOnlyEnabled`/`ltoConfig.totalPrice`, e.g. heysentinel.com $16k) from
+  a **minimum-offer FLOOR** (`offerEnabled`+`minOfferPrice`, NO buy-now — e.g. nolan.ai
+  "requires a minimum $69,500 offer", a name you canNOT just buy). The floor rides a
+  distinct `min_offer` field (never `price`), UI renders it as the number + a "min offer"
+  tag, CSV gets a **Price type** column (buy now / min offer / make offer). `mktName`
+  now recognizes Spaceship (was showing a bare "view").
+- **active vs parked — content rescue (2026-07-09).** A branded `<title>` alone
+  wrongly demoted real personal SPAs that title themselves after their own name
+  (nolan.so→"Nolan", nolan.dev→"nolan.dev"). `inspectSite` now ALSO rescues to `active`
+  on real page CONTENT — an `<h1>` that isn't the domain/SLD, a meta description, or a
+  navigable page (≥5 links + real text). A registrar holding has none (empty body, or
+  h1 == the domain, ≤1 link), so it stays `parked`. Multilingual "under construction"
+  (`en construction`/`im aufbau`/…) + builder-default titles ("My Company", title-only
+  `HOLDING_TITLE_RE`) still force parked. Cache-bust `?v=20260709variations11`.
 
 ## Nav sections — research SPA (config-driven, 2026-06-28)
 
