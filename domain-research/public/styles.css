@@ -364,6 +364,7 @@ a.nmv-mkt { text-decoration: underline; }
 .nmv-taken { background: #f0ece8; color: #8a7f76; }
 .nmv-unknown { background: #f4f1ee; color: #a89f96; }
 .nmv-ev { color: var(--navy-3); font-size: .8rem; margin-top: 3px; }
+.nmv-fric { color: #b06a1f; font-size: .8rem; margin-top: 3px; }
 
 .naming-actions { display: flex; align-items: center; gap: 14px; margin-top: 14px; flex-wrap: wrap; }
 .naming-go:disabled { opacity: .55; cursor: not-allowed; box-shadow: none; transform: none; }

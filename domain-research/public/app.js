@@ -4790,7 +4790,8 @@ function renderVariations(data) {
     // The name ALWAYS links to its own live page.
     const dom = `<a href="https://${escapeHtml(r.domain)}" target="_blank" rel="noopener">${escapeHtml(r.domain)}</a>`;
     const ev = r.evidence ? `<div class="nmv-ev">${escapeHtml(r.evidence)}</div>` : '';
-    return `<tr><td class="nmv-dom">${dom}${ev}</td><td>${catPill(r)}</td><td>${forSaleCell}</td><td class="nmv-kind">${kindChip(r)}</td></tr>`;
+    const fric = r.friction ? `<div class="nmv-fric">⚠ ${escapeHtml(r.friction)}</div>` : '';
+    return `<tr><td class="nmv-dom">${dom}${fric}${ev}</td><td>${catPill(r)}</td><td>${forSaleCell}</td><td class="nmv-kind">${kindChip(r)}</td></tr>`;
   };
   const html = `<table class="nmv-table"><thead><tr><th>Domain</th><th>Status</th><th>For sale</th><th>Type</th></tr></thead><tbody>${rows.map(cell).join('')}</tbody></table>`;
   if (els.nmvTable) els.nmvTable.innerHTML = html;
@@ -4799,10 +4800,10 @@ function renderVariations(data) {
 
 function variationsToCsv(data) {
   const rows = (data && Array.isArray(data.results)) ? data.results : [];
-  const head = ['Domain', 'Category', 'For sale', 'Source', 'Price', 'Marketplace', 'Site', 'Evidence', 'Type', 'Affix', 'Link'];
+  const head = ['Domain', 'Category', 'For sale', 'Source', 'Price', 'Marketplace', 'Site', 'Friction', 'Evidence', 'Type', 'Affix', 'Link'];
   const esc = (v) => { const s = String(v == null ? '' : v); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
   const lines = [head.join(',')];
-  for (const r of rows) lines.push([r.domain, r.category, r.for_sale ? 'yes' : 'no', r.for_sale_source || '', r.price || '', r.marketplace || '', r.site || '', r.evidence || '', r.kind, r.affix, r.link || ''].map(esc).join(','));
+  for (const r of rows) lines.push([r.domain, r.category, r.for_sale ? 'yes' : 'no', r.for_sale_source || '', r.price || '', r.marketplace || '', r.site || '', r.friction || '', r.evidence || '', r.kind, r.affix, r.link || ''].map(esc).join(','));
   return lines.join('\n');
 }
 

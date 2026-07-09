@@ -9,7 +9,7 @@ import { enumerateVariations } from './enumerate.js';
 import { lookupDomain, isConfigured } from '../domainscout.js';
 import { fetchText, extractClues } from '../util.js';
 
-const CONCURRENCY = 8;
+const CONCURRENCY = 12;
 const SITE_TIMEOUT_MS = 7000;
 
 async function mapPool(items, limit, fn) {
@@ -166,7 +166,7 @@ export async function sweepVariations(seed, { env = process.env, excludeTlds = [
     else if (reg.status === 'registered') category = 'registered';
     else category = 'unknown';
     return {
-      domain: c.domain, kind: c.kind, affix: c.affix, category,
+      domain: c.domain, kind: c.kind, affix: c.affix, category, friction: c.friction || null,
       for_sale, for_sale_source, price, currency, marketplace, link,
       status: reg.status, site: insp.site, title: insp.title || null, evidence: insp.evidence || null,
     };
