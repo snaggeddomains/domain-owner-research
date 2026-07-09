@@ -4830,9 +4830,9 @@ function renderVariations(data) {
     // The name ALWAYS links to its own live page (href/CSV keep the real lowercase).
     const dom = `<a href="https://${escapeHtml(r.domain)}" target="_blank" rel="noopener">${escapeHtml(prettyDomain(r))}</a>`;
     const fric = r.friction ? `<div class="nmv-fric">⚠ ${escapeHtml(r.friction)}</div>` : '';
-    return `<tr><td class="nmv-dom">${dom}${fric}</td><td>${catPill(r)}</td><td class="nmv-pricecell">${priceCell}</td><td>${listing}</td><td class="nmv-kind">${kindChip(r)}</td></tr>`;
+    return `<tr><td class="nmv-dom">${dom}${fric}</td><td>${catPill(r)}</td><td class="nmv-pricecell">${priceCell}</td><td>${listing}</td><td class="nmv-kind">${kindChip(r)}</td><td class="nmv-spacer"></td></tr>`;
   };
-  const html = `<table class="nmv-table"><thead><tr><th>Domain</th><th>Status</th><th>Price</th><th>Listing</th><th>Type</th></tr></thead><tbody>${rows.map(cell).join('')}</tbody></table>`;
+  const html = `<table class="nmv-table"><thead><tr><th>Domain</th><th>Status</th><th>Price</th><th>Listing</th><th>Type</th><th class="nmv-spacer"></th></tr></thead><tbody>${rows.map(cell).join('')}</tbody></table>`;
   if (els.nmvTable) els.nmvTable.innerHTML = html;
   if (els.namingVariations) els.namingVariations.hidden = false;
 }
@@ -5182,6 +5182,14 @@ function resetNamingView() {
   if (els.namingChat) els.namingChat.hidden = true;
   if (els.namingChatThread) els.namingChatThread.innerHTML = '';
   if (els.namingChatError) els.namingChatError.hidden = true;
+  // Clear the variations grid too, and reset back to the default (theme) mode so a
+  // fresh visit to /research/naming isn't sitting on the last run's output.
+  if (els.namingVariations) els.namingVariations.hidden = true;
+  if (els.nmvTable) els.nmvTable.innerHTML = '';
+  if (els.nmvCount) els.nmvCount.textContent = '';
+  if (els.nmvNote) els.nmvNote.innerHTML = '';
+  variationsLast = null;
+  setNamingMode('theme');
   namingLastResults = null;
   currentNamingRunId = null;
 }

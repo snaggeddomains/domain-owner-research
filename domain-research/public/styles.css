@@ -345,12 +345,16 @@ button:disabled { opacity: .55; cursor: progress; }
 .nmv-table { width: 100%; border-collapse: collapse; font-size: .95rem; }
 .nmv-table th { text-align: left; padding: 10px 14px; background: var(--cream); color: var(--navy-3); font-size: .78rem; text-transform: uppercase; letter-spacing: .04em; border-bottom: 2px solid var(--line); white-space: nowrap; }
 .nmv-table td { padding: 10px 14px; border-bottom: 1px solid var(--line); vertical-align: middle; white-space: nowrap; }
-/* Domain column takes the slack; the rest shrink to content. Nothing wraps on
-   desktop except the (rare) friction note under the name. */
-.nmv-table td.nmv-dom { width: 100%; }
+/* Columns shrink to content and pack together on the left; a trailing spacer eats
+   the remaining width so Status/Price/Listing/Type sit close to the name instead of
+   spread to the edge. Nothing wraps on desktop except the (rare) friction note. */
+.nmv-spacer { width: 100%; padding: 0 !important; border-bottom: 1px solid var(--line); }
 .nmv-fric { white-space: normal; }
 .nmv-pricecell { text-align: right; }
 .nmv-dash { color: #b7ada4; }
+/* A little breathing room between the packed columns. */
+.nmv-table td, .nmv-table th { padding: 10px 16px; }
+.nmv-table td.nmv-dom, .nmv-table th:first-child { padding-left: 14px; }
 .nmv-table tr:last-child td { border-bottom: none; }
 .nmv-dom { font-weight: 600; color: var(--navy); }
 .nmv-dom a { color: var(--navy); text-decoration: underline; }
