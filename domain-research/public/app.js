@@ -4651,7 +4651,7 @@ function setNamingMode(mode) {
   if (els.namingInput) {
     els.namingInput.rows = variations ? 2 : 9;
     els.namingInput.placeholder = variations
-      ? 'Enter the locked brand word — e.g. "sentinel". I\'ll build prefix / suffix / .[tld] variations and check each for sale + availability (.ai excluded).'
+      ? 'Enter the locked brand word — e.g. "sentinel". I\'ll build prefix / suffix / .[tld] variations and check each for sale + availability.'
       : 'Paste a brief — e.g. "Tech startup, B2B SaaS, premium feel. One-word .com, easy to spell, under $5,000. Keywords: cloud, data, ops."';
   }
   if (els.namingGo) els.namingGo.textContent = variations ? 'Build Variations' : 'Find Names';
@@ -4728,7 +4728,7 @@ async function runVariations() {
     const res = await fetch('/research/api/naming', {
       method: 'POST', headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
-        action: 'variations', seed, exclude_tlds: ['ai'],
+        action: 'variations', seed, exclude_tlds: [],
         run_id: currentNamingRunId || null,
         title: (els.namingTitle && els.namingTitle.value.trim()) || null,
       }),
