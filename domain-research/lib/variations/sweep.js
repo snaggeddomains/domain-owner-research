@@ -94,6 +94,22 @@ function extractPrice(html) {
   return best ? best.n : null;
 }
 
+// Afternic BIN price for a domain. The visible lander is JS-rendered, but the
+// buy-now price is embedded in the page's JSON state as MICRO-dollars
+// ("buyNow":19500000000 → $19,500). Afternic also fronts GoDaddy-brokered BINs, so
+// this catches names that show "For sale · Afternic" with no crawl price. Best-effort → null.
+const AFTERNIC_UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Safari/537.36';
+async function afternicBin(domain) {
+  try {
+    const r = await fetchText(`https://www.afternic.com/domain/${domain}`, { headers: { 'user-agent': AFTERNIC_UA } }, SITE_TIMEOUT_MS);
+    const forSale = /"isForSale":\s*true/.test(r.body || '');
+    const m = (r.body || '').match(/"buyNow":\s*(\d{6,})/);
+    if (!forSale || !m) return null;
+    const price = Math.round(Number(m[1]) / 1e6);
+    return (price >= 100 && price <= 5_000_000) ? price : null;
+  } catch { return null; }
+}
+
 // Friendly marketplace name from a listing page's host.
 function mktName(host) {
   const h = (host || '').toLowerCase();
@@ -197,13 +213,23 @@ export async function sweepVariations(seed, { env = process.env, excludeTlds = [
       status: reg.status, site: insp.site, title: insp.title || null, evidence: insp.evidence || null,
     };
   });
-  // Targeted DomainScout PRICE fallback — ONLY for names we found for-sale but
-  // couldn't price off the page (JS-rendered listers). Purposeful, small (not fired
-  // on all candidates), track:false so nothing is added to the watchlist. Skips
-  // entirely when DomainScout isn't configured.
-  if (dsOn) {
+  // Targeted PRICE fallback — ONLY for names we found for-sale but couldn't price off
+  // the page (JS-rendered Afternic/GoDaddy/Dan landers). Small + bounded.
+  {
     const needPrice = results.filter((r) => r.for_sale && !(r.price > 0));
     await mapPool(needPrice, CONCURRENCY, async (r) => {
+      // (a) Afternic BIN — the ask lives in the page JSON as micro-dollars even
+      // though the visible lander is JS-only. Covers Afternic + GoDaddy-brokered
+      // listings. Free, no key.
+      const abin = await afternicBin(r.domain);
+      if (abin) {
+        r.price = abin; r.currency = 'USD';
+        r.marketplace = r.marketplace || 'Afternic';
+        r.link = r.link || `https://www.afternic.com/domain/${r.domain}`;
+        return;
+      }
+      // (b) DomainScout — secondary, only for names it already monitors (track:false).
+      if (!dsOn) return;
       const ds = await lookupDomain(r.domain, env, { track: false }).catch(() => null);
       const listed = ds && (ds.marketplaces || []).filter((m) => m.listed && m.price > 0);
       if (listed && listed.length) {
