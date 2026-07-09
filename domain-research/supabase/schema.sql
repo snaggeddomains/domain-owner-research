@@ -514,6 +514,30 @@ create table if not exists domain_research_portfolio_domains (
 );
 create index if not exists idx_portfolio_domains_run on domain_research_portfolio_domains (run_id, sld_length);
 
+-- ── Person deep-dive ────────────────────────────────────────────────────────
+-- One row per social-URL deep dive. The FREE dossier (identity + cross-platform
+-- presence + VIP + free professional context + narrative) lives in `result`
+-- jsonb; the PAID contact reveal (emails/phones) lands in `contacts` jsonb with a
+-- `revealed` flag so we know whether a run has spent on contact lookup. RLS
+-- auto-enabled by the domain_research_% loop below. ONE-TIME MIGRATION: run this
+-- table on the research project before first use.
+create table if not exists domain_research_person_runs (
+  id           uuid primary key default gen_random_uuid(),
+  input_url    text not null,
+  platform     text,                                 -- linkedin|twitter|facebook|…|other
+  subject_name text,
+  vip_band     text,                                 -- low|notable|high_profile|vip
+  status       text not null default 'pending',      -- pending|running|done|failed
+  stage        text,
+  error        text,
+  result       jsonb,                                -- the free dossier
+  contacts     jsonb,                                -- paid reveal (emails/phones)
+  revealed     boolean not null default false,
+  created_by   uuid references domain_research_users(id),
+  created_at   timestamptz not null default now()
+);
+create index if not exists idx_person_runs_created on domain_research_person_runs (created_at desc);
+
 -- ── Per-domain user notes attached to a Domain Owner report ─────────────────
 -- Keyed by DOMAIN (not run) so a user's notes persist across EVERY re-run (free,
 -- deep, deepen, regenerate, or a forced fresh research that creates a new run id)

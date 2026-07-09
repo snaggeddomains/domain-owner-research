@@ -18,3 +18,8 @@ export const SALES_ANGLES_REQUESTED = 'domain-research/sales-angles.requested';
 // filtered to "premium" names. Async because a large registrant paginates across
 // many Whoxy pages (0.5s apart), well past the API function's 60s cap.
 export const PORTFOLIO_REQUESTED = 'domain-research/portfolio.requested';
+// Person deep-dive — from a social-profile URL, identify the person, triangulate
+// their cross-platform presence + prominence (VIP), and gather free professional
+// context. Async because the profile fetch + multi-platform search + LLM synthesis
+// runs past the 60s API cap. The paid contact reveal is a separate sync action.
+export const PERSON_REQUESTED = 'domain-research/person.requested';

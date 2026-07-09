@@ -66,6 +66,8 @@
     { "source": "/research/whois/:slug*", "destination": "/index.html" },
     { "source": "/research/portfolio", "destination": "/index.html" },
     { "source": "/research/portfolio/:slug*", "destination": "/index.html" },
+    { "source": "/research/person", "destination": "/index.html" },
+    { "source": "/research/person/:slug*", "destination": "/index.html" },
     { "source": "/research/evaluate", "destination": "/index.html" },
     { "source": "/research/evaluate/:slug*", "destination": "/index.html" },
     { "source": "/research/r/:slug*", "destination": "/api/r?slug=:slug*" },

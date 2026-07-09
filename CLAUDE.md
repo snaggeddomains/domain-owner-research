@@ -691,6 +691,52 @@ gated by the `research.portfolio` module permission.
 
 ---
 
+# Person deep-dive — social-URL → identity + VIP + contacts (2026-07-09)
+
+Takes ONE **social-profile URL** (LinkedIn / X / Facebook / Instagram / Quora /
+YouTube / …) and produces a dossier on that person. UI at **research.snagged.com/
+research/person**, gated by the `research.person` module permission. Reuses the
+existing enrichment stack — **no new vendor/env key**. Deterministic pipeline (not
+the agent). **Free-first + reveal:** the auto pass is free-ish (search/read_url/
+rocketreach_search + one LLM synth); the **paid** contact lookup is a separate
+button.
+
+- **Engine** `lib/person/orchestrate.js`:
+  - `runPersonDeepDive({url,name?,company?,env})` — the FREE pass. (1) IDENTIFY:
+    `read_url` the profile (Scrape.do for bot-walls) + `rocketreach_search`
+    (FREE, accepts `linkedin_url`) → name/title/employer/linkedin/location. (2)
+    TRIANGULATE: a broad `web_search` (harvest platform links + knowledge_graph) +
+    targeted `site:` searches for the platforms not yet placed, then `read_url`
+    each to read **follower/subscriber/connection counts** (best-effort — X/LinkedIn
+    often gate them). (3) Roll up a transparent **VIP band** (`low`/`notable`/
+    `high_profile`/`vip`) from max-followers × platform-count × Wikipedia/knowledge-
+    panel × title seniority — every firing signal is listed. (4) SYNTHESIZE: one LLM
+    call (`PERSON_MODEL`||`OUTREACH_MODEL`, default sonnet) writes summary/role/
+    prominence/notable/reach_recommendation. All steps fail-open.
+  - `revealContacts({subject,includePhone,env})` — the PAID step. `rocketreach_lookup`
+    (by linkedin_url) → emails/phones; `fullenrich_lookup` fallback when RR is empty.
+    De-duped. Bounded → runs inline (sync).
+- **Async pipeline** `runPerson` (Inngest, event `PERSON_REQUESTED`) runs the free
+  pass past the 60s API cap; the reveal is a sync API action. Registered in the
+  `functions` array. Usage tagged `withCategory('person')`.
+- **API** `api/person.js` (gated `research.person`, maxDuration 60): `POST
+  {action:'create',url,name?}` → `{run_id}`; `POST {action:'reveal',run_id,phone?}`
+  → `{contacts}` (paid); `GET ?id=` poll; `GET ?list=1&q=` recent.
+- **Storage** `domain_research_person_runs` (single table; free dossier in `result`
+  jsonb, paid contacts in `contacts` jsonb + `revealed` flag; RLS auto-enabled by the
+  `domain_research_%` loop). **ONE-TIME MIGRATION: run the table on the research
+  project before first use.**
+- **UI** (`public/app.js` `pr*` helpers; `#view-person` + `#view-person-runs`; `.pr-*`
+  styles): URL box + optional name, dossier card (VIP pill + signals + cross-platform
+  presence with follower counts + contact panel with a **🔓 Reveal email & phone**
+  button + best-way-to-reach), saved + deep-linkable runs, recent list. Research-group
+  tab `#nav-person`. Cache-bust `?v=20260709person1`.
+- **Permission:** `research.person` added in snagged-admin `dashboard/lib/permissions.ts`
+  (MODULES + RESEARCH_TABS + CATALOG; stored flat as `person`). Grant per-user; admins
+  auto-pass. Optional model override `PERSON_MODEL`.
+
+---
+
 ## Session handoff — 2026-06-02 (lessons notifications + permissions)
 
 - **Lesson submitted → notify curators.** `api/lessons.js` `notifyAdminsOfLesson`

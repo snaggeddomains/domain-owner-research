@@ -28,7 +28,7 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="apple-mobile-web-app-title" content="Snagged Research" />
     <meta name="theme-color" content="#254254" />
-    <link rel="stylesheet" href="styles.css?v=20260709variations13" />
+    <link rel="stylesheet" href="styles.css?v=20260709person1" />
     <!-- Layout: horizontal tab nav (Admin-style), no sidebar. -->
   </head>
   <body>
@@ -199,6 +199,9 @@
         <!-- Sales Research — find companies that would buy a domain we're selling.
              Gated by the `sales` permission; shown by JS. -->
         <a id="nav-sales" class="nav-btn" href="/research/sales" hidden>Sales Research</a>
+        <!-- Person — social-URL deep dive: identity, cross-platform VIP presence,
+             and (on demand) contact info. Gated by the `person` permission. -->
+        <a id="nav-person" class="nav-btn" href="/research/person" hidden>Person</a>
         </span>
         <!-- SNAP sub-nav (shown in the SNAP section): SNAP Eval + SNAP Opportunities.
              SNAP Opportunities is the auctions/snap feed in the admin app (full nav). -->
@@ -784,6 +787,37 @@
           <ul id="cp-runs-list" class="projects-list"></ul>
         </section>
 
+        <!-- Person — social-URL deep dive: identity + cross-platform VIP + contacts -->
+        <section id="view-person" hidden>
+          <div class="hero tool-hero">
+            <h1 class="hero-title">Person <span class="accent">Deep Dive</span></h1>
+            <p class="hero-sub">Paste a link to someone's <strong>social profile</strong> (LinkedIn, X/Twitter, Facebook, Instagram, Quora, YouTube…). I identify who they are, triangulate their presence across platforms to gauge how <strong>prominent</strong> (VIP) they are, and — on demand — pull their <strong>contact info</strong>.</p>
+          </div>
+          <form id="pr-form" class="search pr-form" autocomplete="off">
+            <input id="pr-url" type="text" placeholder="https://linkedin.com/in/…  ·  https://x.com/…" />
+            <input id="pr-name" type="text" class="pr-name-input" placeholder="Name (optional, helps disambiguate)" />
+            <button id="pr-go" type="submit">Deep dive</button>
+          </form>
+          <div id="pr-recent" class="sr-recent" hidden>
+            <div class="sr-recent-head">Recent people</div>
+            <ul id="pr-recent-list" class="sr-recent-list"></ul>
+            <a id="pr-recent-all" class="show-all" href="/research/person/all">View all &rarr;</a>
+          </div>
+          <button id="pr-new" type="button" class="sr-new-btn pr-new-btn" hidden>+ New</button>
+          <div id="pr-status" class="sr-status" hidden></div>
+          <div id="pr-results" hidden></div>
+        </section>
+
+        <!-- Past Person deep dives — searchable list -->
+        <section id="view-person-runs" hidden>
+          <h1 class="page-title">Past <span class="accent">People</span></h1>
+          <p class="sub">Open a previous deep dive to revisit the dossier.</p>
+          <div class="sales-projects-controls">
+            <input id="pr-runs-search" class="projects-search" type="text" placeholder="Search by name / URL…" autocomplete="off" />
+          </div>
+          <ul id="pr-runs-list" class="projects-list"></ul>
+        </section>
+
         <!-- SNAP Eval — acquisition/resale scorecard for a single domain -->
         <section id="view-evaluate" hidden>
           <div class="hero tool-hero">
@@ -1072,6 +1106,6 @@ The model parses it into structured filters (TLDs, length, budget, tone, etc.) a
     </div>
 
     <!-- Bump ?v= on any public/app.js or styles.css change to bust caches. -->
-    <script src="app.js?v=20260709variations13"></script>
+    <script src="app.js?v=20260709person1"></script>
   </body>
 </html>

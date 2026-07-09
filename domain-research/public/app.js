@@ -257,6 +257,11 @@ const els = {
   cpStatus: $('cp-status'), cpResults: $('cp-results'), cpSummary: $('cp-summary'), cpTable: $('cp-table'), cpCsv: $('cp-csv'),
   cpRecent: $('cp-recent'), cpRecentList: $('cp-recent-list'), cpRecentAll: $('cp-recent-all'),
   cpRunsSearch: $('cp-runs-search'), cpRunsList: $('cp-runs-list'),
+  navPerson: $('nav-person'),
+  prForm: $('pr-form'), prUrl: $('pr-url'), prName: $('pr-name'), prNew: $('pr-new'),
+  prStatus: $('pr-status'), prResults: $('pr-results'), prReveal: $('pr-reveal'),
+  prRecent: $('pr-recent'), prRecentList: $('pr-recent-list'), prRecentAll: $('pr-recent-all'),
+  prRunsSearch: $('pr-runs-search'), prRunsList: $('pr-runs-list'),
   navResearchGroup: $('nav-research-group'), navSnapGroup: $('nav-snap-group'), navReportsGroup: $('nav-reports-group'),
   navSnapEval: $('nav-snap-eval'), navSnapOpps: $('nav-snap-opps'),
   navRepAnalytics: $('nav-rep-analytics'), navRepMarketplace: $('nav-rep-marketplace'), navRepChat: $('nav-rep-chat'), navRepCost: $('nav-rep-cost'),
@@ -496,7 +501,7 @@ function clearHash() {
 // the SPA): Domain DB Screen at /dbscreen, DB Search at /dbsearch.
 const VANITY_TOOLS = ['dbscreen', 'dbsearch'];
 function currentToolRoute() {
-  let m = location.pathname.match(/^\/research\/(trademark|appraisal|naming|dbscreen|dbsearch|nameserver|sales|portfolio|evaluate|beeper|whois|diq|admin)(?:\/(.+?))?\/?$/);
+  let m = location.pathname.match(/^\/research\/(trademark|appraisal|naming|dbscreen|dbsearch|nameserver|sales|portfolio|person|evaluate|beeper|whois|diq|admin)(?:\/(.+?))?\/?$/);
   if (!m) m = location.pathname.match(/^\/(dbscreen|dbsearch)(?:\/(.+?))?\/?$/);
   if (!m) return null;
   return { tool: m[1], slug: m[2] ? decodeURIComponent(m[2]) : '' };
@@ -522,6 +527,7 @@ const TOOL_PERMISSION = {
   whois: 'whois',
   diq: 'domain_owner',
   portfolio: 'portfolio',
+  person: 'person',
   evaluate: 'evaluate',
 };
 
@@ -741,6 +747,18 @@ function route() {
     showView('portfolio');
     if (tr.slug) openPortfolioRun(tr.slug);
     else resetPortfolioView();
+    return;
+  }
+  if (tr && tr.tool === 'person') {
+    if (tr.slug === 'all') {
+      showView('person-runs');
+      loadPersonRuns('');
+      if (els.prRunsSearch) els.prRunsSearch.value = '';
+      return;
+    }
+    showView('person');
+    if (tr.slug) openPersonRun(tr.slug);
+    else resetPersonView();
     return;
   }
   if (tr && tr.tool === 'evaluate') {
@@ -2271,6 +2289,7 @@ function gateNavByPermissions(user) {
   // Reports sub-nav: Corporate Portfolios (a research-app page) needs `portfolio`;
   // the analytics tabs (admin app, full nav) need Reports access.
   if (els.navPortfolio) els.navPortfolio.hidden = !can('portfolio');
+  if (els.navPerson) els.navPerson.hidden = !can('person');
   const repAccess = canEnterReports(user);
   for (const el of [els.navRepAnalytics, els.navRepMarketplace, els.navRepChat, els.navRepCost]) {
     if (el) el.hidden = !repAccess;
@@ -3498,6 +3517,8 @@ const VIEWS = {
   'sales-projects': { view: 'view-sales-projects', nav: 'nav-sales' },
   portfolio: { view: 'view-portfolio', nav: 'nav-portfolio' },
   'portfolio-runs': { view: 'view-portfolio-runs', nav: 'nav-portfolio' },
+  person: { view: 'view-person', nav: 'nav-person' },
+  'person-runs': { view: 'view-person-runs', nav: 'nav-person' },
   evaluate: { view: 'view-evaluate', nav: 'nav-snap-eval' },
   admin: { view: 'view-admin', nav: 'nav-admin' },
 };
@@ -7647,6 +7668,231 @@ els.cpRunsSearch?.addEventListener('input', () => {
   clearTimeout(cpRunsTimer);
   cpRunsTimer = setTimeout(() => loadPortfolioRuns(els.cpRunsSearch.value.trim()), 200);
 });
+
+// ── Person deep-dive ────────────────────────────────────────────────────────
+let prRunId = null;
+let prPollTimer = null;
+let prRunsTimer = null;
+let prLastRun = null;
+function clearPrPoll() { if (prPollTimer) { clearInterval(prPollTimer); prPollTimer = null; } }
+function setPrStatus(text, isErr = false) {
+  if (!els.prStatus) return;
+  els.prStatus.textContent = text || '';
+  els.prStatus.hidden = !text;
+  els.prStatus.classList.toggle('error', !!isErr);
+}
+function resetPersonView() {
+  clearPrPoll();
+  prRunId = null; prLastRun = null;
+  if (els.prUrl) els.prUrl.value = '';
+  if (els.prName) els.prName.value = '';
+  if (els.prResults) { els.prResults.hidden = true; els.prResults.innerHTML = ''; }
+  setPrStatus('');
+  loadPersonRecent();
+}
+const PR_VIP = {
+  vip: { cls: 'pr-vip-vip', label: 'VIP' },
+  high_profile: { cls: 'pr-vip-high', label: 'High-profile' },
+  notable: { cls: 'pr-vip-notable', label: 'Notable' },
+  low: { cls: 'pr-vip-low', label: 'Low profile' },
+};
+const PR_PLAT = { linkedin: 'LinkedIn', twitter: 'X / Twitter', facebook: 'Facebook', instagram: 'Instagram', quora: 'Quora', youtube: 'YouTube', tiktok: 'TikTok', github: 'GitHub', crunchbase: 'Crunchbase', wikipedia: 'Wikipedia', other: 'Profile' };
+
+function prRecentRow(r) {
+  const when = r.created_at ? new Date(r.created_at).toLocaleDateString() : '';
+  const vip = r.vip_band ? ` · ${(PR_VIP[r.vip_band] || {}).label || r.vip_band}` : '';
+  const st = r.status === 'done' ? vip : ` · ${escapeHtml(r.status || '')}`;
+  const label = r.subject_name || r.input_url || '';
+  return `<li class="recent-run" data-id="${escapeHtml(r.id)}">`
+    + `<span class="recent-domain">${escapeHtml(label)}${st}</span>`
+    + `<span class="recent-when">${escapeHtml(when)}</span></li>`;
+}
+async function loadPersonRecent() {
+  if (!els.prRecent) return;
+  try {
+    const res = await fetch('/research/api/person?list=1&limit=5');
+    const data = await res.json().catch(() => ({}));
+    const runs = res.ok && Array.isArray(data.runs) ? data.runs : [];
+    els.prRecent.hidden = runs.length === 0;
+    if (els.prRecentList) els.prRecentList.innerHTML = runs.slice(0, 5).map(prRecentRow).join('');
+  } catch { els.prRecent.hidden = true; }
+}
+async function loadPersonRuns(q = '') {
+  if (!els.prRunsList) return;
+  els.prRunsList.innerHTML = '<li class="muted">Loading…</li>';
+  try {
+    const res = await fetch(`/research/api/person?list=1&q=${encodeURIComponent(q)}`);
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || `Failed (${res.status})`);
+    const runs = data.runs || [];
+    if (!runs.length) { els.prRunsList.innerHTML = '<li class="muted">No people looked up yet.</li>'; return; }
+    els.prRunsList.innerHTML = runs.map((r) => {
+      const when = r.created_at ? new Date(r.created_at).toLocaleString() : '';
+      const running = r.status && r.status !== 'done';
+      const vip = r.vip_band ? ` · ${(PR_VIP[r.vip_band] || {}).label || r.vip_band}` : '';
+      const meta = running ? `${escapeHtml(r.status)}…` : `${escapeHtml(when)}${vip}`;
+      return `<li class="project-group"><div class="project-group-title">${escapeHtml(r.subject_name || r.input_url || '(unknown)')}</div>`
+        + `<ul class="project-runs"><li class="project-run${running ? ' active' : ''}" data-id="${escapeHtml(r.id)}">${meta}</li></ul></li>`;
+    }).join('');
+  } catch (e) {
+    els.prRunsList.innerHTML = `<li class="muted">${escapeHtml(String(e.message || e))}</li>`;
+  }
+}
+async function personCreate(url, name, tries = 3) {
+  const body = { action: 'create', url, name: name || undefined };
+  let last;
+  for (let a = 0; a < tries; a++) {
+    const res = await fetch('/research/api/person', {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (res.ok) return data;
+    last = new Error(data.error || `Failed (${res.status})`);
+    if (res.status >= 500 && a < tries - 1) { await new Promise((r) => setTimeout(r, 1500 * (a + 1))); continue; }
+    throw last;
+  }
+  throw last;
+}
+function openPersonRun(id) {
+  clearPrPoll();
+  prRunId = id;
+  if (els.prResults) els.prResults.hidden = true;
+  setPrStatus('Identifying the person and triangulating their footprint…');
+  let pollErrors = 0;
+  const poll = async () => {
+    try {
+      const res = await fetch(`/research/api/person?id=${encodeURIComponent(id)}`);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        if (res.status >= 500 && ++pollErrors < 8) { setPrStatus('Reconnecting…'); return; }
+        throw new Error(data.error || `Poll failed (${res.status})`);
+      }
+      pollErrors = 0;
+      const run = data.run || {};
+      if (run.status === 'done') { clearPrPoll(); renderPerson(run); }
+      else if (run.status === 'failed') { clearPrPoll(); setPrStatus(run.error || 'Deep dive failed', true); }
+      else setPrStatus(`Working… (${run.stage || run.status})`);
+    } catch (err) {
+      if (++pollErrors < 8) { setPrStatus('Reconnecting…'); return; }
+      clearPrPoll(); setPrStatus(String(err.message || err), true);
+    }
+  };
+  poll();
+  prPollTimer = setInterval(poll, 2500);
+}
+function prSocialRow(s) {
+  const label = PR_PLAT[s.key] || s.label || s.key;
+  const foll = s.followers ? ` · <strong>${prFmtCount(s.followers)}</strong> followers` : '';
+  return `<li class="pr-social"><a href="${escapeHtml(s.url)}" target="_blank" rel="noopener">${escapeHtml(label)} ↗</a>${foll}</li>`;
+}
+function prFmtCount(n) {
+  if (!(n > 0)) return '';
+  if (n >= 1e6) return `${(n / 1e6).toFixed(n >= 1e7 ? 0 : 1)}M`;
+  if (n >= 1e3) return `${(n / 1e3).toFixed(n >= 1e4 ? 0 : 1)}K`;
+  return String(n);
+}
+function prContactsHtml(contacts) {
+  if (!contacts) return '';
+  if (!contacts.found) return '<p class="muted">No emails or phone numbers found for this person.</p>';
+  const em = (contacts.emails || []).map((e) => `<li>✉ <a href="mailto:${escapeHtml(e.value)}">${escapeHtml(e.value)}</a>${e.label ? ` <span class="pr-tag">${escapeHtml(e.label)}</span>` : ''}<span class="pr-src">${escapeHtml(e.source || '')}</span></li>`).join('');
+  const ph = (contacts.phones || []).map((p) => `<li>📞 ${escapeHtml(p.value)}<span class="pr-src">${escapeHtml(p.source || '')}</span></li>`).join('');
+  return `<ul class="pr-contacts">${em}${ph}</ul>`;
+}
+function renderPerson(run) {
+  prLastRun = run;
+  setPrStatus('');
+  const d = run.result || {};
+  const subj = d.subject || {};
+  const nar = d.narrative || {};
+  const vip = d.vip || {};
+  const vipMeta = PR_VIP[vip.band] || PR_VIP.low;
+  const name = subj.name || run.subject_name || 'Unknown person';
+  const role = nar.current_role || [subj.title, subj.company && `@ ${subj.company}`].filter(Boolean).join(' ');
+  const notable = (nar.notable || []).map((x) => `<li>${escapeHtml(x)}</li>`).join('');
+  const social = (d.social || []).map(prSocialRow).join('');
+  const sig = (vip.signals || []).map((s) => `<span class="pr-sig">${escapeHtml(s)}</span>`).join('');
+  const revealed = run.revealed && run.contacts;
+  const html = `
+    <div class="pr-card">
+      <div class="pr-head">
+        <div>
+          <div class="pr-name">${escapeHtml(name)}</div>
+          ${role ? `<div class="pr-role">${escapeHtml(role)}</div>` : ''}
+          ${subj.location ? `<div class="pr-loc">${escapeHtml(subj.location)}</div>` : ''}
+        </div>
+        <span class="pr-vip ${vipMeta.cls}">${vipMeta.label}</span>
+      </div>
+      ${nar.summary ? `<p class="pr-summary">${escapeHtml(nar.summary)}</p>` : ''}
+      ${sig ? `<div class="pr-sigs">${sig}</div>` : ''}
+      <div class="pr-grid">
+        <section class="pr-sec">
+          <h3>Cross-platform presence <span class="pr-count">${(d.social || []).length}</span></h3>
+          ${social ? `<ul class="pr-socials">${social}</ul>` : '<p class="muted">No other profiles located.</p>'}
+          ${nar.prominence ? `<p class="pr-prom">${escapeHtml(nar.prominence)}</p>` : ''}
+        </section>
+        <section class="pr-sec">
+          <h3>Contact info</h3>
+          ${revealed ? prContactsHtml(run.contacts)
+    : `<p class="muted">Contact lookup (RocketReach + FullEnrich) is a paid step.</p>
+               <button type="button" id="pr-reveal-btn" class="pr-reveal-btn">🔓 Reveal email &amp; phone</button>`}
+          ${nar.reach_recommendation ? `<p class="pr-reach"><strong>Best way to reach:</strong> ${escapeHtml(nar.reach_recommendation)}</p>` : ''}
+        </section>
+      </div>
+      ${notable ? `<section class="pr-sec"><h3>Notable</h3><ul class="pr-notable">${notable}</ul></section>` : ''}
+      <div class="pr-foot"><a href="${escapeHtml(subj.input_url || run.input_url || '#')}" target="_blank" rel="noopener">Source profile ↗</a></div>
+    </div>`;
+  if (els.prResults) { els.prResults.innerHTML = html; els.prResults.hidden = false; }
+  const btn = document.getElementById('pr-reveal-btn');
+  if (btn) btn.addEventListener('click', () => revealPersonContacts(run.id, btn));
+}
+async function revealPersonContacts(id, btn) {
+  if (btn) { btn.disabled = true; btn.textContent = 'Looking up contacts…'; }
+  try {
+    const res = await fetch('/research/api/person', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ action: 'reveal', run_id: id }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || `Failed (${res.status})`);
+    if (prLastRun) { prLastRun.revealed = true; prLastRun.contacts = data.contacts; renderPerson(prLastRun); }
+  } catch (err) {
+    if (btn) { btn.disabled = false; btn.textContent = '🔓 Reveal email & phone'; }
+    setPrStatus(String(err.message || err), true);
+  }
+}
+els.prForm?.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const url = String(els.prUrl?.value || '').trim();
+  if (!url) return;
+  setPrStatus('Starting the deep dive…');
+  if (els.prResults) els.prResults.hidden = true;
+  try {
+    const data = await personCreate(url, String(els.prName?.value || '').trim());
+    setToolUrl('person', data.run_id);
+    openPersonRun(data.run_id);
+  } catch (err) { setPrStatus(String(err.message || err), true); }
+});
+function openPersonFromList(li) {
+  if (!li || !li.dataset.id) return;
+  history.pushState(null, '', `/research/person/${encodeURIComponent(li.dataset.id)}`);
+  showView('person');
+  openPersonRun(li.dataset.id);
+}
+els.prRecentList?.addEventListener('click', (e) => openPersonFromList(e.target.closest('.recent-run')));
+els.prRunsList?.addEventListener('click', (e) => openPersonFromList(e.target.closest('.project-run')));
+els.prRecentAll?.addEventListener('click', (e) => {
+  if (newTabClick(e)) return;
+  e.preventDefault();
+  history.pushState(null, '', '/research/person/all');
+  showView('person-runs');
+  loadPersonRuns('');
+});
+els.prNew?.addEventListener('click', () => { history.pushState(null, '', '/research/person'); resetPersonView(); });
+els.prRunsSearch?.addEventListener('input', () => {
+  clearTimeout(prRunsTimer);
+  prRunsTimer = setTimeout(() => loadPersonRuns(els.prRunsSearch.value.trim()), 200);
+});
+els.navPerson?.addEventListener('click', (e) => { if (newTabClick(e)) return; e.preventDefault(); setToolUrl('person', ''); showView('person'); resetPersonView(); });
 
 els.nsRecent?.addEventListener('click', (e) => {
   if (e.target.dataset && e.target.dataset.recentClear) { try { localStorage.removeItem(NS_RECENT_KEY); } catch {} nsRenderRecent(); return; }

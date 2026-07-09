@@ -1,4 +1,4 @@
-import { inngest, RUN_REQUESTED, CHAT_REQUESTED, RUN_CANCELLED, SALES_RESEARCH_REQUESTED, SALES_ANGLES_REQUESTED, PORTFOLIO_REQUESTED } from './client.js';
+import { inngest, RUN_REQUESTED, CHAT_REQUESTED, RUN_CANCELLED, SALES_RESEARCH_REQUESTED, SALES_ANGLES_REQUESTED, PORTFOLIO_REQUESTED, PERSON_REQUESTED } from './client.js';
 import { gather, critique, chatTurn } from '../agent.js';
 import { friendlyApiError } from '../llm/anthropic.js';
 import { setRunStatus, saveRunReport, failRun, getRun } from '../db/runs.js';
@@ -24,6 +24,8 @@ import {
 import {
   getPortfolioRun, setPortfolioRunStatus, insertPortfolioDomains,
 } from '../db/portfolio.js';
+import { getPersonRun, setPersonRunStatus } from '../db/person.js';
+import { runPersonDeepDive } from '../person/orchestrate.js';
 import { deriveRegistrantKeys } from '../portfolio/registrant.js';
 import { pullPortfolio } from '../portfolio/providers.js';
 import { classifyPremium, wordsNeedingDictionary } from '../portfolio/premium.js';
@@ -604,4 +606,41 @@ export const runCorporatePortfolio = inngest.createFunction(
   },
 );
 
-export const functions = [runResearch, runChat, runSalesResearch, runSalesAngles, runCorporatePortfolio];
+// Person deep-dive — the FREE pass (identify + cross-platform VIP triangulation +
+// free professional context + LLM synthesis). The paid contact reveal is a sync
+// API action, not part of this pipeline. Wrapped in withCategory for usage tagging.
+export const runPerson = inngest.createFunction(
+  {
+    id: 'run-person',
+    retries: 1,
+    onFailure: async ({ event, step }) => {
+      const runId = event?.data?.event?.data?.runId;
+      const message = String(event?.data?.error?.message || 'failed').slice(0, 500);
+      if (runId) await step.run('mark-failed', () => setPersonRunStatus(runId, 'failed', { error: message }));
+    },
+  },
+  { event: PERSON_REQUESTED },
+  async ({ event, step }) => {
+    const { runId } = event.data;
+    try {
+      const run = await step.run('load', () => getPersonRun(runId));
+      if (!run) return { runId, ok: false, reason: 'not found' };
+      await step.run('mark-running', () => setPersonRunStatus(runId, 'running', { stage: 'identify' }));
+      const dossier = await step.run('deep-dive', () => withCategory('person', () => runPersonDeepDive({ url: run.input_url, name: run.subject_name || null, env: process.env })));
+      await step.run('mark-done', () => setPersonRunStatus(runId, 'done', {
+        stage: 'done',
+        subject_name: dossier.subject?.name || run.subject_name || null,
+        platform: dossier.subject?.input_platform || run.platform || null,
+        vip_band: dossier.vip?.band || null,
+        result: dossier,
+      }));
+      return { runId, ok: true, vip: dossier.vip?.band, presence: dossier.presence_count };
+    } catch (err) {
+      const message = String(err?.message || err);
+      await step.run('mark-error', () => setPersonRunStatus(runId, 'failed', { error: message }));
+      throw err;
+    }
+  },
+);
+
+export const functions = [runResearch, runChat, runSalesResearch, runSalesAngles, runCorporatePortfolio, runPerson];
