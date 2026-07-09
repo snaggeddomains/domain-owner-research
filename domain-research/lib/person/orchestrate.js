@@ -25,7 +25,7 @@ const PLATFORMS = [
   { key: 'quora', label: 'Quora', host: /(^|\.)quora\.com$/i, unit: /([\d.,]+[KMB]*)\s*followers/i },
   { key: 'youtube', label: 'YouTube', host: /(^|\.)(youtube\.com|youtu\.be)$/i, unit: /([\d.,]+[KMB]*)\s*subscribers/i },
   { key: 'tiktok', label: 'TikTok', host: /(^|\.)tiktok\.com$/i, unit: /([\d.,]+[KMB]*)\s*Followers/i },
-  { key: 'github', label: 'GitHub', host: /(^|\.)github\.com$/i, unit: /([\d.,]+)\s*followers/i },
+  { key: 'github', label: 'GitHub', host: /(^|\.)github\.com$/i, unit: /([\d.,]+[KMB]?)\s*followers/i },
   { key: 'crunchbase', label: 'Crunchbase', host: /(^|\.)crunchbase\.com$/i },
   { key: 'wikipedia', label: 'Wikipedia', host: /(^|\.)wikipedia\.org$/i },
 ];
@@ -97,12 +97,17 @@ function followersFrom(platform, page) {
 
 // ---- step 1: identify ------------------------------------------------------
 
-function nameFromTitle(title, platformKey) {
+function nameFromTitle(title) {
   if (!title) return null;
+  const s = String(title);
   // Common shapes: "Jane Doe - CEO at Acme | LinkedIn", "Jane Doe (@jane) / X",
-  // "Jane Doe - YouTube". Take the segment before the first separator.
-  let t = String(title).split(/\s*[|–—\-\/(]\s*|\s*[·•]\s*/)[0].trim();
+  // "torvalds (Linus Torvalds) · GitHub". Take the segment before the first
+  // separator; but prefer a parenthetical REAL name (multi-word, no @) when the
+  // lead segment is just a bare handle (GitHub-style "handle (Real Name)").
+  let t = s.split(/\s*[|–—\-\/(]\s*|\s*[·•]\s*/)[0].trim();
   t = t.replace(/\s*(\/ X|on LinkedIn|LinkedIn|Twitter|Facebook|Instagram|Quora|YouTube|GitHub)\s*$/i, '').trim();
+  const paren = s.match(/\(([^)@]{3,40})\)/);
+  if (paren && /\s/.test(paren[1].trim()) && !/\s/.test(t)) t = paren[1].trim();
   if (t.length < 2 || t.length > 60 || /[@#]/.test(t)) return null;
   return t;
 }
