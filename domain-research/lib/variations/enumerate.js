@@ -40,19 +40,21 @@ function cleanSld(seed) {
 // seam, or the SLD→TLD boundary). We KEEP the name but flag it — anything that hurts
 // the radio test or is easy to mistype:
 //   • a doubled letter (sentinel+labs → sentinellABs — "one L or two?")
-//   • adjacent look-alike vertical strokes i/l/j/1 (sentinel+io → "…LIo", sentinel.io)
+//   • adjacent look-alike vertical strokes i/l/j/1 — only when CONTIGUOUS (no dot):
+//     "sentinelio.com" reads as "…LIo", but "sentinel.io" is fine (the dot separates)
 //   • a letter O beside a zero
 //   • "rn" which reads as "m"
+// Only applies to a within-SLD seam (prefix/suffix), NOT the SLD→TLD boundary — the
+// dot disambiguates, so sentinel.io / sentinel.inc are clean.
 const STROKE = new Set(['i', 'l', 'j', '1']);
-function junctionFriction(a, b, { acrossDot = false } = {}) {
+function junctionFriction(a, b) {
   const x = String(a || '').slice(-1).toLowerCase();
   const y = String(b || '')[0]?.toLowerCase();
   if (!x || !y) return null;
-  const where = acrossDot ? `"${x}.${y}"` : `"${x}${y}"`;
-  if (x === y) return `double "${x}"${acrossDot ? ' across the dot' : ' at the seam'} — reads clunky / easy to mistype`;
-  if (STROKE.has(x) && STROKE.has(y)) return `${where} — look-alike strokes (i/l/j/1), hard to read`;
-  if ((x === 'o' && y === '0') || (x === '0' && y === 'o')) return `${where} — letter "o" beside a zero, easy to confuse`;
-  if (!acrossDot && x === 'r' && y === 'n') return `"rn" can read as an "m"`;
+  if (x === y) return `double "${x}" at the seam — reads clunky / easy to mistype`;
+  if (STROKE.has(x) && STROKE.has(y)) return `"${x}${y}" — look-alike strokes (i/l/j/1), hard to read`;
+  if ((x === 'o' && y === '0') || (x === '0' && y === 'o')) return `"${x}${y}" — letter "o" beside a zero, easy to confuse`;
+  if (x === 'r' && y === 'n') return `"rn" can read as an "m"`;
   return null;
 }
 function combineFriction(...notes) {
@@ -86,8 +88,9 @@ export function enumerateVariations(seed, { excludeTlds = [], prefixes = PREFIXE
   for (const t of tlds) {
     const tld = t.toLowerCase();
     if (drop.has(tld)) continue;
-    // The exact word on this TLD — flag a hard-to-read SLD→TLD boundary (sentinel.io).
-    add(`${sld}.${tld}`, 'tld', tld, junctionFriction(sld, tld, { acrossDot: true }));
+    // The exact word on this TLD — no seam friction (the dot separates SLD from TLD,
+    // so sentinel.io / sentinel.inc read cleanly).
+    add(`${sld}.${tld}`, 'tld', tld, null);
   }
   return out;
 }
