@@ -451,7 +451,7 @@
             <p class="hero-sub">Search and filter across our domain databases.</p>
           </div>
           <form id="ds-search" class="search dbs-search" autocomplete="off">
-            <input id="ds-q" type="text" placeholder="Search domains…" />
+            <input id="ds-q" type="text" placeholder="Search a word (matches anywhere — atlas finds teamatlas)…" />
             <button id="ds-go" type="submit">Search</button>
             <button id="ds-exact" type="button" class="dbs-exact" title="Match the exact word — pins SLD length to the number of letters you typed (e.g. antigen → length 7, so only antigen.* matches)">Exact word</button>
           </form>
@@ -515,7 +515,7 @@
               </div>
               <div class="dbs-fgroup"><label>Options</label>
                 <label class="dbs-check"><input id="ds-nonum" type="checkbox" /> No numbers</label>
-                <label class="dbs-check"><input id="ds-fuzzy" type="checkbox" /> Fuzzy search</label>
+                <label class="dbs-check" title="Search already matches the word anywhere in the name (3+ letters). Check this to also do a contains-match for very short 1–2 letter fragments (slower)."><input id="ds-fuzzy" type="checkbox" /> Match 1–2 letter fragments</label>
               </div>
               <div class="dbs-fgroup"><label>Source</label>
                 <input id="ds-source" type="text" placeholder="e.g. afternic, atom" />

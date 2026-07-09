@@ -94,7 +94,14 @@ function buildUniverse(p, ascending, countMode) {
       // browse filters applied. Bare-keyword browse below keeps all filters.
       return q.eq('domain', t).order(UNIVERSE_SORT[p.sort] || 'domain', { ascending, nullsFirst: false });
     } else {
-      q = q.ilike('sld', (p.fuzzy === '1' ? '%' : '') + t + '%');
+      // Default to a CONTAINS match (atlas → teamatlas / videoatlas), not just a
+      // prefix — this matches Master's behavior (already substring) and the natural
+      // "show me the word anywhere" expectation. The trigram GIN index
+      // idx_universe_sld_trgm backs `%x%` for queries >= 3 chars, so it stays fast
+      // over the millions of rows. Sub-3-char queries keep the prefix form (trigram
+      // can't index < 3 chars → a leading-% would seq-scan) UNLESS Fuzzy is checked.
+      const contains = p.fuzzy === '1' || t.length >= 3;
+      q = q.ilike('sld', (contains ? '%' : '') + t + '%');
     }
   }
   const tlds = csv(p.tld);
