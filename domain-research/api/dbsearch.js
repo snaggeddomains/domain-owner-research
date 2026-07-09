@@ -87,7 +87,12 @@ function buildUniverse(p, ascending, countMode) {
       // index. `.ilike` is case-insensitive and CANNOT use that index, so it
       // seq-scans millions of rows → statement timeout (the search hangs). DB
       // Screen makes the same choice for the same reason.
-      q = q.eq('domain', t);
+      // An exact-domain lookup is "do we have THIS name" — the sidebar browse
+      // filters (length/TLD/word-count/…) are irrelevant to it and only cause
+      // confusing false zeroes (a stale "max length 8" hides teamatlas.com,
+      // reading as "we don't have it"). So short-circuit: match + return, no
+      // browse filters applied. Bare-keyword browse below keeps all filters.
+      return q.eq('domain', t).order(UNIVERSE_SORT[p.sort] || 'domain', { ascending, nullsFirst: false });
     } else {
       q = q.ilike('sld', (p.fuzzy === '1' ? '%' : '') + t + '%');
     }
@@ -148,7 +153,10 @@ function buildMaster(p, ascending, countMode) {
     const t = text.toLowerCase();
     // Match Universe's behavior: dotted input → exact-domain lookup (the
     // same semantics the DB Screen offers); bare keyword → substring browse.
-    q = t.includes('.') ? q.ilike('domain', t) : q.ilike('domain', '%' + t + '%');
+    // Exact-domain lookup short-circuits past the browse filters (see Universe):
+    // "do we have THIS name" shouldn't be silently zeroed by a stale length/TLD.
+    if (t.includes('.')) return q.ilike('domain', t).order(MASTER_SORT[p.sort] || 'domain', { ascending, nullsFirst: false });
+    q = q.ilike('domain', '%' + t + '%');
   }
   const tlds = csv(p.tld);
   if (tlds) {

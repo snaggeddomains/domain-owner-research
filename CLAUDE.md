@@ -473,6 +473,13 @@ timeout (the search just falls back to universe-only until they exist).
 **Screen** (single-domain lookup, gated by `dbscreen`). Owner of owned-feed domains
 is derived in `lib/sources/universe_ownership.js` (snagged/berserk → Snagged,
 rob_purchases → Rob Schutz). TLD filters require a single-dot domain.
+**Exact-domain lookup bypasses the browse filters (2026-07-09):** a dotted query
+(`teamatlas.com`) is an "do we have THIS name" lookup — both `buildUniverse` and
+`buildMaster` now short-circuit (exact `domain` match → return) BEFORE applying the
+sidebar filters (length/TLD/word-count/price/…). Previously a stale filter (e.g. Max
+SLD length 8) silently zeroed a present row (teamatlas SLD = 9 chars), which read as
+"the Afternic dump is missing it" when the row was there all along (afternic feed,
+best_price $39,999). Bare-keyword browse keeps every filter.
 
 ---
 
