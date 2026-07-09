@@ -4822,17 +4822,23 @@ function renderVariations(data) {
   const cell = (r) => {
     const price = fmtVarPrice(r.price, r.currency);
     const priceCell = price ? `<span class="nmv-price">${price}</span>` : '<span class="nmv-dash">—</span>';
-    // Listing = a link to where it's for sale (marketplace name, or "view" for a
-    // custom page). Its OWN column, separate from price.
+    // GoDaddy registration-search link for a name that's available to hand-register.
+    const registerUrl = `https://www.godaddy.com/domainsearch/find?domainToCheck=${encodeURIComponent(r.domain)}`;
+    // Listing = where to buy/register it. For-sale → marketplace link; available →
+    // "Register ↗" (GoDaddy); otherwise "—". Its OWN column, separate from price.
     let listing = '<span class="nmv-dash">—</span>';
     if (r.link) listing = `<a class="nmv-mkt" href="${escapeHtml(r.link)}" target="_blank" rel="noopener">${escapeHtml(r.marketplace || 'view')} ↗</a>`;
     else if (r.marketplace) listing = `<span class="nmv-mkt">${escapeHtml(r.marketplace)}</span>`;
-    // The name ALWAYS links to its own live page (href/CSV keep the real lowercase).
-    const dom = `<a href="https://${escapeHtml(r.domain)}" target="_blank" rel="noopener">${escapeHtml(prettyDomain(r))}</a>`;
-    const fric = r.friction ? `<div class="nmv-fric">⚠ ${escapeHtml(r.friction)}</div>` : '';
-    return `<tr><td class="nmv-dom">${dom}${fric}</td><td>${catPill(r)}</td><td class="nmv-pricecell">${priceCell}</td><td>${listing}</td><td class="nmv-kind">${kindChip(r)}</td><td class="nmv-spacer"></td></tr>`;
+    else if (r.category === 'available') listing = `<a class="nmv-mkt" href="${escapeHtml(registerUrl)}" target="_blank" rel="noopener">Register ↗</a>`;
+    // The name links to its own live page — EXCEPT an available name (which won't
+    // resolve), which points to the GoDaddy registration search. (href/CSV keep the
+    // real lowercase domain.)
+    const nameHref = r.category === 'available' ? registerUrl : `https://${r.domain}`;
+    const dom = `<a href="${escapeHtml(nameHref)}" target="_blank" rel="noopener">${escapeHtml(prettyDomain(r))}</a>`;
+    const comment = r.friction ? `<span class="nmv-comment">⚠ ${escapeHtml(r.friction)}</span>` : '';
+    return `<tr><td class="nmv-dom">${dom}</td><td>${catPill(r)}</td><td class="nmv-pricecell">${priceCell}</td><td>${listing}</td><td class="nmv-kind">${kindChip(r)}</td><td class="nmv-comments">${comment}</td></tr>`;
   };
-  const html = `<table class="nmv-table"><thead><tr><th>Domain</th><th>Status</th><th>Price</th><th>Listing</th><th>Type</th><th class="nmv-spacer"></th></tr></thead><tbody>${rows.map(cell).join('')}</tbody></table>`;
+  const html = `<table class="nmv-table"><thead><tr><th>Domain</th><th>Status</th><th>Price</th><th>Listing</th><th>Type</th><th class="nmv-comments-h">Comments</th></tr></thead><tbody>${rows.map(cell).join('')}</tbody></table>`;
   if (els.nmvTable) els.nmvTable.innerHTML = html;
   if (els.namingVariations) els.namingVariations.hidden = false;
 }
