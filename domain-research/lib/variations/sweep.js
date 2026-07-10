@@ -317,20 +317,18 @@ export async function sweepVariations(seed, { env = process.env, excludeTlds = [
   {
     const needPrice = results.filter((r) => r.for_sale && !(r.price > 0));
     await mapPool(needPrice, CONCURRENCY, async (r) => {
-      // (a) Afternic BIN — the ask lives in the page JSON as micro-dollars even
-      // though the visible lander is JS-only. Covers Afternic + GoDaddy-brokered
-      // listings. Free, no key.
-      const abin = await afternicBin(r.domain);
+      // Afternic BIN + Sedo run in PARALLEL (independent lookups) — halves the
+      // per-name latency vs sequential, which matters for a busy word's for-sale set.
+      //  · Afternic BIN — the ask lives in the page JSON as micro-dollars even though
+      //    the lander is JS-only. Covers Afternic + GoDaddy-brokered listings.
+      //  · Sedo — the buy-now price sits behind a plain JSON endpoint. Both free.
+      const [abin, sedo] = await Promise.all([afternicBin(r.domain), sedoPrice(r.domain)]);
       if (abin) {
         r.price = abin; r.currency = 'USD';
         r.marketplace = r.marketplace || 'Afternic';
         r.link = r.link || `https://www.afternic.com/domain/${r.domain}`;
         return;
       }
-      // (b) Sedo — its lander is JS-only, but the buy-now price sits behind a plain
-      // JSON endpoint (the browser's own call). Covers Sedo-listed names the crawl
-      // couldn't price (the biggest gap — Sedo make-offer/JS landers). Free, no key.
-      const sedo = await sedoPrice(r.domain);
       if (sedo && sedo.price > 0) {
         // Buy-Now-Plus shows a floor only when it's a MEANINGFUL fraction of the
         // buy-now ceiling — a nominal $20 floor under a $49,995 ask isn't a range.
@@ -381,7 +379,9 @@ export async function sweepVariations(seed, { env = process.env, excludeTlds = [
   // (a name we track on e.g. Afternic the live crawl couldn't price). We never flip
   // an "available"/"active" row on stale corpus data.
   {
-    const internal = await internalP;
+    // Never let a slow corpora query hold the whole response — cap the wait; if it
+    // doesn't land in time we just skip the (nice-to-have) badges.
+    const internal = await Promise.race([internalP, new Promise((res) => setTimeout(() => res(new Map()), 6000))]);
     for (const r of results) {
       const info = internalForRow(internal.get(r.domain.toLowerCase()));
       if (!info) continue;

@@ -11,7 +11,9 @@ import { fetchText, extractClues } from '../lib/util.js';
 import { withCategory } from '../lib/db/usage.js';
 import { getFreshLiveChecks, saveLiveChecks } from '../lib/db/livechecks.js';
 
-export const config = { maxDuration: 60 };
+// 120s: the variations sweep for a BUSY word (many for-sale names needing
+// marketplace price lookups + many active sites to crawl) can push past 60s.
+export const config = { maxDuration: 120 };
 
 // Single endpoint for the v1 Naming Exercise (spec §1-5) plus the Recent /
 // Past Naming Runs affordance. Action-multiplexed so the whole feature
