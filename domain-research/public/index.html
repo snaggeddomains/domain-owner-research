@@ -846,7 +846,11 @@
             <p class="hero-sub">Paste or upload a list of domains (optionally with an asking price) and get a fast <strong>investability ranking</strong> — estimated resale value vs. price, ROI, and a buy verdict — using our quality model + real Snagged sold-comps. Click any name for the full <strong>SNAP Eval</strong>.</p>
           </div>
           <div class="be-input">
-            <textarea id="be-input" rows="7" placeholder="One domain per line — optionally add an asking price:&#10;flora.ai&#10;flora.ai, 2000&#10;quorent.com, 344"></textarea>
+            <div class="be-sheet-row">
+              <input id="be-sheet" type="text" placeholder="Paste a Google Sheets link (shared &quot;anyone with the link can view&quot;) — auto-detects the domain + price columns" autocapitalize="off" autocorrect="off" spellcheck="false" />
+              <button id="be-load-sheet" type="button" class="be-ghost">Load from sheet</button>
+            </div>
+            <textarea id="be-input" rows="7" placeholder="…or type / paste one domain per line — optionally add an asking price:&#10;flora.ai&#10;flora.ai, 2000&#10;quorent.com, 344"></textarea>
             <div class="be-actions">
               <label class="be-file"><input id="be-file" type="file" accept=".csv,.txt" hidden />📄 Upload CSV / TXT</label>
               <button id="be-run" type="button">Evaluate</button>
@@ -1130,6 +1134,6 @@ The model parses it into structured filters (TLDs, length, budget, tone, etc.) a
     </div>
 
     <!-- Bump ?v= on any public/app.js or styles.css change to bust caches. -->
-    <script src="app.js?v=20260710bulkeval"></script>
+    <script src="app.js?v=20260710bulkeval2"></script>
   </body>
 </html>

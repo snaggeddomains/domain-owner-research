@@ -504,7 +504,7 @@ function clearHash() {
 // the SPA): Domain DB Screen at /dbscreen, DB Search at /dbsearch.
 const VANITY_TOOLS = ['dbscreen', 'dbsearch'];
 function currentToolRoute() {
-  let m = location.pathname.match(/^\/research\/(trademark|appraisal|naming|dbscreen|dbsearch|nameserver|sales|portfolio|person|evaluate|beeper|whois|diq|admin)(?:\/(.+?))?\/?$/);
+  let m = location.pathname.match(/^\/research\/(trademark|appraisal|naming|dbscreen|dbsearch|nameserver|sales|portfolio|person|evaluate|bulk-eval|beeper|whois|diq|admin)(?:\/(.+?))?\/?$/);
   if (!m) m = location.pathname.match(/^\/(dbscreen|dbsearch)(?:\/(.+?))?\/?$/);
   if (!m) return null;
   return { tool: m[1], slug: m[2] ? decodeURIComponent(m[2]) : '' };
@@ -6270,6 +6270,23 @@ function beCsv() {
   a.download = 'bulk-eval.csv';
   a.click();
 }
+async function beLoadSheet() {
+  const url = document.getElementById('be-sheet')?.value.trim();
+  const status = document.getElementById('be-status');
+  if (!url) { if (status) status.textContent = 'Paste a Google Sheets link first.'; return; }
+  if (status) status.textContent = 'Reading sheet…';
+  try {
+    const res = await fetch('/research/api/bulk-eval', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sheet_url: url }) });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+    const ta = document.getElementById('be-input');
+    if (ta) ta.value = (data.names || []).map((n) => (n.price ? `${n.domain}, ${n.price}` : n.domain)).join('\n');
+    if (status) status.textContent = `Loaded ${data.count} name${data.count > 1 ? 's' : ''} from the sheet${data.priced ? ' (with prices)' : ''}. Review, then Evaluate.`;
+  } catch (e) {
+    if (status) status.textContent = e.message || String(e);
+  }
+}
+document.getElementById('be-load-sheet')?.addEventListener('click', beLoadSheet);
 document.getElementById('be-run')?.addEventListener('click', beRun);
 document.getElementById('be-csv')?.addEventListener('click', beCsv);
 document.getElementById('be-file')?.addEventListener('change', (e) => {

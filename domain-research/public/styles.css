@@ -2162,3 +2162,6 @@ a.sr-ag-co-link:hover { border-color: var(--coral); color: var(--coral-deep); ba
 .be-grade { display: inline-block; min-width: 20px; text-align: center; padding: 1px 6px; border-radius: 6px; font-weight: 700; font-size: 12px; background: #eef; }
 .be-grade-a { background: #e6f6ec; color: #0b8f3a; } .be-grade-b { background: #eef7e6; color: #5bbf3a; }
 .be-grade-c { background: #fbf3e0; color: #caa024; } .be-grade-d { background: #fbece0; color: #e07b2c; } .be-grade-f { background: #fbe6e6; color: #cf3030; }
+.be-sheet-row { display: flex; gap: 8px; margin-bottom: 8px; }
+.be-sheet-row input { flex: 1; padding: 8px 10px; border: 1px solid var(--line, #d5d5e0); border-radius: 8px; font-size: 13px; }
+.be-sheet-row button { white-space: nowrap; }

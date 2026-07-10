@@ -9,6 +9,7 @@
 import { isAuthed, requirePermission } from '../lib/auth.js';
 import { withCategory } from '../lib/db/usage.js';
 import { bulkEvaluate } from '../lib/evaluate/bulkScore.js';
+import { fetchSheetNames } from '../lib/evaluate/sheetImport.js';
 
 export const config = { maxDuration: 60 };
 
@@ -33,6 +34,18 @@ export default async function handler(req, res) {
     body = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : req.body || {};
   } catch {
     res.status(400).json({ error: 'Bad JSON' });
+    return;
+  }
+
+  // Import mode: read domains (+ optional prices) from a Google Sheets link and return
+  // them for the client to review (does NOT score — the user hits Evaluate after).
+  if (body.sheet_url && !Array.isArray(body.names)) {
+    try {
+      const parsed = await fetchSheetNames(body.sheet_url, { max: MAX_NAMES });
+      res.status(200).json({ ok: true, parsed: true, ...parsed });
+    } catch (e) {
+      res.status(400).json({ error: String((e && e.message) || e) });
+    }
     return;
   }
 
