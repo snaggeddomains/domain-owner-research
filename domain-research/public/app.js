@@ -4887,7 +4887,9 @@ function renderVariations(data) {
   // Status is a single clean label — the marketplace + price live in their own columns.
   const catPill = (r) => {
     const c = NMV_CAT[r.category] || NMV_CAT.registered;
-    return `<span class="nmv-pill ${c.cls}">${c.label}</span>`;
+    // Premium/reserved-risk available names get an asterisk (the Comments column explains).
+    const star = r.premium_risk ? '<span class="nmv-star" title="May be premium or registry-reserved — verify at the registrar">*</span>' : '';
+    return `<span class="nmv-pill ${c.cls}">${c.label}${star}</span>`;
   };
   const cell = (r) => {
     const price = fmtVarPrice(r.price, r.currency, { priceMin: r.price_min, range: r.price_range });
@@ -4923,7 +4925,10 @@ function renderVariations(data) {
       if (src && !inf.owner) bits.push(escapeHtml(src));
       ours = `<div class="nmv-ours">${bits.join(' · ')}</div>`;
     }
-    const comment = r.friction ? `<span class="nmv-comment">⚠ ${escapeHtml(r.friction)}</span>` : '';
+    const comments = [];
+    if (r.friction) comments.push(`⚠ ${r.friction}`);
+    if (r.premium_risk) comments.push('⚠ may be premium / registry-reserved — verify at registrar');
+    const comment = comments.map((c) => `<span class="nmv-comment">${escapeHtml(c)}</span>`).join(' ');
     return `<tr><td class="nmv-dom">${dom}${ours}</td><td>${catPill(r)}</td><td class="nmv-pricecell">${priceCell}</td><td>${listing}</td><td class="nmv-kind">${kindChip(r)}</td><td class="nmv-comments">${comment}</td></tr>`;
   };
   const body = filtered.length

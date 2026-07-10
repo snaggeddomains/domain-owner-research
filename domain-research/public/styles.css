@@ -393,6 +393,7 @@ button.nmv-crit-kind { font-weight: 600; }
 .nmv-crit-clear:hover { text-decoration: underline; }
 .nmv-critexcl { color: var(--navy-3); font-size: .82rem; }
 .nmv-critnote { color: var(--navy-3); font-size: .8rem; font-style: italic; }
+.nmv-star { color: #b8860b; font-weight: 800; cursor: help; }
 .nmv-empty { text-align: center; color: var(--navy-3); padding: 18px 8px; font-style: italic; }
 
 .naming-actions { display: flex; align-items: center; gap: 14px; margin-top: 14px; flex-wrap: wrap; }

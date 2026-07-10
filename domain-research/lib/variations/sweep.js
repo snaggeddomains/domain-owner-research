@@ -9,6 +9,7 @@ import { enumerateVariations, PREFIXES, SUFFIXES, TLDS } from './enumerate.js';
 import { lookupDomain, isConfigured } from '../domainscout.js';
 import { rdapDomainStatus } from '../nameserver/query.js';
 import { lookupInternal, internalForRow } from './corpus.js';
+import { filterDictionaryWords } from '../db/dictionary.js';
 import { fetchText, extractClues } from '../util.js';
 
 const CONCURRENCY = 12;
@@ -393,6 +394,27 @@ export async function sweepVariations(seed, { env = process.env, excludeTlds = [
         if (ip > 0) {
           r.price = ip; r.currency = r.currency || 'USD'; r.price_internal = true;
           r.marketplace = r.marketplace || info.universe_source || info.master_source || 'our corpus';
+        }
+      }
+    }
+  }
+  // Premium / registry-reserved caveat. RDAP can't tell a registerable name from a
+  // registry-RESERVED / PREMIUM one — dart.app has no registration record (looks
+  // "available") but GoDaddy blocks it as a reserved dictionary word. So for
+  // AVAILABLE names on premium-prone TLDs (anything but com/net/org) whose SLD is
+  // short (≤5) or a dictionary word, flag `premium_risk` → the UI says "verify"
+  // rather than asserting clean availability. Dictionary check is batched + fail-open.
+  {
+    const CLEAN_TLD = new Set(['com', 'net', 'org']);
+    const risky = results.filter((r) => r.category === 'available' && !CLEAN_TLD.has(r.domain.split('.').slice(1).join('.')));
+    if (risky.length) {
+      const slds = [...new Set(risky.map((r) => r.domain.split('.')[0]))];
+      const dict = await filterDictionaryWords(slds).catch(() => new Set());
+      for (const r of risky) {
+        const sld = r.domain.split('.')[0];
+        if (sld.length <= 5 || dict.has(sld)) {
+          r.premium_risk = true;
+          r.evidence = `${r.evidence || 'available (no registration record)'} · may be premium / registry-reserved — verify at registrar`;
         }
       }
     }
