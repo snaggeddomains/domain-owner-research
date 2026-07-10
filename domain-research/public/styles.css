@@ -2165,3 +2165,5 @@ a.sr-ag-co-link:hover { border-color: var(--coral); color: var(--coral-deep); ba
 .be-sheet-row { display: flex; gap: 8px; margin-bottom: 8px; }
 .be-sheet-row input { flex: 1; padding: 8px 10px; border: 1px solid var(--line, #d5d5e0); border-radius: 8px; font-size: 13px; }
 .be-sheet-row button { white-space: nowrap; }
+
+.be-note { font-size: 12.5px; margin: 12px 0 4px; padding: 8px 12px; background: #fbf3e0; border-radius: 8px; }

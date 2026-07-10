@@ -6240,29 +6240,38 @@ function renderBulkEval(data) {
     const band = r.band ? `<span class="be-band" style="background:${escapeHtml(r.band.color)}22;color:${escapeHtml(r.band.color)}">${escapeHtml(r.band.label)}</span>` : '<span class="muted">—</span>';
     const roi = r.roi == null ? '<span class="muted">—</span>' : `<strong style="color:${r.roi >= 4 ? '#0b8f3a' : r.roi >= 1 ? '#caa024' : '#cf3030'}">${Math.round(r.roi * 100)}%</strong>`;
     const grade = `<span class="be-grade be-grade-${(r.quality?.grade || '').toLowerCase()}">${escapeHtml(r.quality?.grade || '?')}</span>`;
+    const spec = r.speculative;
+    const resaleCell = spec
+      ? `<span class="muted" title="Speculative — no comparable sales. A conservative wholesale estimate; run the full SNAP Eval for a real read.">~${usd(r.resale?.mid)}</span>`
+      : `<strong>${usd(r.resale?.mid)}</strong>`;
+    const conf = spec
+      ? '<span style="color:#a3502f">speculative · no comps</span>'
+      : `${escapeHtml(r.confidence || '')}${r.comps ? ` · ${r.comps} comp${r.comps > 1 ? 's' : ''}` : ''}`;
     return `<tr>
       <td>${r.rank}</td>
       <td><a href="/research/evaluate/${encodeURIComponent(r.domain)}" title="Full SNAP Eval">${escapeHtml(r.domain)}</a></td>
       <td class="be-num">${usd(r.price)}</td>
-      <td class="be-num"><strong>${usd(r.resale?.mid)}</strong></td>
+      <td class="be-num">${resaleCell}</td>
       <td class="be-num">${r.upside == null ? '<span class="muted">—</span>' : usd(r.upside)}</td>
       <td class="be-num">${roi}</td>
       <td>${band}</td>
       <td>${grade}</td>
-      <td class="muted">${escapeHtml(r.confidence || '')}${r.comps ? ` · ${r.comps} comp${r.comps > 1 ? 's' : ''}` : ''}</td>
+      <td class="muted">${conf}</td>
     </tr>`;
   }).join('');
-  el.innerHTML = `<div class="be-table-wrap"><table class="be-table">
+  const specN = (data.results || []).filter((r) => r.speculative).length;
+  const note = specN ? `<p class="be-note muted">⚠ ${specN} of ${data.results.length} are <strong>speculative</strong> — coined names with no comparable sales. Those get a conservative <em>wholesale</em> estimate (marked ~), not a premium valuation. Click any name for the full SNAP Eval (paid comps + appraisals) for a real read.</p>` : '';
+  el.innerHTML = `${note}<div class="be-table-wrap"><table class="be-table">
     <thead><tr><th>#</th><th>Domain</th><th class="be-num">Asking</th><th class="be-num">Est. resale</th><th class="be-num">Upside</th><th class="be-num">ROI</th><th>Verdict</th><th>Quality</th><th>Confidence</th></tr></thead>
     <tbody>${rows}</tbody></table></div>`;
 }
 function beCsv() {
   if (!beLast || !beLast.results) return;
-  const cols = ['rank', 'domain', 'asking_price', 'est_resale', 'upside', 'roi_pct', 'verdict', 'quality_grade', 'quality_score', 'confidence', 'comps'];
+  const cols = ['rank', 'domain', 'asking_price', 'est_resale', 'basis', 'speculative', 'upside', 'roi_pct', 'verdict', 'quality_grade', 'quality_score', 'confidence', 'comps'];
   const esc = (v) => { const s = v == null ? '' : String(v); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
   const lines = [cols.join(',')];
   for (const r of beLast.results) {
-    lines.push([r.rank, r.domain, r.price ?? '', r.resale?.mid ?? '', r.upside ?? '', r.roi == null ? '' : Math.round(r.roi * 100), r.band?.label ?? '', r.quality?.grade ?? '', r.quality?.score ?? '', r.confidence ?? (r.error || ''), r.comps ?? ''].map(esc).join(','));
+    lines.push([r.rank, r.domain, r.price ?? '', r.resale?.mid ?? '', r.basis ?? '', r.speculative ? 'yes' : '', r.upside ?? '', r.roi == null ? '' : Math.round(r.roi * 100), r.band?.label ?? '', r.quality?.grade ?? '', r.quality?.score ?? '', r.confidence ?? (r.error || ''), r.comps ?? ''].map(esc).join(','));
   }
   const blob = new Blob([lines.join('\n')], { type: 'text/csv' });
   const a = document.createElement('a');

@@ -10,7 +10,23 @@ import { cleanDomainInput } from '../util.js';
 import { filterDictionaryWords } from '../db/dictionary.js';
 import { scoreQuality } from './quality.js';
 import { trackerComps } from './trackerComps.js';
-import { computeValuation } from './score.js';
+import { computeValuation, bandForPrice, niceRound } from './score.js';
+
+// A coined name (no dictionary meaning) with NO exact comps has no defensible premium —
+// its value is speculative brandability, not a position on a premium-sales distribution.
+// Estimate a realistic WHOLESALE floor instead: a great-sounding short coinage tops out
+// ~$2k wholesale, junk near $50. Deliberately conservative — the fast scan should never
+// slap a five/six-figure number on a random coined string just because it's short + clean.
+function coinedFloor(quality) {
+  const s = Number(quality.score) || 0;
+  const len = Number(quality.length) || 8;
+  const tldLiq = quality.tld && Number(quality.tld.liquidity) >= 0 ? Number(quality.tld.liquidity) : 0.5;
+  let base = s >= 85 ? 1500 : s >= 72 ? 600 : s >= 58 ? 250 : 75;
+  if (len <= 5) base *= 1.4;
+  else if (len >= 8) base *= 0.5;
+  base *= 0.4 + 0.6 * tldLiq; // .com liquid; .org/.net/coined-ccTLD clear for less
+  return niceRound(base);
+}
 
 const sldTld = (domain) => {
   const d = String(domain || '').toLowerCase();
@@ -54,20 +70,47 @@ export async function bulkEvaluate(names, env = process.env) {
     const { sld, tld } = sldTld(r.domain);
     try {
       const quality = scoreQuality({ sld, tld, isWord: words.has(sld) });
-      const tracker = await trackerComps({ sld, tld, len: sld.length }, env).catch(() => null);
-      const val = computeValuation({ quality, tracker, price: r.price || 0 });
-      const mid = val.fair_value.mid;
+      const trackerRaw = await trackerComps({ sld, tld, len: sld.length }, env).catch(() => null);
+      // Only EXACT word-match comps (the same SLD on another TLD) are a real value signal
+      // for THIS name. A `same_tld` match is just "other similar-length names sold for $X"
+      // — a length DISTRIBUTION, not a comp — which is what wildly inflated coined strings
+      // (fabraw.com → $330k). Keep only `same_sld` as the value anchor.
+      const realComps = trackerRaw && Array.isArray(trackerRaw.deals) ? trackerRaw.deals.filter((d) => d.relation === 'same_sld') : [];
+      const trackerAnchor = realComps.length ? { ...trackerRaw, deals: realComps } : null;
+
+      const val = computeValuation({ quality, tracker: trackerAnchor, price: r.price || 0 });
+      let mid = val.fair_value.mid;
+      let confidence = val.confidence;
+      const isWord = quality.dictionary_class === 'word';
+      let basis = realComps.length ? 'comps' : isWord ? 'word' : 'quality';
+      let speculative = false;
+
+      // Coined name (no dictionary meaning) + no exact comps → no real basis for a premium.
+      // Floor to a realistic wholesale value and flag it speculative, rather than pricing
+      // it off a premium distribution it doesn't belong to.
+      if (!isWord && !realComps.length) {
+        const floor = coinedFloor(quality);
+        if (mid > floor) mid = floor;
+        confidence = 'speculative';
+        basis = 'speculative';
+        speculative = true;
+      }
+
+      const resale = { low: niceRound(mid * 0.6), mid, high: niceRound(mid * 1.6) };
+      const band = r.price ? bandForPrice(r.price, mid) : null;
       const roi = r.price ? Math.round(((mid - r.price) / r.price) * 100) / 100 : null;
       return {
         domain: r.domain,
         price: r.price,
         quality: { score: quality.score, grade: quality.grade, dictionary_class: quality.dictionary_class },
-        resale: val.fair_value,
-        band: val.price_band ? { key: val.price_band.key, label: val.price_band.label, color: val.price_band.color, ratio: Math.round((val.price_band.ratio || 0) * 100) / 100 } : null,
+        resale,
+        band: band ? { key: band.key, label: band.label, color: band.color, ratio: Math.round((band.ratio || 0) * 100) / 100 } : null,
         roi,
         upside: r.price ? mid - r.price : null,
-        confidence: val.confidence,
-        comps: tracker && Array.isArray(tracker.deals) ? tracker.deals.length : 0,
+        confidence,
+        basis,
+        speculative,
+        comps: realComps.length,
       };
     } catch (e) {
       return { domain: r.domain, price: r.price, error: String((e && e.message) || e) };
