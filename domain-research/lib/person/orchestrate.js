@@ -205,12 +205,17 @@ async function triangulate({ subject, inputPage, env }) {
 // Wikipedia / knowledge-panel are secondary public-figure markers; cross-platform
 // breadth is heavily discounted (breadth ≠ importance); job seniority is ignored.
 // Computed from the CONFIRMED signal set only (post identity-adjudication).
-function computeVip({ maxFollowers, presenceCount, hasWiki, hasKG }) {
+// `xFollowers` = X/Twitter follower count specifically — a stronger signal than
+// LinkedIn/other "followers", so 25K+ on X is a STANDALONE VIP trigger.
+const X_VIP_FLOOR = 25e3;
+function computeVip({ maxFollowers, xFollowers = 0, presenceCount, hasWiki, hasKG }) {
   const signals = [];
   let score = 0;
-  // Follower tiers (the dominant driver). VIP alone at 500K+; below that a
-  // secondary public-figure signal (Wikipedia) is needed to reach VIP.
-  if (maxFollowers >= 5e5) { score += 6; signals.push(`${fmtCount(maxFollowers)}+ followers (massive audience)`); }
+  // X/Twitter: 25K+ real followers = VIP on its own.
+  if (xFollowers >= X_VIP_FLOOR) { score += 6; signals.push(`${fmtCount(xFollowers)} X/Twitter followers (VIP-level audience)`); }
+  // Otherwise the general follower scale (max across platforms). VIP alone at 500K+;
+  // below that a secondary public-figure signal (Wikipedia) is needed to reach VIP.
+  else if (maxFollowers >= 5e5) { score += 6; signals.push(`${fmtCount(maxFollowers)}+ followers (massive audience)`); }
   else if (maxFollowers >= 2.5e5) { score += 5; signals.push(`${fmtCount(maxFollowers)} followers (huge audience)`); }
   else if (maxFollowers >= 1e5) { score += 4; signals.push(`${fmtCount(maxFollowers)} followers (large audience)`); }
   else if (maxFollowers >= 2.5e4) { score += 3; signals.push(`${fmtCount(maxFollowers)} followers (big audience)`); }
@@ -307,7 +312,8 @@ export async function runPersonDeepDive({ url, name, company, env = process.env 
   const hasWiki = social.some((s) => s.key === 'wikipedia');
   const kg = (candidates.knowledge_graph && (!adj || adj.knowledge_panel_is_subject !== false)) ? candidates.knowledge_graph : null;
   const maxFollowers = social.reduce((m, s) => Math.max(m, s.followers || 0), 0);
-  const vip = computeVip({ maxFollowers, presenceCount: social.length, hasWiki, hasKG: !!kg });
+  const xFollowers = social.find((s) => s.key === 'twitter')?.followers || 0;
+  const vip = computeVip({ maxFollowers, xFollowers, presenceCount: social.length, hasWiki, hasKG: !!kg });
 
   return {
     subject,
