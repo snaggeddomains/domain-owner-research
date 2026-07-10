@@ -207,6 +207,7 @@
              SNAP Opportunities is the auctions/snap feed in the admin app (full nav). -->
         <span id="nav-snap-group" class="nav-group" hidden>
           <a id="nav-snap-eval" class="nav-btn" href="/research/evaluate">SNAP Eval</a>
+          <a id="nav-bulk-eval" class="nav-btn" href="/research/bulk-eval">Bulk Eval</a>
           <a id="nav-snap-opps" class="nav-btn" href="/reports/opportunities">SNAP Opportunities</a>
           <a id="nav-snap-names" class="nav-btn" href="/reports/snap-names">SNAP Names</a>
         </span>
@@ -839,6 +840,24 @@
           <div id="ev-result" hidden></div>
         </section>
 
+        <section id="view-bulk-eval" hidden>
+          <div class="hero tool-hero">
+            <h1 class="hero-title">Bulk <span class="accent">Eval</span></h1>
+            <p class="hero-sub">Paste or upload a list of domains (optionally with an asking price) and get a fast <strong>investability ranking</strong> — estimated resale value vs. price, ROI, and a buy verdict — using our quality model + real Snagged sold-comps. Click any name for the full <strong>SNAP Eval</strong>.</p>
+          </div>
+          <div class="be-input">
+            <textarea id="be-input" rows="7" placeholder="One domain per line — optionally add an asking price:&#10;flora.ai&#10;flora.ai, 2000&#10;quorent.com, 344"></textarea>
+            <div class="be-actions">
+              <label class="be-file"><input id="be-file" type="file" accept=".csv,.txt" hidden />📄 Upload CSV / TXT</label>
+              <button id="be-run" type="button">Evaluate</button>
+              <button id="be-csv" type="button" class="be-ghost" hidden>⬇ CSV</button>
+              <span id="be-status" class="muted"></span>
+            </div>
+            <p class="be-hint muted">CSV/paste: <code>domain</code> or <code>domain,price</code>. Up to 500 names. No asking prices? It ranks by estimated resale value (best names to target).</p>
+          </div>
+          <div id="be-results"></div>
+        </section>
+
         <!-- Naming exercise -->
         <section id="view-naming" hidden>
           <div class="tool-reshead">
@@ -1111,6 +1130,6 @@ The model parses it into structured filters (TLDs, length, budget, tone, etc.) a
     </div>
 
     <!-- Bump ?v= on any public/app.js or styles.css change to bust caches. -->
-    <script src="app.js?v=20260710multi"></script>
+    <script src="app.js?v=20260710bulkeval"></script>
   </body>
 </html>

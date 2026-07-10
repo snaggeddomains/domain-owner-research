@@ -266,7 +266,7 @@ const els = {
   prRecent: $('pr-recent'), prRecentList: $('pr-recent-list'), prRecentAll: $('pr-recent-all'),
   prRunsSearch: $('pr-runs-search'), prRunsList: $('pr-runs-list'),
   navResearchGroup: $('nav-research-group'), navSnapGroup: $('nav-snap-group'), navReportsGroup: $('nav-reports-group'),
-  navSnapEval: $('nav-snap-eval'), navSnapOpps: $('nav-snap-opps'), navSnapNames: $('nav-snap-names'),
+  navSnapEval: $('nav-snap-eval'), navBulkEval: $('nav-bulk-eval'), navSnapOpps: $('nav-snap-opps'), navSnapNames: $('nav-snap-names'),
   navRepAnalytics: $('nav-rep-analytics'), navRepMarketplace: $('nav-rep-marketplace'), navRepChat: $('nav-rep-chat'), navRepCost: $('nav-rep-cost'),
   topbarResearch: $('topbar-research'),
   evForm: $('ev-form'), evDomain: $('ev-domain'), evPrice: $('ev-price'), evGo: $('ev-go'), evRefresh: $('ev-refresh'),
@@ -532,6 +532,7 @@ const TOOL_PERMISSION = {
   portfolio: 'portfolio',
   person: 'person',
   evaluate: 'evaluate',
+  'bulk-eval': 'bulk_eval',
 };
 
 // ── Cross-module domain context (action bar + ⌘K palette; workspace-ready) ──
@@ -775,6 +776,10 @@ function route() {
       else { if (els.evDomain) els.evDomain.value = tr.slug; runEvaluate(tr.slug); }
     }
     else resetEvaluateView();
+    return;
+  }
+  if (tr && tr.tool === 'bulk-eval') {
+    showView('bulk-eval');
     return;
   }
   if (tr && tr.tool === 'admin') {
@@ -2288,6 +2293,7 @@ function gateNavByPermissions(user) {
   // SNAP sub-nav: SNAP Eval needs `evaluate`; SNAP Opportunities (admin app) needs
   // reports access. Hidden buttons just don't render inside the SNAP group.
   if (els.navSnapEval) els.navSnapEval.hidden = !can('evaluate');
+  if (els.navBulkEval) els.navBulkEval.hidden = !can('bulk_eval');
   if (els.navSnapOpps) els.navSnapOpps.hidden = !(Boolean(user && user.is_admin) || canEnterReports(user));
   if (els.navSnapNames) els.navSnapNames.hidden = !(Boolean(user && user.is_admin) || canEnterReports(user) || Boolean(perms.snap_names) || perms['reports.snap_names'] === true);
   // Reports sub-nav: Corporate Portfolios (a research-app page) needs `portfolio`;
@@ -3530,6 +3536,7 @@ const VIEWS = {
   person: { view: 'view-person', nav: 'nav-person' },
   'person-runs': { view: 'view-person-runs', nav: 'nav-person' },
   evaluate: { view: 'view-evaluate', nav: 'nav-snap-eval' },
+  'bulk-eval': { view: 'view-bulk-eval', nav: 'nav-bulk-eval' },
   admin: { view: 'view-admin', nav: 'nav-admin' },
 };
 
@@ -3544,7 +3551,7 @@ const SECTION_NAV = {
   snap: { group: 'nav-snap-group', topbar: 'topbar-snap' },
   reports: { group: 'nav-reports-group', topbar: 'topbar-reports' },
 };
-const VIEW_SECTION = { evaluate: 'snap', portfolio: 'reports', 'portfolio-runs': 'reports' };
+const VIEW_SECTION = { evaluate: 'snap', 'bulk-eval': 'snap', portfolio: 'reports', 'portfolio-runs': 'reports' };
 const sectionForView = (name) => VIEW_SECTION[name] || 'research';
 
 function showView(name) {
@@ -6180,6 +6187,98 @@ els.homeLink?.addEventListener('click', (e) => { e.preventDefault(); closeNav();
 els.navTrademark?.addEventListener('click', (e) => { if (newTabClick(e)) return; e.preventDefault(); setToolUrl('trademark', ''); route(); });
 els.navAppraisal?.addEventListener('click', (e) => { if (newTabClick(e)) return; e.preventDefault(); setToolUrl('appraisal', ''); route(); });
 els.navSnapEval?.addEventListener('click', (e) => { if (newTabClick(e)) return; e.preventDefault(); setToolUrl('evaluate', ''); route(); });
+els.navBulkEval?.addEventListener('click', (e) => { if (newTabClick(e)) return; e.preventDefault(); setToolUrl('bulk-eval', ''); route(); });
+
+// ── Bulk Eval — rank a list/CSV of domains by investability ─────────────────
+let beLast = null; // last results (for CSV)
+function beParseInput(text) {
+  const out = [];
+  for (const line of String(text || '').split(/\r?\n/)) {
+    const t = line.trim();
+    if (!t) continue;
+    // Split on comma / tab / whitespace; first token = domain, a following numeric = price.
+    const parts = t.split(/[,\t]+|\s{2,}/).map((p) => p.trim()).filter(Boolean);
+    const domain = (parts[0] || '').replace(/^https?:\/\//, '').replace(/\/.*$/, '');
+    if (!domain || !domain.includes('.')) continue;
+    let price = null;
+    for (const p of parts.slice(1)) {
+      const n = Number(String(p).replace(/[$,]/g, ''));
+      if (Number.isFinite(n) && n > 0) { price = n; break; }
+    }
+    out.push({ domain, price });
+  }
+  return out;
+}
+async function beRun() {
+  const names = beParseInput(document.getElementById('be-input')?.value);
+  const status = document.getElementById('be-status');
+  const results = document.getElementById('be-results');
+  const csvBtn = document.getElementById('be-csv');
+  if (!names.length) { if (status) status.textContent = 'Paste at least one domain.'; return; }
+  if (status) status.textContent = `Evaluating ${names.length} name${names.length > 1 ? 's' : ''}…`;
+  if (results) results.innerHTML = '';
+  if (csvBtn) csvBtn.hidden = true;
+  try {
+    const res = await fetch('/research/api/bulk-eval', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ names }) });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+    beLast = data;
+    if (status) status.textContent = `${data.count} evaluated${data.has_prices ? ' · ranked by ROI' : ' · ranked by estimated resale'}${data.capped ? ' · capped at 500' : ''}`;
+    renderBulkEval(data);
+    if (csvBtn) csvBtn.hidden = !(data.results && data.results.length);
+  } catch (e) {
+    if (status) status.textContent = '';
+    if (results) results.innerHTML = `<div class="sr-status">${escapeHtml(e.message || String(e))}</div>`;
+  }
+}
+function renderBulkEval(data) {
+  const el = document.getElementById('be-results');
+  if (!el) return;
+  const usd = (n) => (n == null ? '—' : `$${Math.round(n).toLocaleString()}`);
+  const rows = (data.results || []).map((r) => {
+    if (r.error) return `<tr class="be-err"><td>${r.rank || ''}</td><td>${escapeHtml(r.domain)}</td><td colspan="7" class="muted">${escapeHtml(r.error)}</td></tr>`;
+    const band = r.band ? `<span class="be-band" style="background:${escapeHtml(r.band.color)}22;color:${escapeHtml(r.band.color)}">${escapeHtml(r.band.label)}</span>` : '<span class="muted">—</span>';
+    const roi = r.roi == null ? '<span class="muted">—</span>' : `<strong style="color:${r.roi >= 4 ? '#0b8f3a' : r.roi >= 1 ? '#caa024' : '#cf3030'}">${Math.round(r.roi * 100)}%</strong>`;
+    const grade = `<span class="be-grade be-grade-${(r.quality?.grade || '').toLowerCase()}">${escapeHtml(r.quality?.grade || '?')}</span>`;
+    return `<tr>
+      <td>${r.rank}</td>
+      <td><a href="/research/evaluate/${encodeURIComponent(r.domain)}" title="Full SNAP Eval">${escapeHtml(r.domain)}</a></td>
+      <td class="be-num">${usd(r.price)}</td>
+      <td class="be-num"><strong>${usd(r.resale?.mid)}</strong></td>
+      <td class="be-num">${r.upside == null ? '<span class="muted">—</span>' : usd(r.upside)}</td>
+      <td class="be-num">${roi}</td>
+      <td>${band}</td>
+      <td>${grade}</td>
+      <td class="muted">${escapeHtml(r.confidence || '')}${r.comps ? ` · ${r.comps} comp${r.comps > 1 ? 's' : ''}` : ''}</td>
+    </tr>`;
+  }).join('');
+  el.innerHTML = `<div class="be-table-wrap"><table class="be-table">
+    <thead><tr><th>#</th><th>Domain</th><th class="be-num">Asking</th><th class="be-num">Est. resale</th><th class="be-num">Upside</th><th class="be-num">ROI</th><th>Verdict</th><th>Quality</th><th>Confidence</th></tr></thead>
+    <tbody>${rows}</tbody></table></div>`;
+}
+function beCsv() {
+  if (!beLast || !beLast.results) return;
+  const cols = ['rank', 'domain', 'asking_price', 'est_resale', 'upside', 'roi_pct', 'verdict', 'quality_grade', 'quality_score', 'confidence', 'comps'];
+  const esc = (v) => { const s = v == null ? '' : String(v); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
+  const lines = [cols.join(',')];
+  for (const r of beLast.results) {
+    lines.push([r.rank, r.domain, r.price ?? '', r.resale?.mid ?? '', r.upside ?? '', r.roi == null ? '' : Math.round(r.roi * 100), r.band?.label ?? '', r.quality?.grade ?? '', r.quality?.score ?? '', r.confidence ?? (r.error || ''), r.comps ?? ''].map(esc).join(','));
+  }
+  const blob = new Blob([lines.join('\n')], { type: 'text/csv' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'bulk-eval.csv';
+  a.click();
+}
+document.getElementById('be-run')?.addEventListener('click', beRun);
+document.getElementById('be-csv')?.addEventListener('click', beCsv);
+document.getElementById('be-file')?.addEventListener('change', (e) => {
+  const f = e.target.files && e.target.files[0];
+  if (!f) return;
+  const reader = new FileReader();
+  reader.onload = () => { const ta = document.getElementById('be-input'); if (ta) ta.value = String(reader.result || ''); };
+  reader.readAsText(f);
+});
 // nav-snap-opps is a cross-app link (/reports/opportunities, the admin app) — no
 // handler, so it does a normal full navigation.
 els.navDbscreen?.addEventListener('click', (e) => { if (newTabClick(e)) return; e.preventDefault(); setToolUrl('dbscreen', ''); route(); });

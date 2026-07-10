@@ -2142,3 +2142,23 @@ a.sr-ag-co-link:hover { border-color: var(--coral); color: var(--coral-deep); ba
 .pr-notable li { padding: 3px 0; color: var(--navy-2); font-size: .92rem; }
 .pr-foot { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); font-size: .85rem; }
 .pr-foot a { text-decoration: none; color: var(--navy-3); }
+
+/* Bulk Eval — investability ranking table */
+.be-input textarea { width: 100%; font-family: var(--mono, ui-monospace, monospace); font-size: 13px; padding: 10px; border: 1px solid var(--line, #d5d5e0); border-radius: 8px; box-sizing: border-box; }
+.be-actions { display: flex; gap: 10px; align-items: center; margin-top: 8px; flex-wrap: wrap; }
+.be-actions button { padding: 8px 16px; border-radius: 8px; border: none; background: #2f7d4f; color: #fff; cursor: pointer; font-size: 13px; font-weight: 600; }
+.be-actions .be-ghost { background: #fff; color: #44445a; border: 1px solid var(--line, #d5d5e0); }
+.be-file { padding: 8px 14px; border: 1px solid var(--line, #d5d5e0); border-radius: 8px; cursor: pointer; font-size: 13px; background: #fff; }
+.be-hint { font-size: 12px; margin-top: 6px; }
+.be-hint code { background: #f0f0f5; padding: 1px 4px; border-radius: 4px; }
+.be-table-wrap { overflow-x: auto; margin-top: 16px; }
+.be-table { border-collapse: collapse; width: 100%; font-size: 13px; }
+.be-table th, .be-table td { padding: 8px 10px; border-bottom: 1px solid var(--line, #eee); text-align: left; white-space: nowrap; }
+.be-table th { color: #6b6b7b; font-weight: 600; }
+.be-table td.be-num, .be-table th.be-num { text-align: right; }
+.be-table tr.be-err td { color: #a3502f; }
+.be-table a { text-decoration: none; color: var(--navy-2, #2f2f6a); font-weight: 600; }
+.be-band { padding: 2px 8px; border-radius: 999px; font-size: 11.5px; font-weight: 600; }
+.be-grade { display: inline-block; min-width: 20px; text-align: center; padding: 1px 6px; border-radius: 6px; font-weight: 700; font-size: 12px; background: #eef; }
+.be-grade-a { background: #e6f6ec; color: #0b8f3a; } .be-grade-b { background: #eef7e6; color: #5bbf3a; }
+.be-grade-c { background: #fbf3e0; color: #caa024; } .be-grade-d { background: #fbece0; color: #e07b2c; } .be-grade-f { background: #fbe6e6; color: #cf3030; }
