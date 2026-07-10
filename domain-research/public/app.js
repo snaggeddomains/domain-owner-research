@@ -3291,6 +3291,12 @@ function enterResultMode(domain) {
   els.evidence.hidden = true;
   els.deepenTop.hidden = true;
   els.deepenBar.hidden = true;
+  // Clear any Deeper-dives block left over from the previously-viewed report —
+  // it renders from the prior run's owner and would otherwise persist (stale)
+  // through the whole "gathering" stage of a fresh run.
+  // (Keep dataset.bound — the click listener is delegated on the container and
+  // survives innerHTML changes; re-binding would double-fire it.)
+  if (els.reportAddons) { els.reportAddons.hidden = true; els.reportAddons.innerHTML = ''; delete els.reportAddons.dataset.owner; }
   stopDsPoll();
   if (els.marketStrip) els.marketStrip.hidden = true;
   if (els.runControls) els.runControls.hidden = true;
