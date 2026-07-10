@@ -757,9 +757,9 @@ button.
     by NAME search that belong to a **namesake** (e.g. an actor with the same name)
     are EXCLUDED. (4) VIP band is computed AFTER, from the CONFIRMED signal set only:
     `computeVip` is **follower-dominant** with **per-platform VIP floors**
-    (`PLATFORM_VIP_FLOOR`: X 25K · YouTube/LinkedIn 100K · IG/Facebook 250K · TikTok
-    500K — a count at/above a platform's floor = VIP standalone), plus a general
-    max-follower scale (500K+ = VIP) and 100K+Wikipedia = VIP; <2.5K = low.
+    (`PLATFORM_VIP_FLOOR`: X/YouTube/LinkedIn/IG/Facebook/TikTok all **25K** — a count
+    at/above a platform's floor = VIP standalone), plus a general max-follower scale
+    (500K+ = VIP) and 100K+Wikipedia = VIP; <2.5K = low.
     Wikipedia/knowledge-panel are secondary, cross-platform breadth is heavily
     discounted (+1 only at 8+ platforms), and **job seniority is ignored**.
     Bands `low`/`notable`/`high_profile`/`vip`; every firing signal listed. All

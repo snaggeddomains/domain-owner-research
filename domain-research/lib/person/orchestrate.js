@@ -211,12 +211,12 @@ async function triangulate({ subject, inputPage, env }) {
 // scarce/high-signal; IG/TikTok inflate, so higher floors). Platforms not listed
 // (Quora, GitHub, …) have no standalone VIP — they only feed the general max scale.
 const PLATFORM_VIP_FLOOR = {
-  twitter: 25e3, // X — high-signal
-  youtube: 100e3, // subscribers (the ~100K "silver" tier)
-  linkedin: 100e3, // individual followers (creator-tier)
-  instagram: 250e3, // inflated → higher bar
-  facebook: 250e3,
-  tiktok: 500e3, // most inflated / most viral
+  twitter: 25e3,
+  youtube: 25e3,
+  linkedin: 25e3,
+  instagram: 25e3,
+  facebook: 25e3,
+  tiktok: 25e3,
 };
 const PLAT_LABEL = { twitter: 'X/Twitter', youtube: 'YouTube', linkedin: 'LinkedIn', instagram: 'Instagram', facebook: 'Facebook', tiktok: 'TikTok' };
 function computeVip({ social = [], maxFollowers, presenceCount, hasWiki, hasKG }) {
