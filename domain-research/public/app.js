@@ -265,7 +265,7 @@ const els = {
   prRecent: $('pr-recent'), prRecentList: $('pr-recent-list'), prRecentAll: $('pr-recent-all'),
   prRunsSearch: $('pr-runs-search'), prRunsList: $('pr-runs-list'),
   navResearchGroup: $('nav-research-group'), navSnapGroup: $('nav-snap-group'), navReportsGroup: $('nav-reports-group'),
-  navSnapEval: $('nav-snap-eval'), navSnapOpps: $('nav-snap-opps'),
+  navSnapEval: $('nav-snap-eval'), navSnapOpps: $('nav-snap-opps'), navSnapNames: $('nav-snap-names'),
   navRepAnalytics: $('nav-rep-analytics'), navRepMarketplace: $('nav-rep-marketplace'), navRepChat: $('nav-rep-chat'), navRepCost: $('nav-rep-cost'),
   topbarResearch: $('topbar-research'),
   evForm: $('ev-form'), evDomain: $('ev-domain'), evPrice: $('ev-price'), evGo: $('ev-go'), evRefresh: $('ev-refresh'),
@@ -2288,6 +2288,7 @@ function gateNavByPermissions(user) {
   // reports access. Hidden buttons just don't render inside the SNAP group.
   if (els.navSnapEval) els.navSnapEval.hidden = !can('evaluate');
   if (els.navSnapOpps) els.navSnapOpps.hidden = !(Boolean(user && user.is_admin) || canEnterReports(user));
+  if (els.navSnapNames) els.navSnapNames.hidden = !(Boolean(user && user.is_admin) || canEnterReports(user) || Boolean(perms.snap_names) || perms['reports.snap_names'] === true);
   // Reports sub-nav: Corporate Portfolios (a research-app page) needs `portfolio`;
   // the analytics tabs (admin app, full nav) need Reports access.
   if (els.navPortfolio) els.navPortfolio.hidden = !can('portfolio');
