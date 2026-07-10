@@ -4927,7 +4927,11 @@ function renderVariations(data) {
     }
     const comments = [];
     if (r.friction) comments.push(`⚠ ${r.friction}`);
-    if (r.premium_risk) comments.push('⚠ may be premium / registry-reserved — verify at registrar');
+    if (r.premium_risk) {
+      comments.push(r.premium_price > 0
+        ? `⚠ registry PREMIUM — ~$${Number(r.premium_price).toLocaleString()}/yr (Porkbun)`
+        : '⚠ may be premium / registry-reserved — verify at registrar');
+    }
     const comment = comments.map((c) => `<span class="nmv-comment">${escapeHtml(c)}</span>`).join(' ');
     return `<tr><td class="nmv-dom">${dom}${ours}</td><td>${catPill(r)}</td><td class="nmv-pricecell">${priceCell}</td><td>${listing}</td><td class="nmv-kind">${kindChip(r)}</td><td class="nmv-comments">${comment}</td></tr>`;
   };

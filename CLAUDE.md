@@ -388,6 +388,19 @@ can NEVER hold a specific word fixed — so it returned public-safety-*themed* n
   is minimal + safe: a FOR-SALE row the live crawl couldn't price is filled from our
   stored price (`price_internal`, tagged "our corpus"); we never flip an available/active
   row on stale corpus data.
+- **Premium / reserved availability — Porkbun-authoritative (2026-07-09).** RDAP can't
+  tell a registerable name from a registry-RESERVED / PREMIUM one (dart.app: no
+  registration record → looks "available", but GoDaddy blocks it). A heuristic first
+  flags `premium_risk` on AVAILABLE names on premium-prone TLDs (not com/net/org) with
+  a short (≤5) or dictionary SLD (`filterDictionaryWords`, fail-open). Then
+  **Porkbun `checkDomain`** (`lib/variations/availability.js` `porkbunCheck`, reuses
+  `PORKBUN_API_KEY`/`PORKBUN_SECRET_KEY`) authoritatively resolves the flagged subset →
+  reserved/taken reclassifies to `registered`, a premium keeps `available` + shows the
+  ~$/yr price, a clean one clears the flag. **checkDomain is rate-limited ~1/10s**, so
+  the sweep checks flagged names in order and STOPS on a rate-limit signal — results are
+  cached per domain (kind `pkd`), so coverage converges across runs. No keys → the
+  heuristic stands (UI shows "Available*" + "verify"). UI: premium-risk pill gets a `*`
+  + a Comments note (premium price when known).
 - **Clickable criteria chips = filters (2026-07-09).** The prefixes/suffixes/extensions
   chips in the criteria panel are now toggle buttons that narrow the table (extension
   → only that TLD, e.g. `.com`; prefix/suffix → only that affix). Within a facet = OR,

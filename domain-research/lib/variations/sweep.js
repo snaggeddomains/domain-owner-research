@@ -9,6 +9,7 @@ import { enumerateVariations, PREFIXES, SUFFIXES, TLDS } from './enumerate.js';
 import { lookupDomain, isConfigured } from '../domainscout.js';
 import { rdapDomainStatus } from '../nameserver/query.js';
 import { lookupInternal, internalForRow } from './corpus.js';
+import { porkbunCheck, porkbunConfigured } from './availability.js';
 import { filterDictionaryWords } from '../db/dictionary.js';
 import { fetchText, extractClues } from '../util.js';
 
@@ -415,6 +416,28 @@ export async function sweepVariations(seed, { env = process.env, excludeTlds = [
         if (sld.length <= 5 || dict.has(sld)) {
           r.premium_risk = true;
           r.evidence = `${r.evidence || 'available (no registration record)'} · may be premium / registry-reserved — verify at registrar`;
+        }
+      }
+    }
+    // AUTHORITATIVE pass — Porkbun checkDomain is the source of truth (avail +
+    // premium + price). Rate-limited ~1/10s, so we check the flagged subset only,
+    // in order, and STOP on a rate-limit signal (cache fills over runs). Confirms a
+    // reserved name to registered, prices a premium, or clears the flag if it's
+    // genuinely registerable. Fail-open — no keys / errors keep the heuristic.
+    if (porkbunConfigured(env)) {
+      for (const r of results) {
+        if (!r.premium_risk) continue;
+        const pk = await porkbunCheck(r.domain, env);
+        if (!pk || pk.error) { if (pk && pk.rateLimited) break; continue; }
+        if (!pk.available) {
+          r.category = 'registered'; r.status = 'registered'; r.premium_risk = false; r.for_sale = false;
+          r.evidence = 'registry-reserved / taken — not available (Porkbun)';
+        } else if (pk.premium) {
+          r.premium_price = pk.price || null;
+          r.evidence = `available — REGISTRY PREMIUM${pk.price ? ` ~$${Math.round(pk.price).toLocaleString()}/yr` : ''} (Porkbun)`;
+        } else {
+          r.premium_risk = false;
+          r.evidence = 'available — confirmed registerable (Porkbun)';
         }
       }
     }
