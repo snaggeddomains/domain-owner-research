@@ -4660,13 +4660,17 @@ function namingFilterPayload() {
 // swaps the input hint + which results section renders.
 let namingMode = 'theme';
 let variationsLast = null;
-// Click-to-filter state for the criteria chips. `affix` holds "prefix:get" /
-// "suffix:hq" keys (a row's kind+affix); `tld` holds bare extensions ("com").
-// Empty = show all. Across the two facets it's AND; within a facet it's OR.
-const variationsFilter = { affix: new Set(), tld: new Set() };
-function resetVariationsFilter() { variationsFilter.affix.clear(); variationsFilter.tld.clear(); }
+// Click-to-filter state for the criteria chips. `kind` holds a whole TYPE
+// ('prefix'/'suffix'/'extension'); `affix` holds "prefix:get" / "suffix:hq" keys
+// (a row's kind+affix); `tld` holds bare extensions ("com"). Empty = show all.
+// Across facets it's AND; within a facet it's OR.
+const variationsFilter = { kind: new Set(), affix: new Set(), tld: new Set() };
+function resetVariationsFilter() { variationsFilter.kind.clear(); variationsFilter.affix.clear(); variationsFilter.tld.clear(); }
+// A row's type: prefix / suffix / extension (the enumerator's 'tld' kind).
+function rowKind(r) { return r.kind === 'tld' ? 'extension' : r.kind; }
 function rowMatchesFilter(r) {
-  const af = variationsFilter.affix; const tf = variationsFilter.tld;
+  const kf = variationsFilter.kind; const af = variationsFilter.affix; const tf = variationsFilter.tld;
+  if (kf.size && !kf.has(rowKind(r))) return false;
   if (af.size) { if (r.kind === 'tld' || !af.has(`${r.kind}:${r.affix}`)) return false; }
   if (tf.size) { const dot = r.domain.lastIndexOf('.'); const tld = dot >= 0 ? r.domain.slice(dot + 1).toLowerCase() : ''; if (!tf.has(tld)) return false; }
   return true;
@@ -4850,8 +4854,17 @@ function renderVariations(data) {
     const tldChips = (arr) => (Array.isArray(arr) ? arr : []).map((x) => chip(x, 'tld', String(x).toLowerCase(), '.')).join('');
     const staticChips = (arr, pre = '') => (Array.isArray(arr) ? arr : []).map((x) => `<span class="nmv-crit nmv-crit-static">${escapeHtml(pre)}${escapeHtml(x)}</span>`).join('');
     const clearBtn = anyFilter ? ` <button type="button" class="nmv-crit-clear" data-vf="clear">✕ clear filter</button>` : '';
+    // Type facet — filter to a whole kind (prefix / suffix / extension) in one click.
+    const kindChipEl = (val, label) => {
+      const on = variationsFilter.kind.has(val);
+      return `<button type="button" class="nmv-crit nmv-crit-kind${on ? ' nmv-crit-on' : ''}" data-vf="kind" data-key="${val}">${escapeHtml(label)}</button>`;
+    };
+    const kindRow = (c.prefixes || c.suffixes || c.tlds)
+      ? `<div class="nmv-critrow"><span class="nmv-critlbl">Type</span> ${kindChipEl('prefix', 'Prefix')}${kindChipEl('suffix', 'Suffix')}${kindChipEl('extension', 'Extension')}</div>`
+      : '';
     const critHtml = c && (c.prefixes || c.suffixes || c.tlds) ? (
       `<div class="nmv-criteria">`
+      + kindRow
       + (c.prefixes && c.prefixes.length ? `<div class="nmv-critrow"><span class="nmv-critlbl">Prefixes</span> ${affixChips(c.prefixes, 'prefix')}</div>` : '')
       + (c.suffixes && c.suffixes.length ? `<div class="nmv-critrow"><span class="nmv-critlbl">Suffixes</span> ${affixChips(c.suffixes, 'suffix')}</div>` : '')
       + (c.tlds && c.tlds.length ? `<div class="nmv-critrow"><span class="nmv-critlbl">Extensions</span> ${tldChips(c.tlds)}</div>` : '')
