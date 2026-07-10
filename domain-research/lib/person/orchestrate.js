@@ -205,14 +205,27 @@ async function triangulate({ subject, inputPage, env }) {
 // Wikipedia / knowledge-panel are secondary public-figure markers; cross-platform
 // breadth is heavily discounted (breadth ≠ importance); job seniority is ignored.
 // Computed from the CONFIRMED signal set only (post identity-adjudication).
-// `xFollowers` = X/Twitter follower count specifically — a stronger signal than
-// LinkedIn/other "followers", so 25K+ on X is a STANDALONE VIP trigger.
-const X_VIP_FLOOR = 25e3;
-function computeVip({ maxFollowers, xFollowers = 0, presenceCount, hasWiki, hasKG }) {
+//
+// PER-PLATFORM VIP FLOORS — a follower count at/above a platform's floor = VIP on
+// its own. Floors differ by how HARD real reach is on each network (X followers are
+// scarce/high-signal; IG/TikTok inflate, so higher floors). Platforms not listed
+// (Quora, GitHub, …) have no standalone VIP — they only feed the general max scale.
+const PLATFORM_VIP_FLOOR = {
+  twitter: 25e3, // X — high-signal
+  youtube: 100e3, // subscribers (the ~100K "silver" tier)
+  linkedin: 100e3, // individual followers (creator-tier)
+  instagram: 250e3, // inflated → higher bar
+  facebook: 250e3,
+  tiktok: 500e3, // most inflated / most viral
+};
+const PLAT_LABEL = { twitter: 'X/Twitter', youtube: 'YouTube', linkedin: 'LinkedIn', instagram: 'Instagram', facebook: 'Facebook', tiktok: 'TikTok' };
+function computeVip({ social = [], maxFollowers, presenceCount, hasWiki, hasKG }) {
   const signals = [];
   let score = 0;
-  // X/Twitter: 25K+ real followers = VIP on its own.
-  if (xFollowers >= X_VIP_FLOOR) { score += 6; signals.push(`${fmtCount(xFollowers)} X/Twitter followers (VIP-level audience)`); }
+  // Any platform at/above its own VIP floor → VIP standalone. `social` is sorted
+  // by followers desc, so the first match is the biggest.
+  const hit = social.find((s) => PLATFORM_VIP_FLOOR[s.key] && (s.followers || 0) >= PLATFORM_VIP_FLOOR[s.key]);
+  if (hit) { score += 6; signals.push(`${fmtCount(hit.followers)} ${PLAT_LABEL[hit.key] || hit.label} followers (VIP-level audience)`); }
   // Otherwise the general follower scale (max across platforms). VIP alone at 500K+;
   // below that a secondary public-figure signal (Wikipedia) is needed to reach VIP.
   else if (maxFollowers >= 5e5) { score += 6; signals.push(`${fmtCount(maxFollowers)}+ followers (massive audience)`); }
@@ -312,8 +325,7 @@ export async function runPersonDeepDive({ url, name, company, env = process.env 
   const hasWiki = social.some((s) => s.key === 'wikipedia');
   const kg = (candidates.knowledge_graph && (!adj || adj.knowledge_panel_is_subject !== false)) ? candidates.knowledge_graph : null;
   const maxFollowers = social.reduce((m, s) => Math.max(m, s.followers || 0), 0);
-  const xFollowers = social.find((s) => s.key === 'twitter')?.followers || 0;
-  const vip = computeVip({ maxFollowers, xFollowers, presenceCount: social.length, hasWiki, hasKG: !!kg });
+  const vip = computeVip({ social, maxFollowers, presenceCount: social.length, hasWiki, hasKG: !!kg });
 
   return {
     subject,
