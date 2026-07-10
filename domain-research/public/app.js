@@ -155,6 +155,7 @@ const els = {
   namingInput: $('naming-input'),
   namingTitle: $('naming-title'),
   namingIndustry: $('naming-industry'),
+  namingWebsite: $('naming-website'),
   namingMode: $('naming-mode'),
   namingVariations: $('naming-variations'),
   nmvTable: $('nmv-table'),
@@ -4692,7 +4693,8 @@ function setNamingMode(mode) {
       : 'Paste a brief — e.g. "Tech startup, B2B SaaS, premium feel. One-word .com, easy to spell, under $5,000. Keywords: cloud, data, ops."';
   }
   if (els.namingGo) els.namingGo.textContent = variations ? 'Build Variations' : 'Find Names';
-  if (els.namingIndustry) els.namingIndustry.hidden = !variations; // industry field is Beast-Mode-only
+  if (els.namingIndustry) els.namingIndustry.hidden = !variations; // Beast-Mode-only
+  if (els.namingWebsite) els.namingWebsite.hidden = !variations; // Beast-Mode-only
   // Only one results section shows at a time; the theme filters (panel + parsed-
   // filter chips) are theme-only and must be hidden in variations mode.
   if (variations) {
@@ -4768,6 +4770,7 @@ async function runVariations() {
       body: JSON.stringify({
         action: 'variations', seed, exclude_tlds: [],
         industry: (els.namingIndustry && els.namingIndustry.value.trim()) || null,
+        website: (els.namingWebsite && els.namingWebsite.value.trim()) || null,
         run_id: currentNamingRunId || null,
         title: (els.namingTitle && els.namingTitle.value.trim()) || null,
       }),
@@ -5399,7 +5402,8 @@ async function openNamingRun(id) {
     if (r.filters && r.filters.mode === 'variations') {
       setNamingMode('variations');
       if (els.namingIndustry) els.namingIndustry.value = String((r.filters && r.filters.industry) || '');
-      const vdata = { seed: (r.filters.seed || r.brief || ''), industry: (r.filters && r.filters.industry) || null, criteria: r.filters.criteria || null, results: Array.isArray(r.buy_ready) ? r.buy_ready : [], domainscout: true };
+      if (els.namingWebsite) els.namingWebsite.value = String((r.filters && r.filters.website) || '');
+      const vdata = { seed: (r.filters.seed || r.brief || ''), industry: (r.filters && r.filters.industry) || null, website: (r.filters && r.filters.website) || null, criteria: r.filters.criteria || null, results: Array.isArray(r.buy_ready) ? r.buy_ready : [], domainscout: true };
       variationsLast = vdata;
       resetVariationsFilter();
       renderVariations(vdata);

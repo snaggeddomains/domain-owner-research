@@ -373,7 +373,12 @@ can NEVER hold a specific word fixed — so it returned public-safety-*themed* n
   the pool (no hallucinated extensions). `sweepVariations` merges them via `extraTlds`
   into the base tier-1/2 set (+ criteria panel shows them as filterable chips).
   `industry` rides `filters.industry` (persisted + restored on reopen) and the response
-  (summary shows "for <industry>"). Empty industry → unchanged behavior.
+  (summary shows "for <industry>"). Empty industry → unchanged behavior. An optional
+  **Current website** field (`#naming-website`) does the same: `pickAffixes` fetches it
+  (`siteSummary` — fetchText+extractClues, https→http, ≤700 chars) and feeds the
+  title/description/excerpt into the Haiku prompt so it infers the product/positioning
+  and proposes sharper affixes + niche TLDs. Both fields are optional + independent;
+  `filters.website` persists/restores. Fail-open (unreachable site → no sharpening).
 - **Renamed to "Beast Mode" (2026-07-09).** The mode toggle label is "🦾 Beast Mode"
   (internal `data-mode="variations"` unchanged). Added a **Type** filter facet
   (Prefix/Suffix/Extension toggle chips) — `variationsFilter.kind`, OR within, AND
@@ -751,9 +756,12 @@ button.
     `knowledge_panel_is_subject`) — the anchor is the input profile; findings pulled
     by NAME search that belong to a **namesake** (e.g. an actor with the same name)
     are EXCLUDED. (4) VIP band is computed AFTER, from the CONFIRMED signal set only:
-    `computeVip` is **follower-dominant** (500K+ alone = VIP; 100K+Wikipedia = VIP;
-    <2.5K = low), Wikipedia/knowledge-panel are secondary, cross-platform breadth is
-    heavily discounted (+1 only at 8+ platforms), and **job seniority is ignored**.
+    `computeVip` is **follower-dominant** with **per-platform VIP floors**
+    (`PLATFORM_VIP_FLOOR`: X 25K · YouTube/LinkedIn 100K · IG/Facebook 250K · TikTok
+    500K — a count at/above a platform's floor = VIP standalone), plus a general
+    max-follower scale (500K+ = VIP) and 100K+Wikipedia = VIP; <2.5K = low.
+    Wikipedia/knowledge-panel are secondary, cross-platform breadth is heavily
+    discounted (+1 only at 8+ platforms), and **job seniority is ignored**.
     Bands `low`/`notable`/`high_profile`/`vip`; every firing signal listed. All
     steps fail-open (no key → keep all findings, no adjudication).
   - `revealContacts({subject,includePhone,env})` — the PAID step. `rocketreach_lookup`

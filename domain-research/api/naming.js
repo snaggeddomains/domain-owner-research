@@ -114,21 +114,24 @@ async function handleVariations(body, res, user) {
   }
   const excludeTlds = Array.isArray(body.exclude_tlds) ? body.exclude_tlds.map((t) => String(t)) : [];
   const industry = String(body.industry || '').trim().slice(0, 80);
+  const website = String(body.website || '').trim().slice(0, 200);
   const runId = typeof body.run_id === 'string' && body.run_id ? body.run_id : null;
   const title = (typeof body.title === 'string' && body.title.trim()) ? body.title.trim() : null;
   try {
     const out = await withCategory('naming', async () => {
-      // Word-aware (+ industry-aware) affixes first — fail-open to defaults. An
-      // industry also adds fitting niche TLDs (dart + healthcare → dart.health).
-      const { prefixes, suffixes, tlds } = await pickAffixes(seed, process.env, { industry }).catch(() => ({}));
+      // Word-aware affixes, optionally sharpened by industry + current website —
+      // fail-open to defaults. Either also adds fitting niche TLDs (dart + healthcare
+      // → dart.health).
+      const { prefixes, suffixes, tlds } = await pickAffixes(seed, process.env, { industry, website }).catch(() => ({}));
       const r = await sweepVariations(seed, { env: process.env, excludeTlds, prefixes, suffixes, extraTlds: tlds });
       r.industry = industry || null;
+      r.website = website || null;
       return r;
     });
     // Persist so it lands in Recent + is reopenable (best-effort — never block the
     // result on a DB hiccup). Results ride in buy_ready; filters carries the mode.
     try {
-      const filters = { mode: 'variations', seed, industry: industry || null, criteria: out.criteria || null };
+      const filters = { mode: 'variations', seed, industry: industry || null, website: website || null, criteria: out.criteria || null };
       const payload = { user_id: user && user.id, brief: seed, filters, buyReady: out.results, stretch: [], title: title || seed };
       const saved = runId ? await updateNamingRun(runId, payload) : await saveNamingRun(payload);
       if (saved && saved.id) { out.run_id = saved.id; out.created_at = saved.created_at; }
