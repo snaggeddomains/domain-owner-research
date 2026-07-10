@@ -364,6 +364,20 @@ can NEVER hold a specific word fixed — so it returned public-safety-*themed* n
   (`rdapDomainStatus` in `lib/nameserver/query.js`, IANA bootstrap + ccTLD overrides
   — NOT rdap.org, which false-404s `.io`/`.me`): `registered` → reclassify (not free),
   `available`/`unknown` → keep. Only the DNS-NXDOMAIN names are checked (bounded).
+- **Industry personalization (2026-07-09).** An optional **Company industry** field
+  (Beast-Mode-only input `#naming-industry`) personalizes the affix + TLD sets:
+  `pickAffixes(seed, env, {industry})` has the Haiku pass ALSO add industry-relevant
+  prefixes/suffixes (healthcare → health/care/med/clinic → DartHealth / HealthDart)
+  AND pick fitting REAL niche TLDs from `INDUSTRY_TLDS` (a curated ~140-entry pool in
+  enumerate.js) → `dart.health`/`.care`/`.clinic`. Returned TLDs are validated against
+  the pool (no hallucinated extensions). `sweepVariations` merges them via `extraTlds`
+  into the base tier-1/2 set (+ criteria panel shows them as filterable chips).
+  `industry` rides `filters.industry` (persisted + restored on reopen) and the response
+  (summary shows "for <industry>"). Empty industry → unchanged behavior.
+- **Renamed to "Beast Mode" (2026-07-09).** The mode toggle label is "🦾 Beast Mode"
+  (internal `data-mode="variations"` unchanged). Added a **Type** filter facet
+  (Prefix/Suffix/Extension toggle chips) — `variationsFilter.kind`, OR within, AND
+  across the affix/tld facets.
 - **Cross-references OUR corpora (2026-07-09).** The sweep now ALSO batch-looks-up the
   enumerated set against `name_universe` + the `Master Domain List` (`lib/variations/
   corpus.js` `lookupInternal`, one exact-domain `.in()` per corpus, parallel to the live

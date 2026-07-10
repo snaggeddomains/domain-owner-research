@@ -154,6 +154,7 @@ const els = {
   navNaming: $('nav-naming'),
   namingInput: $('naming-input'),
   namingTitle: $('naming-title'),
+  namingIndustry: $('naming-industry'),
   namingMode: $('naming-mode'),
   namingVariations: $('naming-variations'),
   nmvTable: $('nmv-table'),
@@ -4691,6 +4692,7 @@ function setNamingMode(mode) {
       : 'Paste a brief — e.g. "Tech startup, B2B SaaS, premium feel. One-word .com, easy to spell, under $5,000. Keywords: cloud, data, ops."';
   }
   if (els.namingGo) els.namingGo.textContent = variations ? 'Build Variations' : 'Find Names';
+  if (els.namingIndustry) els.namingIndustry.hidden = !variations; // industry field is Beast-Mode-only
   // Only one results section shows at a time; the theme filters (panel + parsed-
   // filter chips) are theme-only and must be hidden in variations mode.
   if (variations) {
@@ -4765,6 +4767,7 @@ async function runVariations() {
       method: 'POST', headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
         action: 'variations', seed, exclude_tlds: [],
+        industry: (els.namingIndustry && els.namingIndustry.value.trim()) || null,
         run_id: currentNamingRunId || null,
         title: (els.namingTitle && els.namingTitle.value.trim()) || null,
       }),
@@ -4841,7 +4844,7 @@ function renderVariations(data) {
   if (els.nmvNote) {
     const bits = [`${n('for_sale')} for sale`, `${n('available')} available`, `${n('active')} active`, `${n('parked') + n('registered')} held`];
     if (!data.domainscout) bits.push('prices need DomainScout');
-    const summary = `Built around “${escapeHtml(data.seed || '')}”. ${bits.join(' · ')}.`;
+    const summary = `Built around “${escapeHtml(data.seed || '')}”${data.industry ? ` for <strong>${escapeHtml(data.industry)}</strong>` : ''}. ${bits.join(' · ')}.`;
     const c = data.criteria || {};
     // Clickable chips — click one to narrow the table to it (extension → only that
     // TLD; prefix/suffix → only that affix). Toggle off to clear. Within a facet =
@@ -5386,7 +5389,8 @@ async function openNamingRun(id) {
     // A saved VARIATIONS run — re-render the variations grid (not the theme buckets).
     if (r.filters && r.filters.mode === 'variations') {
       setNamingMode('variations');
-      const vdata = { seed: (r.filters.seed || r.brief || ''), criteria: r.filters.criteria || null, results: Array.isArray(r.buy_ready) ? r.buy_ready : [], domainscout: true };
+      if (els.namingIndustry) els.namingIndustry.value = String((r.filters && r.filters.industry) || '');
+      const vdata = { seed: (r.filters.seed || r.brief || ''), industry: (r.filters && r.filters.industry) || null, criteria: r.filters.criteria || null, results: Array.isArray(r.buy_ready) ? r.buy_ready : [], domainscout: true };
       variationsLast = vdata;
       resetVariationsFilter();
       renderVariations(vdata);

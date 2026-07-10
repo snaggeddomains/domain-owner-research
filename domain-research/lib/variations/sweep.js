@@ -269,8 +269,10 @@ function rankKey(r) {
 // Returns { seed, domainscout, count, results:[{domain, kind, affix, category,
 // for_sale, for_sale_source, price, currency, marketplace, link, site, title,
 // evidence}] }.
-export async function sweepVariations(seed, { env = process.env, excludeTlds = [], prefixes, suffixes } = {}) {
-  const cands = enumerateVariations(seed, { excludeTlds, ...(prefixes ? { prefixes } : {}), ...(suffixes ? { suffixes } : {}) });
+export async function sweepVariations(seed, { env = process.env, excludeTlds = [], prefixes, suffixes, extraTlds = [] } = {}) {
+  // Merge any industry-picked TLDs (.health/.care/…) into the base tier-1/2 set.
+  const tlds = [...new Set([...TLDS, ...(Array.isArray(extraTlds) ? extraTlds : []).map((t) => String(t).replace(/^\./, '').toLowerCase())])];
+  const cands = enumerateVariations(seed, { excludeTlds, tlds, ...(prefixes ? { prefixes } : {}), ...(suffixes ? { suffixes } : {}) });
   const dsOn = isConfigured(env);
   // Cross-reference OUR corpora (name_universe + Master) in parallel with the live
   // sweep — one batched exact-domain lookup, fail-open. Merged in after the sweep.
@@ -403,7 +405,7 @@ export async function sweepVariations(seed, { env = process.env, excludeTlds = [
   const criteria = {
     prefixes: (prefixes && prefixes.length ? prefixes : PREFIXES),
     suffixes: (suffixes && suffixes.length ? suffixes : SUFFIXES),
-    tlds: TLDS.filter((t) => !drop.has(t)),
+    tlds: tlds.filter((t) => !drop.has(t)),
     exclude_tlds: [...drop],
     word_aware: !!(prefixes || suffixes),
   };

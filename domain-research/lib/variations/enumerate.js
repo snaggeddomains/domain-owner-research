@@ -28,6 +28,31 @@ export const SUFFIXES = [
 // buyers are sensitive to "AI").
 export const TLDS = ['com', 'net', 'org', 'io', 'co', 'ai', 'app', 'dev', 'tech', 'xyz', 'me', 'so', 'us', 'gg', 'inc'];
 
+// Real, delegated niche/industry gTLDs — the pool the industry-aware affix pass
+// picks from when a company industry is given (dart + healthcare → dart.health,
+// dart.care, dart.clinic). Kept to REAL extensions so we never enumerate a
+// non-existent TLD. The picker validates its output against this set.
+export const INDUSTRY_TLDS = [
+  // health / medical / wellness
+  'health', 'care', 'clinic', 'dental', 'doctor', 'surgery', 'vision', 'rehab', 'life', 'bio', 'fit', 'fitness', 'yoga', 'coach', 'pet', 'vet', 'dog',
+  // finance / legal
+  'finance', 'financial', 'money', 'fund', 'capital', 'ventures', 'tax', 'insure', 'loans', 'credit', 'cash', 'gold', 'exchange', 'markets', 'trading', 'investments', 'legal', 'lawyer', 'attorney', 'law',
+  // tech / software
+  'software', 'systems', 'cloud', 'digital', 'network', 'tools', 'hosting', 'codes', 'computer',
+  // media / creative
+  'media', 'studio', 'design', 'art', 'photography', 'film', 'music', 'fm', 'tv', 'news', 'press', 'blog', 'agency', 'marketing',
+  // commerce / retail
+  'shop', 'store', 'deals', 'boutique', 'fashion', 'clothing', 'shoes', 'jewelry', 'gifts',
+  // food / hospitality
+  'cafe', 'restaurant', 'bar', 'pizza', 'kitchen', 'recipes', 'wine', 'beer', 'coffee', 'menu', 'bakery',
+  // travel / real estate / home services
+  'travel', 'flights', 'tours', 'vacations', 'holiday', 'cruises', 'estate', 'homes', 'house', 'rent', 'apartments', 'land', 'build', 'construction', 'contractors', 'repair', 'plumbing', 'cleaning', 'services', 'solutions',
+  // education
+  'academy', 'education', 'school', 'university', 'courses', 'training', 'institute', 'science', 'engineering',
+  // community / auto / green / sport
+  'club', 'team', 'community', 'social', 'chat', 'dating', 'family', 'auto', 'cars', 'bike', 'green', 'eco', 'energy', 'solar', 'farm', 'garden', 'games', 'golf', 'ski', 'run',
+];
+
 // Safety cap so an exhaustive run can't fan out unbounded (the crawl is bounded by
 // the endpoint's maxDuration). The word-aware prune keeps real runs well under this.
 const MAX_CANDIDATES = 120;
