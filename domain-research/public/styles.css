@@ -2167,3 +2167,11 @@ a.sr-ag-co-link:hover { border-color: var(--coral); color: var(--coral-deep); ba
 .be-sheet-row button { white-space: nowrap; }
 
 .be-note { font-size: 12.5px; margin: 12px 0 4px; padding: 8px 12px; background: #fbf3e0; border-radius: 8px; }
+.be-table th[data-be-sort] { cursor: pointer; user-select: none; }
+.be-filter { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin: 10px 0 4px; }
+.be-fq { padding: 6px 10px; border: 1px solid var(--line, #d5d5e0); border-radius: 8px; font-size: 13px; min-width: 160px; }
+.be-fl { font-size: 12px; color: #6b6b7b; margin-left: 6px; }
+.be-chip { padding: 4px 10px; border-radius: 999px; border: 1px solid var(--line, #d5d5e0); background: #fff; color: #44445a; cursor: pointer; font-size: 12px; font-weight: 600; }
+.be-chip.on { background: #2f7d4f; color: #fff; border-color: #2f7d4f; }
+.be-chip.be-star { border-color: #caa024; color: #8a6d10; }
+.be-count { font-size: 12px; margin: 4px 0; }

@@ -6224,47 +6224,99 @@ async function beRun() {
     if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
     beLast = data;
     if (status) status.textContent = `${data.count} evaluated${data.has_prices ? ' · ranked by ROI' : ' · ranked by estimated resale'}${data.capped ? ' · capped at 500' : ''}`;
-    renderBulkEval(data);
+    beState.sortKey = null;
+    beRender();
     if (csvBtn) csvBtn.hidden = !(data.results && data.results.length);
   } catch (e) {
     if (status) status.textContent = '';
     if (results) results.innerHTML = `<div class="sr-status">${escapeHtml(e.message || String(e))}</div>`;
   }
 }
-function renderBulkEval(data) {
+// Filter + sort state for the Bulk Eval table (client-side over beLast).
+const beState = { q: '', grades: new Set(['A', 'B', 'C', 'D', 'F']), types: new Set(['word', 'brandable', 'junk']), sortKey: null, sortDir: 1 };
+const beUsd = (n) => (n == null ? '—' : `$${Math.round(n).toLocaleString()}`);
+const beConfRank = (r) => (r.speculative ? 3 : ({ high: 0, medium: 1, 'low-medium': 1.5, low: 2 }[r.confidence] ?? 2));
+function beSortVal(r, key) {
+  switch (key) {
+    case 'domain': return r.domain;
+    case 'asking': return r.price ?? -1;
+    case 'resale': return r.resale?.mid ?? -1;
+    case 'upside': return r.upside ?? -Infinity;
+    case 'roi': return r.roi ?? -Infinity;
+    case 'verdict': return r.band ? r.band.ratio : Infinity; // lower ratio = better buy
+    case 'quality': return r.quality?.score ?? -1;
+    case 'confidence': return beConfRank(r);
+    default: return r.rank;
+  }
+}
+function beSetSort(key) {
+  if (beState.sortKey === key) beState.sortDir = -beState.sortDir;
+  else { beState.sortKey = key; beState.sortDir = (key === 'domain' || key === 'verdict' || key === 'confidence') ? 1 : -1; }
+  beRender();
+}
+function beRender(focusSearch) {
   const el = document.getElementById('be-results');
   if (!el) return;
-  const usd = (n) => (n == null ? '—' : `$${Math.round(n).toLocaleString()}`);
-  const rows = (data.results || []).map((r) => {
-    if (r.error) return `<tr class="be-err"><td>${r.rank || ''}</td><td>${escapeHtml(r.domain)}</td><td colspan="7" class="muted">${escapeHtml(r.error)}</td></tr>`;
+  if (!beLast || !beLast.results) { el.innerHTML = ''; return; }
+  const all = beLast.results.filter((r) => !r.error);
+  let rows = all.filter((r) => {
+    if (beState.q && !r.domain.toLowerCase().includes(beState.q)) return false;
+    if (r.quality && !beState.grades.has(r.quality.grade)) return false;
+    const dc = r.quality?.dictionary_class;
+    if (dc && !beState.types.has(dc)) return false;
+    return true;
+  });
+  if (beState.sortKey) {
+    rows.sort((a, b) => { const va = beSortVal(a, beState.sortKey); const vb = beSortVal(b, beState.sortKey); if (va < vb) return -1 * beState.sortDir; if (va > vb) return 1 * beState.sortDir; return a.rank - b.rank; });
+  }
+  const arrow = (k) => (beState.sortKey === k ? (beState.sortDir === 1 ? ' ▲' : ' ▼') : '');
+  const H = (k, label, cls) => `<th class="${cls || ''}" data-be-sort="${k}">${label}${arrow(k)}</th>`;
+  const gChip = (g) => `<button type="button" class="be-chip${beState.grades.has(g) ? ' on' : ''}" data-be-grade="${g}">${g}</button>`;
+  const tChip = (t, label) => `<button type="button" class="be-chip${beState.types.has(t) ? ' on' : ''}" data-be-type="${t}">${label}</button>`;
+  const filterBar = `<div class="be-filter">
+    <input id="be-filter-q" class="be-fq" placeholder="Filter domains…" value="${escapeHtml(beState.q)}" autocomplete="off" />
+    <span class="be-fl">Grade</span>${['A', 'B', 'C', 'D', 'F'].map(gChip).join('')}
+    <span class="be-fl">Type</span>${tChip('word', 'Word')}${tChip('brandable', 'Brandable')}${tChip('junk', 'Junk')}
+    <button type="button" class="be-chip be-star" data-be-premium="1">⭐ Premium only</button>
+    <button type="button" class="be-chip" data-be-clear="1">Clear</button>
+  </div>`;
+  const body = rows.map((r) => {
     const band = r.band ? `<span class="be-band" style="background:${escapeHtml(r.band.color)}22;color:${escapeHtml(r.band.color)}">${escapeHtml(r.band.label)}</span>` : '<span class="muted">—</span>';
     const roi = r.roi == null ? '<span class="muted">—</span>' : `<strong style="color:${r.roi >= 4 ? '#0b8f3a' : r.roi >= 1 ? '#caa024' : '#cf3030'}">${Math.round(r.roi * 100)}%</strong>`;
     const grade = `<span class="be-grade be-grade-${(r.quality?.grade || '').toLowerCase()}">${escapeHtml(r.quality?.grade || '?')}</span>`;
     const spec = r.speculative;
-    const resaleCell = spec
-      ? `<span class="muted" title="Speculative — no comparable sales. A conservative wholesale estimate; run the full SNAP Eval for a real read.">~${usd(r.resale?.mid)}</span>`
-      : `<strong>${usd(r.resale?.mid)}</strong>`;
-    const conf = spec
-      ? '<span style="color:#a3502f">speculative · no comps</span>'
-      : `${escapeHtml(r.confidence || '')}${r.comps ? ` · ${r.comps} comp${r.comps > 1 ? 's' : ''}` : ''}`;
+    const resaleCell = spec ? `<span class="muted" title="Speculative — no comparable sales. A conservative wholesale estimate; run the full SNAP Eval for a real read.">~${beUsd(r.resale?.mid)}</span>` : `<strong>${beUsd(r.resale?.mid)}</strong>`;
+    const conf = spec ? '<span style="color:#a3502f">speculative · no comps</span>' : `${escapeHtml(r.confidence || '')}${r.comps ? ` · ${r.comps} comp${r.comps > 1 ? 's' : ''}` : ''}`;
     return `<tr>
-      <td>${r.rank}</td>
       <td><a href="/research/evaluate/${encodeURIComponent(r.domain)}" title="Full SNAP Eval">${escapeHtml(r.domain)}</a></td>
-      <td class="be-num">${usd(r.price)}</td>
+      <td class="be-num">${beUsd(r.price)}</td>
       <td class="be-num">${resaleCell}</td>
-      <td class="be-num">${r.upside == null ? '<span class="muted">—</span>' : usd(r.upside)}</td>
+      <td class="be-num">${r.upside == null ? '<span class="muted">—</span>' : beUsd(r.upside)}</td>
       <td class="be-num">${roi}</td>
       <td>${band}</td>
       <td>${grade}</td>
       <td class="muted">${conf}</td>
     </tr>`;
   }).join('');
-  const specN = (data.results || []).filter((r) => r.speculative).length;
-  const note = specN ? `<p class="be-note muted">⚠ ${specN} of ${data.results.length} are <strong>speculative</strong> — coined names with no comparable sales. Those get a conservative <em>wholesale</em> estimate (marked ~), not a premium valuation. Click any name for the full SNAP Eval (paid comps + appraisals) for a real read.</p>` : '';
-  el.innerHTML = `${note}<div class="be-table-wrap"><table class="be-table">
-    <thead><tr><th>#</th><th>Domain</th><th class="be-num">Asking</th><th class="be-num">Est. resale</th><th class="be-num">Upside</th><th class="be-num">ROI</th><th>Verdict</th><th>Quality</th><th>Confidence</th></tr></thead>
-    <tbody>${rows}</tbody></table></div>`;
+  const specN = all.filter((r) => r.speculative).length;
+  const note = specN ? `<p class="be-note muted">⚠ ${specN} of ${all.length} are <strong>speculative</strong> — coined names with no comparable sales get a conservative <em>wholesale</em> estimate (marked ~). Click a name for the full SNAP Eval for a real read. Tip: <strong>⭐ Premium only</strong> = grade A, real/brandable words.</p>` : '';
+  el.innerHTML = `${note}${filterBar}<div class="be-count muted">${rows.length} of ${all.length} shown</div><div class="be-table-wrap"><table class="be-table">
+    <thead><tr>${H('domain', 'Domain')}${H('asking', 'Asking', 'be-num')}${H('resale', 'Est. resale', 'be-num')}${H('upside', 'Upside', 'be-num')}${H('roi', 'ROI', 'be-num')}${H('verdict', 'Verdict')}${H('quality', 'Quality')}${H('confidence', 'Confidence')}</tr></thead>
+    <tbody>${body}</tbody></table></div>`;
+  if (focusSearch) { const q = document.getElementById('be-filter-q'); if (q) { q.focus(); q.setSelectionRange(q.value.length, q.value.length); } }
 }
+document.getElementById('be-results')?.addEventListener('click', (e) => {
+  const t = e.target.closest('[data-be-sort],[data-be-grade],[data-be-type],[data-be-premium],[data-be-clear]');
+  if (!t) return;
+  if (t.dataset.beSort) beSetSort(t.dataset.beSort);
+  else if (t.dataset.beGrade) { const g = t.dataset.beGrade; beState.grades.has(g) ? beState.grades.delete(g) : beState.grades.add(g); beRender(); }
+  else if (t.dataset.beType) { const ty = t.dataset.beType; beState.types.has(ty) ? beState.types.delete(ty) : beState.types.add(ty); beRender(); }
+  else if (t.dataset.bePremium) { beState.grades = new Set(['A']); beState.types = new Set(['word', 'brandable']); beRender(); }
+  else if (t.dataset.beClear) { beState.q = ''; beState.grades = new Set(['A', 'B', 'C', 'D', 'F']); beState.types = new Set(['word', 'brandable', 'junk']); beState.sortKey = null; beRender(); }
+});
+document.getElementById('be-results')?.addEventListener('input', (e) => {
+  if (e.target && e.target.id === 'be-filter-q') { beState.q = e.target.value.trim().toLowerCase(); beRender(true); }
+});
 function beCsv() {
   if (!beLast || !beLast.results) return;
   const cols = ['rank', 'domain', 'asking_price', 'est_resale', 'basis', 'speculative', 'upside', 'roi_pct', 'verdict', 'quality_grade', 'quality_score', 'confidence', 'comps'];
