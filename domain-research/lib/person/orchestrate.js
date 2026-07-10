@@ -151,11 +151,13 @@ async function identify({ url, name, company, env }) {
 
 async function triangulate({ subject, inputPage, env }) {
   const found = new Map(); // platformKey -> { platform, url, followers, raw }
-  const record = (url, page) => {
+  const inputKey = platformOf(subject.input_url)?.key || null;
+  const record = (url, page, snippet = null) => {
     const p = platformOf(url);
     if (!p || found.has(p.key)) return;
     const f = page ? followersFrom(p, page) : null;
-    found.set(p.key, { key: p.key, label: p.label, url, followers: f ? f.count : null, followers_raw: f ? f.raw : null });
+    // `anchor` = the profile the user actually gave us — DEFINITELY the subject.
+    found.set(p.key, { key: p.key, label: p.label, url, followers: f ? f.count : null, followers_raw: f ? f.raw : null, snippet: snippet || null, anchor: p.key === inputKey });
   };
   // The input profile itself.
   record(subject.input_url, inputPage);
@@ -166,7 +168,7 @@ async function triangulate({ subject, inputPage, env }) {
   if (q) {
     const broad = await webSearch(q, null, env);
     knowledge = broad && broad.knowledge_graph ? broad.knowledge_graph : null;
-    for (const r of (broad && broad.results) || []) record(r.link, null);
+    for (const r of (broad && broad.results) || []) record(r.link, null, r.snippet);
     // pull any social links surfaced in the input page too
     for (const l of (inputPage && inputPage.social_links) || []) record(l, null);
   }
@@ -179,7 +181,7 @@ async function triangulate({ subject, inputPage, env }) {
     const site = { linkedin: 'linkedin.com', twitter: 'x.com', facebook: 'facebook.com', instagram: 'instagram.com', quora: 'quora.com', youtube: 'youtube.com', tiktok: 'tiktok.com', github: 'github.com', crunchbase: 'crunchbase.com', wikipedia: 'wikipedia.org' }[p.key];
     const sr = await webSearch(`"${subject.name}"${subject.company ? ` ${subject.company}` : ''}`, site, env);
     const hit = ((sr && sr.results) || []).find((r) => platformOf(r.link)?.key === p.key);
-    if (hit) record(hit.link, null);
+    if (hit) record(hit.link, null, hit.snippet);
   }
 
   // Read follower counts for placed profiles that don't have one yet (bounded).
@@ -192,32 +194,33 @@ async function triangulate({ subject, inputPage, env }) {
     if (f) { s.followers = f.count; s.followers_raw = f.raw; }
   }));
 
-  const maxFollowers = social.reduce((m, s) => Math.max(m, s.followers || 0), 0);
-  const presenceCount = social.length;
-  const hasWiki = social.some((s) => s.key === 'wikipedia');
-  const hasKG = !!knowledge;
-  const seniorTitle = /\b(founder|ceo|cto|cfo|coo|cmo|president|chief|partner|vp|head of|director|owner)\b/i.test(subject.title || '');
-
-  // VIP band — transparent, rule-based. Every signal that fired is listed.
-  const signals = [];
-  let score = 0;
-  if (maxFollowers >= 1e6) { score += 4; signals.push(`${fmtCount(maxFollowers)}+ followers (massive audience)`); }
-  else if (maxFollowers >= 1e5) { score += 3; signals.push(`${fmtCount(maxFollowers)} followers (large audience)`); }
-  else if (maxFollowers >= 1e4) { score += 2; signals.push(`${fmtCount(maxFollowers)} followers (sizable audience)`); }
-  else if (maxFollowers >= 1e3) { score += 1; signals.push(`${fmtCount(maxFollowers)} followers`); }
-  if (presenceCount >= 5) { score += 2; signals.push(`present on ${presenceCount} platforms`); }
-  else if (presenceCount >= 3) { score += 1; signals.push(`present on ${presenceCount} platforms`); }
-  if (hasWiki) { score += 2; signals.push('has a Wikipedia page'); }
-  if (hasKG) { score += 1; signals.push('appears in Google knowledge panel'); }
-  if (seniorTitle) { score += 1; signals.push(`senior role (${subject.title})`); }
-  const band = score >= 6 ? 'vip' : score >= 4 ? 'high_profile' : score >= 2 ? 'notable' : 'low';
-
   // sort social: biggest audience first, then known-count, then alpha
   social.sort((a, b) => (b.followers || 0) - (a.followers || 0) || a.label.localeCompare(b.label));
-  return {
-    social, presence_count: presenceCount, max_followers: maxFollowers,
-    knowledge_graph: knowledge, vip: { band, score, signals },
-  };
+  // Return raw CANDIDATES — VIP is computed later from only the signals the
+  // identity-adjudication pass confirms belong to THIS person (kills namesakes).
+  return { social, knowledge_graph: knowledge };
+}
+
+// VIP band — FOLLOWER-DOMINANT, transparent. Audience size is the primary driver;
+// Wikipedia / knowledge-panel are secondary public-figure markers; cross-platform
+// breadth is heavily discounted (breadth ≠ importance); job seniority is ignored.
+// Computed from the CONFIRMED signal set only (post identity-adjudication).
+function computeVip({ maxFollowers, presenceCount, hasWiki, hasKG }) {
+  const signals = [];
+  let score = 0;
+  // Follower tiers (the dominant driver). VIP alone at 500K+; below that a
+  // secondary public-figure signal (Wikipedia) is needed to reach VIP.
+  if (maxFollowers >= 5e5) { score += 6; signals.push(`${fmtCount(maxFollowers)}+ followers (massive audience)`); }
+  else if (maxFollowers >= 2.5e5) { score += 5; signals.push(`${fmtCount(maxFollowers)} followers (huge audience)`); }
+  else if (maxFollowers >= 1e5) { score += 4; signals.push(`${fmtCount(maxFollowers)} followers (large audience)`); }
+  else if (maxFollowers >= 2.5e4) { score += 3; signals.push(`${fmtCount(maxFollowers)} followers (big audience)`); }
+  else if (maxFollowers >= 1e4) { score += 2; signals.push(`${fmtCount(maxFollowers)} followers (sizable audience)`); }
+  else if (maxFollowers >= 2.5e3) { score += 1; signals.push(`${fmtCount(maxFollowers)} followers`); }
+  if (hasWiki) { score += 2; signals.push('has a Wikipedia page'); }
+  if (hasKG) { score += 1; signals.push('appears in Google knowledge panel'); }
+  if (presenceCount >= 8) { score += 1; signals.push(`active on ${presenceCount}+ platforms`); }
+  const band = score >= 6 ? 'vip' : score >= 4 ? 'high_profile' : score >= 2 ? 'notable' : 'low';
+  return { band, score, signals };
 }
 
 // ---- step 4: synthesize ----------------------------------------------------
@@ -225,25 +228,33 @@ async function triangulate({ subject, inputPage, env }) {
 const SYNTH_SYSTEM = `You are a research analyst producing a concise, factual dossier on ONE person from the signals provided. Rules:
 - Use ONLY the provided signals — never invent facts, employers, or numbers. If something is unknown, say so or omit it.
 - Be direct and specific. No filler.
-- "reach_recommendation" = the best way to reach this person given what's known (their most-active platform, whether they're senior/gate-kept, whether to go direct vs via their company). Do NOT fabricate contact details — those come from a separate paid lookup.
-Return STRICT JSON only:
-{"summary": "2-3 sentence who-they-are", "current_role": "title @ company or null", "prominence": "1-2 sentences on their public profile / audience / VIP read", "notable": ["short factual finding", ...], "reach_recommendation": "1-2 sentences"}`;
+- "reach_recommendation" = the best way to reach this person given what's known (their most-active platform, whether to go direct vs via their company). Do NOT fabricate contact details — those come from a separate paid lookup.
 
-function synthContext({ subject, triangulation, rrProfile, inputPage }) {
+CRITICAL — NAMESAKES / IDENTITY: the ANCHOR profile (the URL the user gave us) is the real subject. The other cross-platform profiles, the Wikipedia entry, and the Google knowledge panel were found by NAME SEARCH and may belong to a DIFFERENT person who happens to share the name (e.g. a namesake actor, athlete, or author). Only attribute a signal to the subject when it is consistent with the anchor (same field / employer / role, or clearly the same individual). If a Wikipedia or knowledge-panel entry describes an unrelated profession with no tie to the subject's stated employer or role, it is almost certainly a NAMESAKE — EXCLUDE it entirely and do NOT mention it anywhere in the dossier.
+
+Return an "identity" object marking which findings are actually the subject:
+"identity": {"confirmed_platforms": ["<platform keys, from the PLATFORM list, that are the subject — always include the anchor>"], "wikipedia_is_subject": true|false, "knowledge_panel_is_subject": true|false, "note": "<one short line on any namesake you excluded, or empty>"}
+
+Return STRICT JSON only:
+{"summary": "2-3 sentence who-they-are (about the SUBJECT only)", "current_role": "title @ company or null", "prominence": "1-2 sentences on their audience / public profile", "notable": ["short factual finding about the subject", ...], "reach_recommendation": "1-2 sentences", "identity": {...}}`;
+
+function synthContext({ subject, candidates, rrProfile, inputPage }) {
   const lines = [];
-  lines.push(`INPUT URL: ${subject.input_url} (${subject.input_platform})`);
+  lines.push(`=== ANCHOR (the real subject — the profile the user gave us) ===`);
+  lines.push(`URL: ${subject.input_url} (platform key: ${subject.input_platform})`);
   lines.push(`NAME: ${subject.name || 'unknown'}`);
   lines.push(`TITLE: ${subject.title || 'unknown'}`);
   lines.push(`COMPANY: ${subject.company || 'unknown'}`);
   lines.push(`LOCATION: ${subject.location || 'unknown'}`);
   if (subject.linkedin_url) lines.push(`LINKEDIN: ${subject.linkedin_url}`);
+  if (rrProfile) lines.push(`ROCKETREACH (professional context for the subject): ${rrProfile.current_title || ''} @ ${rrProfile.current_employer || ''} — ${rrProfile.location || ''}`);
+  if (inputPage && inputPage.text) lines.push(`ANCHOR PAGE EXCERPT: ${String(inputPage.text).slice(0, 800)}`);
   lines.push('');
-  lines.push(`VIP BAND: ${triangulation.vip.band} — signals: ${triangulation.vip.signals.join('; ') || 'none'}`);
-  lines.push('CROSS-PLATFORM PRESENCE:');
-  for (const s of triangulation.social) lines.push(`  - ${s.label}: ${s.url}${s.followers ? ` (${fmtCount(s.followers)} followers)` : ''}`);
-  if (triangulation.knowledge_graph) lines.push(`KNOWLEDGE PANEL: ${JSON.stringify(triangulation.knowledge_graph).slice(0, 600)}`);
-  if (rrProfile) lines.push(`ROCKETREACH: ${rrProfile.current_title || ''} @ ${rrProfile.current_employer || ''} — ${rrProfile.location || ''}`);
-  if (inputPage && inputPage.text) lines.push(`PROFILE PAGE EXCERPT: ${String(inputPage.text).slice(0, 800)}`);
+  lines.push(`=== CANDIDATE cross-platform findings (may include a NAMESAKE — judge each) ===`);
+  for (const s of candidates.social) {
+    lines.push(`  [${s.key}] ${s.label}: ${s.url}${s.followers ? ` (${fmtCount(s.followers)} followers)` : ''}${s.anchor ? '  <- ANCHOR (definitely subject)' : ''}${s.snippet ? ` — "${String(s.snippet).slice(0, 160)}"` : ''}`);
+  }
+  if (candidates.knowledge_graph) lines.push(`  KNOWLEDGE PANEL: ${JSON.stringify(candidates.knowledge_graph).slice(0, 600)}`);
   return lines.join('\n');
 }
 
@@ -251,9 +262,10 @@ async function synthesize(parts, env) {
   const fallback = {
     summary: [parts.subject.name, parts.subject.title && `— ${parts.subject.title}`, parts.subject.company && `at ${parts.subject.company}`].filter(Boolean).join(' ') || 'Identity not resolved from the provided URL.',
     current_role: parts.subject.title ? `${parts.subject.title}${parts.subject.company ? ` @ ${parts.subject.company}` : ''}` : null,
-    prominence: `VIP read: ${parts.triangulation.vip.band}. ${parts.triangulation.vip.signals.join('; ') || 'Limited public footprint found.'}`,
+    prominence: 'Limited public footprint found.',
     notable: [],
-    reach_recommendation: parts.triangulation.social[0] ? `Most visible on ${parts.triangulation.social[0].label}.` : 'Try LinkedIn or the paid contact reveal.',
+    reach_recommendation: parts.candidates.social[0] ? `Most visible on ${parts.candidates.social[0].label}.` : 'Try LinkedIn or the paid contact reveal.',
+    identity: null,
   };
   if (!env.ANTHROPIC_API_KEY) return { ...fallback, model: null };
   try {
@@ -261,9 +273,9 @@ async function synthesize(parts, env) {
     const model = env.PERSON_MODEL || env.OUTREACH_MODEL || 'claude-sonnet-4-6';
     const resp = await client.messages.create({
       model,
-      max_tokens: 900,
+      max_tokens: 1000,
       system: [{ type: 'text', text: SYNTH_SYSTEM, cache_control: { type: 'ephemeral' } }],
-      messages: [{ role: 'user', content: `${synthContext(parts)}\n\nWrite the dossier now. Strict JSON only.` }],
+      messages: [{ role: 'user', content: `${synthContext(parts)}\n\nWrite the dossier now, excluding any namesake. Strict JSON only.` }],
     });
     recordModelUsage('anthropic', model, resp.usage);
     const text = (resp.content || []).filter((b) => b.type === 'text').map((b) => b.text).join('');
@@ -276,15 +288,35 @@ async function synthesize(parts, env) {
 
 export async function runPersonDeepDive({ url, name, company, env = process.env }) {
   const { subject, inputPage, rrProfile } = await identify({ url, name, company, env });
-  const triangulation = await triangulate({ subject, inputPage, env });
-  const narrative = await synthesize({ subject, triangulation, rrProfile, inputPage }, env);
+  const candidates = await triangulate({ subject, inputPage, env });
+  // Synthesize + adjudicate identity in one LLM pass (returns narrative + which
+  // findings are actually the subject vs a namesake).
+  const narrative = await synthesize({ subject, candidates, rrProfile, inputPage }, env);
+
+  // Filter to the CONFIRMED signal set, then score. The anchor (input) profile is
+  // always kept. No adjudication (no key) → keep everything (fail-open).
+  const adj = narrative.identity || null;
+  const anchorKey = subject.input_platform;
+  let social = candidates.social;
+  if (adj && Array.isArray(adj.confirmed_platforms)) {
+    const keep = new Set(adj.confirmed_platforms.map((k) => String(k).toLowerCase()));
+    keep.add(anchorKey);
+    const filtered = candidates.social.filter((s) => keep.has(s.key) || s.anchor);
+    social = filtered.length ? filtered : candidates.social.filter((s) => s.anchor);
+  }
+  const hasWiki = social.some((s) => s.key === 'wikipedia');
+  const kg = (candidates.knowledge_graph && (!adj || adj.knowledge_panel_is_subject !== false)) ? candidates.knowledge_graph : null;
+  const maxFollowers = social.reduce((m, s) => Math.max(m, s.followers || 0), 0);
+  const vip = computeVip({ maxFollowers, presenceCount: social.length, hasWiki, hasKG: !!kg });
+
   return {
     subject,
-    social: triangulation.social,
-    presence_count: triangulation.presence_count,
-    max_followers: triangulation.max_followers,
-    knowledge_graph: triangulation.knowledge_graph || null,
-    vip: triangulation.vip,
+    social,
+    presence_count: social.length,
+    max_followers: maxFollowers,
+    knowledge_graph: kg,
+    vip,
+    identity_note: (adj && adj.note) || null,
     narrative,
     // Free professional context (no emails/phones).
     professional: rrProfile ? {

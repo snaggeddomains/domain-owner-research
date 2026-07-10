@@ -732,11 +732,17 @@ button.
     TRIANGULATE: a broad `web_search` (harvest platform links + knowledge_graph) +
     targeted `site:` searches for the platforms not yet placed, then `read_url`
     each to read **follower/subscriber/connection counts** (best-effort — X/LinkedIn
-    often gate them). (3) Roll up a transparent **VIP band** (`low`/`notable`/
-    `high_profile`/`vip`) from max-followers × platform-count × Wikipedia/knowledge-
-    panel × title seniority — every firing signal is listed. (4) SYNTHESIZE: one LLM
-    call (`PERSON_MODEL`||`OUTREACH_MODEL`, default sonnet) writes summary/role/
-    prominence/notable/reach_recommendation. All steps fail-open.
+    often gate them). (3) SYNTHESIZE + ADJUDICATE IDENTITY: one LLM call
+    (`PERSON_MODEL`||`OUTREACH_MODEL`, default sonnet) writes the dossier AND returns
+    an `identity` object (`confirmed_platforms`, `wikipedia_is_subject`,
+    `knowledge_panel_is_subject`) — the anchor is the input profile; findings pulled
+    by NAME search that belong to a **namesake** (e.g. an actor with the same name)
+    are EXCLUDED. (4) VIP band is computed AFTER, from the CONFIRMED signal set only:
+    `computeVip` is **follower-dominant** (500K+ alone = VIP; 100K+Wikipedia = VIP;
+    <2.5K = low), Wikipedia/knowledge-panel are secondary, cross-platform breadth is
+    heavily discounted (+1 only at 8+ platforms), and **job seniority is ignored**.
+    Bands `low`/`notable`/`high_profile`/`vip`; every firing signal listed. All
+    steps fail-open (no key → keep all findings, no adjudication).
   - `revealContacts({subject,includePhone,env})` — the PAID step. `rocketreach_lookup`
     (by linkedin_url) → emails/phones; `fullenrich_lookup` fallback when RR is empty.
     De-duped. Bounded → runs inline (sync).
