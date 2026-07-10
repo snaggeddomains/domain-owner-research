@@ -278,6 +278,7 @@ button:disabled { opacity: .55; cursor: progress; }
 /* Inputs */
 .search { display: flex; gap: 10px; margin-bottom: 28px; }
 .search input,
+.search textarea,
 .login-card input,
 .projects-search,
 .tool-history-search {
@@ -290,14 +291,33 @@ button:disabled { opacity: .55; cursor: progress; }
   font-size: 16px;
   font-family: var(--body);
 }
+/* The domain box is a textarea so Shift+Enter adds a name (Enter submits). It
+   starts single-line and auto-grows as lines are added. */
+.search textarea {
+  resize: none;
+  line-height: 1.4;
+  min-height: 52px;
+  max-height: 220px;
+  overflow-y: auto;
+}
 .search input::placeholder,
+.search textarea::placeholder,
 .login-card input::placeholder,
 .projects-search::placeholder,
 .tool-history-search::placeholder { color: var(--navy-3); }
 .search input:focus,
+.search textarea:focus,
 .login-card input:focus,
 .projects-search:focus,
 .tool-history-search:focus { outline: none; border-color: var(--coral); }
+.hero-sub-hint { display: block; margin-top: 6px; font-size: .82em; color: var(--navy-3); }
+.batch-status {
+  max-width: 560px; margin: -14px auto 24px; text-align: left;
+  font-family: var(--body); font-size: 14px; color: var(--navy-2);
+  background: var(--paper); border: 1px solid var(--line); border-radius: var(--radius-sm);
+  padding: 10px 14px;
+}
+.batch-status.error { border-color: var(--coral); color: var(--coral); }
 
 /* Research hero */
 .hero { text-align: center; padding: 24px 0 4px; }

@@ -62,6 +62,7 @@ const els = {
   go: $('go'),
   deepToggle: $('deep-toggle'),
   status: $('status'),
+  batchStatus: $('batch-status'),
   runControls: $('run-controls'),
   cancelRun: $('cancel-run'),
   marketStrip: $('market-strip'),
@@ -4342,6 +4343,8 @@ function showEntry() {
   els.evidence.hidden = true;
   currentRunId = null;
   els.domain.value = '';
+  setBatchStatus('');
+  autoResizeDomain();
   // Re-enable the search submit. A run sets els.go.disabled = true and relies on
   // the polling completion handler to re-enable it — but coming back to the entry
   // (back button or "+ New report") clears that timer, so the button would stay
@@ -5516,21 +5519,121 @@ async function sendNamingChat(message) {
 }
 
 // ── Wiring ──────────────────────────────────────────────────────────────────
-els.form?.addEventListener('submit', (e) => {
-  e.preventDefault();
-  if (!els.domain.value.trim()) return;
-  let domain;
-  try { domain = cleanDomainInput(els.domain.value); }
-  catch (err) { setStatus(String(err.message || err)); return; }
-  els.domain.value = domain;
-  setActiveDomain(domain);
-  // Choose phase against the user's permissions. The checkbox is the user's
-  // explicit ask; otherwise default to shallow. When the user has ONLY deep
-  // (admin disabled free reports), force deep so the server doesn't 403 them.
+// The user's chosen phase, gated by permissions. The checkbox is the explicit
+// ask; otherwise default to shallow. A user with ONLY deep (free reports disabled)
+// is forced to deep so the server doesn't 403 them.
+function chosenDeep() {
   let deep = !!(els.deepToggle && els.deepToggle.checked);
   if (!deep && !canPhase(currentUser, 'shallow') && canPhase(currentUser, 'deep')) deep = true;
+  return deep;
+}
+
+// Split the domain box into candidate names. Shift+Enter lets the user stack
+// several (one per line); commas/spaces/semicolons also separate.
+function parseDomainList(raw) {
+  return String(raw || '')
+    .split(/[\n,;]+|\s{2,}/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+const BATCH_MAX = 25;
+
+function setBatchStatus(text, isError = false) {
+  if (!els.batchStatus) return;
+  if (!text) { els.batchStatus.hidden = true; els.batchStatus.textContent = ''; return; }
+  els.batchStatus.hidden = false;
+  els.batchStatus.textContent = text;
+  els.batchStatus.classList.toggle('error', isError);
+}
+
+// Fire a research run for EACH name in parallel (all created at once, server-side
+// Inngest jobs), then keep the user on the entry view watching Recent fill in —
+// instead of running them one at a time.
+async function runBatch(domains, deep) {
+  const seen = new Set();
+  const clean = [];
+  const bad = [];
+  for (const raw of domains) {
+    try {
+      const d = cleanDomainInput(raw);
+      const key = d.toLowerCase();
+      if (!seen.has(key)) { seen.add(key); clean.push(d); }
+    } catch { bad.push(raw); }
+  }
+  if (!clean.length) { setBatchStatus(`Couldn't read any valid domains${bad.length ? `: ${bad.slice(0, 3).join(', ')}` : ''}.`, true); return; }
+  const capped = clean.slice(0, BATCH_MAX);
+  const skipped = clean.length - capped.length;
+  if (els.go) els.go.disabled = true;
+  setBatchStatus(`Starting ${capped.length} research runs${deep ? ' (deep)' : ''}…`);
+  const results = await Promise.allSettled(capped.map((domain) => enqueue({ domain, deep })));
+  const ok = results.filter((r) => r.status === 'fulfilled').length;
+  const failed = capped.length - ok;
+  const parts = [`Started ${ok} research run${ok === 1 ? '' : 's'}${deep ? ' (deep)' : ''} — they'll appear in Recent below as they finish.`];
+  if (failed) parts.push(`${failed} couldn't start.`);
+  if (bad.length) parts.push(`Skipped ${bad.length} unrecognized.`);
+  if (skipped) parts.push(`Only the first ${BATCH_MAX} were started.`);
+  setBatchStatus(parts.join(' '), failed > 0 && ok === 0);
+  els.domain.value = '';
+  autoResizeDomain();
+  if (els.go) els.go.disabled = false;
+  loadRecent();
+  startRecentPoll();
+}
+
+// While a batch is running, refresh Recent so completed runs flip from
+// "researching…" to a timestamp without a manual reload. Bounded so it can't
+// poll forever; cleared when leaving the entry view.
+let recentPollTimer = null;
+let recentPollUntil = 0;
+function startRecentPoll() {
+  recentPollUntil = Date.now() + 6 * 60 * 1000; // up to ~6 min
+  if (recentPollTimer) return;
+  recentPollTimer = setInterval(() => {
+    if (Date.now() > recentPollUntil || els.hero.hidden) { stopRecentPoll(); return; }
+    loadRecent();
+  }, 6000);
+}
+function stopRecentPoll() {
+  if (recentPollTimer) { clearInterval(recentPollTimer); recentPollTimer = null; }
+}
+
+// Grow the domain textarea with its content (single line → multi as names stack).
+function autoResizeDomain() {
+  const el = els.domain;
+  if (!el || el.tagName !== 'TEXTAREA') return;
+  el.style.height = 'auto';
+  el.style.height = Math.min(el.scrollHeight, 220) + 'px';
+}
+
+els.form?.addEventListener('submit', (e) => {
+  e.preventDefault();
+  setBatchStatus('');
+  const list = parseDomainList(els.domain.value);
+  if (!list.length) return;
+  const deep = chosenDeep();
+  // More than one name → fan out in parallel and stay on the entry view.
+  if (list.length > 1) { runBatch(list, deep); return; }
+  // Single name → the normal in-place research flow.
+  let domain;
+  try { domain = cleanDomainInput(list[0]); }
+  catch (err) { setStatus(String(err.message || err)); return; }
+  els.domain.value = domain;
+  autoResizeDomain();
+  setActiveDomain(domain);
   run({ domain, deep });
 });
+
+// Enter submits; Shift+Enter inserts a newline (stack several names). Auto-grow
+// the box as lines are added.
+els.domain?.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    if (typeof els.form.requestSubmit === 'function') els.form.requestSubmit();
+    else els.form.dispatchEvent(new Event('submit', { cancelable: true }));
+  }
+});
+els.domain?.addEventListener('input', autoResizeDomain);
 
 els.deepenBtn?.addEventListener('click', deepen);
 els.deepenTopBtn?.addEventListener('click', deepen);

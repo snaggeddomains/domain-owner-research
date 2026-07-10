@@ -28,7 +28,7 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="apple-mobile-web-app-title" content="Snagged Research" />
     <meta name="theme-color" content="#254254" />
-    <link rel="stylesheet" href="styles.css?v=20260709website" />
+    <link rel="stylesheet" href="styles.css?v=20260710multi" />
     <!-- Layout: horizontal tab nav (Admin-style), no sidebar. -->
   </head>
   <body>
@@ -247,12 +247,13 @@
           <div class="hero" id="hero">
             <img class="hero-art" src="mascot-hero.png" alt="" />
             <h1 class="hero-title">Domain <span class="accent">Research</span></h1>
-            <p class="hero-sub">Enter a domain — a free pre-flight runs first (no paid credits); you can go deeper afterwards.</p>
+            <p class="hero-sub">Enter a domain — a free pre-flight runs first (no paid credits); you can go deeper afterwards. <span class="hero-sub-hint">Shift+Enter to add several names and research them all at once.</span></p>
             <form id="search" class="search hero-search" autocomplete="off">
-              <input id="domain" name="domain" type="text" placeholder="example.com" required />
+              <textarea id="domain" name="domain" rows="1" placeholder="example.com" required></textarea>
               <button id="go" type="submit">Research</button>
             </form>
             <label class="deep-opt"><input type="checkbox" id="deep-toggle" /><span class="deep-opt-text">Go straight to deep research<span class="deep-opt-note"> — uses paid sources, skips the free preview</span></span></label>
+            <div id="batch-status" class="batch-status" hidden></div>
 
             <div id="recent" class="recent" hidden>
               <div class="recent-title">Recent</div>
@@ -1110,6 +1111,6 @@ The model parses it into structured filters (TLDs, length, budget, tone, etc.) a
     </div>
 
     <!-- Bump ?v= on any public/app.js or styles.css change to bust caches. -->
-    <script src="app.js?v=20260710addonreset"></script>
+    <script src="app.js?v=20260710multi"></script>
   </body>
 </html>
