@@ -14,6 +14,7 @@
 // supports the high end of the comp range; a poor one pulls toward the low end).
 
 import { comboSynergy, tldQuality } from './tld.js';
+import { isMub } from './mub.js';
 
 const VOWELS = 'aeiouy';
 
@@ -74,13 +75,16 @@ function pronounceScore(sld) {
   return Math.max(5, Math.min(100, score));
 }
 
-// dictionaryClass: 'word' (in english_words / passes the dictionary check),
-// 'brandable' (coined but pronounceable), or 'junk' (random/awkward). The caller
-// supplies isWord (async DB check) so this stays pure.
+// dictionaryClass: 'word' (a real dictionary word — the only class that can grade A),
+// 'brandable' (a coined name that PASSES the MUB gate — premium-eligible but unproven),
+// or 'junk' (a coinage that doesn't clear MUB / a random-looking string). The caller
+// supplies isWord (async DB check) so this stays pure. A real word anchors real resale
+// value; a MUB-brandable is a plausible startup name but has no proven demand; junk is
+// a made-up string nobody is searching for.
 function dictionaryScore(cls) {
   if (cls === 'word') return 100;
-  if (cls === 'brandable') return 66;
-  return 30;
+  if (cls === 'brandable') return 62;
+  return 20;
 }
 
 function cleanlinessScore(sld) {
@@ -93,12 +97,14 @@ function cleanlinessScore(sld) {
 }
 
 // Classify an SLD as word/brandable/junk given the dictionary verdict. `isWord`
-// comes from the english_words check; when it's false we decide brandable-vs-junk
-// from pronounceability (a sayable coinage is brandable; an unsayable string isn't).
+// comes from the english_words check → a real word. A coinage is only 'brandable'
+// if it passes the SAME MUB (Made-Up Brandable) gate SNAP + auctions use — a strict
+// coined-.com standard (clean sound↔spelling, 2–3 syllables, Ambrino-grade clarity,
+// no banned letters/digraphs). A sayable-but-not-MUB coinage (adfoz, ivorl) is junk,
+// NOT brandable — "pronounceable" is not the bar; MUB is.
 export function classifyDictionary(sld, isWord) {
   if (isWord) return 'word';
-  const p = pronounceScore(sld);
-  return p >= 62 ? 'brandable' : 'junk';
+  return isMub(sld, false) ? 'brandable' : 'junk';
 }
 
 // Compute the full SLD/TLD quality breakdown.
@@ -143,7 +149,19 @@ export function scoreQuality({ sld, tld, isWord = false, numWords = null }) {
   const pron = components.pronounce;
   if (pron < 60) combo = Math.round(combo * Math.max(0.5, pron / 60));
 
-  const grade = (combo >= 80 && pron >= 62) ? 'A' : combo >= 66 ? 'B' : combo >= 50 ? 'C' : combo >= 34 ? 'D' : 'F';
+  // Grade is MEANING-gated, not just craft-gated. Grade A is reserved for real
+  // dictionary words (the only class with proven, searchable resale demand); a coined
+  // name — however clean — can never be A. A MUB-grade brandable caps at B (premium,
+  // but unproven); everything else (junk coinage) caps at C, and a poorly-formed name
+  // still falls to D/F on its combined craft score.
+  let grade;
+  if (cls === 'word') {
+    grade = (combo >= 80 && pron >= 62) ? 'A' : combo >= 66 ? 'B' : combo >= 50 ? 'C' : combo >= 34 ? 'D' : 'F';
+  } else if (cls === 'brandable') {
+    grade = combo >= 60 ? 'B' : combo >= 46 ? 'C' : combo >= 34 ? 'D' : 'F'; // MUB brandable: B ceiling
+  } else {
+    grade = combo >= 50 ? 'C' : combo >= 34 ? 'D' : 'F'; // junk coinage: C ceiling
+  }
 
   return {
     sld: s,

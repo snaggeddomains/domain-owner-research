@@ -6311,7 +6311,7 @@ document.getElementById('be-results')?.addEventListener('click', (e) => {
   if (t.dataset.beSort) beSetSort(t.dataset.beSort);
   else if (t.dataset.beGrade) { const g = t.dataset.beGrade; beState.grades.has(g) ? beState.grades.delete(g) : beState.grades.add(g); beRender(); }
   else if (t.dataset.beType) { const ty = t.dataset.beType; beState.types.has(ty) ? beState.types.delete(ty) : beState.types.add(ty); beRender(); }
-  else if (t.dataset.bePremium) { beState.grades = new Set(['A']); beState.types = new Set(['word', 'brandable']); beRender(); }
+  else if (t.dataset.bePremium) { beState.grades = new Set(['A', 'B']); beState.types = new Set(['word', 'brandable']); beRender(); }
   else if (t.dataset.beClear) { beState.q = ''; beState.grades = new Set(['A', 'B', 'C', 'D', 'F']); beState.types = new Set(['word', 'brandable', 'junk']); beState.sortKey = null; beRender(); }
 });
 document.getElementById('be-results')?.addEventListener('input', (e) => {
