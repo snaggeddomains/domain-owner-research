@@ -70,25 +70,31 @@ export async function bulkEvaluate(names, env = process.env) {
     const { sld, tld } = sldTld(r.domain);
     try {
       const quality = scoreQuality({ sld, tld, isWord: words.has(sld) });
+      const isWord = quality.dictionary_class === 'word';
       const trackerRaw = await trackerComps({ sld, tld, len: sld.length }, env).catch(() => null);
-      // Only EXACT word-match comps (the same SLD on another TLD) are a real value signal
-      // for THIS name. A `same_tld` match is just "other similar-length names sold for $X"
-      // — a length DISTRIBUTION, not a comp — which is what wildly inflated coined strings
-      // (fabraw.com → $330k). Keep only `same_sld` as the value anchor.
-      const realComps = trackerRaw && Array.isArray(trackerRaw.deals) ? trackerRaw.deals.filter((d) => d.relation === 'same_sld') : [];
-      const trackerAnchor = realComps.length ? { ...trackerRaw, deals: realComps } : null;
+      const allDeals = trackerRaw && Array.isArray(trackerRaw.deals) ? trackerRaw.deals.filter((d) => d && d.price > 0) : [];
+      const exactComps = allDeals.filter((d) => d.relation === 'same_sld'); // exact word, another TLD
+      // Which comparable SNAGGED sales anchor THIS name:
+      //  • real WORDS → the FULL comparable set — exact same-word sales AND same-extension
+      //    sales of similar-length names (`same_tld`). A grade-A short .ai word belongs on
+      //    the distribution of what .ai names actually clear at; `computeValuation` then
+      //    positions it within that distribution by its quality (a grade A sits near the top).
+      //  • coined / junk → ONLY an exact same-word comp counts. A coined string does NOT
+      //    belong on the dictionary-name distribution (it would inflate off length alone —
+      //    fabraw.com → $330k), so with no exact comp it falls to the conservative floor.
+      const usableComps = isWord ? allDeals : exactComps;
+      const trackerAnchor = usableComps.length ? { ...trackerRaw, deals: usableComps } : null;
 
       const val = computeValuation({ quality, tracker: trackerAnchor, price: r.price || 0 });
       let mid = val.fair_value.mid;
       let confidence = val.confidence;
-      const isWord = quality.dictionary_class === 'word';
-      let basis = realComps.length ? 'comps' : isWord ? 'word' : 'quality';
+      let basis = usableComps.length ? 'comps' : isWord ? 'word' : 'quality';
       let speculative = false;
 
       // Coined name (no dictionary meaning) + no exact comps → no real basis for a premium.
       // Floor to a realistic wholesale value and flag it speculative, rather than pricing
       // it off a premium distribution it doesn't belong to.
-      if (!isWord && !realComps.length) {
+      if (!isWord && !exactComps.length) {
         const floor = coinedFloor(quality);
         if (mid > floor) mid = floor;
         confidence = 'speculative';
@@ -110,7 +116,7 @@ export async function bulkEvaluate(names, env = process.env) {
         confidence,
         basis,
         speculative,
-        comps: realComps.length,
+        comps: usableComps.length,
       };
     } catch (e) {
       return { domain: r.domain, price: r.price, error: String((e && e.message) || e) };
