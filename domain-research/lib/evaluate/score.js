@@ -65,12 +65,31 @@ function newestSaleYears(sales) {
 }
 
 // Quality-only baseline value when comps are thin/absent. An exponential curve
-// over the SLD craft score, scaled by the extension's price multiplier. Calibrated
-// so a clean one-word .com (~score 90) ≈ $9k, mid (~70) ≈ $2k, weak (~50) ≈ $550.
+// over the SLD craft score, scaled by the extension's price multiplier, PLUS an
+// explicit length premium for real dictionary words. Calibrated so a clean one-word
+// .com (~score 90) ≈ $9k, mid (~70) ≈ $2k, weak (~50) ≈ $550 — and a SHORT real word
+// clears well above that (a 3-letter dictionary .ai ≈ $40k, not $14k).
+//
+// Why the length premium: the craft score SATURATES on length (a 3-letter and a
+// 6-letter word both score ~100 on the length component), so the raw curve prices a
+// 3-letter word the same as a 6-letter one — but a 3-letter dictionary word is a
+// categorically scarcer, pricier asset. A real WORD also carries scarcity the curve
+// underprices; coined/junk names do NOT (their value is brandability, already governed
+// by the appraisal cap in SNAP Eval and the coined floor in Bulk Eval), so they stay on
+// the base curve. This matters most where there are NO comps/appraisals to anchor —
+// exactly Bulk Eval, which leans entirely on this baseline.
 function qualityBaseline(quality) {
   const sld = quality && quality.sld_score != null ? quality.sld_score : (quality && quality.score) || 40;
   const mult = (quality && quality.tld && quality.tld.mult) || 0.1;
-  const mid = Math.pow(10, 0.03 * sld + 1.25) * mult;
+  const cls = (quality && quality.dictionary_class) || 'word';
+  const len = (quality && quality.length) || 8;
+  let mid = Math.pow(10, 0.03 * sld + 1.25) * mult;
+  if (cls === 'word') {
+    // Length premium for real words (3-letter ≫ 4 ≫ 5 …; 7+ letters get no lift and a
+    // slight discount — a long dictionary word isn't scarce). Tunable, inspectable.
+    const lp = len <= 3 ? 2.8 : len <= 4 ? 1.7 : len <= 5 ? 1.3 : len <= 6 ? 1.05 : len <= 8 ? 0.95 : 0.85;
+    mid *= lp;
+  }
   return { low: mid * 0.4, mid, high: mid * 2.4 };
 }
 
