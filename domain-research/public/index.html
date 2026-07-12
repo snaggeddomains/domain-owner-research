@@ -641,7 +641,7 @@
         <!-- Whois — basic free domain lookup (RDAP + legacy WHOIS) -->
         <section id="view-whois" hidden>
           <h1 class="page-title">Whois <span class="accent">lookup</span></h1>
-          <p class="sub">A basic, free domain lookup via <strong>RDAP</strong> (with legacy WHOIS merged in) — registrar, registration / expiry / updated dates, status codes, nameservers, DNSSEC, and the registrant contact when it's public. No credits used.</p>
+          <p class="sub">A basic, free domain lookup via <strong>RDAP</strong> (with legacy WHOIS merged in) — registrar, registration / expiry / updated dates, status codes, nameservers, DNSSEC, an <strong>email (MX) in-use flag</strong>, and the registrant contact when it's public. No credits used.</p>
           <form id="whois-form" class="beeper-form">
             <input id="whois-domain" type="text" placeholder="e.g. example.com" autocomplete="off" autocapitalize="off" spellcheck="false" />
             <button id="whois-add" type="submit">Look up</button>
@@ -1134,6 +1134,6 @@ The model parses it into structured filters (TLDs, length, budget, tone, etc.) a
     </div>
 
     <!-- Bump ?v= on any public/app.js or styles.css change to bust caches. -->
-    <script src="app.js?v=20260710bulkeval5"></script>
+    <script src="app.js?v=20260711whoismx"></script>
   </body>
 </html>

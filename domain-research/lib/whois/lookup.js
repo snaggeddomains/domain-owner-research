@@ -64,6 +64,53 @@ async function dnsNameservers(domain) {
   }
 }
 
+// MX records via DoH — a practical "is email actually in use here" signal: a domain
+// with live MX is set up to RECEIVE mail (real mailbox / forwarding), one with none is
+// almost certainly not using email at that domain. type MX = 15. Returns
+// { active: bool | null (null = lookup failed → unknown), records:[{priority,host}], provider }.
+const MX_PROVIDERS = [
+  [/aspmx.*google|google\.com$|googlemail/i, 'Google Workspace'],
+  [/protection\.outlook|office365|outlook\.com$/i, 'Microsoft 365'],
+  [/zoho/i, 'Zoho'],
+  [/proton(mail)?|pm\.me/i, 'Proton'],
+  [/icloud|me\.com$|mail\.me\.com/i, 'iCloud'],
+  [/pphosted|proofpoint/i, 'Proofpoint'],
+  [/mimecast/i, 'Mimecast'],
+  [/secureserver\.net/i, 'GoDaddy Email'],
+  [/improvmx/i, 'ImprovMX (forwarding)'],
+  [/forwardemail/i, 'ForwardEmail'],
+  [/messagingengine|fastmail/i, 'Fastmail'],
+  [/amazonaws|amazonses/i, 'Amazon SES'],
+  [/mailgun/i, 'Mailgun'],
+  [/sendgrid/i, 'SendGrid'],
+  [/yandex/i, 'Yandex'],
+  [/registrar-servers\.com/i, 'Namecheap Email'],
+];
+function mxProvider(records) {
+  for (const r of records || []) for (const [re, label] of MX_PROVIDERS) if (re.test(r.host)) return label;
+  return null;
+}
+async function dnsMx(domain) {
+  try {
+    const j = await fetchJson(`https://dns.google/resolve?name=${encodeURIComponent(domain)}&type=MX`);
+    if (!j || typeof j.Status !== 'number') return { active: null, records: [] }; // couldn't read → unknown
+    const ans = Array.isArray(j.Answer) ? j.Answer : [];
+    const records = ans
+      .filter((a) => a && a.type === 15)
+      .map((a) => {
+        const parts = String(a.data || '').trim().split(/\s+/);
+        const priority = parts.length > 1 ? Number(parts[0]) : null;
+        const host = (parts.length > 1 ? parts[1] : parts[0] || '').replace(/\.$/, '').toLowerCase();
+        return host ? { priority: Number.isFinite(priority) ? priority : null, host } : null;
+      })
+      .filter(Boolean)
+      .sort((a, b) => (a.priority ?? 999) - (b.priority ?? 999));
+    return { active: records.length > 0, records, provider: mxProvider(records) };
+  } catch {
+    return { active: null, records: [] };
+  }
+}
+
 // Flatten an RDAP jCard (vcardArray) into the fields we care about.
 function parseVcard(vcardArray) {
   const out = { fn: '', org: '', email: '', tel: '', country: '', region: '' };
@@ -164,12 +211,14 @@ export async function whoisLookup(domainRaw) {
   const domain = normalizeDomain(domainRaw);
   if (!domain || !isValidDomain(domain)) throw new Error('Provide a valid domain (e.g. example.com).');
 
-  const [rdapR, whoisR] = await Promise.allSettled([
+  const [rdapR, whoisR, mxR] = await Promise.allSettled([
     rdapLookup(domain),
     whoisSource.run({ domain }).catch(() => null),
+    dnsMx(domain),
   ]);
   const rdap = rdapR.status === 'fulfilled' ? rdapR.value : { ok: false };
   const whois = whoisR.status === 'fulfilled' ? whoisR.value : null;
+  const mx = mxR.status === 'fulfilled' ? mxR.value : { active: null, records: [] };
 
   // RDAP "not-found" is NOT proof of availability: some ccTLD registries (e.g.
   // .co) aren't in IANA's RDAP bootstrap, so rdap.org 404s a perfectly registered
@@ -180,7 +229,7 @@ export async function whoisLookup(domainRaw) {
     const whoisRegistered = !!(whois && (whois.created || whois.registrar || (whois.nameservers && whois.nameservers.length)));
     if (!whoisRegistered) dnsNs = await dnsNameservers(domain);
     if (!whoisRegistered && dnsNs.length === 0) {
-      return { domain, available: true, registrar: null, dates: {}, statuses: [], nameservers: [], contacts: {}, privacy: false, sources: { rdap: rdap.source, whois: null }, raw: {} };
+      return { domain, available: true, registrar: null, dates: {}, statuses: [], nameservers: [], mx: { active: false, records: [] }, contacts: {}, privacy: false, sources: { rdap: rdap.source, whois: null }, raw: {} };
     }
     // Registered after all — fall through and build the result from WHOIS + DNS.
   }
@@ -220,6 +269,7 @@ export async function whoisLookup(domainRaw) {
     dates,
     statuses,
     nameservers,
+    mx,
     dnssec: rdap.dnssec ?? null,
     contacts: {
       registrant: hasRegistrant ? registrant : null,

@@ -3728,6 +3728,15 @@ function renderWhois(w) {
   const statuses = (w.statuses || []).length ? w.statuses.map((s) => `<span class="wi-tag">${escapeHtml(s)}</span>`).join(' ') : null;
   const ns = (w.nameservers || []).length ? w.nameservers.map((n) => `<div>${escapeHtml(n)}</div>`).join('') : null;
   const ab = w.abuse && (w.abuse.email || w.abuse.phone) ? [w.abuse.email, w.abuse.phone].filter(Boolean).map((x) => escapeHtml(String(x))).join(' · ') : null;
+  // MX / email-in-use flag — active MX = the domain is set up to receive mail (a good
+  // "the owner actually uses this address" signal); none = probably not using email here.
+  const mx = w.mx || {};
+  const mxHosts = (mx.records || []).slice(0, 3).map((x) => escapeHtml(x.host)).join('<br>') + ((mx.records || []).length > 3 ? `<br><span class="muted">+${mx.records.length - 3} more</span>` : '');
+  const mxHtml = mx.active === true
+    ? `<span style="color:#0b8f3a;font-weight:600">✓ active</span>${mx.provider ? ` <span class="muted">· ${escapeHtml(mx.provider)}</span>` : ''}${mxHosts ? `<div class="muted" style="margin-top:3px;font-size:12px;line-height:1.5">${mxHosts}</div>` : ''}`
+    : mx.active === false
+      ? `<span style="color:#b1442c;font-weight:600">✗ none</span> <span class="muted">— no mail server; likely not using email at this domain</span>`
+      : `<span class="muted">? unknown (couldn't resolve MX)</span>`;
   const core = `<div class="wi-card"><h4>${escapeHtml(w.domain)}</h4>`
     + whoisShareHtml(w.domain)
     + whoisRow('Registrar', reg)
@@ -3736,6 +3745,7 @@ function renderWhois(w) {
     + whoisRow('Updated', whoisDate(w.dates && w.dates.updated))
     + whoisRow('Status', statuses)
     + whoisRow('Nameservers', ns)
+    + whoisRow('Email (MX)', mxHtml)
     + whoisRow('DNSSEC', w.dnssec == null ? null : (w.dnssec ? 'signed' : 'unsigned'))
     + whoisRow('Abuse', ab)
     + `</div>`;
