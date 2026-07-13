@@ -3393,6 +3393,10 @@ function enterResultMode(domain) {
   // (Keep dataset.bound — the click listener is delegated on the container and
   // survives innerHTML changes; re-binding would double-fire it.)
   if (els.reportAddons) { els.reportAddons.hidden = true; els.reportAddons.innerHTML = ''; delete els.reportAddons.dataset.owner; }
+  // Same for the Company vitals card — it's loaded per report domain, so a fresh
+  // run must clear the previous company's block (else last report's vitals sit
+  // stale through the whole "gathering" stage of the new run).
+  if (els.companyVitals) { els.companyVitals.hidden = true; els.companyVitals.innerHTML = ''; delete els.companyVitals.dataset.domain; }
   stopDsPoll();
   if (els.marketStrip) els.marketStrip.hidden = true;
   if (els.runControls) els.runControls.hidden = true;
@@ -4949,6 +4953,55 @@ const NMV_CAT = {
   registered: { cls: 'nmv-taken', label: 'Registered' },
   unknown: { cls: 'nmv-unknown', label: 'Unknown' },
 };
+const NMV_ORDER = { for_sale: 0, available: 1, parked: 2, active: 3, registered: 4, unknown: 5 };
+// Map a raw corpus feed id → a clean marketplace label (mirrors sweep.js cleanMktLabel).
+function nmvMktLabel(src) {
+  const s = String(src || '').toLowerCase();
+  if (/afternic/.test(s)) return 'Afternic';
+  if (/sedo/.test(s)) return 'Sedo';
+  if (/brandbucket/.test(s)) return 'BrandBucket';
+  if (/atom|squadhelp/.test(s)) return 'Atom';
+  if (/namecheap/.test(s)) return 'Namecheap';
+  if (/\bdan\b/.test(s)) return 'Dan';
+  if (/efty/.test(s)) return 'Efty';
+  return 'our corpus';
+}
+// Client-side corpus promotion — mirrors the server rule so that ANY row we have
+// listed with a price in our corpus reads as "For sale", regardless of source
+// (afternic/brandbucket/sedo_dump/…). Runs over the loaded rows so it also corrects
+// SAVED runs persisted before the server fix existed, and any row the server's
+// best-effort corpus lookup missed. Only registered/parked flip (never available =
+// free, never active = real live site), and only with an actual price.
+function nmvPromoteCorpus(rows) {
+  for (const r of rows || []) {
+    const inf = r.internal;
+    if (!inf || !(inf.in_universe || inf.in_master)) continue;
+    const ip = Number(inf.universe_price || inf.master_price) || 0;
+    const src = inf.universe_source || inf.master_source || 'our corpus';
+    if (r.for_sale && !(r.price > 0) && ip > 0) {
+      r.price = ip; r.currency = r.currency || 'USD'; r.price_internal = true;
+      r.marketplace = r.marketplace || nmvMktLabel(src);
+    } else if (!r.for_sale && ip > 0 && (r.category === 'registered' || r.category === 'parked')) {
+      r.for_sale = true; r.for_sale_source = r.for_sale_source || 'corpus'; r.category = 'for_sale';
+      r.price = ip; r.currency = r.currency || 'USD'; r.price_internal = true;
+      r.marketplace = r.marketplace || nmvMktLabel(src);
+      if (!r.link) {
+        if (/afternic/i.test(src)) r.link = `https://www.afternic.com/domain/${r.domain}`;
+        else if (/sedo/i.test(src)) r.link = `https://sedo.com/search/details/?domain=${r.domain}`;
+      }
+    }
+  }
+  // Re-rank to match the server (rankKey): category → price → .com-first → domain.
+  const rank = (r) => {
+    const priced = (Number.isFinite(r.price) && r.price > 0) ? r.price : (r.min_offer > 0 ? r.min_offer : Infinity);
+    return [NMV_ORDER[r.category] ?? 5, priced, r.domain.endsWith('.com') ? 0 : 1];
+  };
+  rows.sort((a, b) => {
+    const ka = rank(a); const kb = rank(b);
+    return (ka[0] - kb[0]) || (ka[1] - kb[1]) || (ka[2] - kb[2]) || a.domain.localeCompare(b.domain);
+  });
+  return rows;
+}
 
 function renderVariations(data) {
   if (els.namingResults) els.namingResults.hidden = true;
@@ -4956,6 +5009,7 @@ function renderVariations(data) {
   if (els.namingFiltersPanel) els.namingFiltersPanel.hidden = true;
   if (els.namingChat) els.namingChat.hidden = true;
   const rows = (data && Array.isArray(data.results)) ? data.results : [];
+  nmvPromoteCorpus(rows);
   const filtered = rows.filter(rowMatchesFilter);
   const anyFilter = variationsFilter.affix.size || variationsFilter.tld.size;
   const n = (cat) => rows.filter((r) => r.category === cat).length;
