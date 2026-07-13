@@ -415,10 +415,16 @@ can NEVER hold a specific word fixed — so it returned public-safety-*themed* n
   sweep, fail-open). Each row gets `r.internal` — `in_universe`/`in_master`, our stored
   `best_price`/`price` + source, and an `owner` (owned-feed universe → Snagged/Rob, or a
   Master attribution). UI shows a "📇 In our corpus · $X · afternic" / "🏷 <owner>" badge
-  under the domain; CSV gains In-our-corpus / Owner / Our-price columns. Behavior change
-  is minimal + safe: a FOR-SALE row the live crawl couldn't price is filled from our
-  stored price (`price_internal`, tagged "our corpus"); we never flip an available/active
-  row on stale corpus data.
+  under the domain; CSV gains In-our-corpus / Owner / Our-price columns. Two safe
+  behavior changes from the corpus signal (2026-07-13): (1) a FOR-SALE row the live
+  crawl couldn't price is filled from our stored price (`price_internal`, tagged "our
+  corpus"); (2) a **registered/parked** row is **PROMOTED to `for_sale`** when our corpus
+  has a PRICED listing for it (`for_sale_source:'corpus'`, `cleanMktLabel(source)` →
+  Afternic/Sedo/BrandBucket/…, + a marketplace deep-link for Afternic/Sedo) — a name
+  listed on a marketplace with an asking price IS for sale even when the live crawl only
+  saw a registrar/holding page (JS landers, geo/UA gating, stale caches hide many
+  marketplace landers). We still NEVER flip an `available` (free) or `active` (real live
+  site) row on corpus data — only registered/parked, and only with an actual price.
 - **Premium / reserved availability — Porkbun-authoritative (2026-07-09).** RDAP can't
   tell a registerable name from a registry-RESERVED / PREMIUM one (dart.app: no
   registration record → looks "available", but GoDaddy blocks it). A heuristic first

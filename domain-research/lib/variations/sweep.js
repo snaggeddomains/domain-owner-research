@@ -259,6 +259,19 @@ async function inspectSite(domain) {
 
 // Rank by category: for-sale first (cheapest first — the buy-ready options), then
 // available-to-register, then active/parked/held; .com ahead of other TLDs.
+// Tidy a raw corpus feed id (best_price_source / sources[0]) into a marketplace label.
+function cleanMktLabel(src) {
+  const s = String(src || '').toLowerCase();
+  if (/afternic/.test(s)) return 'Afternic';
+  if (/sedo/.test(s)) return 'Sedo';
+  if (/brandbucket/.test(s)) return 'BrandBucket';
+  if (/\batom\b|squadhelp/.test(s)) return 'Atom';
+  if (/namecheap/.test(s)) return 'Namecheap';
+  if (/dan\b/.test(s)) return 'Dan';
+  if (/efty/.test(s)) return 'Efty';
+  return 'our corpus';
+}
+
 const CATEGORY_ORDER = { for_sale: 0, available: 1, parked: 2, active: 3, registered: 4, unknown: 5 };
 function rankKey(r) {
   const isCom = r.domain.endsWith('.com') ? 0 : 1;
@@ -378,10 +391,14 @@ export async function sweepVariations(seed, { env = process.env, excludeTlds = [
       }
     });
   }
-  // Merge our internal-corpus signal onto each row. Pure signal (badges); the only
-  // behavior change is filling a for-sale row's MISSING price from our stored price
-  // (a name we track on e.g. Afternic the live crawl couldn't price). We never flip
-  // an "available"/"active" row on stale corpus data.
+  // Merge our internal-corpus signal onto each row. Two behavior changes, both safe:
+  //  (a) fill a for-sale row's MISSING price from our stored price, and
+  //  (b) PROMOTE a registered/parked row to for-sale when our corpus has a PRICED
+  //      listing for it — a name listed on Afternic/Sedo/BrandBucket (with an asking
+  //      price) IS for sale, even if the live crawl only saw a registrar/holding page
+  //      (JS landers, geo/UA gating, and stale caches hide many marketplace landers).
+  // We still never flip an "available" (free) or "active" (real live site) row on
+  // corpus data — only registered/parked, and only when there's an actual price.
   {
     // Never let a slow corpora query hold the whole response — cap the wait; if it
     // doesn't land in time we just skip the (nice-to-have) badges.
@@ -390,12 +407,22 @@ export async function sweepVariations(seed, { env = process.env, excludeTlds = [
       const info = internalForRow(internal.get(r.domain.toLowerCase()));
       if (!info) continue;
       r.internal = info;
+      const ip = info.universe_price || info.master_price;
+      const src = info.universe_source || info.master_source || 'our corpus';
       if (r.for_sale && !(r.price > 0)) {
-        const ip = info.universe_price || info.master_price;
         if (ip > 0) {
           r.price = ip; r.currency = r.currency || 'USD'; r.price_internal = true;
-          r.marketplace = r.marketplace || info.universe_source || info.master_source || 'our corpus';
+          r.marketplace = r.marketplace || src;
         }
+      } else if (!r.for_sale && ip > 0 && (r.category === 'registered' || r.category === 'parked')) {
+        r.for_sale = true; r.for_sale_source = 'corpus'; r.category = 'for_sale';
+        r.price = ip; r.currency = r.currency || 'USD'; r.price_internal = true;
+        r.marketplace = r.marketplace || cleanMktLabel(src);
+        if (!r.link) {
+          if (/afternic/i.test(src)) r.link = `https://www.afternic.com/domain/${r.domain}`;
+          else if (/sedo/i.test(src)) r.link = `https://sedo.com/search/details/?domain=${r.domain}`;
+        }
+        r.evidence = `listed in our corpus — $${Number(ip).toLocaleString()} · ${src}`;
       }
     }
   }
