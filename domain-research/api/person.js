@@ -68,7 +68,10 @@ async function handleReveal(body, res) {
   if (!run) { res.status(404).json({ error: 'Run not found' }); return; }
   if (run.status !== 'done' || !run.result) { res.status(409).json({ error: 'Run is not finished yet.' }); return; }
   const subject = run.result.subject || {};
-  const contacts = await withCategory('person', () => revealContacts({ subject, includePhone: !!body.phone, env: process.env }));
+  // Email-only reveal by policy: RocketReach lookup (its bundled phone rides the same
+  // 1 credit, kept if present) + FullEnrich fallback for EMAIL only. We never spend
+  // FullEnrich's extra phone-number credits — includePhone is hard-off.
+  const contacts = await withCategory('person', () => revealContacts({ subject, includePhone: false, env: process.env }));
   await setPersonContacts(runId, contacts);
   res.status(200).json({ contacts });
 }
