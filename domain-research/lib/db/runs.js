@@ -67,6 +67,16 @@ export async function setRunStatus(id, status, stage = null) {
   if (error) throw new Error(`setRunStatus: ${error.message}`);
 }
 
+// Bump a run's created_at to now so a re-submitted (reused) domain floats back to
+// the TOP of the Recent list — Recent orders by created_at desc. Returns the new
+// timestamp. Best-effort: a failure just leaves the run where it was.
+export async function touchRun(id) {
+  const now = new Date().toISOString();
+  const { error } = await getDb().from(RUNS).update({ created_at: now }).eq('id', id);
+  if (error) throw new Error(`touchRun: ${error.message}`);
+  return now;
+}
+
 export async function saveRunReport(id, report) {
   const { error } = await getDb()
     .from(RUNS)

@@ -3,7 +3,7 @@ import { cleanDomainInput } from '../lib/util.js';
 import { checkRateLimit, clientIp } from '../lib/ratelimit.js';
 import { isAuthed, currentUser, userCan, userCanReportPhase } from '../lib/auth.js';
 import { isDbConfigured } from '../lib/db/supabase.js';
-import { createRun, getRun, failRun, setRunStatus, listRuns, updateRunReport } from '../lib/db/runs.js';
+import { createRun, getRun, failRun, setRunStatus, listRuns, updateRunReport, touchRun } from '../lib/db/runs.js';
 import { runTool } from '../lib/sources/index.js';
 import { withCategory } from '../lib/db/usage.js';
 import { trackDomain, isConfigured as isDomainScoutConfigured } from '../lib/domainscout.js';
@@ -268,7 +268,11 @@ export default async function handler(req, res) {
     prior = recents.find((r) => String(r.domain).toLowerCase() === domain.toLowerCase()) || null;
   } catch { /* best-effort */ }
   if (!force && prior) {
-    res.status(200).json({ run_id: prior.id, domain, existing: true, created_at: prior.created_at });
+    // Re-submitting a name reuses its cached report (no re-spend) but should still
+    // float to the TOP of Recent — bump created_at so it sorts first. Best-effort.
+    let created_at = prior.created_at;
+    try { created_at = await touchRun(prior.id); } catch { /* leave as-is */ }
+    res.status(200).json({ run_id: prior.id, domain, existing: true, created_at, reused: true });
     return;
   }
 
