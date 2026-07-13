@@ -165,6 +165,7 @@ const els = {
   nmvNote: $('nmv-note'),
   nmvDownload: $('nmv-download'),
   namingGo: $('naming-go'),
+  namingDraft: $('naming-draft'),
   namingNew: $('naming-new'),
   namingApply: $('naming-apply'),
   namingFiltersPanel: $('naming-filters-panel'),
@@ -5004,6 +5005,7 @@ function setNamingMode(mode) {
       : 'Paste a brief — e.g. "Tech startup, B2B SaaS, premium feel. One-word .com, easy to spell, under $5,000. Keywords: cloud, data, ops."';
   }
   if (els.namingGo) els.namingGo.textContent = variations ? 'Build Variations' : 'Find Names';
+  if (els.namingDraft) els.namingDraft.hidden = variations; // theme-only (Beast Mode takes a single word)
   if (els.namingIndustry) els.namingIndustry.hidden = !variations; // Beast-Mode-only
   if (els.namingWebsite) els.namingWebsite.hidden = !variations; // Beast-Mode-only
   // Only one results section shows at a time; the theme filters (panel + parsed-
@@ -8944,6 +8946,30 @@ els.apForm?.addEventListener('submit', (e) => {
 });
 els.namingGo?.addEventListener('click', runNaming);
 els.namingApply?.addEventListener('click', runNaming);
+// ✨ Draft brief — turn whatever's in the box (rough notes, a pasted doc, a few
+// reference names you like) into a polished theme brief, in place.
+els.namingDraft?.addEventListener('click', async () => {
+  const context = (els.namingInput?.value || '').trim();
+  if (!context) { setNamingStatus('Add a few notes (or paste a brief / names you like) first.', true); return; }
+  const btn = els.namingDraft;
+  const prev = btn.textContent;
+  btn.disabled = true; btn.textContent = '✨ Drafting…';
+  setNamingStatus('Drafting a brief from your notes…');
+  try {
+    const res = await fetch('/research/api/naming', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ action: 'draft_brief', context }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data.brief) throw new Error(data.error || `Failed (${res.status})`);
+    if (els.namingInput) { els.namingInput.value = data.brief; els.namingInput.focus(); }
+    setNamingStatus('Brief drafted — review/tweak, then Find Names.');
+  } catch (e) {
+    setNamingStatus(String(e.message || e), true);
+  } finally {
+    btn.disabled = false; btn.textContent = prev;
+  }
+});
 // Mode toggle: theme search vs build-around-a-word variations.
 els.namingMode?.addEventListener('click', (e) => {
   const btn = e.target.closest('.naming-mode-btn');

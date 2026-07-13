@@ -426,6 +426,9 @@ button:disabled { opacity: .55; cursor: progress; }
 .naming-input { width: 100%; min-height: 220px; resize: vertical; padding: 16px 18px; font-family: var(--system); font-size: 1rem; line-height: 1.5; color: var(--navy); background: var(--cream-2); border: 2px solid var(--line); border-radius: var(--radius-sm); box-shadow: var(--shadow-sm); }
 .naming-new { background: none; border: 1.5px solid #d9d2c2; border-radius: 999px; padding: 8px 18px; font-size: 14px; font-weight: 600; color: var(--navy-2); cursor: pointer; }
 .naming-new:hover { background: var(--cream-2, #fbf7ee); color: var(--navy); }
+.naming-draft { background: none; border: 1.5px solid var(--coral); border-radius: 999px; padding: 8px 18px; font-size: 14px; font-weight: 700; color: var(--coral-deep, var(--coral)); cursor: pointer; }
+.naming-draft:hover { background: rgba(224,123,44,.08); }
+.naming-draft:disabled { opacity: .55; cursor: not-allowed; }
 .naming-input::placeholder { color: var(--navy-3); }
 /* Mode toggle — theme search vs build-around-a-word variations */
 .naming-mode { display: inline-flex; gap: 4px; margin: 0 0 12px; padding: 4px; background: var(--cream-2); border: 2px solid var(--line); border-radius: 999px; }

@@ -1,6 +1,6 @@
 import { isAuthed, currentUser, userCan } from '../lib/auth.js';
 import { isNamingDbConfigured } from '../lib/db/supabase-naming.js';
-import { parseBrief } from '../lib/naming/brief.js';
+import { parseBrief, draftBrief } from '../lib/naming/brief.js';
 import { searchUniverse } from '../lib/naming/query.js';
 import { sweepVariations } from '../lib/variations/sweep.js';
 import { pickAffixes } from '../lib/variations/affixes.js';
@@ -91,6 +91,7 @@ export default async function handler(req, res) {
   const body = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : req.body || {};
   const action = String(body.action || 'search');
 
+  if (action === 'draft_brief') return handleDraftBrief(body, res, user);
   if (action === 'search') return handleSearch(body, res, user);
   if (action === 'variations') return handleVariations(body, res, user);
   if (action === 'export') return handleExport(body, res, user);
@@ -375,6 +376,19 @@ async function handleChat(body, res, user) {
       status: 'error',
     }).catch(() => {});
     res.status(502).json({ error: String(e.message || e) });
+  }
+}
+
+// Turn rough notes / a pasted doc / reference names into a polished theme brief.
+async function handleDraftBrief(body, res, user) {
+  const context = typeof body.context === 'string' ? body.context.trim() : '';
+  if (!context) { res.status(400).json({ error: 'Add a few notes (or paste a brief / names you like) first.' }); return; }
+  if (!process.env.ANTHROPIC_API_KEY) { res.status(500).json({ error: 'Server is missing ANTHROPIC_API_KEY' }); return; }
+  try {
+    const brief = await withCategory('naming', () => draftBrief(context, process.env));
+    res.status(200).json({ brief });
+  } catch (e) {
+    res.status(502).json({ error: `Couldn't draft a brief: ${e.message || e}` });
   }
 }
 
