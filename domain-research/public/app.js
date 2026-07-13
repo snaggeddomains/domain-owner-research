@@ -3741,6 +3741,8 @@ function renderLead(el, lead) {
   const liUrl = (social.find((x) => x.key === 'linkedin') || {}).url || r.linkedin_url || lead.linkedin_url || null;
   const twUrl = (social.find((x) => x.key === 'twitter') || {}).url || null;
   const prof = (p && p.professional) || {};
+  const bg = r.background || {};
+  const employer = prof.employer || (r.company && r.company.company) || null;
   const personBig =
     (liUrl || li != null
       ? leadBig('LinkedIn', (liUrl ? `<a href="${escapeHtml(liUrl)}" target="_blank" rel="noopener">${li != null ? num(li) : 'Profile ↗'}</a>` : num(li)) + (li != null ? ' <span class="lead-unit">connections</span>' : ''))
@@ -3748,7 +3750,31 @@ function renderLead(el, lead) {
     + (tw != null || twUrl
       ? leadBig('X / Twitter', (twUrl ? `<a href="${escapeHtml(twUrl)}" target="_blank" rel="noopener">${tw != null ? num(tw) : 'Profile ↗'}</a>` : num(tw)) + (tw != null ? ' <span class="lead-unit">followers</span>' : ''))
       : '')
-    + (prof.title ? leadBig('Role', escapeHtml(prof.title)) : '');
+    + (prof.title ? leadBig('Role', escapeHtml(prof.title)) : '')
+    + (employer ? leadBig('Employer', escapeHtml(employer)) : '');
+
+  // ── Who they are — overview + work history + highlights (fresh Google pass).
+  const overview = bg.overview || (p && p.narrative && p.narrative.summary) || null;
+  const standing = bg.standing || null;
+  const work = Array.isArray(bg.work_history) ? bg.work_history.filter((w) => w && (w.role || w.org)) : [];
+  const highlights = (Array.isArray(bg.highlights) && bg.highlights.length ? bg.highlights
+    : (p && p.narrative && Array.isArray(p.narrative.notable) ? p.narrative.notable : [])).filter(Boolean);
+  const googleUrl = `https://www.google.com/search?q=${encodeURIComponent([lead.name, employer].filter(Boolean).join(' '))}`;
+  const workHtml = work.length
+    ? `<div class="lead-sub-h">Work history</div><ul class="lead-about">${work.map((w) => {
+        const role = [w.role, w.org].filter(Boolean).join(' · ');
+        return `<li>${escapeHtml(role)}${w.period ? ` <span class="lead-unit">${escapeHtml(String(w.period))}</span>` : ''}</li>`;
+      }).join('')}</ul>`
+    : '';
+  const hlHtml = highlights.length
+    ? `<div class="lead-sub-h">Highlights</div><ul class="lead-about">${highlights.slice(0, 6).map((h) => `<li>${escapeHtml(String(h))}</li>`).join('')}</ul>`
+    : '';
+  const personSection =
+    (personBig ? `<div class="lead-bigrow lead-bigrow--person">${personBig}</div>` : '')
+    + (overview ? `<div class="lead-overview">${escapeHtml(overview)}</div>` : '')
+    + workHtml + hlHtml
+    + `<div class="lead-links"><a href="${escapeHtml(googleUrl)}" target="_blank" rel="noopener">Google them ↗</a>`
+    + (liUrl ? ` <a href="${escapeHtml(liUrl)}" target="_blank" rel="noopener">LinkedIn ↗</a>` : '') + `</div>`;
 
   // ── Company headline facts.
   let companyName = (c && c.company) || lead.company_domain || null;
@@ -3784,10 +3810,11 @@ function renderLead(el, lead) {
   const name = escapeHtml(lead.name || lead.email || 'Lead');
   el.innerHTML =
     `<div class="lead-head"><h1 class="lead-name">${name}</h1>`
+    + (standing ? `<div class="lead-standing">${escapeHtml(standing)}</div>` : '')
     + (lead.email ? `<div class="lead-sub">${escapeHtml(lead.email)}${lead.domain_of_interest ? ` · inquiring about <strong>${escapeHtml(lead.domain_of_interest)}</strong>` : ''}</div>` : '')
     + `</div>`
-    // Person reach (LinkedIn / X) as headline stats.
-    + (personBig ? `<div class="lead-bigrow lead-bigrow--person">${personBig}</div>` : '')
+    // Who they are — reach + overview + work history + highlights.
+    + personSection
     // Company facts headline.
     + (c || companyName
       ? `<div class="lead-section-h">🏢 ${escapeHtml(companyName || 'Company')}</div>`
