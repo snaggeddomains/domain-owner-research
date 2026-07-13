@@ -3678,14 +3678,11 @@ function showView(name) {
 }
 
 // ── Inbound-lead dossier ────────────────────────────────────────────────────
-// A deep-linked, gated triage card for a contact-form inquiry: who is this person,
-// what company do they represent, is this a VIP worth replying to personally. Keyed
-// on the lead's email; enriches async, so the page shows a pending state + polls.
-const LEAD_TIER = {
-  vip: { label: 'VIP', cls: 'lead-vip', blurb: 'Reply personally' },
-  notable: { label: 'Notable', cls: 'lead-notable', blurb: 'Worth a senior reply' },
-  standard: { label: 'Standard', cls: 'lead-standard', blurb: 'Team can handle' },
-};
+// A deep-linked, gated FACT SHEET for a contact-form inquiry — built to scan at a
+// glance: who the person is (LinkedIn / X reach), then the company facts (raised /
+// when / investors / employees / stage / founded / HQ) as big headline stats, then
+// a bulleted company summary. No scoring, no routing — just the facts. Keyed on the
+// lead's email; enriches async, so it shows a pending state + polls.
 let leadPollTimer = null;
 function stopLeadPoll() { if (leadPollTimer) { clearTimeout(leadPollTimer); leadPollTimer = null; } }
 async function loadLead(key, { started = Date.now() } = {}) {
@@ -3717,97 +3714,91 @@ function renderLeadPending(el, lead) {
   el.innerHTML =
     `<div class="lead-head"><h1 class="lead-name">${name}</h1>`
     + (lead.email ? `<div class="lead-sub">${escapeHtml(lead.email)}</div>` : '') + `</div>`
-    + `<div class="lead-pending"><span class="lead-spin">◌</span> Enriching this lead — VIP check, company size, funding… this takes a minute. The page refreshes itself.</div>`;
+    + `<div class="lead-pending"><span class="lead-spin">◌</span> Pulling person + company details… this takes a minute. The page refreshes itself.</div>`;
 }
-function leadStat(label, value) {
+// One big headline stat (label over a large value). Skips itself when empty.
+function leadBig(label, value) {
   if (value == null || value === '') return '';
-  return `<div class="lead-stat"><div class="lead-k">${escapeHtml(label)}</div><div class="lead-v">${value}</div></div>`;
+  return `<div class="lead-big"><div class="lead-big-k">${escapeHtml(label)}</div><div class="lead-big-v">${value}</div></div>`;
+}
+// Split a company blurb into short sentence bullets (cap ~8).
+function leadBullets(text) {
+  return String(text || '')
+    .split(/(?<=[.!?])\s+(?=[A-Z0-9"'])/)
+    .map((s) => s.trim()).filter((s) => s.length > 3).slice(0, 8);
 }
 function renderLead(el, lead) {
   const r = lead.result || {};
-  const t = r.triage || {};
-  const tier = LEAD_TIER[t.tier] || LEAD_TIER.standard;
   const p = r.person || null;
   const c = r.company || null;
-  const fmtNum = (n) => (n == null ? null : Number(n).toLocaleString());
+  const num = (n) => (n == null ? null : Number(n).toLocaleString());
 
-  // Verdict banner
-  const reasons = Array.isArray(t.reasons) ? t.reasons : [];
-  const banner =
-    `<div class="lead-verdict ${tier.cls}">`
-    + `<div class="lead-verdict-main"><span class="lead-pill">${tier.label}</span>`
-    + `<span class="lead-route">→ ${escapeHtml(t.route_to || tier.blurb)}</span></div>`
-    + (reasons.length ? `<ul class="lead-reasons">${reasons.map((x) => `<li>${escapeHtml(x)}</li>`).join('')}</ul>` : '')
-    + `</div>`;
+  // ── Person line — LinkedIn + X reach (followers / connections), plainly stated.
+  const social = (p && Array.isArray(p.social)) ? p.social : [];
+  const countFor = (k) => { const s = social.find((x) => x.key === k); return s && s.followers ? Number(s.followers) : null; };
+  const li = countFor('linkedin');
+  const tw = countFor('twitter');
+  const liUrl = (social.find((x) => x.key === 'linkedin') || {}).url || r.linkedin_url || lead.linkedin_url || null;
+  const twUrl = (social.find((x) => x.key === 'twitter') || {}).url || null;
+  const prof = (p && p.professional) || {};
+  const personBig =
+    (liUrl || li != null
+      ? leadBig('LinkedIn', (liUrl ? `<a href="${escapeHtml(liUrl)}" target="_blank" rel="noopener">${li != null ? num(li) : 'Profile ↗'}</a>` : num(li)) + (li != null ? ' <span class="lead-unit">connections</span>' : ''))
+      : '')
+    + (tw != null || twUrl
+      ? leadBig('X / Twitter', (twUrl ? `<a href="${escapeHtml(twUrl)}" target="_blank" rel="noopener">${tw != null ? num(tw) : 'Profile ↗'}</a>` : num(tw)) + (tw != null ? ' <span class="lead-unit">followers</span>' : ''))
+      : '')
+    + (prof.title ? leadBig('Role', escapeHtml(prof.title)) : '');
 
-  // Person block
-  let person = '';
-  if (p) {
-    const vband = p.vip && p.vip.band;
-    const vlabel = { vip: 'VIP', high_profile: 'High-profile', notable: 'Notable', low: 'Low profile' }[vband] || '—';
-    const sigs = (p.vip && Array.isArray(p.vip.signals)) ? p.vip.signals : [];
-    const platforms = (Array.isArray(p.social) ? p.social : [])
-      .map((s) => `<a class="lead-chip" href="${escapeHtml(s.url || '#')}" target="_blank" rel="noopener">${escapeHtml(s.label || s.key)}${s.followers ? ` · ${fmtNum(s.followers)}` : ''}</a>`).join('');
-    const prof = p.professional || {};
-    person =
-      `<div class="lead-card"><div class="lead-card-h">👤 Person</div>`
-      + `<div class="lead-stats">`
-      + leadStat('Prominence', `<strong>${vlabel}</strong>`)
-      + leadStat('Reach', p.max_followers ? `${fmtNum(p.max_followers)} followers` : null)
-      + leadStat('Title', prof.title ? escapeHtml(prof.title) : null)
-      + leadStat('Employer', prof.employer ? escapeHtml(prof.employer) : null)
-      + `</div>`
-      + (sigs.length ? `<ul class="lead-sig">${sigs.map((s) => `<li>${escapeHtml(s)}</li>`).join('')}</ul>` : '')
-      + (platforms ? `<div class="lead-chips">${platforms}</div>` : '')
-      + `</div>`;
-  }
+  // ── Company headline facts.
+  let companyName = (c && c.company) || lead.company_domain || null;
+  let round = (c && c.lastRound) || null;
+  const raisedWhen = (c && (c.latestFundingDate || (round && round.date))) || null;
+  const investors = round && round.investors ? String(round.investors) : null;
+  const companyBig = c
+    ? leadBig('Raised', c.funding ? `<strong>${escapeHtml(String(c.funding))}</strong>` : null)
+      + leadBig('When', raisedWhen ? escapeHtml(String(raisedWhen)) + (round && round.type ? ` <span class="lead-unit">${escapeHtml(round.type)}</span>` : '') : null)
+      + leadBig('Stage', c.fundingStage ? escapeHtml(c.fundingStage) : null)
+      + leadBig('Investors', investors ? escapeHtml(investors) : null)
+      + leadBig('Employees', c.employees ? num(c.employees) : null)
+      + leadBig('Founded', c.foundedYear || null)
+      + leadBig('Revenue', c.revenue ? escapeHtml(String(c.revenue)) : null)
+      + leadBig('HQ', c.location ? escapeHtml(c.location) : null)
+    : '';
+  const bullets = leadBullets(c && c.description);
 
-  // Company block
-  let company = '';
-  if (c) {
-    company =
-      `<div class="lead-card"><div class="lead-card-h">🏢 Company — ${escapeHtml(c.company || lead.company_domain || '')}</div>`
-      + `<div class="lead-stats">`
-      + leadStat('Employees', c.employees ? fmtNum(c.employees) : null)
-      + leadStat('Funding raised', c.funding ? escapeHtml(String(c.funding)) : null)
-      + leadStat('Stage', c.fundingStage ? escapeHtml(c.fundingStage) : null)
-      + leadStat('Revenue', c.revenue ? escapeHtml(String(c.revenue)) : null)
-      + leadStat('Founded', c.foundedYear || null)
-      + leadStat('Industry', c.industry ? escapeHtml(c.industry) : null)
-      + leadStat('HQ', c.location ? escapeHtml(c.location) : null)
-      + `</div>`
-      + (c.description ? `<div class="lead-desc">${escapeHtml(c.description)}</div>` : '')
-      + `</div>`;
-  } else if (lead.company_domain) {
-    company = `<div class="lead-card"><div class="lead-card-h">🏢 Company</div><div class="lead-desc muted">No firmographics for ${escapeHtml(lead.company_domain)} (or Apollo returned nothing).</div></div>`;
-  } else {
-    company = `<div class="lead-card"><div class="lead-card-h">🏢 Company</div><div class="lead-desc muted">Personal email — no company to profile.</div></div>`;
-  }
-
-  // Form context + jump-back-to-email
+  // ── The inquiry (secondary) + jump back to the email.
   const gmailSearch = lead.email ? `https://mail.google.com/mail/u/0/#search/${encodeURIComponent('from:' + lead.email)}` : null;
-  const ctx =
-    `<div class="lead-card"><div class="lead-card-h">📨 The inquiry</div>`
-    + `<div class="lead-stats">`
-    + leadStat('Wants', lead.domain_of_interest ? `<strong>${escapeHtml(lead.domain_of_interest)}</strong>` : null)
-    + leadStat('Intent', lead.intent ? escapeHtml(lead.intent) : null)
-    + leadStat('Budget', lead.budget ? escapeHtml(lead.budget) : null)
-    + leadStat('Location', (r.location || lead.location) ? escapeHtml(r.location || lead.location) : null)
-    + `</div>`
-    + (r.message || lead.message ? `<div class="lead-desc">“${escapeHtml(r.message || lead.message)}”</div>` : '')
+  const inquiry =
+    `<div class="lead-inquiry-row">`
+    + (lead.domain_of_interest ? `<span><span class="lead-inq-k">Wants</span> <strong>${escapeHtml(lead.domain_of_interest)}</strong></span>` : '')
+    + (lead.budget ? `<span><span class="lead-inq-k">Budget</span> ${escapeHtml(lead.budget)}</span>` : '')
+    + ((r.location || lead.location) ? `<span><span class="lead-inq-k">Location</span> ${escapeHtml(r.location || lead.location)}</span>` : '')
+    + `</span>`
+    + (r.message || lead.message ? `<div class="lead-quote">“${escapeHtml(r.message || lead.message)}”</div>` : '')
     + `<div class="lead-links">`
-    + (r.linkedin_url ? `<a href="${escapeHtml(r.linkedin_url)}" target="_blank" rel="noopener">LinkedIn ↗</a>` : '')
-    + (gmailSearch ? `<a href="${escapeHtml(gmailSearch)}" target="_blank" rel="noopener">↗ Open the email</a>` : '')
-    + `</div></div>`;
+    + (liUrl ? `<a href="${escapeHtml(liUrl)}" target="_blank" rel="noopener">LinkedIn ↗</a>` : '')
+    + (gmailSearch ? `<a href="${escapeHtml(gmailSearch)}" target="_blank" rel="noopener">Open the email ↗</a>` : '')
+    + `</div>`;
 
   const name = escapeHtml(lead.name || lead.email || 'Lead');
   el.innerHTML =
     `<div class="lead-head"><h1 class="lead-name">${name}</h1>`
     + (lead.email ? `<div class="lead-sub">${escapeHtml(lead.email)}${lead.domain_of_interest ? ` · inquiring about <strong>${escapeHtml(lead.domain_of_interest)}</strong>` : ''}</div>` : '')
     + `</div>`
-    + banner
-    + `<div class="lead-grid">${person}${company}${ctx}</div>`
-    + (lead.status === 'failed' ? `<div class="lead-loading">Enrichment hit an error${lead.error ? `: ${escapeHtml(String(lead.error).slice(0, 200))}` : ''}. The form details above are still accurate.</div>` : '');
+    // Person reach (LinkedIn / X) as headline stats.
+    + (personBig ? `<div class="lead-bigrow lead-bigrow--person">${personBig}</div>` : '')
+    // Company facts headline.
+    + (c || companyName
+      ? `<div class="lead-section-h">🏢 ${escapeHtml(companyName || 'Company')}</div>`
+        + (companyBig ? `<div class="lead-bigrow">${companyBig}</div>` : '')
+        + (bullets.length ? `<ul class="lead-about">${bullets.map((b) => `<li>${escapeHtml(b)}</li>`).join('')}</ul>`
+          : (lead.company_domain ? `<div class="lead-quote muted">No company details found for ${escapeHtml(lead.company_domain)}.</div>` : ''))
+      : (lead.company_domain ? '' : `<div class="lead-quote muted">Personal email — no company to profile.</div>`))
+    // The inquiry (secondary).
+    + `<div class="lead-section-h">📨 The inquiry</div>`
+    + inquiry
+    + (lead.status === 'failed' ? `<div class="lead-loading">Some enrichment hit an error${lead.error ? `: ${escapeHtml(String(lead.error).slice(0, 160))}` : ''}. The details above are still accurate.</div>` : '');
 }
 
 // ── Beeper — RDAP drop watcher ──────────────────────────────────────────────

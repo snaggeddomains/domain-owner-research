@@ -366,7 +366,23 @@ button:disabled { opacity: .55; cursor: progress; }
 .lead-chip { font-size: 12px; padding: 3px 9px; border: 1px solid var(--line); border-radius: 999px; text-decoration: none; color: var(--navy); background: var(--cream, #faf6ec); }
 .lead-chip:hover { background: var(--sand, #f0e9d8); }
 .lead-desc { margin-top: 10px; font-size: 14px; color: var(--navy-2); line-height: 1.5; }
+.lead-links { display: flex; gap: 16px; margin-top: 12px; }
 .lead-links a { font-weight: 600; font-size: 14px; }
+
+/* Fact-sheet layout: big headline stats + bulleted company summary */
+.lead-section-h { font-weight: 800; font-size: 17px; margin: 26px 0 12px; padding-bottom: 6px; border-bottom: 2px solid var(--line); }
+.lead-bigrow { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 18px 24px; }
+.lead-bigrow--person { padding: 16px 0 4px; }
+.lead-big-k { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--navy-2); margin-bottom: 3px; }
+.lead-big-v { font-size: 22px; font-weight: 700; line-height: 1.25; color: var(--navy); }
+.lead-big-v a { color: inherit; text-decoration: none; border-bottom: 2px solid rgba(0,0,0,.12); }
+.lead-big-v a:hover { border-bottom-color: var(--coral); }
+.lead-unit { font-size: 13px; font-weight: 500; color: var(--navy-2); }
+.lead-about { margin: 16px 0 4px; padding-left: 22px; }
+.lead-about li { font-size: 15px; line-height: 1.55; margin: 5px 0; color: var(--navy); }
+.lead-inquiry-row { display: flex; flex-wrap: wrap; gap: 8px 24px; font-size: 15px; }
+.lead-inq-k { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--navy-2); margin-right: 4px; }
+.lead-quote { margin-top: 12px; font-size: 15px; color: var(--navy-2); line-height: 1.5; font-style: italic; }
 
 /* Research hero */
 .hero { text-align: center; padding: 24px 0 4px; }
