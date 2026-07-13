@@ -196,6 +196,32 @@ because the server had no session there):
   (distinct `domain` in `domain_research_runs`) into DomainScout so the existing
   corpus is tracked too.
 
+## Company vitals — "how alive are they" block in the Domain Owner report (2026-07-13)
+
+A dedicated card in the Domain Owner report (`#company-vitals`, below the for-sale
+strip) that reads how ALIVE the owning company is → gauges whether a name is pry-able.
+Answers "how big are they / employees / revenue / VC raised / is the site active / when
+last updated."
+
+- **API** `api/company-vitals.js` (gated `domain_owner`, maxDuration 30): `GET
+  ?domain=&reveal=1&refresh=1`. Two tiers:
+  - **Aliveness (FREE, always):** newest **Wayback** snapshot + age (single CDX
+    `limit=-1` call), **MX** active + provider (reuses the exported `dnsMx` from
+    `lib/whois/lookup.js`), quick **live-site** reachable/parked/active fetch.
+  - **Company profile (PAID, `reveal=1`):** `firmographicsApollo(domain)` (~1 credit) →
+    employees + headcount growth, revenue, total **VC funding raised** + stage + last
+    round, founded year, industry, HQ.
+  - **`pryVerdict`** = deterministic read (very_hard / hard / possible / unclear) from
+    size+funding+site+MX+recency. Cache-first by DOMAIN (kind **`cv`** in
+    `domain_research_tool_lookups`, `KIND_MODULE` added in `api/lookup.js`) so a re-view
+    / the deep pass never re-spends; `refresh=1` forces.
+- **UI** (`public/app.js` `loadCompanyVitals`/`renderCompanyVitals`; `.cv-*` styles):
+  `renderReport` calls it with `report.phase` — the **deep pass auto-reveals**
+  firmographics (it's already the paid pass); a **free report** shows aliveness + a
+  "Reveal company size (Apollo · ~1 credit)" button. Cache-bust `app.js?v=20260713vitals`.
+- **No new table / permission** — reuses `domain_research_tool_lookups` + `domain_owner`
+  + `APOLLO_ENRICH_API_KEY` (fail-open: no key → aliveness still shows, company null).
+
 ## Atom appraisal — second-opinion valuation (2026-06-27)
 
 A second valuation shown ALONGSIDE Appraise.net in the Appraisal tool (Atom.com /

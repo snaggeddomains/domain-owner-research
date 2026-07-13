@@ -90,7 +90,7 @@ function mxProvider(records) {
   for (const r of records || []) for (const [re, label] of MX_PROVIDERS) if (re.test(r.host)) return label;
   return null;
 }
-async function dnsMx(domain) {
+export async function dnsMx(domain) {
   try {
     const j = await fetchJson(`https://dns.google/resolve?name=${encodeURIComponent(domain)}&type=MX`);
     if (!j || typeof j.Status !== 'number') return { active: null, records: [] }; // couldn't read → unknown

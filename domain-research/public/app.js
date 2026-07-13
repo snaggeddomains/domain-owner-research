@@ -66,6 +66,7 @@ const els = {
   runControls: $('run-controls'),
   cancelRun: $('cancel-run'),
   marketStrip: $('market-strip'),
+  companyVitals: $('company-vitals'),
   namebioStrip: $('namebio-strip'),
   apNamebio: $('ap-namebio'),
   report: $('report'),
@@ -1936,7 +1937,87 @@ function renderReport(report) {
   const canDeep = canPhase(currentUser, 'deep');
   els.deepenTop.hidden = !(low && canDeep);
   els.deepenBar.hidden = !(shallow && !low && canDeep);
+
+  // Company vitals — how alive is this company (aliveness free; firmographics on deep).
+  if (currentReportDomain) loadCompanyVitals(currentReportDomain, report && report.phase);
 }
+
+// ── Company vitals ───────────────────────────────────────────────────────────
+// A dedicated "how alive are they" block: employees, revenue, VC funding raised
+// (Apollo, ~1 credit) + aliveness (live site, last-updated, email) → a read on how
+// pry-able the name is. Aliveness is free; on the DEEP pass firmographics auto-load,
+// on a free report they're behind a one-click reveal. Cached per domain server-side.
+const CV_VERDICT_COLOR = { very_hard: '#cf3030', hard: '#e07b2c', possible: '#0b8f3a', unclear: '#8a8a98' };
+async function loadCompanyVitals(domain, phase, reveal = false) {
+  const el = els.companyVitals;
+  if (!el) return;
+  const wantReveal = reveal || phase === 'deep'; // deep pass auto-reveals firmographics
+  el.hidden = false;
+  el.innerHTML = `<div class="cv-head"><span class="cv-title">🏢 Company vitals</span><span class="muted">loading…</span></div>`;
+  el.dataset.domain = domain;
+  try {
+    const res = await fetch(`/research/api/company-vitals?domain=${encodeURIComponent(domain)}${wantReveal ? '&reveal=1' : ''}`);
+    const data = await res.json();
+    if (el.dataset.domain !== domain) return; // a newer report took over
+    if (!res.ok) { el.hidden = true; return; }
+    renderCompanyVitals(data);
+  } catch {
+    el.hidden = true;
+  }
+}
+function cvStat(label, value, sub) {
+  if (value == null || value === '') return '';
+  return `<div class="cv-stat"><div class="cv-k">${label}</div><div class="cv-v">${value}${sub ? ` <span class="cv-sub">${sub}</span>` : ''}</div></div>`;
+}
+function renderCompanyVitals(d) {
+  const el = els.companyVitals;
+  const a = d.aliveness || {};
+  const c = d.company || null;
+  const v = d.verdict || {};
+  const growthPct = (g) => (g && g.twelveMo != null ? `${g.twelveMo > 0 ? '+' : ''}${Math.round(g.twelveMo * 100)}%/yr` : '');
+  // Aliveness chips
+  const site = a.site || {};
+  const siteChip = site.active ? `<span class="cv-chip cv-ok">✓ Live site</span>`
+    : site.parked ? `<span class="cv-chip cv-no">⚠ Parked page</span>`
+    : site.reachable ? `<span class="cv-chip cv-warn">Reachable</span>`
+    : `<span class="cv-chip cv-no">✗ No live site</span>`;
+  const wb = a.wayback;
+  const wbChip = wb ? `<span class="cv-chip ${wb.age_days < 180 ? 'cv-ok' : 'cv-warn'}">Last archived ${new Date(wb.date).toLocaleDateString(undefined, { year: 'numeric', month: 'short' })} <span class="cv-sub">(${wb.age_days < 60 ? `${wb.age_days}d` : `${Math.round(wb.age_days / 30)}mo`} ago)</span></span>` : '';
+  const mx = a.mx || {};
+  const mxChip = mx.active === true ? `<span class="cv-chip cv-ok">✉ Email active${mx.provider ? ` · ${escapeHtml(mx.provider)}` : ''}</span>`
+    : mx.active === false ? `<span class="cv-chip cv-no">✗ No email (MX)</span>` : '';
+
+  const stats = c ? [
+    cvStat('Employees', c.employees != null ? Number(c.employees).toLocaleString() : null, growthPct(c.headcountGrowth)),
+    cvStat('Revenue', typeof c.revenue === 'string' ? escapeHtml(c.revenue) : (c.revenueAmount ? `$${Number(c.revenueAmount).toLocaleString()}` : null)),
+    cvStat('VC raised', typeof c.funding === 'string' ? escapeHtml(c.funding) : (c.fundingAmount ? `$${Number(c.fundingAmount).toLocaleString()}` : null), c.fundingStage ? escapeHtml(c.fundingStage) : ''),
+    cvStat('Last round', c.lastRound && c.lastRound.type ? escapeHtml(c.lastRound.type) : null, c.latestFundingDate ? new Date(c.latestFundingDate).getFullYear() : ''),
+    cvStat('Founded', c.foundedYear || null),
+    cvStat('Industry', c.industry ? escapeHtml(c.industry) : null),
+    cvStat('HQ', c.location ? escapeHtml(c.location) : null),
+  ].filter(Boolean).join('') : '';
+
+  const revealBtn = !c
+    ? `<button type="button" class="cv-reveal" data-cv-reveal="${escapeHtml(d.domain)}">Reveal company size (employees · revenue · VC) <span class="cv-sub">Apollo · ~1 credit</span></button>`
+    : '';
+  const verdictPill = v.label ? `<span class="cv-verdict" style="background:${CV_VERDICT_COLOR[v.band] || '#8a8a98'}">${escapeHtml(v.label)}</span>` : '';
+
+  els.companyVitals.innerHTML =
+    `<div class="cv-head"><span class="cv-title">🏢 Company vitals</span>${verdictPill}</div>`
+    + `<div class="cv-chips">${siteChip}${wbChip}${mxChip}</div>`
+    + (stats ? `<div class="cv-stats">${stats}</div>` : '')
+    + (c && c.description ? `<div class="cv-desc muted">${escapeHtml(c.description)}</div>` : '')
+    + (v.why ? `<div class="cv-why muted">${escapeHtml(v.why)}</div>` : '')
+    + revealBtn;
+  el.hidden = false;
+}
+document.getElementById('company-vitals')?.addEventListener('click', (e) => {
+  const btn = e.target.closest('[data-cv-reveal]');
+  if (!btn) return;
+  btn.disabled = true;
+  btn.textContent = 'Revealing… (Apollo)';
+  loadCompanyVitals(btn.dataset.cvReveal, null, true);
+});
 
 // ── Report add-ons — deeper dives that SUPPLEMENT the report ─────────────────
 // One-click owner-focused deeper research (family, colleagues, related domains,

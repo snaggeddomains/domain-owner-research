@@ -21,8 +21,8 @@ export const config = { maxDuration: 60 };
 
 // tm = trademark, ap = appraisal, mk = marketplace "for sale" strip (cached so
 // re-opening a report doesn't re-spend Scrape.do credits on every view).
-const KINDS = new Set(['tm', 'ap', 'mk', 'nb', 'at', 'ev']);
-const KIND_MODULE = { tm: 'trademark', ap: 'appraisal', mk: 'domain_owner', nb: 'domain_owner', at: 'appraisal', ev: 'evaluate' };
+const KINDS = new Set(['tm', 'ap', 'mk', 'nb', 'at', 'ev', 'cv']);
+const KIND_MODULE = { tm: 'trademark', ap: 'appraisal', mk: 'domain_owner', nb: 'domain_owner', at: 'appraisal', ev: 'evaluate', cv: 'domain_owner' };
 
 // Sources shown in BOTH the Domain Owner and Appraisal reports — any signed-in
 // user may run them regardless of which single module they're permitted.
