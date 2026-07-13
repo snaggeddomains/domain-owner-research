@@ -3732,6 +3732,26 @@ function renderLead(el, lead) {
   const p = r.person || null;
   const c = r.company || null;
   const num = (n) => (n == null ? null : Number(n).toLocaleString());
+  // Money: always prefix a currency symbol. Apollo's printed values often come back
+  // bare ("4.8M", "61.1M"); a plain integer gets thousands separators.
+  const money = (v) => {
+    if (v == null || v === '') return null;
+    const s = String(v).trim();
+    if (/^[$€£¥]/.test(s)) return escapeHtml(s);
+    if (/^\d+$/.test(s)) return '$' + Number(s).toLocaleString();
+    if (/^\d/.test(s)) return '$' + escapeHtml(s);
+    return escapeHtml(s);
+  };
+  // Date: an ISO/`YYYY-MM-DD` value → "Sep 2022"; anything else passes through.
+  const fmtDate = (v) => {
+    if (!v) return null;
+    const s = String(v);
+    if (/^\d{4}-\d{2}/.test(s)) {
+      const d = new Date(s);
+      if (!isNaN(d.getTime())) return d.toLocaleDateString('en-US', { year: 'numeric', month: 'short', timeZone: 'UTC' });
+    }
+    return escapeHtml(s);
+  };
 
   // ── Person line — LinkedIn + X reach (followers / connections), plainly stated.
   const social = (p && Array.isArray(p.social)) ? p.social : [];
@@ -3780,15 +3800,18 @@ function renderLead(el, lead) {
   let companyName = (c && c.company) || lead.company_domain || null;
   let round = (c && c.lastRound) || null;
   const raisedWhen = (c && (c.latestFundingDate || (round && round.date))) || null;
-  const investors = round && round.investors ? String(round.investors) : null;
+  // Apollo sometimes echoes the company name back as "investors" — drop that noise.
+  const investors = (round && round.investors && String(round.investors).toLowerCase() !== String(companyName || '').toLowerCase())
+    ? String(round.investors) : null;
+  const raisedMv = money(c && c.funding);
   const companyBig = c
-    ? leadBig('Raised', c.funding ? `<strong>${escapeHtml(String(c.funding))}</strong>` : null)
-      + leadBig('When', raisedWhen ? escapeHtml(String(raisedWhen)) + (round && round.type ? ` <span class="lead-unit">${escapeHtml(round.type)}</span>` : '') : null)
+    ? leadBig('Raised', raisedMv ? `<strong>${raisedMv}</strong>` : null)
+      + leadBig('When', fmtDate(raisedWhen))
       + leadBig('Stage', c.fundingStage ? escapeHtml(c.fundingStage) : null)
       + leadBig('Investors', investors ? escapeHtml(investors) : null)
       + leadBig('Employees', c.employees ? num(c.employees) : null)
       + leadBig('Founded', c.foundedYear || null)
-      + leadBig('Revenue', c.revenue ? escapeHtml(String(c.revenue)) : null)
+      + leadBig('Revenue', money(c.revenue))
       + leadBig('HQ', c.location ? escapeHtml(c.location) : null)
     : '';
   const bullets = leadBullets(c && c.description);
