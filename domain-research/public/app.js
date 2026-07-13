@@ -8438,11 +8438,28 @@ const PR_VIP = {
 };
 const PR_PLAT = { linkedin: 'LinkedIn', twitter: 'X / Twitter', facebook: 'Facebook', instagram: 'Instagram', quora: 'Quora', youtube: 'YouTube', tiktok: 'TikTok', github: 'GitHub', crunchbase: 'Crunchbase', wikipedia: 'Wikipedia', other: 'Profile' };
 
+// A readable label from a profile URL slug — mirrors the server's nameFromProfileUrl
+// so an older run whose name never resolved (bot-walled profile) still reads as a
+// name in the list instead of a raw URL. Falls back to a cleaned handle, then the URL.
+function prNameFromUrl(url) {
+  try {
+    const u = new URL(/^https?:\/\//i.test(url) ? url : `https://${url}`);
+    let seg = (u.pathname.replace(/\/+$/, '').split('/').filter(Boolean).pop() || '').split('?')[0];
+    seg = seg.replace(/-?\d{4,}$/, '').replace(/-+$/, '');
+    const parts = seg.split(/[-_.]+/).filter((p) => /[a-z]/i.test(p) && !/^\d+$/.test(p) && p.length <= 20);
+    if (parts.length >= 2) {
+      const nm = parts.map((p) => p.charAt(0).toUpperCase() + p.slice(1).toLowerCase()).join(' ');
+      if (nm.length >= 3 && nm.length <= 60) return nm;
+    }
+    return seg ? `${u.host.replace(/^www\./, '')}/${seg}` : (u.host.replace(/^www\./, '') || url);
+  } catch { return url; }
+}
+function prLabel(r) { return r.subject_name || prNameFromUrl(r.input_url || '') || r.input_url || '(unknown)'; }
 function prRecentRow(r) {
   const when = r.created_at ? new Date(r.created_at).toLocaleDateString() : '';
   const vip = r.vip_band ? ` · ${(PR_VIP[r.vip_band] || {}).label || r.vip_band}` : '';
   const st = r.status === 'done' ? vip : ` · ${escapeHtml(r.status || '')}`;
-  const label = r.subject_name || r.input_url || '';
+  const label = prLabel(r);
   return `<li class="recent-run" data-id="${escapeHtml(r.id)}">`
     + `<span class="recent-domain">${escapeHtml(label)}${st}</span>`
     + `<span class="recent-when">${escapeHtml(when)}</span></li>`;
@@ -8471,7 +8488,7 @@ async function loadPersonRuns(q = '') {
       const running = r.status && r.status !== 'done';
       const vip = r.vip_band ? ` · ${(PR_VIP[r.vip_band] || {}).label || r.vip_band}` : '';
       const meta = running ? `${escapeHtml(r.status)}…` : `${escapeHtml(when)}${vip}`;
-      return `<li class="project-group"><div class="project-group-title">${escapeHtml(r.subject_name || r.input_url || '(unknown)')}</div>`
+      return `<li class="project-group"><div class="project-group-title">${escapeHtml(prLabel(r))}</div>`
         + `<ul class="project-runs"><li class="project-run${running ? ' active' : ''}" data-id="${escapeHtml(r.id)}">${meta}</li></ul></li>`;
     }).join('');
   } catch (e) {
@@ -8573,8 +8590,8 @@ function renderPerson(run) {
         <section class="pr-sec">
           <h3>Contact info</h3>
           ${revealed ? prContactsHtml(run.contacts)
-    : `<p class="muted">Contact lookup (RocketReach + FullEnrich) is a paid step.</p>
-               <button type="button" id="pr-reveal-btn" class="pr-reveal-btn">🔓 Reveal email &amp; phone</button>`}
+    : `<p class="muted">Email lookup — RocketReach (1 credit), FullEnrich fallback. No extra phone-number credits.</p>
+               <button type="button" id="pr-reveal-btn" class="pr-reveal-btn">🔓 Reveal email</button>`}
           ${nar.reach_recommendation ? `<p class="pr-reach"><strong>Best way to reach:</strong> ${escapeHtml(nar.reach_recommendation)}</p>` : ''}
         </section>
       </div>
@@ -8596,7 +8613,7 @@ async function revealPersonContacts(id, btn) {
     if (!res.ok) throw new Error(data.error || `Failed (${res.status})`);
     if (prLastRun) { prLastRun.revealed = true; prLastRun.contacts = data.contacts; renderPerson(prLastRun); }
   } catch (err) {
-    if (btn) { btn.disabled = false; btn.textContent = '🔓 Reveal email & phone'; }
+    if (btn) { btn.disabled = false; btn.textContent = '🔓 Reveal email'; }
     setPrStatus(String(err.message || err), true);
   }
 }

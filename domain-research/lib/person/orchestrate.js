@@ -112,6 +112,22 @@ function nameFromTitle(title) {
   return t;
 }
 
+// Last-resort name from the profile URL slug — e.g. LinkedIn
+// /in/george-lambeth-833496279 → "George Lambeth". Only fires when the slug has
+// 2+ alpha word-parts (so a bare handle like "mattstone38" stays null rather than
+// producing junk). Used when the page is bot-walled and RocketReach misses.
+export function nameFromProfileUrl(url) {
+  try {
+    const u = new URL(/^https?:\/\//i.test(url) ? url : `https://${url}`);
+    let seg = (u.pathname.replace(/\/+$/, '').split('/').filter(Boolean).pop() || '').split('?')[0];
+    seg = seg.replace(/-?\d{4,}$/, '').replace(/-+$/, ''); // drop a trailing numeric id
+    const parts = seg.split(/[-_.]+/).filter((p) => /[a-z]/i.test(p) && !/^\d+$/.test(p) && p.length <= 20);
+    if (parts.length < 2) return null;
+    const nm = parts.map((p) => p.charAt(0).toUpperCase() + p.slice(1).toLowerCase()).join(' ');
+    return (nm.length >= 3 && nm.length <= 60) ? nm : null;
+  } catch { return null; }
+}
+
 async function identify({ url, name, company, env }) {
   const platform = platformOf(url);
   const inputPage = await readUrl(url, env);
@@ -144,6 +160,10 @@ async function identify({ url, name, company, env }) {
       subject.location = rrProfile.location || subject.location;
     }
   }
+  // Last resort — a bot-walled profile with no RocketReach hit still has a usable
+  // name in the URL slug (LinkedIn /in/<first>-<last>-<id>), so the run isn't left
+  // labeled by its raw URL.
+  if (!subject.name) subject.name = nameFromProfileUrl(url);
   return { subject, inputPage, rrProfile };
 }
 
