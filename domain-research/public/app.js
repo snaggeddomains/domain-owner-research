@@ -5705,11 +5705,70 @@ const BATCH_MAX = 25;
 
 function setBatchStatus(text, isError = false) {
   if (!els.batchStatus) return;
-  if (!text) { els.batchStatus.hidden = true; els.batchStatus.textContent = ''; return; }
+  if (!text) {
+    els.batchStatus.hidden = true; els.batchStatus.textContent = '';
+    batchItems = null; stopBatchPoll();
+    return;
+  }
   els.batchStatus.hidden = false;
   els.batchStatus.textContent = text;
   els.batchStatus.classList.toggle('error', isError);
 }
+
+// Per-name batch state — one entry per submitted name with its own state
+// (running / ready / failed) so a batch where some names were already researched
+// (server reuses the cached run → `existing:true`) still shows EVERY name, not
+// just whichever one had no cache. Clicking a row opens that report.
+let batchItems = null; let batchDeep = false; let batchBad = []; let batchSkipped = 0;
+function renderBatchList() {
+  if (!els.batchStatus || !batchItems) return;
+  const running = batchItems.filter((it) => it.state === 'running').length;
+  const ready = batchItems.filter((it) => it.state === 'ready').length;
+  const failed = batchItems.filter((it) => it.state === 'failed').length;
+  const head = running
+    ? `Researching ${running} name${running === 1 ? '' : 's'}${batchDeep ? ' (deep)' : ''}${ready ? ` · ${ready} already done` : ''}…`
+    : `${batchItems.length} name${batchItems.length === 1 ? '' : 's'} ready${failed ? ` · ${failed} couldn’t start` : ''}.`;
+  const rows = batchItems.map((it) => {
+    const label = it.state === 'running' ? 'researching…'
+      : it.state === 'ready' ? 'report ready ↗'
+      : 'couldn’t start';
+    const attr = it.run_id && it.state !== 'failed' ? ` data-id="${escapeHtml(it.run_id)}"` : '';
+    return `<li class="batch-row batch-${it.state}"${attr}><span class="batch-dom">${escapeHtml(it.domain)}</span><span class="batch-state">${label}</span></li>`;
+  }).join('');
+  const extra = [];
+  if (batchBad.length) extra.push(`Skipped ${batchBad.length} unrecognized.`);
+  if (batchSkipped) extra.push(`Only the first ${BATCH_MAX} were started.`);
+  els.batchStatus.hidden = false;
+  els.batchStatus.classList.toggle('error', failed > 0 && ready === 0 && running === 0);
+  els.batchStatus.innerHTML =
+    `<div class="batch-head">${escapeHtml(head)}</div>` +
+    `<ul class="batch-list">${rows}</ul>` +
+    (extra.length ? `<div class="batch-note muted">${escapeHtml(extra.join(' '))}</div>` : '');
+}
+let batchPollTimer = null; let batchPollUntil = 0;
+function startBatchPoll() {
+  if (!batchItems || !batchItems.some((it) => it.state === 'running' && it.run_id)) return;
+  batchPollUntil = Date.now() + 6 * 60 * 1000;
+  if (batchPollTimer) return;
+  batchPollTimer = setInterval(async () => {
+    if (Date.now() > batchPollUntil || els.hero.hidden || !batchItems) { stopBatchPoll(); return; }
+    const pending = batchItems.filter((it) => it.state === 'running' && it.run_id);
+    if (!pending.length) { stopBatchPoll(); return; }
+    await Promise.all(pending.map(async (it) => {
+      try {
+        const r = await pollRun(it.run_id);
+        // Free-first auto-deepen keeps status 'running' through the deep pass; a
+        // saved report (or a terminal status) = ready to open.
+        if (r.status === 'done' || r.status === 'error' || (r.report && r.status !== 'running')) {
+          it.state = (r.status === 'error' && !r.report) ? 'failed' : 'ready';
+        }
+      } catch { /* keep polling */ }
+    }));
+    renderBatchList();
+    if (!batchItems.some((it) => it.state === 'running')) stopBatchPoll();
+  }, 5000);
+}
+function stopBatchPoll() { if (batchPollTimer) { clearInterval(batchPollTimer); batchPollTimer = null; } }
 
 // Fire a research run for EACH name in parallel (all created at once, server-side
 // Inngest jobs), then keep the user on the entry view watching Recent fill in —
@@ -5729,19 +5788,24 @@ async function runBatch(domains, deep) {
   const capped = clean.slice(0, BATCH_MAX);
   const skipped = clean.length - capped.length;
   if (els.go) els.go.disabled = true;
-  setBatchStatus(`Starting ${capped.length} research runs${deep ? ' (deep)' : ''}…`);
+  setBatchStatus(`Starting ${capped.length} research run${capped.length === 1 ? '' : 's'}${deep ? ' (deep)' : ''}…`);
   const results = await Promise.allSettled(capped.map((domain) => enqueue({ domain, deep })));
-  const ok = results.filter((r) => r.status === 'fulfilled').length;
-  const failed = capped.length - ok;
-  const parts = [`Started ${ok} research run${ok === 1 ? '' : 's'}${deep ? ' (deep)' : ''} — they'll appear in Recent below as they finish.`];
-  if (failed) parts.push(`${failed} couldn't start.`);
-  if (bad.length) parts.push(`Skipped ${bad.length} unrecognized.`);
-  if (skipped) parts.push(`Only the first ${BATCH_MAX} were started.`);
-  setBatchStatus(parts.join(' '), failed > 0 && ok === 0);
+  // Build one entry PER submitted name. A name we already researched comes back
+  // `existing:true` (reused cached run, no re-spend) → 'ready'; a fresh name is
+  // now 'running'; a rejected enqueue → 'failed'. Index-aligned with `capped`.
+  batchItems = capped.map((domain, i) => {
+    const r = results[i];
+    if (r.status !== 'fulfilled') return { domain, run_id: null, state: 'failed' };
+    const v = r.value || {};
+    return { domain, run_id: v.run_id || null, state: v.existing ? 'ready' : 'running' };
+  });
+  batchDeep = deep; batchBad = bad; batchSkipped = skipped;
+  renderBatchList();
   els.domain.value = '';
   autoResizeDomain();
   if (els.go) els.go.disabled = false;
   loadRecent();
+  startBatchPoll();
   startRecentPoll();
 }
 
@@ -8790,6 +8854,11 @@ els.projectsList?.addEventListener('click', (e) => {
 });
 
 els.recentList?.addEventListener('click', (e) => {
+  const li = e.target.closest('[data-id]');
+  if (li && li.dataset.id) openProject(li.dataset.id);
+});
+// A batch-list row (one per submitted name) opens that name's report.
+els.batchStatus?.addEventListener('click', (e) => {
   const li = e.target.closest('[data-id]');
   if (li && li.dataset.id) openProject(li.dataset.id);
 });
