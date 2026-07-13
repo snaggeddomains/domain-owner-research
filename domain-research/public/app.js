@@ -4421,7 +4421,7 @@ async function loadRecent() {
     els.recentList.innerHTML = runs
       .map((r) => {
         const when = r.created_at ? new Date(r.created_at).toLocaleString() : '';
-        const active = r.status === 'running';
+        const active = r.status === 'running' || r.status === 'queued';
         return `<li class="recent-run" data-id="${escapeHtml(r.id)}"><span class="recent-domain">${escapeHtml(r.domain || '(unknown)')}</span><span class="recent-when">${active ? 'researching…' : escapeHtml(when)}</span></li>`;
       })
       .join('');
@@ -4450,6 +4450,10 @@ function showEntry() {
   els.deepenTop.hidden = true;
   els.deepenBar.hidden = true;
   if (els.marketStrip) els.marketStrip.hidden = true;
+  // Company vitals + Deeper dives render per report — clear them too, or they'd
+  // sit stale under the Recent list when you come back to the entry hero.
+  if (els.companyVitals) { els.companyVitals.hidden = true; els.companyVitals.innerHTML = ''; delete els.companyVitals.dataset.domain; }
+  if (els.reportAddons) { els.reportAddons.hidden = true; els.reportAddons.innerHTML = ''; delete els.reportAddons.dataset.owner; }
   els.evidence.hidden = true;
   currentRunId = null;
   els.domain.value = '';
