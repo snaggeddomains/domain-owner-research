@@ -894,12 +894,15 @@
             <input id="naming-title" class="naming-title-input" type="text" autocomplete="off" placeholder="Project name (optional — defaults to the brief)" />
             <textarea id="naming-input" class="naming-input" rows="9" placeholder="Paste a brief — e.g. &quot;Tech startup, B2B SaaS, premium feel. One-word .com, easy to spell, under $5,000. Keywords: cloud, data, ops.&quot;
 
+Or just drop rough notes / a pasted doc / a few names you like (e.g. arx.com, harbor.com) and hit ✨ Draft brief — I'll shape it into a themed brief for you.
+
 The model parses it into structured filters (TLDs, length, budget, tone, etc.) and queries the universe of marketplace inventory."></textarea>
             <!-- Beast Mode only: optional industry + current website to sharpen affixes + niche TLDs -->
             <input id="naming-industry" class="naming-title-input" type="text" autocomplete="off" hidden placeholder="Company industry (optional) — e.g. healthcare → DartHealth, Dart.health" />
             <input id="naming-website" class="naming-title-input" type="text" autocomplete="off" hidden placeholder="Current website (optional) — I read it to infer sharper prefix/suffix combos" />
             <div class="naming-actions">
               <button id="naming-go" type="button" class="naming-go">Find Names</button>
+              <button id="naming-draft" type="button" class="naming-draft" title="Turn rough notes, a pasted brief, or a few reference names into a polished theme brief">✨ Draft brief</button>
               <button id="naming-new" type="button" class="naming-new">+ New project</button>
               <span id="naming-status" class="naming-status" hidden></span>
             </div>
@@ -1147,6 +1150,6 @@ The model parses it into structured filters (TLDs, length, budget, tone, etc.) a
     </div>
 
     <!-- Bump ?v= on any public/app.js or styles.css change to bust caches. -->
-    <script src="app.js?v=20260713person2"></script>
+    <script src="app.js?v=20260713draftbrief"></script>
   </body>
 </html>

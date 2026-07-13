@@ -88,6 +88,40 @@ async function callWithRetry(fn, { tries = 5, baseMs = 600 } = {}) {
   throw lastErr;
 }
 
+// Raw context (rough notes / a pasted doc / a few reference names they like) → a
+// polished THEME brief, formatted for the theme search. The downstream parseBrief
+// matches the brief's vocabulary against enriched keyword/industry tags, so a good
+// brief enumerates the semantic space generously and states only the constraints the
+// user actually gave. Returns the brief text (plain prose).
+const DRAFT_SYSTEM = `You help a domain broker turn rough input into a clean NAMING BRIEF for a theme-based domain search. The user gives you raw context: notes about a company, a pasted brief/deck, and/or a few reference domain names they already like.
+
+Write a single, well-structured brief in natural PROSE (roughly 120-220 words) that a downstream parser will read to find on-theme .com names in a marketplace corpus. The brief MUST:
+1. Open with ONE clear sentence on what the company does / who it's for.
+2. Nail the THEME — the connotations, feeling, and world to search. Enumerate the semantic space GENEROUSLY (synonyms, adjacent concepts, roots, moods): the downstream matches these words against each candidate name's enriched keyword tags, so breadth surfaces on-theme names even when the exact word isn't in the domain.
+3. State the desired TONE/style in plain words if the user implied one (e.g. serious, technical, frontier, premium, playful, warm, minimal) — and what to AVOID if they said so.
+4. If the user named reference domains they like (e.g. arx.com, harbor.com), INFER the underlying theme from them and weave that vibe in — describe WHY those names work (what they connote), don't just list them.
+5. Include ONLY the hard constraints the user explicitly gave — TLD (e.g. ".com only"), length ("short"), word count ("one word"), price. NEVER invent a price, length, or word-count the user didn't state.
+
+Keep it readable prose the parser can digest — not a bulleted spec sheet, not JSON. Output ONLY the brief text, no preamble, no quotes.`;
+
+export async function draftBrief(context, env) {
+  if (!env.ANTHROPIC_API_KEY) throw new Error('ANTHROPIC_API_KEY is not set');
+  const raw = String(context || '').trim();
+  if (!raw) throw new Error('Add a few notes (or paste a brief / some names you like) first.');
+  const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY, maxRetries: 0 });
+  const model = env.NAMING_BRIEF_MODEL || env.OUTREACH_MODEL || 'claude-sonnet-4-6';
+  const response = await callWithRetry(() => client.messages.create({
+    model,
+    max_tokens: 700,
+    system: DRAFT_SYSTEM,
+    messages: [{ role: 'user', content: `Here is my raw input. Turn it into a naming brief:\n\n${raw.slice(0, 8000)}` }],
+  }));
+  recordModelUsage('anthropic', model, response.usage);
+  const text = response.content.filter((b) => b.type === 'text').map((b) => b.text).join('\n').trim();
+  if (!text) throw new Error('The model returned an empty brief — try again.');
+  return text;
+}
+
 export async function parseBrief(brief, env) {
   if (!env.ANTHROPIC_API_KEY) throw new Error('ANTHROPIC_API_KEY is not set');
   // maxRetries:0 — we own the retry loop below (callWithRetry) so backoff timing
