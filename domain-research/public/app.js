@@ -1965,6 +1965,14 @@ async function loadCompanyVitals(domain, phase, reveal = false) {
     el.hidden = true;
   }
 }
+// Split a prose company description into sentence-level bullets (cap ~7).
+function cvSentences(text) {
+  return String(text || '')
+    .split(/(?<=[.!?])\s+(?=[A-Z0-9"'])/)
+    .map((s) => s.trim())
+    .filter((s) => s.length > 3)
+    .slice(0, 7);
+}
 function cvStat(label, value, sub) {
   if (value == null || value === '') return '';
   return `<div class="cv-stat"><div class="cv-k">${label}</div><div class="cv-v">${value}${sub ? ` <span class="cv-sub">${sub}</span>` : ''}</div></div>`;
@@ -2006,7 +2014,7 @@ function renderCompanyVitals(d) {
     `<div class="cv-head"><span class="cv-title">🏢 Company vitals</span>${verdictPill}</div>`
     + `<div class="cv-chips">${siteChip}${wbChip}${mxChip}</div>`
     + (stats ? `<div class="cv-stats">${stats}</div>` : '')
-    + (c && c.description ? `<div class="cv-desc muted">${escapeHtml(c.description)}</div>` : '')
+    + (c && c.description ? `<ul class="cv-desc-list">${cvSentences(c.description).map((s) => `<li>${escapeHtml(s)}</li>`).join('')}</ul>` : '')
     + (v.why ? `<div class="cv-why muted">${escapeHtml(v.why)}</div>` : '')
     + revealBtn;
   el.hidden = false;

@@ -2191,6 +2191,8 @@ a.sr-ag-co-link:hover { border-color: var(--coral); color: var(--coral-deep); ba
 .cv-stat .cv-k { font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: #8a8a80; }
 .cv-stat .cv-v { font-size: 15px; font-weight: 600; color: #2f2f2a; }
 .cv-desc { font-size: 12.5px; margin: 4px 0; }
+.cv-desc-list { margin: 6px 0 4px; padding-left: 20px; }
+.cv-desc-list li { font-size: 14.5px; line-height: 1.55; color: #33332e; margin: 3px 0; }
 .cv-why { font-size: 12.5px; font-style: italic; margin-top: 6px; }
 .cv-reveal { margin-top: 6px; padding: 8px 14px; border-radius: 8px; border: 1px solid #d5b45a; background: #fff; color: #8a6d10; cursor: pointer; font-size: 13px; font-weight: 600; }
 .cv-reveal:disabled { opacity: 0.6; cursor: default; }
