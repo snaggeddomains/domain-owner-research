@@ -318,6 +318,19 @@ button:disabled { opacity: .55; cursor: progress; }
   padding: 10px 14px;
 }
 .batch-status.error { border-color: var(--coral); color: var(--coral); }
+.batch-head { font-weight: 600; margin-bottom: 8px; }
+.batch-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.batch-row {
+  display: flex; justify-content: space-between; align-items: baseline; gap: 12px;
+  padding: 6px 8px; border-radius: var(--radius-sm); background: var(--cream, #faf6ec);
+}
+.batch-row[data-id] { cursor: pointer; }
+.batch-row[data-id]:hover { background: var(--sand, #f0e9d8); }
+.batch-dom { font-weight: 600; color: var(--navy); }
+.batch-state { font-size: 13px; color: var(--navy-2); white-space: nowrap; }
+.batch-row.batch-ready .batch-state { color: var(--teal, #0b8f6a); }
+.batch-row.batch-failed .batch-state { color: var(--coral); }
+.batch-note { margin-top: 8px; font-size: 13px; }
 
 /* Research hero */
 .hero { text-align: center; padding: 24px 0 4px; }
