@@ -383,6 +383,9 @@ button:disabled { opacity: .55; cursor: progress; }
 .lead-inquiry-row { display: flex; flex-wrap: wrap; gap: 8px 24px; font-size: 15px; }
 .lead-inq-k { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--navy-2); margin-right: 4px; }
 .lead-quote { margin-top: 12px; font-size: 15px; color: var(--navy-2); line-height: 1.5; font-style: italic; }
+.lead-standing { font-size: 17px; font-weight: 700; color: var(--coral); margin-top: 6px; }
+.lead-overview { font-size: 16px; line-height: 1.6; color: var(--navy); margin: 16px 0 4px; }
+.lead-sub-h { font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--navy-2); font-weight: 700; margin: 16px 0 4px; }
 
 /* Research hero */
 .hero { text-align: center; padding: 24px 0 4px; }
