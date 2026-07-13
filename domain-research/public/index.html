@@ -792,6 +792,11 @@
         </section>
 
         <!-- Person — social-URL deep dive: identity + cross-platform VIP + contacts -->
+        <!-- Inbound-lead dossier — deep-link only (#/lead/<key>), no nav tab. -->
+        <section id="view-lead" hidden>
+          <div id="lead-body" class="lead-body"><div class="lead-loading">Loading…</div></div>
+        </section>
+
         <section id="view-person" hidden>
           <div class="hero tool-hero">
             <h1 class="hero-title">Person <span class="accent">Deep Dive</span></h1>
@@ -1135,6 +1140,6 @@ The model parses it into structured filters (TLDs, length, budget, tone, etc.) a
     </div>
 
     <!-- Bump ?v= on any public/app.js or styles.css change to bust caches. -->
-    <script src="app.js?v=20260713atomsticky"></script>
+    <script src="app.js?v=20260713leads"></script>
   </body>
 </html>

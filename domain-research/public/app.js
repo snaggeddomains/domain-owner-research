@@ -791,6 +791,10 @@ function route() {
     showView('admin');
     return;
   }
+  // Inbound-lead dossier deep-link (#/lead/<key>) — internal, gated server-side by
+  // the `leads` permission; the enrichment is keyed on the lead's email.
+  const lk = (location.hash.match(/^#\/lead\/([a-f0-9]{6,})$/i) || [])[1];
+  if (lk) { showView('lead'); loadLead(lk); return; }
   const id = runIdFromHash();
   if (id) openProject(id);
   else showEntry();
@@ -3631,6 +3635,7 @@ const VIEWS = {
   evaluate: { view: 'view-evaluate', nav: 'nav-snap-eval' },
   'bulk-eval': { view: 'view-bulk-eval', nav: 'nav-bulk-eval' },
   admin: { view: 'view-admin', nav: 'nav-admin' },
+  lead: { view: 'view-lead', nav: 'nav-lead' }, // deep-link only (no nav tab)
 };
 
 // ── Section registry (research SPA) ─────────────────────────────────────────
@@ -3670,6 +3675,139 @@ function showView(name) {
   const wrap = document.querySelector('.content > .wrap');
   if (wrap) wrap.classList.add('wrap--wide');
   renderDomainBar(); // refresh the cross-module action bar for the new view
+}
+
+// ── Inbound-lead dossier ────────────────────────────────────────────────────
+// A deep-linked, gated triage card for a contact-form inquiry: who is this person,
+// what company do they represent, is this a VIP worth replying to personally. Keyed
+// on the lead's email; enriches async, so the page shows a pending state + polls.
+const LEAD_TIER = {
+  vip: { label: 'VIP', cls: 'lead-vip', blurb: 'Reply personally' },
+  notable: { label: 'Notable', cls: 'lead-notable', blurb: 'Worth a senior reply' },
+  standard: { label: 'Standard', cls: 'lead-standard', blurb: 'Team can handle' },
+};
+let leadPollTimer = null;
+function stopLeadPoll() { if (leadPollTimer) { clearTimeout(leadPollTimer); leadPollTimer = null; } }
+async function loadLead(key, { started = Date.now() } = {}) {
+  const el = document.getElementById('lead-body');
+  if (!el) return;
+  stopLeadPoll();
+  if (!el.dataset.key) el.innerHTML = '<div class="lead-loading">Loading…</div>';
+  el.dataset.key = key;
+  try {
+    const res = await fetch(`/research/api/lead-enrich?key=${encodeURIComponent(key)}`);
+    if (res.status === 403) { el.innerHTML = '<div class="lead-loading">You don’t have access to leads.</div>'; return; }
+    if (res.status === 404) { el.innerHTML = '<div class="lead-loading">No lead found for this link yet.</div>'; return; }
+    const data = await res.json();
+    if (el.dataset.key !== key) return; // navigated away
+    const lead = data.lead;
+    if (!lead) { el.innerHTML = '<div class="lead-loading">No lead found.</div>'; return; }
+    if ((lead.status === 'pending' || lead.status === 'running') && Date.now() - started < 4 * 60 * 1000) {
+      renderLeadPending(el, lead);
+      leadPollTimer = setTimeout(() => loadLead(key, { started }), 4000);
+      return;
+    }
+    renderLead(el, lead);
+  } catch {
+    el.innerHTML = '<div class="lead-loading">Couldn’t load this lead. Refresh in a moment.</div>';
+  }
+}
+function renderLeadPending(el, lead) {
+  const name = escapeHtml(lead.name || lead.email || 'this lead');
+  el.innerHTML =
+    `<div class="lead-head"><h1 class="lead-name">${name}</h1>`
+    + (lead.email ? `<div class="lead-sub">${escapeHtml(lead.email)}</div>` : '') + `</div>`
+    + `<div class="lead-pending"><span class="lead-spin">◌</span> Enriching this lead — VIP check, company size, funding… this takes a minute. The page refreshes itself.</div>`;
+}
+function leadStat(label, value) {
+  if (value == null || value === '') return '';
+  return `<div class="lead-stat"><div class="lead-k">${escapeHtml(label)}</div><div class="lead-v">${value}</div></div>`;
+}
+function renderLead(el, lead) {
+  const r = lead.result || {};
+  const t = r.triage || {};
+  const tier = LEAD_TIER[t.tier] || LEAD_TIER.standard;
+  const p = r.person || null;
+  const c = r.company || null;
+  const fmtNum = (n) => (n == null ? null : Number(n).toLocaleString());
+
+  // Verdict banner
+  const reasons = Array.isArray(t.reasons) ? t.reasons : [];
+  const banner =
+    `<div class="lead-verdict ${tier.cls}">`
+    + `<div class="lead-verdict-main"><span class="lead-pill">${tier.label}</span>`
+    + `<span class="lead-route">→ ${escapeHtml(t.route_to || tier.blurb)}</span></div>`
+    + (reasons.length ? `<ul class="lead-reasons">${reasons.map((x) => `<li>${escapeHtml(x)}</li>`).join('')}</ul>` : '')
+    + `</div>`;
+
+  // Person block
+  let person = '';
+  if (p) {
+    const vband = p.vip && p.vip.band;
+    const vlabel = { vip: 'VIP', high_profile: 'High-profile', notable: 'Notable', low: 'Low profile' }[vband] || '—';
+    const sigs = (p.vip && Array.isArray(p.vip.signals)) ? p.vip.signals : [];
+    const platforms = (Array.isArray(p.social) ? p.social : [])
+      .map((s) => `<a class="lead-chip" href="${escapeHtml(s.url || '#')}" target="_blank" rel="noopener">${escapeHtml(s.label || s.key)}${s.followers ? ` · ${fmtNum(s.followers)}` : ''}</a>`).join('');
+    const prof = p.professional || {};
+    person =
+      `<div class="lead-card"><div class="lead-card-h">👤 Person</div>`
+      + `<div class="lead-stats">`
+      + leadStat('Prominence', `<strong>${vlabel}</strong>`)
+      + leadStat('Reach', p.max_followers ? `${fmtNum(p.max_followers)} followers` : null)
+      + leadStat('Title', prof.title ? escapeHtml(prof.title) : null)
+      + leadStat('Employer', prof.employer ? escapeHtml(prof.employer) : null)
+      + `</div>`
+      + (sigs.length ? `<ul class="lead-sig">${sigs.map((s) => `<li>${escapeHtml(s)}</li>`).join('')}</ul>` : '')
+      + (platforms ? `<div class="lead-chips">${platforms}</div>` : '')
+      + `</div>`;
+  }
+
+  // Company block
+  let company = '';
+  if (c) {
+    company =
+      `<div class="lead-card"><div class="lead-card-h">🏢 Company — ${escapeHtml(c.company || lead.company_domain || '')}</div>`
+      + `<div class="lead-stats">`
+      + leadStat('Employees', c.employees ? fmtNum(c.employees) : null)
+      + leadStat('Funding raised', c.funding ? escapeHtml(String(c.funding)) : null)
+      + leadStat('Stage', c.fundingStage ? escapeHtml(c.fundingStage) : null)
+      + leadStat('Revenue', c.revenue ? escapeHtml(String(c.revenue)) : null)
+      + leadStat('Founded', c.foundedYear || null)
+      + leadStat('Industry', c.industry ? escapeHtml(c.industry) : null)
+      + leadStat('HQ', c.location ? escapeHtml(c.location) : null)
+      + `</div>`
+      + (c.description ? `<div class="lead-desc">${escapeHtml(c.description)}</div>` : '')
+      + `</div>`;
+  } else if (lead.company_domain) {
+    company = `<div class="lead-card"><div class="lead-card-h">🏢 Company</div><div class="lead-desc muted">No firmographics for ${escapeHtml(lead.company_domain)} (or Apollo returned nothing).</div></div>`;
+  } else {
+    company = `<div class="lead-card"><div class="lead-card-h">🏢 Company</div><div class="lead-desc muted">Personal email — no company to profile.</div></div>`;
+  }
+
+  // Form context + jump-back-to-email
+  const gmailSearch = lead.email ? `https://mail.google.com/mail/u/0/#search/${encodeURIComponent('from:' + lead.email)}` : null;
+  const ctx =
+    `<div class="lead-card"><div class="lead-card-h">📨 The inquiry</div>`
+    + `<div class="lead-stats">`
+    + leadStat('Wants', lead.domain_of_interest ? `<strong>${escapeHtml(lead.domain_of_interest)}</strong>` : null)
+    + leadStat('Intent', lead.intent ? escapeHtml(lead.intent) : null)
+    + leadStat('Budget', lead.budget ? escapeHtml(lead.budget) : null)
+    + leadStat('Location', (r.location || lead.location) ? escapeHtml(r.location || lead.location) : null)
+    + `</div>`
+    + (r.message || lead.message ? `<div class="lead-desc">“${escapeHtml(r.message || lead.message)}”</div>` : '')
+    + `<div class="lead-links">`
+    + (r.linkedin_url ? `<a href="${escapeHtml(r.linkedin_url)}" target="_blank" rel="noopener">LinkedIn ↗</a>` : '')
+    + (gmailSearch ? `<a href="${escapeHtml(gmailSearch)}" target="_blank" rel="noopener">↗ Open the email</a>` : '')
+    + `</div></div>`;
+
+  const name = escapeHtml(lead.name || lead.email || 'Lead');
+  el.innerHTML =
+    `<div class="lead-head"><h1 class="lead-name">${name}</h1>`
+    + (lead.email ? `<div class="lead-sub">${escapeHtml(lead.email)}${lead.domain_of_interest ? ` · inquiring about <strong>${escapeHtml(lead.domain_of_interest)}</strong>` : ''}</div>` : '')
+    + `</div>`
+    + banner
+    + `<div class="lead-grid">${person}${company}${ctx}</div>`
+    + (lead.status === 'failed' ? `<div class="lead-loading">Enrichment hit an error${lead.error ? `: ${escapeHtml(String(lead.error).slice(0, 200))}` : ''}. The form details above are still accurate.</div>` : '');
 }
 
 // ── Beeper — RDAP drop watcher ──────────────────────────────────────────────
