@@ -23,3 +23,8 @@ export const PORTFOLIO_REQUESTED = 'domain-research/portfolio.requested';
 // context. Async because the profile fetch + multi-platform search + LLM synthesis
 // runs past the 60s API cap. The paid contact reveal is a separate sync action.
 export const PERSON_REQUESTED = 'domain-research/person.requested';
+// Inbound-lead enrichment — from a contact-form submission, run the person deep-dive
+// + company firmographics + triage into a routing verdict. Async because the person
+// deep-dive + Apollo lookup run past the 60s API cap; kicked fire-and-forget by the
+// internal lead-enrich endpoint (Zapier) so the dossier is warm by review time.
+export const LEAD_REQUESTED = 'domain-research/lead.requested';

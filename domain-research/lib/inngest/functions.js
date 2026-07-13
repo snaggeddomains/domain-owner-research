@@ -1,4 +1,4 @@
-import { inngest, RUN_REQUESTED, CHAT_REQUESTED, RUN_CANCELLED, SALES_RESEARCH_REQUESTED, SALES_ANGLES_REQUESTED, PORTFOLIO_REQUESTED, PERSON_REQUESTED } from './client.js';
+import { inngest, RUN_REQUESTED, CHAT_REQUESTED, RUN_CANCELLED, SALES_RESEARCH_REQUESTED, SALES_ANGLES_REQUESTED, PORTFOLIO_REQUESTED, PERSON_REQUESTED, LEAD_REQUESTED } from './client.js';
 import { gather, critique, chatTurn } from '../agent.js';
 import { friendlyApiError } from '../llm/anthropic.js';
 import { setRunStatus, saveRunReport, failRun, getRun } from '../db/runs.js';
@@ -26,6 +26,8 @@ import {
 } from '../db/portfolio.js';
 import { getPersonRun, setPersonRunStatus } from '../db/person.js';
 import { runPersonDeepDive } from '../person/orchestrate.js';
+import { getLeadByKey, setLeadStatus } from '../db/leads.js';
+import { runLeadEnrich } from '../leads/orchestrate.js';
 import { deriveRegistrantKeys } from '../portfolio/registrant.js';
 import { pullPortfolio } from '../portfolio/providers.js';
 import { classifyPremium, wordsNeedingDictionary } from '../portfolio/premium.js';
@@ -643,4 +645,38 @@ export const runPerson = inngest.createFunction(
   },
 );
 
-export const functions = [runResearch, runChat, runSalesResearch, runSalesAngles, runCorporatePortfolio, runPerson];
+// ── Inbound-lead enrichment ──────────────────────────────────────────────────
+// Person deep-dive + company firmographics + triage for an inbound contact-form
+// lead. Keyed by the deterministic lead_key so the dossier URL is stable.
+export const runLead = inngest.createFunction(
+  {
+    id: 'run-lead',
+    retries: 1,
+    onFailure: async ({ event, step }) => {
+      const key = event?.data?.event?.data?.lead_key;
+      const message = String(event?.data?.error?.message || 'failed').slice(0, 500);
+      if (key) await step.run('mark-failed', () => setLeadStatus(key, 'failed', { error: message }));
+    },
+  },
+  { event: LEAD_REQUESTED },
+  async ({ event, step }) => {
+    const { lead_key } = event.data;
+    try {
+      const lead = await step.run('load', () => getLeadByKey(lead_key));
+      if (!lead) return { lead_key, ok: false, reason: 'not found' };
+      await step.run('mark-running', () => setLeadStatus(lead_key, 'running'));
+      const form = { ...(lead.form || {}), email: lead.email, domain_of_interest: lead.domain_of_interest, budget: lead.budget, intent: lead.intent };
+      const dossier = await step.run('enrich', () => withCategory('lead', () => runLeadEnrich({ form, env: process.env })));
+      await step.run('mark-done', () => setLeadStatus(lead_key, 'done', {
+        tier: dossier.triage ? dossier.triage.tier : null,
+        result: dossier,
+      }));
+      return { lead_key, ok: true, tier: dossier.triage && dossier.triage.tier };
+    } catch (err) {
+      await step.run('mark-error', () => setLeadStatus(lead_key, 'failed', { error: String(err?.message || err) }));
+      throw err;
+    }
+  },
+);
+
+export const functions = [runResearch, runChat, runSalesResearch, runSalesAngles, runCorporatePortfolio, runPerson, runLead];
