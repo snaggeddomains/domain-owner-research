@@ -386,6 +386,11 @@ button:disabled { opacity: .55; cursor: progress; }
 .lead-standing { font-size: 17px; font-weight: 700; color: var(--coral); margin-top: 6px; }
 .lead-overview { font-size: 16px; line-height: 1.6; color: var(--navy); margin: 16px 0 4px; }
 .lead-sub-h { font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--navy-2); font-weight: 700; margin: 16px 0 4px; }
+.lead-report-link {
+  display: inline-block; margin: 14px 0 2px; padding: 10px 16px; border-radius: 999px;
+  background: var(--coral); color: #fff; font-weight: 700; font-size: 15px; text-decoration: none;
+}
+.lead-report-link:hover { filter: brightness(1.05); }
 
 /* Research hero */
 .hero { text-align: center; padding: 24px 0 4px; }

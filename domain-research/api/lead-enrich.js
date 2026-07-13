@@ -17,7 +17,20 @@ import { isDbConfigured } from '../lib/db/supabase.js';
 import { inngest, LEAD_REQUESTED } from '../lib/inngest/client.js';
 import { leadKey } from '../lib/leads/key.js';
 import { upsertLead, getLeadByKey, listLeads } from '../lib/db/leads.js';
+import { listRuns } from '../lib/db/runs.js';
 import { emailDomain, isFreeEmail } from '../lib/leads/triage.js';
+
+// Has a Domain Owner report already been run for the inquired domain? Return the
+// newest completed (or report-bearing errored) run so the dossier can deep-link to it.
+async function existingReport(domainRaw) {
+  const domain = String(domainRaw || '').trim().toLowerCase().replace(/^https?:\/\//, '').replace(/^www\./, '').replace(/\/.*$/, '');
+  if (!domain || !/\./.test(domain)) return null;
+  try {
+    const runs = await listRuns({ q: domain, limit: 10, statuses: ['done'], reportStatuses: ['error'] });
+    const hit = runs.find((r) => String(r.domain).toLowerCase() === domain);
+    return hit ? { id: hit.id, domain: hit.domain, created_at: hit.created_at } : null;
+  } catch { return null; }
+}
 
 export const config = { maxDuration: 30 };
 
@@ -96,7 +109,8 @@ async function handleGet(req, res) {
   if (!key) { res.status(400).json({ error: 'Missing key' }); return; }
   const lead = await getLeadByKey(key);
   if (!lead) { res.status(404).json({ error: 'Lead not found' }); return; }
-  res.status(200).json({ lead });
+  const report_run = await existingReport(lead.domain_of_interest);
+  res.status(200).json({ lead, report_run });
 }
 
 export default async function handler(req, res) {
