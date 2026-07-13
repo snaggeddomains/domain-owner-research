@@ -19,6 +19,13 @@
     <!-- Base path so every relative asset/link resolves under /research/ when
          the app is served from /research/* (app.snagged.com/research/*). -->
     <base href="/research/" />
+    <!-- Preload the self-hosted fonts so the display face (Gasoek One) + body
+         (Bricolage) are loaded before first paint. @font-face fonts are otherwise
+         fetched LAZILY on first use, so a client-side nav to a page whose heading is
+         the first Gasoek element flashes (and can stick in) a system-ui fallback.
+         crossorigin is required — fonts are always fetched in CORS mode. -->
+    <link rel="preload" href="fonts/gasoekone.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="fonts/bricolagegrotesque.woff2" as="font" type="font/woff2" crossorigin />
     <link rel="icon" href="favicon-32.png" />
     <!-- PWA / Add to Home Screen — standalone launch on iOS + Android. -->
     <link rel="manifest" href="manifest.webmanifest" />
