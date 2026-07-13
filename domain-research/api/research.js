@@ -37,11 +37,13 @@ export default async function handler(req, res) {
   // ── List past runs (Projects view) ─────────────────────────────────────────
   if (req.method === 'GET' && req.query.list !== undefined) {
     const q = typeof req.query.q === 'string' ? req.query.q.slice(0, 200) : '';
-    // Show completed runs plus any actively-researching ones (skip transient
-    // queued). Also surface errored runs that DID save a report — a deep pass
-    // that timed out still leaves a usable free pre-flight report; without this
-    // they'd vanish from Recent even though the report opens fine.
-    const runs = await listRuns({ q, limit: 100, statuses: ['done', 'running'], reportStatuses: ['error'] });
+    // Show completed runs plus any in-flight ones — including `queued`, so a
+    // just-submitted batch (all rows land as `queued` until Inngest picks each
+    // up and flips it to `running`) surfaces ALL its names immediately, not just
+    // whichever one started first. Also surface errored runs that DID save a
+    // report — a deep pass that timed out still leaves a usable free pre-flight
+    // report; without this they'd vanish from Recent even though the report opens.
+    const runs = await listRuns({ q, limit: 100, statuses: ['queued', 'running', 'done'], reportStatuses: ['error'] });
     res.status(200).json({ runs });
     return;
   }
