@@ -3704,7 +3704,7 @@ async function loadLead(key, { started = Date.now() } = {}) {
       leadPollTimer = setTimeout(() => loadLead(key, { started }), 4000);
       return;
     }
-    renderLead(el, lead);
+    renderLead(el, lead, data.report_run || null);
   } catch {
     el.innerHTML = '<div class="lead-loading">Couldn’t load this lead. Refresh in a moment.</div>';
   }
@@ -3727,11 +3727,14 @@ function leadBullets(text) {
     .split(/(?<=[.!?])\s+(?=[A-Z0-9"'])/)
     .map((s) => s.trim()).filter((s) => s.length > 3).slice(0, 8);
 }
-function renderLead(el, lead) {
+function renderLead(el, lead, reportRun) {
   const r = lead.result || {};
   const p = r.person || null;
   const c = r.company || null;
   const num = (n) => (n == null ? null : Number(n).toLocaleString());
+  // If we've already run a Domain Owner report for the inquired domain, deep-link it.
+  const reportHref = (reportRun && reportRun.id)
+    ? `#/r/${buildSlug({ domain: reportRun.domain || lead.domain_of_interest, id: reportRun.id })}` : null;
   // Money: always prefix a currency symbol. Apollo's printed values often come back
   // bare ("4.8M", "61.1M"); a plain integer gets thousands separators.
   const money = (v) => {
@@ -3818,9 +3821,12 @@ function renderLead(el, lead) {
 
   // ── The inquiry (secondary) + jump back to the email.
   const gmailSearch = lead.email ? `https://mail.google.com/mail/u/0/#search/${encodeURIComponent('from:' + lead.email)}` : null;
+  const wantsVal = lead.domain_of_interest
+    ? (reportHref ? `<a href="${reportHref}"><strong>${escapeHtml(lead.domain_of_interest)}</strong></a>` : `<strong>${escapeHtml(lead.domain_of_interest)}</strong>`)
+    : null;
   const inquiry =
     `<div class="lead-inquiry-row">`
-    + (lead.domain_of_interest ? `<span><span class="lead-inq-k">Wants</span> <strong>${escapeHtml(lead.domain_of_interest)}</strong></span>` : '')
+    + (wantsVal ? `<span><span class="lead-inq-k">Wants</span> ${wantsVal}</span>` : '')
     + (lead.budget ? `<span><span class="lead-inq-k">Budget</span> ${escapeHtml(lead.budget)}</span>` : '')
     + ((r.location || lead.location) ? `<span><span class="lead-inq-k">Location</span> ${escapeHtml(r.location || lead.location)}</span>` : '')
     + `</span>`
@@ -3836,6 +3842,8 @@ function renderLead(el, lead) {
     + (standing ? `<div class="lead-standing">${escapeHtml(standing)}</div>` : '')
     + (lead.email ? `<div class="lead-sub">${escapeHtml(lead.email)}${lead.domain_of_interest ? ` · inquiring about <strong>${escapeHtml(lead.domain_of_interest)}</strong>` : ''}</div>` : '')
     + `</div>`
+    // Deep-link to an existing Domain Owner report for the inquired domain.
+    + (reportHref ? `<a class="lead-report-link" href="${reportHref}">📄 Ownership report on file for ${escapeHtml(lead.domain_of_interest || 'this domain')} — open ↗</a>` : '')
     // Who they are — reach + overview + work history + highlights.
     + personSection
     // Company facts headline.
