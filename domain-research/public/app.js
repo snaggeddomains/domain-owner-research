@@ -9573,12 +9573,12 @@ els.evPrice?.addEventListener('change', () => {
 
 // Deeplinks: open a report when the URL carries one, both on load and on
 // in-app navigation (back button / pasted link).
-window.addEventListener('hashchange', () => {
-  if (currentToolRoute()) return; // tools are path-routed, not hash-routed
-  const id = runIdFromHash();
-  if (id) openProject(id);
-  else showEntry();
-});
+// One router for both events — route() handles every hash shape (#/r/<slug>,
+// #/lead/<key>) plus the path-routed tools and the entry fallback. (A prior
+// hashchange-only handler didn't know about #/lead/ and fell through to
+// showEntry(), so hitting Back from a report landed on the Research entry instead
+// of the lead it came from.)
+window.addEventListener('hashchange', route);
 window.addEventListener('popstate', route);
 
 (async () => {
