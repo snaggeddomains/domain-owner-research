@@ -682,7 +682,7 @@ function route() {
     showView('appraisal');
     refreshToolRecent(els.apRecent, 'ap');
     if (tr.slug) openToolSlug('ap', tr.slug);
-    else { els.apResult.hidden = true; els.apResult.innerHTML = ''; els.apDomain.value = ''; setToolStatus(els.apStatus, ''); if (els.apNamebio) { els.apNamebio.hidden = true; els.apNamebio.innerHTML = ''; els.apNamebio.dataset.domain = ''; } }
+    else { els.apResult.hidden = true; els.apResult.innerHTML = ''; els.apDomain.value = ''; setToolStatus(els.apStatus, ''); if (els.apNamebio) { els.apNamebio.hidden = true; els.apNamebio.innerHTML = ''; els.apNamebio.dataset.domain = ''; } if (els.apAtom) { els.apAtom.hidden = true; els.apAtom.innerHTML = ''; els.apAtom.dataset.domain = ''; } }
     toolReport('view-appraisal', tr.slug || '', !!tr.slug);
     return;
   }
