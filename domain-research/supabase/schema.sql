@@ -567,6 +567,31 @@ create table if not exists domain_research_chat_emails (
 );
 create index if not exists idx_dr_chat_emails_run on domain_research_chat_emails (run_id, created_at);
 
+-- ── Inbound-lead enrichment (contact-form triage) ───────────────────────────
+-- One row per lead, keyed by the DETERMINISTIC lead_key (HMAC of the email) so the
+-- dossier URL is stable and a re-submission upserts the same row. The full enriched
+-- dossier (person deep-dive + company firmographics + triage verdict) lives in
+-- `result`. RLS auto-enabled by the loop below. ONE-TIME MIGRATION: run this table
+-- on the research project before first use.
+create table if not exists domain_research_leads (
+  id                 uuid primary key default gen_random_uuid(),
+  lead_key           text unique not null,           -- HMAC(email) — the URL key
+  email              text,
+  name               text,
+  company_domain     text,
+  domain_of_interest text,
+  intent             text,
+  budget             text,
+  form               jsonb,                           -- raw form fields as submitted
+  tier               text,                            -- vip|notable|standard
+  status             text not null default 'pending', -- pending|running|done|failed
+  error              text,
+  result             jsonb,                           -- the enriched dossier
+  created_at         timestamptz not null default now(),
+  updated_at         timestamptz not null default now()
+);
+create index if not exists idx_dr_leads_updated on domain_research_leads (updated_at desc);
+
 
 -- ── Enable RLS (no policies → backend secret key only) ──────────────────────
 do $$
