@@ -40,28 +40,45 @@ async function waybackNewest(domain) {
   }
 }
 
-// Quick homepage reachability — reachable + not an obvious registrar/parking holding.
+// Quick homepage read. Robust to bot-walls: a Cloudflare/WAF CHALLENGE (403/503 or a
+// "just a moment" body) means there IS a live, protected site — NOT a dead one. And a
+// fetch that THROWS (timeout / DNS / refused) is "couldn't check" (active:null), never a
+// false "no live site". We only assert active/parked when we actually see the page.
+const BROWSER_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0 Safari/537.36';
 async function siteStatus(domain) {
-  const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), 8000);
-  try {
-    const res = await fetch(`https://${domain}/`, { redirect: 'follow', signal: ctrl.signal, headers: { 'user-agent': 'Mozilla/5.0 snagged-vitals/1.0' } });
-    const body = (await res.text().catch(() => '')).slice(0, 4000).toLowerCase();
-    const parked = /this domain (is|may be) for sale|buy this domain|parked (free|by)|domain for sale|godaddy\.com\/domainsearch|is for sale/.test(body);
-    return { reachable: res.ok, status: res.status, parked, active: res.ok && !parked && body.length > 200 };
-  } catch {
-    return { reachable: false, status: null, parked: false, active: false };
-  } finally {
-    clearTimeout(timer);
+  const headers = { 'user-agent': BROWSER_UA, accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8', 'accept-language': 'en-US,en;q=0.9' };
+  for (const url of [`https://${domain}/`, `https://www.${domain}/`]) {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 10000);
+    try {
+      const res = await fetch(url, { redirect: 'follow', signal: ctrl.signal, headers });
+      const body = (await res.text().catch(() => '')).slice(0, 6000).toLowerCase();
+      const parked = /this domain (is|may be) for sale|buy this domain|parked (free|by)|domain for sale|hugedomains|sedoparking|godaddy\.com\/domainsearch/.test(body);
+      const challenge = res.status === 403 || res.status === 503 || /just a moment|checking your browser|cf-browser-verification|enable javascript and cookies|attention required/.test(body);
+      // A challenge = a real site behind a WAF → active. Otherwise active when we got a
+      // page and it isn't a parking lander.
+      return { reachable: true, status: res.status, parked: parked && !challenge, active: challenge || (!parked && body.length > 200), protected: challenge };
+    } catch {
+      // try the www. variant before giving up
+    } finally {
+      clearTimeout(timer);
+    }
   }
+  return { reachable: null, status: null, parked: false, active: null }; // couldn't check — not "no site"
 }
 
 async function gatherAliveness(domain) {
   const [wayback, mx, site] = await Promise.all([
     waybackNewest(domain),
     dnsMx(domain).catch(() => ({ active: null, records: [] })),
-    siteStatus(domain).catch(() => ({ reachable: false, active: false })),
+    siteStatus(domain).catch(() => ({ reachable: null, active: null })),
   ]);
+  // The direct fetch is flaky behind Cloudflare/WAFs, so when it's inconclusive fall back
+  // to the Internet Archive: a RECENT snapshot means the site is live + being crawled.
+  if (site.active == null && wayback && wayback.age_days != null && wayback.age_days < 90) {
+    site.active = true;
+    site.via = 'archive';
+  }
   return { wayback, mx, site };
 }
 
@@ -69,12 +86,14 @@ async function gatherAliveness(domain) {
 function pryVerdict({ company, aliveness }) {
   const emp = company && Number(company.employees) || 0;
   const funded = company && Number(company.fundingAmount) > 0;
-  const active = aliveness && aliveness.site && aliveness.site.active;
-  const mxActive = aliveness && aliveness.mx && aliveness.mx.active;
+  const site = (aliveness && aliveness.site) || {};
+  const active = site.active === true;
+  const deadSite = site.active === false; // explicit negative only (null = couldn't check)
+  const mxActive = aliveness && aliveness.mx && aliveness.mx.active === true;
   const fresh = aliveness && aliveness.wayback && aliveness.wayback.age_days != null && aliveness.wayback.age_days < 120;
-  if ((emp >= 50 || funded) && active) return { band: 'very_hard', label: 'Very hard to pry', why: 'Sizable / funded company actively using the domain as its live brand.' };
-  if ((emp >= 10 || active || mxActive) ) return { band: 'hard', label: 'Hard to pry', why: 'A real, operating business is using this domain (live site and/or active email).' };
-  if (!active && !mxActive && !fresh) return { band: 'possible', label: 'Possibly pry-able', why: 'No live site, no active email, and no recent updates — looks dormant.' };
+  if ((emp >= 50 || funded) && (active || mxActive)) return { band: 'very_hard', label: 'Very hard to pry', why: 'Sizable / funded company actively using the domain as its live brand.' };
+  if (emp >= 10 || active || mxActive) return { band: 'hard', label: 'Hard to pry', why: 'A real, operating business is using this domain (live site and/or active email).' };
+  if (deadSite && !mxActive && !fresh) return { band: 'possible', label: 'Possibly pry-able', why: 'No live site, no active email, and no recent updates — looks dormant.' };
   return { band: 'unclear', label: 'Unclear', why: 'Mixed signals — needs a human read.' };
 }
 

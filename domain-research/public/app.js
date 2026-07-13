@@ -1977,10 +1977,10 @@ function renderCompanyVitals(d) {
   const growthPct = (g) => (g && g.twelveMo != null ? `${g.twelveMo > 0 ? '+' : ''}${Math.round(g.twelveMo * 100)}%/yr` : '');
   // Aliveness chips
   const site = a.site || {};
-  const siteChip = site.active ? `<span class="cv-chip cv-ok">✓ Live site</span>`
+  const siteChip = site.active === true ? `<span class="cv-chip cv-ok">✓ Live site${site.protected ? ' <span class="cv-sub">(bot-protected)</span>' : site.via === 'archive' ? ' <span class="cv-sub">(recently archived)</span>' : ''}</span>`
     : site.parked ? `<span class="cv-chip cv-no">⚠ Parked page</span>`
-    : site.reachable ? `<span class="cv-chip cv-warn">Reachable</span>`
-    : `<span class="cv-chip cv-no">✗ No live site</span>`;
+    : site.active === false ? `<span class="cv-chip cv-no">✗ No live site</span>`
+    : ''; // null = couldn't check → show nothing (don't imply it's dead)
   const wb = a.wayback;
   const wbChip = wb ? `<span class="cv-chip ${wb.age_days < 180 ? 'cv-ok' : 'cv-warn'}">Last archived ${new Date(wb.date).toLocaleDateString(undefined, { year: 'numeric', month: 'short' })} <span class="cv-sub">(${wb.age_days < 60 ? `${wb.age_days}d` : `${Math.round(wb.age_days / 30)}mo`} ago)</span></span>` : '';
   const mx = a.mx || {};
