@@ -815,14 +815,16 @@
             <input id="pr-name" type="text" class="pr-name-input" placeholder="Name (optional, helps disambiguate)" />
             <button id="pr-go" type="submit">Deep dive</button>
           </form>
+          <button id="pr-new" type="button" class="sr-new-btn pr-new-btn" hidden>+ New</button>
+          <div id="pr-status" class="sr-status" hidden></div>
+          <div id="pr-results" hidden></div>
+          <!-- Recent people sit at the BOTTOM so a new/in-progress dive stays at the
+               top (recent history never crowds the result while researching). -->
           <div id="pr-recent" class="sr-recent" hidden>
             <div class="sr-recent-head">Recent people</div>
             <ul id="pr-recent-list" class="sr-recent-list"></ul>
             <a id="pr-recent-all" class="show-all" href="/research/person/all">View all &rarr;</a>
           </div>
-          <button id="pr-new" type="button" class="sr-new-btn pr-new-btn" hidden>+ New</button>
-          <div id="pr-status" class="sr-status" hidden></div>
-          <div id="pr-results" hidden></div>
         </section>
 
         <!-- Past Person deep dives — searchable list -->
@@ -1160,6 +1162,6 @@ The model parses it into structured filters (TLDs, length, budget, tone, etc.) a
     </div>
 
     <!-- Bump ?v= on any public/app.js or styles.css change to bust caches. -->
-    <script src="app.js?v=20260714registrar"></script>
+    <script src="app.js?v=20260714personrecent"></script>
   </body>
 </html>
