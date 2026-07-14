@@ -11,9 +11,13 @@ function csvExportUrl(url) {
   const idm = s.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
   if (!idm) return null;
   const id = idm[1];
+  // Only pin a gid when the link actually carries one. Forcing gid=0 breaks any
+  // sheet whose first tab isn't gid 0 (deleted/recreated first tab) — Google
+  // returns HTTP 400. With no gid, /export exports the first sheet, which is what
+  // we want for a plain sheet link.
   const gidm = s.match(/[#&?]gid=(\d+)/);
-  const gid = gidm ? gidm[1] : '0';
-  return `https://docs.google.com/spreadsheets/d/${id}/export?format=csv&gid=${gid}`;
+  const base = `https://docs.google.com/spreadsheets/d/${id}/export?format=csv`;
+  return gidm ? `${base}&gid=${gidm[1]}` : base;
 }
 
 // Minimal RFC-4180-ish CSV parser (handles quoted fields + embedded commas/newlines).
