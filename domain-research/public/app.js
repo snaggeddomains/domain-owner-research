@@ -4004,7 +4004,7 @@ function renderWhois(w) {
   }
   const r = w.registrar || {};
   const reg = r.name
-    ? escapeHtml(r.name) + (r.ianaId ? ` <span class="muted">(IANA ${escapeHtml(String(r.ianaId))})</span>` : '') + (r.url ? ` · <a href="${escapeHtml(r.url)}" target="_blank" rel="noopener">site</a>` : '')
+    ? escapeHtml(r.name) + (r.ianaId ? ` <span class="muted">(IANA ${escapeHtml(String(r.ianaId))})</span>` : '') + (r.url ? ` · <a href="${escapeHtml(r.url)}" target="_blank" rel="noopener">site</a>` : '') + (r.inferred ? ` <span class="muted">· via nameservers${r.inferredKind && r.inferredKind !== 'registrar' ? ` (${escapeHtml(r.inferredKind)})` : ''}</span>` : '')
     : null;
   const statuses = (w.statuses || []).length ? w.statuses.map((s) => `<span class="wi-tag">${escapeHtml(s)}</span>`).join(' ') : null;
   const ns = (w.nameservers || []).length ? w.nameservers.map((n) => `<div>${escapeHtml(n)}</div>`).join('') : null;

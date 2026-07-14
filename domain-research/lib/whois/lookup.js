@@ -111,6 +111,49 @@ export async function dnsMx(domain) {
   }
 }
 
+// Infer the registrar / DNS host from the nameserver hostnames. RDAP is dead for
+// some ccTLDs (e.g. .co isn't in IANA's bootstrap and rdap.org 404s it) and the
+// port-43 WHOIS leg can time out — leaving us with only the DNS-delegated
+// nameservers. For the common managed registrars the NS host IS the registrar
+// (name.com, GoDaddy's domaincontrol, Namecheap's registrar-servers, …), so we can
+// still name it. Flagged `inferred` so the UI can note it's derived from the NS,
+// not authoritative WHOIS. Pure-DNS hosts (Cloudflare/Route 53/…) are labeled as a
+// DNS host rather than the registrar of record.
+const NS_REGISTRAR = [
+  [/(^|\.)name\.com$/i, 'Name.com', 'registrar'],
+  [/(^|\.)domaincontrol\.com$/i, 'GoDaddy', 'registrar'],
+  [/(^|\.)registrar-servers\.com$/i, 'Namecheap', 'registrar'],
+  [/(^|\.)dynadot\.com$/i, 'Dynadot', 'registrar'],
+  [/(^|\.)porkbun\.com$/i, 'Porkbun', 'registrar'],
+  [/(^|\.)gandi\.net$/i, 'Gandi', 'registrar'],
+  [/(^|\.)hover\.com$/i, 'Hover', 'registrar'],
+  [/(^|\.)googledomains\.com$/i, 'Google Domains / Squarespace', 'registrar'],
+  [/(^|\.)dnsimple\.com$/i, 'DNSimple', 'registrar'],
+  [/(^|\.)ionos|1and1|1und1/i, 'IONOS', 'registrar'],
+  [/(^|\.)ovh\.net$/i, 'OVH', 'registrar'],
+  [/(^|\.)nsone\.net$|(^|\.)ns1\.net$/i, 'NS1', 'dns host'],
+  [/(^|\.)cloudflare\.com$/i, 'Cloudflare', 'dns host'],
+  [/(^|\.)awsdns|amazonaws|route53/i, 'Amazon Route 53', 'dns host'],
+  [/(^|\.)azure-dns\./i, 'Azure DNS', 'dns host'],
+  [/(^|\.)wixdns\.net$/i, 'Wix', 'dns host'],
+  [/(^|\.)squarespacedns\.com$/i, 'Squarespace', 'dns host'],
+  [/(^|\.)shopify/i, 'Shopify', 'dns host'],
+  [/(^|\.)vercel-dns\.com$/i, 'Vercel', 'dns host'],
+  [/(^|\.)netlify/i, 'Netlify', 'dns host'],
+  [/(^|\.)digitalocean\.com$/i, 'DigitalOcean', 'dns host'],
+  [/(^|\.)sedoparking\.com$|(^|\.)sedo\.com$/i, 'Sedo (parked)', 'parking'],
+  [/(^|\.)bodis\.com$/i, 'Bodis (parked)', 'parking'],
+  [/(^|\.)above\.com$|afternic|dan\.com$/i, 'Afternic / Dan (listed)', 'parking'],
+  [/(^|\.)uniregistrymarket|uniregistry/i, 'UNR / Uniregistry', 'registrar'],
+];
+function registrarFromNameservers(nameservers) {
+  for (const ns of nameservers || []) {
+    const host = String(ns || '').toLowerCase();
+    for (const [re, label, kind] of NS_REGISTRAR) if (re.test(host)) return { name: label, kind };
+  }
+  return null;
+}
+
 // Flatten an RDAP jCard (vcardArray) into the fields we care about.
 function parseVcard(vcardArray) {
   const out = { fn: '', org: '', email: '', tel: '', country: '', region: '' };
@@ -235,17 +278,24 @@ export async function whoisLookup(domainRaw) {
   }
 
   // Prefer RDAP for the structured core; fall back to WHOIS field-by-field.
+  const nsList = (rdap.nameservers && rdap.nameservers.length) ? rdap.nameservers
+    : (whois && whois.nameservers && whois.nameservers.length) ? whois.nameservers
+    : dnsNs;
+  // Last resort: when neither RDAP nor WHOIS named a registrar (dead-RDAP ccTLDs
+  // like .co, or a timed-out WHOIS leg), infer it from the nameservers so the
+  // lookup ALWAYS shows who the domain is with. Marked `inferred` for the UI.
+  const nsGuess = registrarFromNameservers(nsList);
   const registrar = (rdap.registrar && rdap.registrar.name) ? rdap.registrar
-    : (whois && whois.registrar) ? { name: whois.registrar, ianaId: null, url: null } : null;
+    : (whois && whois.registrar) ? { name: whois.registrar, ianaId: null, url: null }
+    : nsGuess ? { name: nsGuess.name, ianaId: null, url: null, inferred: true, inferredKind: nsGuess.kind }
+    : null;
   const dates = {
     registered: (rdap.dates && rdap.dates.registered) || (whois && whois.created) || null,
     expires: (rdap.dates && rdap.dates.expires) || (whois && whois.expires) || null,
     updated: (rdap.dates && rdap.dates.updated) || (whois && whois.updated) || null,
   };
   const statuses = (rdap.statuses && rdap.statuses.length) ? rdap.statuses : (whois ? whois.status || [] : []);
-  const nameservers = (rdap.nameservers && rdap.nameservers.length) ? rdap.nameservers
-    : (whois && whois.nameservers && whois.nameservers.length) ? whois.nameservers
-    : dnsNs;
+  const nameservers = nsList;
 
   // Registrant: RDAP rarely exposes it (GDPR); WHOIS often does. Merge per-field.
   const rReg = (rdap.contacts && rdap.contacts.registrant) || {};
