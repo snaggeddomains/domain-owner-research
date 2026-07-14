@@ -503,7 +503,9 @@ button.nmv-crit-kind { font-weight: 600; }
 .naming-bucket-title { font-size: 1.2rem; margin: 0; color: var(--navy); }
 .naming-bucket-count { color: var(--navy-3); font-weight: 400; font-size: .95rem; margin-left: 6px; }
 .naming-bucket-note { margin: 0 0 10px; color: var(--navy-3); font-size: .9rem; }
-.naming-export { display: flex; gap: 8px; }
+.naming-export { display: flex; gap: 8px; align-items: center; }
+.naming-sort { display: inline-flex; align-items: center; gap: 6px; font-size: .82rem; color: var(--muted, #6b6257); font-weight: 600; }
+.naming-sort-select { background: var(--cream-2); color: var(--navy); border: 2px solid var(--line); border-radius: var(--radius-sm); padding: 6px 8px; font-size: .9rem; cursor: pointer; }
 .naming-export-btn { background: var(--cream-2); color: var(--navy); border: 2px solid var(--line); border-radius: var(--radius-sm); padding: 6px 12px; font-size: .9rem; cursor: pointer; }
 .naming-export-btn:hover { background: var(--cream); }
 .naming-table-wrap { border: 2px solid var(--line); border-radius: var(--radius-sm); background: var(--cream-2); box-shadow: var(--shadow-sm); overflow: hidden; }

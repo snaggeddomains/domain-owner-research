@@ -183,6 +183,7 @@ const els = {
   namingFilters: $('naming-filters'),
   namingResults: $('naming-results'),
   namingBuyReadyCount: $('naming-buy-ready-count'),
+  namingSort: $('naming-sort'),
   namingBuyReadyTable: $('naming-buy-ready-table'),
   namingStretchCount: $('naming-stretch-count'),
   namingStretchTable: $('naming-stretch-table'),
@@ -5352,12 +5353,41 @@ function setNamingStatus(text, isError = false) {
   els.namingStatus.hidden = false;
 }
 
+// How the results are ordered. "fit" = the server's best-fit ranking (relevance to
+// the brief, then quality) — the default, so the strongest matches lead instead of
+// looking randomly ordered. The others re-sort client-side over the loaded rows.
+let namingSortMode = 'fit';
+function namingFitScore(r) {
+  // Mirror the server's intent: on-theme relevance dominates, quality breaks ties,
+  // a real (priced) listing edges out a TBD, and a shorter/cleaner SLD nudges up.
+  const rel = Number(r.relevance) || 0;
+  const q = Number(r.quality_score) || 0;
+  const priced = r.best_price != null ? 1 : 0;
+  const lenPenalty = Math.min(Number(r.sld_length || (r.sld ? String(r.sld).length : 12)), 24) / 100;
+  return rel * 100 + q + priced * 0.5 - lenPenalty;
+}
+function sortNamingRows(rows, mode) {
+  const arr = Array.isArray(rows) ? rows.slice() : [];
+  const price = (r) => (r.best_price == null ? null : Number(r.best_price));
+  const cmp = {
+    fit: (a, b) => namingFitScore(b) - namingFitScore(a),
+    price_asc: (a, b) => (price(a) == null) - (price(b) == null) || (price(a) ?? 0) - (price(b) ?? 0),
+    price_desc: (a, b) => (price(a) == null) - (price(b) == null) || (price(b) ?? 0) - (price(a) ?? 0),
+    short: (a, b) => (Number(a.sld_length || (a.sld || '').length) - Number(b.sld_length || (b.sld || '').length)) || namingFitScore(b) - namingFitScore(a),
+    quality: (a, b) => (Number(b.quality_score) || 0) - (Number(a.quality_score) || 0) || namingFitScore(b) - namingFitScore(a),
+  }[mode] || cmpFitFallback;
+  return arr.sort(cmp);
+  function cmpFitFallback(a, b) { return namingFitScore(b) - namingFitScore(a); }
+}
+
 function renderNamingResults(data) {
   // Collapse the hero+brief into the compact header once names are showing.
   toolReport('view-naming', String((els.namingTitle && els.namingTitle.value) || 'project').slice(0, 60), true);
   renderNamingFilters(data.filters);
-  const buy = Array.isArray(data.buyReady) ? data.buyReady : [];
-  const stretch = Array.isArray(data.stretch) ? data.stretch : [];
+  namingLiveStatuses = {}; // fresh result set — clear the accumulated verify verdicts
+  if (els.namingSort) els.namingSort.value = namingSortMode;
+  const buy = sortNamingRows(Array.isArray(data.buyReady) ? data.buyReady : [], namingSortMode);
+  const stretch = sortNamingRows(Array.isArray(data.stretch) ? data.stretch : [], namingSortMode);
   if (els.namingBuyReadyCount) els.namingBuyReadyCount.textContent = `(${buy.length} ${buy.length === 1 ? 'match' : 'matches'})`;
   if (els.namingStretchCount) els.namingStretchCount.textContent = `(${stretch.length} ${stretch.length === 1 ? 'match' : 'matches'})`;
   // When both buckets are empty, point at the filters most likely to be
@@ -5411,7 +5441,11 @@ async function verifyNamingResults(buy, stretch) {
   }
   updateInUseControl();
 }
+// Accumulated live "in use" verdicts for the current result set, so a client-side
+// re-sort (which re-renders the cards) can re-apply them without another fetch.
+let namingLiveStatuses = {};
 function applyLiveStatuses(statuses) {
+  Object.assign(namingLiveStatuses, statuses);
   for (const [domain, status] of Object.entries(statuses)) {
     if (status !== 'in_use') continue;
     document.querySelectorAll(`.naming-card[data-domain="${(window.CSS && CSS.escape) ? CSS.escape(domain) : domain}"]`).forEach((card) => {
@@ -5561,7 +5595,8 @@ function statusToClass(status) {
 }
 
 function namingResultsToCsv(data) {
-  const rows = [...(data.buyReady || []), ...(data.stretch || [])];
+  // Match the on-screen order (respects the current sort selection).
+  const rows = [...sortNamingRows(data.buyReady || [], namingSortMode), ...sortNamingRows(data.stretch || [], namingSortMode)];
   // CSV matches the on-screen table: Domain, Price, Source, Status,
   // Relevance (matched keywords joined), Link. Bucket is included as an
   // extra column so a downstream sheet/script can still split if needed.
@@ -9021,6 +9056,17 @@ els.namingInput?.addEventListener('keydown', (e) => {
 els.namingExportCsv?.addEventListener('click', copyNamingCsv);
 els.namingExportDownload?.addEventListener('click', downloadNamingCsv);
 els.namingExportSheet?.addEventListener('click', exportNamingSheet);
+// Re-sort the loaded results in place (no re-fetch, no re-running the live verify).
+els.namingSort?.addEventListener('change', () => {
+  namingSortMode = els.namingSort.value || 'fit';
+  if (!namingLastResults) return;
+  const buy = sortNamingRows(namingLastResults.buyReady || [], namingSortMode);
+  const stretch = sortNamingRows(namingLastResults.stretch || [], namingSortMode);
+  if (els.namingBuyReadyTable && buy.length) els.namingBuyReadyTable.innerHTML = renderNamingTable(buy, 'Buy-ready');
+  if (els.namingStretchTable) els.namingStretchTable.innerHTML = renderNamingTable(stretch, 'Stretch');
+  // Re-apply any "in use" flags the verify pass already found to the re-rendered cards.
+  if (typeof namingLiveStatuses === 'object' && namingLiveStatuses) applyLiveStatuses(namingLiveStatuses);
+});
 
 // Save-as-lesson click delegation on the refine-chat thread.
 els.chatThread?.addEventListener('click', (e) => {
