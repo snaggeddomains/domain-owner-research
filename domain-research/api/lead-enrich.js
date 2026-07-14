@@ -14,10 +14,12 @@
 
 import { requirePermission } from '../lib/auth.js';
 import { isDbConfigured } from '../lib/db/supabase.js';
-import { inngest, LEAD_REQUESTED } from '../lib/inngest/client.js';
+import { inngest, LEAD_REQUESTED, RUN_REQUESTED } from '../lib/inngest/client.js';
 import { leadKey } from '../lib/leads/key.js';
 import { upsertLead, getLeadByKey, listLeads } from '../lib/db/leads.js';
-import { listRuns } from '../lib/db/runs.js';
+import { listRuns, createRun } from '../lib/db/runs.js';
+import { cleanDomainInput } from '../lib/util.js';
+import { trackDomain } from '../lib/domainscout.js';
 import { emailDomain, isFreeEmail } from '../lib/leads/triage.js';
 
 // Has a Domain Owner report already been run for the inquired domain? Return the
@@ -65,6 +67,23 @@ function readForm(b) {
   };
 }
 
+// Pre-warm the FREE Domain Owner report for the inquired domain the moment a lead
+// lands — so by the time a human reviews, the free pre-flight is already done (no
+// 5-minute wait) and the dossier's "Ownership report on file" banner is live. Kicks
+// the same shallow research pipeline as the Research tab, deduped (skips if a run
+// already exists / is in flight) and fully best-effort — never blocks the lead.
+async function kickFreeReport(domainRaw) {
+  let domain;
+  try { domain = cleanDomainInput(domainRaw); } catch { return; } // not a valid domain → skip
+  try {
+    const runs = await listRuns({ q: domain, limit: 10, statuses: ['queued', 'running', 'done'], reportStatuses: ['error'] });
+    if (runs.some((r) => String(r.domain).toLowerCase() === domain)) return; // already have / running
+    try { await trackDomain(domain, process.env); } catch { /* non-blocking */ }
+    const runId = await createRun({ domain });
+    await inngest.send({ name: RUN_REQUESTED, data: { runId, domain, phase: 'shallow' } });
+  } catch { /* best-effort — a failed pre-warm never affects the lead */ }
+}
+
 async function handlePost(req, res) {
   // Machine-to-machine auth — a shared secret header, NOT a session (Zapier has no
   // cookie). If the secret is unset we refuse rather than run open.
@@ -92,6 +111,9 @@ async function handlePost(req, res) {
     });
     // Fire-and-forget the enrichment; the deterministic URL is returned NOW.
     try { await inngest.send({ name: LEAD_REQUESTED, data: { lead_key: key } }); } catch { /* best-effort */ }
+    // Pre-warm the free Domain Owner report for the inquired domain in parallel, so
+    // it's already run by the time a human reviews the lead (no 5-minute wait).
+    if (form.domain_of_interest) await kickFreeReport(form.domain_of_interest);
   }
   res.status(200).json({ ok: true, key, url: leadUrl(key) });
 }
