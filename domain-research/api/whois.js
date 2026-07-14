@@ -11,7 +11,9 @@ export default async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store');
   if (!isAuthed(req)) { res.status(401).json({ error: 'Not authenticated' }); return; }
   const user = await currentUser(req);
-  if (user && !userCan(user, 'whois')) {
+  // Allow the standalone Whois tool (`whois`) OR anyone with Domain Owner access —
+  // the Domain Owner report embeds a registrar card that calls this same free lookup.
+  if (user && !userCan(user, 'whois') && !userCan(user, 'domain_owner')) {
     res.status(403).json({ error: "You don't have access to the Whois module — ask an admin to enable it." });
     return;
   }

@@ -67,6 +67,7 @@ const els = {
   cancelRun: $('cancel-run'),
   marketStrip: $('market-strip'),
   companyVitals: $('company-vitals'),
+  registrarCard: $('registrar-card'),
   namebioStrip: $('namebio-strip'),
   apNamebio: $('ap-namebio'),
   report: $('report'),
@@ -1946,6 +1947,72 @@ function renderReport(report) {
 
   // Company vitals — how alive is this company (aliveness free; firmographics on deep).
   if (currentReportDomain) loadCompanyVitals(currentReportDomain, report && report.phase);
+  // Registrar — a standard, always-present WHOIS/RDAP block for the domain.
+  if (currentReportDomain) loadRegistrar(currentReportDomain);
+}
+
+// ── Registrar block ──────────────────────────────────────────────────────────
+// A standard, always-present card showing WHERE the domain is registered +
+// its registration/expiry/updated dates, nameservers, DNSSEC and status codes.
+// Reuses the free /api/whois lookup (RDAP + port-43 WHOIS + NS inference), so
+// every report shows the registrar without the reader hunting the narrative.
+function whoisShortDate(s) {
+  if (!s) return null;
+  const d = new Date(s);
+  if (isNaN(d)) return String(s).slice(0, 10);
+  return d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+}
+async function loadRegistrar(domain) {
+  const el = els.registrarCard;
+  if (!el) return;
+  el.hidden = false;
+  el.dataset.domain = domain;
+  el.innerHTML = '<div class="rg-head"><span class="rg-ico">🏛️</span><strong>Registrar</strong> <span class="muted rg-loading">looking up…</span></div>';
+  try {
+    const res = await fetch(`/research/api/whois?domain=${encodeURIComponent(domain)}`);
+    if (el.dataset.domain !== domain) return; // a newer report took over
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const w = await res.json();
+    renderRegistrarCard(w);
+  } catch {
+    if (el.dataset.domain !== domain) return;
+    // Non-fatal: a whois hiccup shouldn't leave a broken box — just hide it.
+    el.hidden = true;
+  }
+}
+function renderRegistrarCard(w) {
+  const el = els.registrarCard;
+  if (!el) return;
+  if (!w || w.available) { el.hidden = true; return; }
+  const r = w.registrar || {};
+  const regName = r.name
+    ? escapeHtml(r.name)
+      + (r.ianaId ? ` <span class="muted">· IANA ${escapeHtml(String(r.ianaId))}</span>` : '')
+      + (r.inferred ? ` <span class="muted">· via nameservers${r.inferredKind && r.inferredKind !== 'registrar' ? ` (${escapeHtml(r.inferredKind)})` : ''}</span>` : '')
+    : '<span class="muted">Unknown</span>';
+  const regLink = r.url ? ` <a href="${escapeHtml(r.url)}" target="_blank" rel="noopener">site ↗</a>` : '';
+  const dates = w.dates || {};
+  const chips = [];
+  if (dates.registered) chips.push(`<span class="rg-chip">Registered ${escapeHtml(whoisShortDate(dates.registered))}</span>`);
+  if (dates.expires) chips.push(`<span class="rg-chip">Expires ${escapeHtml(whoisShortDate(dates.expires))}</span>`);
+  if (dates.updated) chips.push(`<span class="rg-chip">Updated ${escapeHtml(whoisShortDate(dates.updated))}</span>`);
+  if (w.dnssec === true) chips.push('<span class="rg-chip">DNSSEC signed</span>');
+  const ns = (w.nameservers || []).slice(0, 4).map((n) => escapeHtml(n)).join(' · ')
+    + ((w.nameservers || []).length > 4 ? ` <span class="muted">+${w.nameservers.length - 4}</span>` : '');
+  const abuse = w.abuse && (w.abuse.email || w.abuse.phone)
+    ? `<div class="rg-row"><span class="rg-k">Abuse</span><span class="rg-v">${[w.abuse.email, w.abuse.phone].filter(Boolean).map((x) => escapeHtml(String(x))).join(' · ')}</span></div>`
+    : '';
+  const shareUrl = `https://www.whois.com/whois/${encodeURIComponent(String(w.domain || '').toLowerCase())}`;
+  el.innerHTML =
+    `<div class="rg-head"><span class="rg-ico">🏛️</span><strong>Registrar</strong>`
+      + `<a class="rg-full" href="${escapeHtml(shareUrl)}" target="_blank" rel="noopener">Full WHOIS ↗</a></div>`
+    + `<div class="rg-body">`
+      + `<div class="rg-reg">${regName}${regLink}</div>`
+      + (chips.length ? `<div class="rg-chips">${chips.join('')}</div>` : '')
+      + (ns ? `<div class="rg-row"><span class="rg-k">Nameservers</span><span class="rg-v rg-ns">${ns}</span></div>` : '')
+      + abuse
+    + `</div>`;
+  el.hidden = false;
 }
 
 // ── Company vitals ───────────────────────────────────────────────────────────
@@ -3403,6 +3470,7 @@ function enterResultMode(domain) {
   // run must clear the previous company's block (else last report's vitals sit
   // stale through the whole "gathering" stage of the new run).
   if (els.companyVitals) { els.companyVitals.hidden = true; els.companyVitals.innerHTML = ''; delete els.companyVitals.dataset.domain; }
+  if (els.registrarCard) { els.registrarCard.hidden = true; els.registrarCard.innerHTML = ''; delete els.registrarCard.dataset.domain; }
   stopDsPoll();
   if (els.marketStrip) els.marketStrip.hidden = true;
   if (els.runControls) els.runControls.hidden = true;
@@ -4642,6 +4710,7 @@ function showEntry() {
   // Company vitals + Deeper dives render per report — clear them too, or they'd
   // sit stale under the Recent list when you come back to the entry hero.
   if (els.companyVitals) { els.companyVitals.hidden = true; els.companyVitals.innerHTML = ''; delete els.companyVitals.dataset.domain; }
+  if (els.registrarCard) { els.registrarCard.hidden = true; els.registrarCard.innerHTML = ''; delete els.registrarCard.dataset.domain; }
   if (els.reportAddons) { els.reportAddons.hidden = true; els.reportAddons.innerHTML = ''; delete els.reportAddons.dataset.owner; }
   els.evidence.hidden = true;
   currentRunId = null;
