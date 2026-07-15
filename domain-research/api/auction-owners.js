@@ -36,12 +36,22 @@ export default async function handler(req, res) {
       if (req.query.detect != null) {
         const known = await ownersForDomain(domain);
         const haveNc = known.some((o) => o.marketplace === 'namecheap');
+        let detected = null;
         if (!haveNc) {
-          const hit = await detectNamecheapAuction(domain, process.env).catch(() => null);
-          if (hit && hit.handle) {
-            await saveAuctionOwner({ marketplace: 'namecheap', handle: hit.handle, domain, added_by: 'auto' }).catch(() => {});
+          detected = await detectNamecheapAuction(domain, process.env).catch(() => null);
+          if (detected && detected.handle) {
+            await saveAuctionOwner({ marketplace: 'namecheap', handle: detected.handle, domain, added_by: 'auto', notes: detected.bidders || null }).catch(() => {});
           }
         }
+        // Return the detection + config status so the report can surface the handle
+        // even when the DB write is unavailable, and so a missing Scrape.do key is
+        // diagnosable (auto-detect can't run without it).
+        res.status(200).json({
+          owners: await ownersForDomain(domain),
+          detected,
+          scrape_configured: !!process.env.SCRAPE_DO_API_KEY,
+        });
+        return;
       }
       res.status(200).json({ owners: await ownersForDomain(domain) });
       return;

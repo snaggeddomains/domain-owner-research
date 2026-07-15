@@ -1950,9 +1950,16 @@ function renderReport(report) {
   if (currentReportDomain) loadCompanyVitals(currentReportDomain, report && report.phase);
   // Registrar — a standard, always-present WHOIS/RDAP block for the domain.
   if (currentReportDomain) loadRegistrar(currentReportDomain);
-  // Auction owner — known auction-handle → owner mapping for this domain + capture.
+  // Auction owner — auto-detected handle + auto-attach the report's own owner to it.
+  // Only a HIGH/MEDIUM-confidence, real (non-privacy) owner name is worth propagating.
+  const ownerName = reportOwnerName(data);
+  const goodOwner = ownerName && !CLUE_NOISE_RE.test(String(ownerName)) && (band === 'high' || band === 'medium');
+  reportOwnerForAttach = goodOwner ? ownerName : null;
   if (currentReportDomain) loadAuctionOwner(currentReportDomain);
 }
+// The report's identified owner (high/medium confidence) — auto-attached to this
+// domain's auction handle so the handle→owner map fills itself from the research.
+let reportOwnerForAttach = null;
 
 // ── Auction-handle → owner (report block) ────────────────────────────────────
 // A marketplace auction handle (e.g. Namecheap "keepquiet") that won a domain is
@@ -1980,11 +1987,27 @@ function aoOwnerLine(o, domain) {
   const notes = o.notes ? `<div class="ao-notes muted">${escapeHtml(o.notes)}</div>` : '';
   return `<div class="ao-known"><span class="ao-key">🔑</span> won by ${handle} ${who}${ev}${seen}${notes}</div>`;
 }
-function renderAuctionOwner(domain, owners) {
+function renderAuctionOwner(domain, owners, opts = {}) {
   const el = els.auctionOwner;
   if (!el) return;
-  const rows = (owners || []).map((o) => aoOwnerLine(o, domain)).join('');
-  if (!rows) { el.hidden = true; el.innerHTML = ''; return; }
+  let list = Array.isArray(owners) ? owners.slice() : [];
+  // If the DB has no row yet but detection just found a handle, show it anyway
+  // (resilient to a DB/migration hiccup — the winning bidder is the whole point).
+  if (!list.length && opts.detected && opts.detected.handle) {
+    list = [{ marketplace: 'namecheap', handle: opts.detected.handle, domains: [domain], owner_name: null, notes: opts.detected.bidders || null }];
+  }
+  const rows = list.map((o) => aoOwnerLine(o, domain)).join('');
+  if (!rows) {
+    // Nothing to show. If auto-detect was attempted for a Namecheap sale but couldn't
+    // run because Scrape.do isn't configured, say so (admin-facing) instead of a silent gap.
+    if (opts.detectRequested && opts.scrapeConfigured === false) {
+      el.innerHTML = `<div class="ao-head"><span class="ao-ico">🏷️</span><strong>Auction owner</strong></div>`
+        + `<div class="ao-note muted">Auto-detect needs <code>SCRAPE_DO_API_KEY</code> set on the research project (Namecheap is Cloudflare-walled).</div>`;
+      el.hidden = false;
+      return;
+    }
+    el.hidden = true; el.innerHTML = ''; return;
+  }
   el.innerHTML =
     `<div class="ao-head"><span class="ao-ico">🏷️</span><strong>Auction owner</strong>`
       + `<span class="muted ao-hint">auto-detected winning bidder — surfaces across every name the same handle won</span></div>`
@@ -2002,7 +2025,26 @@ async function loadAuctionOwner(domain, { detect = false } = {}) {
     const res = await fetch(`/research/api/auction-owners?domain=${encodeURIComponent(domain)}${detect ? '&detect=1' : ''}`);
     if (el.dataset.domain !== domain) return;
     const data = res.ok ? await res.json() : { owners: [] };
-    renderAuctionOwner(domain, data.owners || []);
+    // Auto-attach the report's identified owner to the domain's auction handle when
+    // the handle has no owner yet — the handle→owner map fills itself from research.
+    const owners = data.owners || [];
+    const handle = (owners.find((o) => o.marketplace === 'namecheap') || (data.detected && { handle: data.detected.handle, marketplace: 'namecheap' }));
+    const needsOwner = handle && handle.handle && !(owners.find((o) => o.marketplace === 'namecheap' && o.owner_name));
+    if (needsOwner && reportOwnerForAttach) {
+      try {
+        await fetch('/research/api/auction-owners', {
+          method: 'POST', headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ action: 'save', marketplace: 'namecheap', handle: handle.handle, owner_name: reportOwnerForAttach, domain }),
+        });
+        const res2 = await fetch(`/research/api/auction-owners?domain=${encodeURIComponent(domain)}`);
+        if (el.dataset.domain === domain && res2.ok) {
+          const d2 = await res2.json();
+          renderAuctionOwner(domain, d2.owners || [], { detected: data.detected, scrapeConfigured: data.scrape_configured, detectRequested: detect });
+          return;
+        }
+      } catch { /* fall through to the un-attached render */ }
+    }
+    renderAuctionOwner(domain, owners, { detected: data.detected, scrapeConfigured: data.scrape_configured, detectRequested: detect });
   } catch {
     if (el.dataset.domain !== domain) return;
     renderAuctionOwner(domain, []);
