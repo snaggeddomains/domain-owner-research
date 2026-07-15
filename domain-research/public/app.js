@@ -241,6 +241,7 @@ const els = {
   navPortfolio: $('nav-portfolio'),
   navBeeper: $('nav-beeper'),
   navWhois: $('nav-whois'),
+  navAuctionOwners: $('nav-auctionowners'), aoSearch: $('ao-search'), aoRegistry: $('ao-registry'),
   whoisForm: $('whois-form'), whoisDomain: $('whois-domain'), whoisStatus: $('whois-status'), whoisResult: $('whois-result'),
   navDiq: $('nav-diq'),
   diqForm: $('diq-form'), diqDomain: $('diq-domain'), diqStatus: $('diq-status'), diqResult: $('diq-result'),
@@ -509,7 +510,7 @@ function clearHash() {
 // the SPA): Domain DB Screen at /dbscreen, DB Search at /dbsearch.
 const VANITY_TOOLS = ['dbscreen', 'dbsearch'];
 function currentToolRoute() {
-  let m = location.pathname.match(/^\/research\/(trademark|appraisal|naming|dbscreen|dbsearch|nameserver|sales|portfolio|person|evaluate|bulk-eval|beeper|whois|diq|admin)(?:\/(.+?))?\/?$/);
+  let m = location.pathname.match(/^\/research\/(trademark|appraisal|naming|dbscreen|dbsearch|nameserver|sales|portfolio|person|evaluate|bulk-eval|beeper|whois|auction-owners|diq|admin)(?:\/(.+?))?\/?$/);
   if (!m) m = location.pathname.match(/^\/(dbscreen|dbsearch)(?:\/(.+?))?\/?$/);
   if (!m) return null;
   return { tool: m[1], slug: m[2] ? decodeURIComponent(m[2]) : '' };
@@ -534,6 +535,7 @@ const TOOL_PERMISSION = {
   beeper: 'beeper',
   whois: 'whois',
   diq: 'domain_owner',
+  'auction-owners': 'domain_owner',
   portfolio: 'portfolio',
   person: 'person',
   evaluate: 'evaluate',
@@ -732,6 +734,11 @@ function route() {
   if (tr && tr.tool === 'diq') {
     showView('diq');
     if (tr.slug) { if (els.diqDomain) els.diqDomain.value = tr.slug; runDiq(tr.slug); }
+    return;
+  }
+  if (tr && tr.tool === 'auction-owners') {
+    showView('auction-owners');
+    loadAuctionRegistry(els.aoSearch ? els.aoSearch.value : '');
     return;
   }
   if (tr && tr.tool === 'sales') {
@@ -2550,6 +2557,7 @@ function gateNavByPermissions(user) {
   if (els.navNameserver) els.navNameserver.hidden = !can('nameserver');
   if (els.navBeeper) els.navBeeper.hidden = !can('beeper');
   if (els.navWhois) els.navWhois.hidden = !can('whois');
+  if (els.navAuctionOwners) els.navAuctionOwners.hidden = !can('domain_owner');
   if (els.navDiq) els.navDiq.hidden = !can('domain_owner');
   if (els.navSales) els.navSales.hidden = !can('sales');
   // SNAP sub-nav: SNAP Eval needs `evaluate`; SNAP Opportunities (admin app) needs
@@ -3809,6 +3817,7 @@ const VIEWS = {
   nameserver: { view: 'view-nameserver', nav: 'nav-nameserver' },
   beeper: { view: 'view-beeper', nav: 'nav-beeper' },
   whois: { view: 'view-whois', nav: 'nav-whois' },
+  'auction-owners': { view: 'view-auctionowners', nav: 'nav-auctionowners' },
   diq: { view: 'view-diq', nav: 'nav-diq' },
   sales: { view: 'view-sales', nav: 'nav-sales' },
   'sales-projects': { view: 'view-sales-projects', nav: 'nav-sales' },
@@ -7580,6 +7589,57 @@ els.navSales?.addEventListener('click', (e) => { if (newTabClick(e)) return; e.p
 els.navBeeper?.addEventListener('click', (e) => { if (newTabClick(e)) return; e.preventDefault(); setToolUrl('beeper', ''); route(); });
 els.beeperForm?.addEventListener('submit', (e) => { e.preventDefault(); addBeeperWatch(); });
 els.navWhois?.addEventListener('click', (e) => { if (newTabClick(e)) return; e.preventDefault(); setToolUrl('whois', ''); showView('whois'); });
+els.navAuctionOwners?.addEventListener('click', (e) => { if (newTabClick(e)) return; e.preventDefault(); setToolUrl('auction-owners', ''); showView('auction-owners'); loadAuctionRegistry(els.aoSearch ? els.aoSearch.value : ''); });
+let aoSearchTimer = null;
+els.aoSearch?.addEventListener('input', () => { clearTimeout(aoSearchTimer); aoSearchTimer = setTimeout(() => loadAuctionRegistry(els.aoSearch.value), 250); });
+// Registry: the full handle → owner map. Each row shows the handle, its owner (with
+// an inline set/edit), the domains it won, and marketplace. Auto-built from Namecheap
+// sales; owner names come from the report auto-attach or a manual set here.
+async function loadAuctionRegistry(q = '') {
+  const el = els.aoRegistry;
+  if (!el) return;
+  el.innerHTML = '<div class="muted" style="padding:12px">Loading…</div>';
+  let owners = [];
+  try {
+    const res = await fetch(`/research/api/auction-owners?list=1${q ? `&q=${encodeURIComponent(q)}` : ''}`);
+    owners = res.ok ? ((await res.json()).owners || []) : [];
+  } catch { owners = []; }
+  if (!owners.length) {
+    el.innerHTML = `<div class="muted" style="padding:12px">${q ? 'No handles match.' : 'No auction owners recorded yet — research a Namecheap-sold domain and the winning handle lands here automatically.'}</div>`;
+    return;
+  }
+  const rows = owners.map((o) => {
+    const domains = Array.isArray(o.domains) ? o.domains : [];
+    const owner = o.owner_name
+      ? `<strong>${escapeHtml(o.owner_name)}</strong>${o.owner_type ? ` <span class="muted">· ${escapeHtml(o.owner_type)}</span>` : ''}`
+      : '<span class="muted">unidentified</span>';
+    const domHtml = domains.slice(0, 12).map((d) => `<a href="/research/${encodeURIComponent(d)}" class="aor-dom">${escapeHtml(d)}</a>`).join(' ') + (domains.length > 12 ? ` <span class="muted">+${domains.length - 12}</span>` : '');
+    return `<div class="aor-row" data-market="${escapeHtml(o.marketplace)}" data-handle="${escapeHtml(o.handle)}">`
+      + `<div class="aor-main"><code class="aor-handle">${escapeHtml(o.marketplace)}/${escapeHtml(o.handle)}</code> → <span class="aor-owner">${owner}</span> `
+      + `<button type="button" class="aor-edit" title="Set / edit the owner">✎</button>`
+      + `<span class="muted aor-count">· ${domains.length} name${domains.length === 1 ? '' : 's'}</span></div>`
+      + `<div class="aor-doms">${domHtml}</div>`
+      + `</div>`;
+  }).join('');
+  el.innerHTML = rows;
+}
+// Inline owner edit in the registry.
+els.aoRegistry?.addEventListener('click', async (e) => {
+  const btn = e.target.closest('.aor-edit');
+  if (!btn) return;
+  const row = btn.closest('.aor-row');
+  if (!row) return;
+  const cur = row.querySelector('.aor-owner')?.textContent.replace('unidentified', '').trim() || '';
+  const name = prompt(`Who is ${row.dataset.market}/${row.dataset.handle}?`, cur);
+  if (name == null) return;
+  try {
+    await fetch('/research/api/auction-owners', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ action: 'save', marketplace: row.dataset.market, handle: row.dataset.handle, owner_name: name.trim(), confidence: 'confirmed' }),
+    });
+    loadAuctionRegistry(els.aoSearch ? els.aoSearch.value : '');
+  } catch { /* leave as-is */ }
+});
 els.whoisForm?.addEventListener('submit', (e) => { e.preventDefault(); const d = (els.whoisDomain.value || '').trim(); if (d) { setToolUrl('whois', d); runWhois(d); } });
 els.navDiq?.addEventListener('click', (e) => { if (newTabClick(e)) return; e.preventDefault(); setToolUrl('diq', ''); showView('diq'); });
 els.diqForm?.addEventListener('submit', (e) => { e.preventDefault(); const d = (els.diqDomain.value || '').trim(); if (d) { setToolUrl('diq', d); runDiq(d); } });
