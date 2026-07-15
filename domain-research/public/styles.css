@@ -2270,6 +2270,23 @@ a.sr-ag-co-link:hover { border-color: var(--coral); color: var(--coral-deep); ba
 .rg-k { color: #8a8072; min-width: 92px; font-weight: 600; }
 .rg-v { color: var(--navy); word-break: break-word; }
 .rg-ns { font-variant-numeric: tabular-nums; }
+/* Auction-handle → owner registry block on the report. */
+.ao-card { margin: 12px 0; padding: 14px 16px; border: 1px solid #e6e2d6; border-radius: 12px; background: #fffdf8; }
+.ao-head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 8px; flex-wrap: wrap; }
+.ao-head strong { font-weight: 700; }
+.ao-hint { font-size: .8rem; }
+.ao-list { display: flex; flex-direction: column; gap: 6px; margin-bottom: 10px; }
+.ao-known { font-size: .9rem; color: var(--navy); }
+.ao-known code { background: var(--cream-2, #f3efe4); padding: 1px 6px; border-radius: 5px; }
+.ao-chip { display: inline-block; margin-left: 6px; padding: 1px 8px; border-radius: 999px; font-size: .72rem; background: var(--cream-2, #f3efe4); color: #6b6257; }
+.ao-chip.ao-conf { background: #dcefe0; color: #0b6b2f; }
+.ao-notes { font-size: .82rem; margin-top: 2px; }
+.ao-form { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.ao-market, .ao-handle, .ao-owner { border: 2px solid var(--line, #e6e2d6); border-radius: var(--radius-sm, 8px); padding: 5px 8px; font-size: .88rem; background: #fff; }
+.ao-handle, .ao-owner { min-width: 150px; flex: 1; }
+.ao-save { background: var(--navy, #22303b); color: #fff; border: none; border-radius: var(--radius-sm, 8px); padding: 6px 14px; font-size: .88rem; cursor: pointer; }
+.ao-save:disabled { opacity: .6; cursor: default; }
+.ao-msg { font-size: .8rem; }
 .cv-head { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
 .cv-title { font-weight: 700; }
 .cv-verdict { color: #fff; font-size: 11.5px; font-weight: 700; padding: 2px 9px; border-radius: 999px; }

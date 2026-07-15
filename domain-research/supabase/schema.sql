@@ -592,6 +592,31 @@ create table if not exists domain_research_leads (
 );
 create index if not exists idx_dr_leads_updated on domain_research_leads (updated_at desc);
 
+-- ── Auction-handle → owner registry ─────────────────────────────────────────
+-- Maps a marketplace auction/bidder HANDLE (e.g. Namecheap "keepquiet") to the
+-- owner we've identified/confirmed behind it, plus the domains we've tied to that
+-- handle. So when a NEW domain's auction shows the same handle, the report can
+-- surface the known owner instantly. One row per (marketplace, handle). RLS
+-- auto-enabled by the loop below. ONE-TIME MIGRATION: run this table on the
+-- research project before first use.
+create table if not exists domain_research_auction_owners (
+  id            uuid primary key default gen_random_uuid(),
+  marketplace   text not null,                     -- namecheap|dynadot|godaddy|dan|sedo|…
+  handle        text not null,                     -- the auction/bidder username
+  owner_name    text,                              -- who we identified behind it
+  owner_type    text,                              -- person|company
+  confidence    text not null default 'likely',    -- confirmed|likely
+  notes         text,
+  evidence_url  text,
+  domains       text[] not null default '{}',      -- names tied to this handle
+  added_by      text,
+  created_at    timestamptz not null default now(),
+  updated_at    timestamptz not null default now(),
+  unique (marketplace, handle)
+);
+create index if not exists idx_dr_auction_owners_handle on domain_research_auction_owners (handle);
+create index if not exists idx_dr_auction_owners_domains on domain_research_auction_owners using gin (domains);
+
 
 -- ── Enable RLS (no policies → backend secret key only) ──────────────────────
 do $$
