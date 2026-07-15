@@ -209,6 +209,9 @@
         <!-- Person — social-URL deep dive: identity, cross-platform VIP presence,
              and (on demand) contact info. Gated by the `person` permission. -->
         <a id="nav-person" class="nav-btn" href="/research/person" hidden>Person</a>
+        <!-- Auction owners — the marketplace handle → owner registry (auto-built from
+             Namecheap sales). Gated by the `domain_owner` permission. -->
+        <a id="nav-auctionowners" class="nav-btn" href="/research/auction-owners" hidden>Auction Owners</a>
         </span>
         <!-- SNAP sub-nav (shown in the SNAP section): SNAP Eval + SNAP Opportunities.
              SNAP Opportunities is the auctions/snap feed in the admin app (full nav). -->
@@ -838,6 +841,18 @@
           <ul id="pr-runs-list" class="projects-list"></ul>
         </section>
 
+        <!-- Auction owners — the marketplace handle → owner registry -->
+        <section id="view-auctionowners" hidden>
+          <div class="hero tool-hero">
+            <h1 class="hero-title">Auction <span class="accent">Owners</span></h1>
+            <p class="hero-sub">The marketplace <strong>bidder handle → owner</strong> registry, auto-built from Namecheap sales as you research. When a handle wins another name, you'll already know who's behind it.</p>
+          </div>
+          <div class="sales-projects-controls">
+            <input id="ao-search" class="projects-search" type="text" placeholder="Search by handle / owner…" autocomplete="off" />
+          </div>
+          <div id="ao-registry" class="ao-registry"></div>
+        </section>
+
         <!-- SNAP Eval — acquisition/resale scorecard for a single domain -->
         <section id="view-evaluate" hidden>
           <div class="hero tool-hero">
@@ -1163,6 +1178,6 @@ The model parses it into structured filters (TLDs, length, budget, tone, etc.) a
     </div>
 
     <!-- Bump ?v= on any public/app.js or styles.css change to bust caches. -->
-    <script src="app.js?v=20260715ncauto2"></script>
+    <script src="app.js?v=20260715aoregistry"></script>
   </body>
 </html>
