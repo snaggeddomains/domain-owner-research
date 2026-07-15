@@ -3405,12 +3405,22 @@ function renderNameBio(el, data) {
   // transaction is listed). NameBio's per-domain page is namebio.com/<domain>.
   const dom = el.dataset.domain || '';
   const nbUrl = dom ? `https://namebio.com/${encodeURIComponent(dom)}` : 'https://namebio.com/';
-  const rows = sales.slice(0, 10).map((s) =>
-    `<li><a class="nb-row" href="${nbUrl}" target="_blank" rel="noreferrer noopener" title="View this sale on NameBio">`
-    + `<span class="nb-price">${fmt(s.price)}</span>`
-    + `<span class="nb-date">${escapeHtml(s.date || '')}</span>`
-    + `<span class="nb-venue">${escapeHtml(s.venue || '')}</span>`
-    + `<span class="nb-ext" aria-hidden="true">↗</span></a></li>`).join('');
+  // A Namecheap-venue sale means the name went through Namecheap Market — whose
+  // per-domain page shows the WINNING BIDDER's marketplace handle + full bid
+  // history (a real owner lead). So route those rows to Namecheap instead of the
+  // generic NameBio page. `venueUrl`/`venueTip` pick the destination per row.
+  const isNamecheap = (v) => /namecheap/i.test(String(v || ''));
+  const ncUrl = dom ? `https://www.namecheap.com/market/${encodeURIComponent(dom)}/` : 'https://www.namecheap.com/market/';
+  const rows = sales.slice(0, 10).map((s) => {
+    const nc = isNamecheap(s.venue);
+    const href = nc ? ncUrl : nbUrl;
+    const tip = nc ? 'Open the Namecheap Market page — winning bidder handle + bid history (owner lead)' : 'View this sale on NameBio';
+    return `<li><a class="nb-row${nc ? ' is-namecheap' : ''}" href="${href}" target="_blank" rel="noreferrer noopener" title="${tip}">`
+      + `<span class="nb-price">${fmt(s.price)}</span>`
+      + `<span class="nb-date">${escapeHtml(s.date || '')}</span>`
+      + `<span class="nb-venue">${escapeHtml(s.venue || '')}${nc ? ' · bidder ↗' : ''}</span>`
+      + `<span class="nb-ext" aria-hidden="true">↗</span></a></li>`;
+  }).join('');
   el.innerHTML = `<div class="nb-head"><span class="nb-badge">NameBio</span> Previous sales (${sales.length})</div>`
     + `<ul class="nb-list">${rows}</ul>`;
   el.hidden = false;
