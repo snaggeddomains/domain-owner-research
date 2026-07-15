@@ -1954,78 +1954,60 @@ function renderReport(report) {
   if (currentReportDomain) loadAuctionOwner(currentReportDomain);
 }
 
-// ── Auction-handle → owner registry (report block) ───────────────────────────
+// ── Auction-handle → owner (report block) ────────────────────────────────────
 // A marketplace auction handle (e.g. Namecheap "keepquiet") that won a domain is
-// an owner lead. This block shows any owner we've already tied to THIS domain's
-// handle, and lets the researcher record the winning handle + owner — so the next
-// domain won by the same handle surfaces the owner instantly.
-const AO_MARKETS = ['namecheap', 'dynadot', 'godaddy', 'dan', 'sedo', 'sav', 'atom', 'other'];
-function aoOwnerLine(o) {
-  const who = o.owner_name ? `<strong>${escapeHtml(o.owner_name)}</strong>` : '<span class="muted">owner not yet identified</span>';
-  const conf = o.confidence === 'confirmed' ? '<span class="ao-chip ao-conf">confirmed</span>' : '<span class="ao-chip">likely</span>';
-  const type = o.owner_type ? ` <span class="muted">· ${escapeHtml(o.owner_type)}</span>` : '';
+// an owner lead. The winning handle is auto-detected from the Namecheap sale page
+// (server-side, via Scrape.do) whenever a NameBio sale shows the Namecheap venue —
+// NO manual entry. The block surfaces the detected handle, any owner we've since
+// tied to it, the sale page, and the cross-domain payoff (other names the same
+// handle won). Hidden entirely when there's nothing to show.
+function aoMarketUrl(o, domain) {
+  if (o.marketplace === 'namecheap') return `https://www.namecheap.com/market/${encodeURIComponent(domain)}/`;
+  return null;
+}
+function aoOwnerLine(o, domain) {
+  const url = aoMarketUrl(o, domain);
+  const handle = url
+    ? `<a href="${escapeHtml(url)}" target="_blank" rel="noopener"><code>${escapeHtml(o.marketplace)}/${escapeHtml(o.handle)}</code> ↗</a>`
+    : `<code>${escapeHtml(o.marketplace)}/${escapeHtml(o.handle)}</code>`;
+  const who = o.owner_name
+    ? `→ <strong>${escapeHtml(o.owner_name)}</strong>${o.owner_type ? ` <span class="muted">· ${escapeHtml(o.owner_type)}</span>` : ''}`
+      + (o.confidence === 'confirmed' ? '<span class="ao-chip ao-conf">confirmed</span>' : '<span class="ao-chip">likely</span>')
+    : '<span class="muted">— owner not yet identified</span>';
   const ev = o.evidence_url ? ` · <a href="${escapeHtml(o.evidence_url)}" target="_blank" rel="noopener">evidence ↗</a>` : '';
-  const seen = Array.isArray(o.domains) && o.domains.length > 1 ? ` <span class="muted">· seen on ${o.domains.length} names</span>` : '';
+  const others = Array.isArray(o.domains) ? o.domains.filter((x) => x !== domain) : [];
+  const seen = others.length ? `<div class="ao-notes muted">also won by this handle: ${others.slice(0, 8).map((x) => escapeHtml(x)).join(', ')}${others.length > 8 ? ` +${others.length - 8}` : ''}</div>` : '';
   const notes = o.notes ? `<div class="ao-notes muted">${escapeHtml(o.notes)}</div>` : '';
-  return `<div class="ao-known"><span class="ao-key">🔑</span> <code>${escapeHtml(o.marketplace)}/${escapeHtml(o.handle)}</code> → ${who}${type}${conf}${ev}${seen}${notes}</div>`;
+  return `<div class="ao-known"><span class="ao-key">🔑</span> won by ${handle} ${who}${ev}${seen}${notes}</div>`;
 }
 function renderAuctionOwner(domain, owners) {
   const el = els.auctionOwner;
   if (!el) return;
-  const known = (owners || []).map(aoOwnerLine).join('');
-  const opts = AO_MARKETS.map((m) => `<option value="${m}">${m}</option>`).join('');
+  const rows = (owners || []).map((o) => aoOwnerLine(o, domain)).join('');
+  if (!rows) { el.hidden = true; el.innerHTML = ''; return; }
   el.innerHTML =
     `<div class="ao-head"><span class="ao-ico">🏷️</span><strong>Auction owner</strong>`
-      + `<span class="muted ao-hint">record the winning bidder handle → known owners auto-surface on future names</span></div>`
-    + (known ? `<div class="ao-list">${known}</div>` : '')
-    + `<form class="ao-form" data-domain="${escapeHtml(domain)}">`
-      + `<select class="ao-market" title="Marketplace">${opts}</select>`
-      + `<input class="ao-handle" type="text" placeholder="handle (e.g. keepquiet)" autocomplete="off" />`
-      + `<input class="ao-owner" type="text" placeholder="owner (optional)" autocomplete="off" />`
-      + `<button type="submit" class="ao-save">Save</button>`
-      + `<span class="ao-msg muted"></span>`
-    + `</form>`;
+      + `<span class="muted ao-hint">auto-detected winning bidder — surfaces across every name the same handle won</span></div>`
+    + `<div class="ao-list">${rows}</div>`;
   el.hidden = false;
 }
-async function loadAuctionOwner(domain) {
+// Load (and optionally auto-detect) the auction handle for this domain. `detect`
+// is passed only when a Namecheap sale exists (from the NameBio venue), so we only
+// spend a Scrape.do call on names that actually sold there.
+async function loadAuctionOwner(domain, { detect = false } = {}) {
   const el = els.auctionOwner;
   if (!el) return;
   el.dataset.domain = domain;
   try {
-    const res = await fetch(`/research/api/auction-owners?domain=${encodeURIComponent(domain)}`);
+    const res = await fetch(`/research/api/auction-owners?domain=${encodeURIComponent(domain)}${detect ? '&detect=1' : ''}`);
     if (el.dataset.domain !== domain) return;
     const data = res.ok ? await res.json() : { owners: [] };
     renderAuctionOwner(domain, data.owners || []);
   } catch {
     if (el.dataset.domain !== domain) return;
-    renderAuctionOwner(domain, []); // still show the capture form
+    renderAuctionOwner(domain, []);
   }
 }
-// Save a handle→owner mapping from the report block, then reload it.
-document.getElementById('auction-owner')?.addEventListener('submit', async (e) => {
-  const form = e.target.closest('.ao-form');
-  if (!form) return;
-  e.preventDefault();
-  const domain = form.dataset.domain || '';
-  const marketplace = form.querySelector('.ao-market')?.value || 'namecheap';
-  const handle = String(form.querySelector('.ao-handle')?.value || '').trim();
-  const owner_name = String(form.querySelector('.ao-owner')?.value || '').trim();
-  const msg = form.querySelector('.ao-msg');
-  if (!handle) { if (msg) msg.textContent = 'Enter a handle.'; return; }
-  const btn = form.querySelector('.ao-save');
-  if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
-  try {
-    const res = await fetch('/research/api/auction-owners', {
-      method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ action: 'save', marketplace, handle, owner_name, domain }),
-    });
-    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || `Failed (${res.status})`);
-    await loadAuctionOwner(domain); // re-render with the new/merged record
-  } catch (err) {
-    if (btn) { btn.disabled = false; btn.textContent = 'Save'; }
-    if (msg) msg.textContent = String(err.message || err);
-  }
-});
 
 // ── Registrar block ──────────────────────────────────────────────────────────
 // A standard, always-present card showing WHERE the domain is registered +
@@ -3500,6 +3482,9 @@ function renderNameBio(el, data) {
   el.innerHTML = `<div class="nb-head"><span class="nb-badge">NameBio</span> Previous sales (${sales.length})</div>`
     + `<ul class="nb-list">${rows}</ul>`;
   el.hidden = false;
+  // If any recorded sale went through Namecheap Market, auto-detect the winning
+  // bidder handle for this domain (server-side, Scrape.do) and surface the owner.
+  if (dom && sales.some((s) => isNamecheap(s.venue))) loadAuctionOwner(dom, { detect: true });
 }
 
 async function runMarketStrip(domain, { force = false } = {}) {
