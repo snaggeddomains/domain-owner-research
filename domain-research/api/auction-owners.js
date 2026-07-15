@@ -1,5 +1,6 @@
 import { isAuthed, currentUser, userCan } from '../lib/auth.js';
 import { ownersForDomain, listAuctionOwners, saveAuctionOwner, deleteAuctionOwner } from '../lib/db/auctionOwners.js';
+import { detectNamecheapAuction } from '../lib/auction/namecheap.js';
 
 // Auction-handle → owner registry. Maps a marketplace bidder/auction HANDLE
 // (e.g. Namecheap "keepquiet") to the owner behind it + the domains tied to it,
@@ -29,6 +30,19 @@ export default async function handler(req, res) {
       }
       const domain = String(req.query.domain || '').trim();
       if (!domain) { res.status(400).json({ error: 'Provide ?domain= or ?list=1' }); return; }
+      // detect=1 → auto-pull the Namecheap winning handle for this domain (once).
+      // Only when the caller signals a Namecheap sale exists (from NameBio venue),
+      // and only if we haven't already recorded a Namecheap handle for it.
+      if (req.query.detect != null) {
+        const known = await ownersForDomain(domain);
+        const haveNc = known.some((o) => o.marketplace === 'namecheap');
+        if (!haveNc) {
+          const hit = await detectNamecheapAuction(domain, process.env).catch(() => null);
+          if (hit && hit.handle) {
+            await saveAuctionOwner({ marketplace: 'namecheap', handle: hit.handle, domain, added_by: 'auto' }).catch(() => {});
+          }
+        }
+      }
       res.status(200).json({ owners: await ownersForDomain(domain) });
       return;
     }
