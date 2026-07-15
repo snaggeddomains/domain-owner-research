@@ -2005,11 +2005,19 @@ function renderAuctionOwner(domain, owners, opts = {}) {
   }
   const rows = list.map((o) => aoOwnerLine(o, domain)).join('');
   if (!rows) {
-    // Nothing to show. If auto-detect was attempted for a Namecheap sale but couldn't
-    // run because Scrape.do isn't configured, say so (admin-facing) instead of a silent gap.
+    // Nothing to show. Never leave a silent gap on a Namecheap-sold name — say why.
     if (opts.detectRequested && opts.scrapeConfigured === false) {
       el.innerHTML = `<div class="ao-head"><span class="ao-ico">🏷️</span><strong>Auction owner</strong></div>`
         + `<div class="ao-note muted">Auto-detect needs <code>SCRAPE_DO_API_KEY</code> set on the research project (Namecheap is Cloudflare-walled).</div>`;
+      el.hidden = false;
+      return;
+    }
+    if (opts.detectRequested && opts.scrapeConfigured) {
+      // Scrape ran but couldn't read a winner (page layout / not a Namecheap Market
+      // sale) — link out so the handle can still be grabbed by hand.
+      const url = `https://www.namecheap.com/market/${encodeURIComponent(domain)}/`;
+      el.innerHTML = `<div class="ao-head"><span class="ao-ico">🏷️</span><strong>Auction owner</strong></div>`
+        + `<div class="ao-note muted">Couldn't auto-read the winning bidder — <a href="${escapeHtml(url)}" target="_blank" rel="noopener">open the Namecheap sale page ↗</a>.</div>`;
       el.hidden = false;
       return;
     }
@@ -2028,6 +2036,13 @@ async function loadAuctionOwner(domain, { detect = false } = {}) {
   const el = els.auctionOwner;
   if (!el) return;
   el.dataset.domain = domain;
+  // While a Namecheap sale is being scraped (can take ~15-30s through Scrape.do),
+  // show a live "detecting…" state so it's clear the winner lookup is running.
+  if (detect) {
+    el.innerHTML = `<div class="ao-head"><span class="ao-ico">🏷️</span><strong>Auction owner</strong>`
+      + `<span class="muted ao-hint">reading the Namecheap sale page for the winning bidder…</span></div>`;
+    el.hidden = false;
+  }
   try {
     const res = await fetch(`/research/api/auction-owners?domain=${encodeURIComponent(domain)}${detect ? '&detect=1' : ''}`);
     if (el.dataset.domain !== domain) return;

@@ -11,7 +11,9 @@ import { detectNamecheapAuction } from '../lib/auction/namecheap.js';
 //   POST { action:'save', marketplace, handle, owner_name?, owner_type?,
 //          confidence?, notes?, evidence_url?, domain? } -> { owner }
 //   POST { action:'delete', id } -> { ok:true }
-export const config = { maxDuration: 15 };
+// maxDuration must exceed the Namecheap Scrape.do render (~35s) or the function is
+// killed mid-scrape and the detection never returns.
+export const config = { maxDuration: 45 };
 
 export default async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store');
