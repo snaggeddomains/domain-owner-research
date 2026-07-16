@@ -7480,9 +7480,17 @@ async function nsCtxSearch(term) {
 
 async function runNsPairing(domain, opts = {}) {
   const fromChip = !!opts.fromChip;
-  // Fresh pairing run resets the TLD filter + facets; a facet-chip click reuses them.
-  if (!fromChip) { nsState.pairDomain = domain; nsState.pairTld = ''; nsState.pairFacets = null; }
-  const sub = document.getElementById('ns-sub');
+  // Fresh pairing run resets the TLD filter + facets + render target + seed-inject;
+  // a facet-chip re-run reuses them (so a filter click stays inside the same panel —
+  // e.g. the browsable list embedded under the likely-related analysis — instead of
+  // escaping back to #ns-sub and wiping the analysis banner above it).
+  if (!fromChip) {
+    nsState.pairDomain = domain; nsState.pairTld = ''; nsState.pairFacets = null;
+    nsState.pairTargetId = opts.targetId || 'ns-sub';
+    nsState.pairSeedInject = opts.seedInject || null;
+  }
+  const targetId = nsState.pairTargetId || 'ns-sub';
+  const sub = document.getElementById(targetId);
   if (sub && !fromChip) sub.innerHTML = '<div class="ns-running">⏳ Finding siblings on the same nameserver set…</div>';
   try {
     const tld = nsState.pairTld || '';
@@ -7499,11 +7507,17 @@ async function runNsPairing(domain, opts = {}) {
     const scope = tld ? ` <span class="muted">· .${escapeHtml(tld)} only</span>` : '';
     const head = `${bar}<h3>${data.count}${data.hasMore ? '+' : ''} other domain${data.count === 1 ? '' : 's'} on this exact pairing${scope}${more}</h3>`;
     if (!data.rows.length) { sub.innerHTML = head + '<p class="muted">None.</p>'; return; }
-    const items = data.rows.map((r) => ({
+    let items = data.rows.map((r) => ({
       domain: r.domain,
       metaHtml: (r.nameservers && r.nameservers.length) ? ` <span class="muted">(${r.nameservers.length} NS)</span>` : '',
       checked: false,
     }));
+    // In the likely-related context the seed itself is injected first + pre-checked,
+    // so a free owner-lookup sweep still triangulates the siblings against it (the
+    // seed is not one of the "other domains on the pairing" the query returns).
+    if (nsState.pairSeedInject && !items.some((it) => it.domain === nsState.pairSeedInject)) {
+      items = [{ domain: nsState.pairSeedInject, metaHtml: ' <span class="muted">— seed</span>', checked: true }].concat(items);
+    }
     sub.innerHTML = nsSelectableBlock(head, items, { csvRows: data.rows, seed: domain, singleCol: true });
   } catch (e) {
     if (sub) sub.innerHTML = `<p class="status error">${escapeHtml(String((e && e.message) || e))}</p>`;
@@ -7512,13 +7526,25 @@ async function runNsPairing(domain, opts = {}) {
 
 async function runNsRelate(domain) {
   const sub = document.getElementById('ns-sub');
-  if (sub) sub.innerHTML = `<div class="ns-running">⏳ Analyzing the pairing for likely-related siblings${nsState.contextRunId ? ' (using the linked report for context)' : ''}…</div>`;
+  if (!sub) return;
+  // Non-destructive: the AI analysis renders in a banner on TOP, and the FULL
+  // same-pairing sibling list loads right below it immediately — so every candidate
+  // stays on screen to browse (and select) by hand while the automated ranking runs
+  // in the background. (Previously the spinner replaced the whole panel, hiding the
+  // list for the entire lookup.) The list lives in its own #ns-relate-list container
+  // so a TLD-facet re-run redraws only the list, never the analysis banner above.
+  sub.innerHTML =
+    `<div id="ns-relate-top" class="ns-relate-top"><div class="ns-running">⏳ Analyzing the pairing for likely-related siblings${nsState.contextRunId ? ' (using the linked report for context)' : ''}…</div></div>` +
+    `<div id="ns-relate-list"></div>`;
+  const listReady = runNsPairing(domain, { targetId: 'ns-relate-list', seedInject: domain });
+  const top = () => document.getElementById('ns-relate-top');
   try {
     const ctx = nsState.contextRunId ? `&run_id=${encodeURIComponent(nsState.contextRunId)}` : '';
     const data = await nsFetch(`mode=relate&domain=${encodeURIComponent(domain)}${ctx}`);
-    if (!sub) return;
+    const t = top();
+    if (!t) return;
     if (data.generic) {
-      sub.innerHTML = `<p class="ns-pairnote muted">⚠ ${escapeHtml(data.genericNote || 'Generic/parking nameservers — not an ownership signal.')} Nothing to analyze.</p>`;
+      t.innerHTML = `<p class="ns-pairnote muted">⚠ ${escapeHtml(data.genericNote || 'Generic/parking nameservers — not an ownership signal.')} Nothing to analyze.</p>`;
       return;
     }
     // Banner: pairing type (account-unique vs shared) + the owner context applied.
@@ -7529,26 +7555,42 @@ async function runNsRelate(domain) {
       ? `<p class="ns-pairnote ns-pairnote-ctx">📄 Using context from the <strong>${escapeHtml(data.contextUsed.domain)}</strong> report${data.contextUsed.owner ? ` — owner: ${escapeHtml(data.contextUsed.owner)}${data.contextUsed.ownerType ? ` (${escapeHtml(String(data.contextUsed.ownerType).replace(/_/g, ' '))})` : ''}` : ''}.</p>`
       : '';
     if (!data.related || !data.related.length) {
-      sub.innerHTML = `<h3>Likely-related siblings</h3>${pairNote}${ctxNote}<p class="muted">${escapeHtml(data.summary || 'No clearly-related siblings found.')}</p>`;
+      t.innerHTML = `<h3>✨ Likely-related siblings</h3>${pairNote}${ctxNote}<p class="muted">${escapeHtml(data.summary || 'No clearly-related siblings found — browse the full pairing below.')}</p>`;
       return;
     }
-    const head =
-      `<h3>Likely-related siblings <span class="muted">(of ${data.siblingCount} on the pairing)</span></h3>` +
+    // The analysis panel is informational (the ONE selectable list lives below); show
+    // the ranked hits as links + confidence, then pre-check those rows in the list so
+    // "run owner lookup on selected" comes primed with the AI's picks.
+    const hits = data.related.map((r) =>
+      `<li><a href="/dbscreen/${encodeURIComponent(r.domain)}" class="ns-dlink" data-domain="${escapeHtml(r.domain)}">${escapeHtml(r.domain)}</a>` +
+      ` <span class="ns-conf ns-conf-${escapeHtml(r.confidence)}">${escapeHtml(r.confidence)}</span>${r.relation ? ` <span class="muted">— ${escapeHtml(r.relation)}</span>` : ''}</li>`).join('');
+    t.innerHTML =
+      `<h3>✨ Likely-related siblings <span class="muted">(of ${data.siblingCount} on the pairing)</span></h3>` +
       pairNote + ctxNote +
       `${data.summary ? `<p class="ns-summary">${escapeHtml(data.summary)}</p>` : ''}` +
-      `<p class="muted ns-note">Pick the candidates and run a free owner lookup to triangulate a shared owner.</p>`;
-    // Seed first (so triangulation compares against it), then siblings; pre-check
-    // the seed + high/medium-confidence ones.
-    const items = [{ domain: data.domain, metaHtml: ' <span class="muted">— seed</span>', checked: true }].concat(
-      data.related.map((r) => ({
-        domain: r.domain,
-        metaHtml: ` <span class="ns-conf ns-conf-${escapeHtml(r.confidence)}">${escapeHtml(r.confidence)}</span>${r.relation ? ` <span class="muted">— ${escapeHtml(r.relation)}</span>` : ''}`,
-        checked: r.confidence === 'high' || r.confidence === 'medium',
-      })));
-    sub.innerHTML = nsSelectableBlock(head, items, { csvRows: null, seed: data.domain, singleCol: true });
+      `<ul class="ns-list ns-onecol ns-relate-hits">${hits}</ul>` +
+      `<p class="muted ns-note">Pre-selected in the full list below — adjust the selection and run a free owner lookup to triangulate a shared owner.</p>`;
+    // Pre-check the AI's picks once the list is on screen. Best-effort: a pick that
+    // fell outside the loaded first page just isn't checkable here — it's still
+    // listed above and reachable via a TLD filter.
+    await listReady;
+    nsPrecheckDomains(data.related.map((r) => r.domain));
   } catch (e) {
-    if (sub) sub.innerHTML = `<p class="status error">${escapeHtml(String((e && e.message) || e))}</p>`;
+    const t = top();
+    if (t) t.innerHTML = `<p class="status error">${escapeHtml(String((e && e.message) || e))}</p>`;
   }
+}
+
+// Tick the checkboxes for the given domains in the embedded pairing list (the AI's
+// related picks), then reconcile the "select all" box with the real state.
+function nsPrecheckDomains(domains) {
+  const list = document.getElementById('ns-relate-list');
+  if (!list) return;
+  const want = new Set((domains || []).map((d) => String(d).toLowerCase()));
+  const cbs = [...list.querySelectorAll('.ns-cb')];
+  cbs.forEach((cb) => { if (want.has(String(cb.value).toLowerCase())) cb.checked = true; });
+  const all = list.querySelector('.ns-selall');
+  if (all) all.checked = cbs.length > 0 && cbs.every((c) => c.checked);
 }
 
 async function runNsList(opts = {}) {
