@@ -2832,29 +2832,34 @@ els.shareBtn?.addEventListener('click', async () => {
       shareUrl = `${location.origin}/research/r/${slug}`;
     }
   }
-  const flash = () => {
+  const flash = (msg) => {
     b.classList.add('copied');
     const prev = b.getAttribute('title');
-    b.setAttribute('title', 'Link copied!');
+    b.setAttribute('title', msg || 'Link copied!');
     setTimeout(() => { b.classList.remove('copied'); b.setAttribute('title', prev || 'Share'); }, 1600);
   };
-  // On mobile (iPhone/Android) the native share sheet is the expected behavior and
-  // works inside in-app webviews where clipboard/prompt are often no-ops — which is
-  // why "nothing happened" on iOS. Try it first, then fall back to clipboard, then
-  // to a prompt the user can copy from.
-  if (navigator.share) {
+  const copyToClipboard = async () => {
+    try {
+      if (!navigator.clipboard || !navigator.clipboard.writeText) throw new Error('no clipboard');
+      await navigator.clipboard.writeText(shareUrl);
+      flash('Link copied!');
+    } catch {
+      // Clipboard blocked / unavailable — fall back to a prompt the user can copy from.
+      try { window.prompt('Copy this link to share the report:', shareUrl); }
+      catch { flash('Link copied!'); /* even prompt blocked — at least show the affordance */ }
+    }
+  };
+  // Desktop: ONE-CLICK COPY is what's wanted — the OS share sheet (AirDrop/Mail/…)
+  // buries the link. Only on a real touch device is the native share sheet the better
+  // UX (and clipboard is often a no-op inside in-app webviews there). So: mobile →
+  // native share (clipboard fallback); everywhere else → copy straight to clipboard.
+  const isMobile = /iphone|ipad|ipod|android|mobile/i.test(navigator.userAgent || '');
+  if (isMobile && navigator.share) {
     try { await navigator.share({ title: document.title || 'Domain Owner Report', url: shareUrl }); return; }
     catch (e) { if (e && e.name === 'AbortError') return; /* user dismissed — done */ }
+    // share failed (not dismissed) → fall through to clipboard
   }
-  try {
-    if (!navigator.clipboard || !navigator.clipboard.writeText) throw new Error('no clipboard');
-    await navigator.clipboard.writeText(shareUrl);
-    flash();
-  } catch {
-    // Clipboard blocked / unavailable — fall back to a prompt the user can copy from.
-    try { window.prompt('Copy this link to share the report:', shareUrl); }
-    catch { flash(); /* even prompt blocked — at least show the copied affordance */ }
-  }
+  await copyToClipboard();
 });
 
 // "+ New report" on any collapsed tool header → back to that tool's entry.
