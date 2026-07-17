@@ -3912,7 +3912,7 @@ async function loadLead(key, { started = Date.now() } = {}) {
       leadPollTimer = setTimeout(() => loadLead(key, { started }), 4000);
       return;
     }
-    renderLead(el, lead, data.report_run || null);
+    renderLead(el, lead, data.report_run || null, data.report_runs || (data.report_run ? [data.report_run] : []));
   } catch {
     el.innerHTML = '<div class="lead-loading">Couldn’t load this lead. Refresh in a moment.</div>';
   }
@@ -3935,7 +3935,7 @@ function leadBullets(text) {
     .split(/(?<=[.!?])\s+(?=[A-Z0-9"'])/)
     .map((s) => s.trim()).filter((s) => s.length > 3).slice(0, 8);
 }
-function renderLead(el, lead, reportRun) {
+function renderLead(el, lead, reportRun, reportRuns) {
   const r = lead.result || {};
   const p = r.person || null;
   const c = r.company || null;
@@ -3943,6 +3943,9 @@ function renderLead(el, lead, reportRun) {
   // If we've already run a Domain Owner report for the inquired domain, deep-link it.
   const reportHref = (reportRun && reportRun.id)
     ? `#/r/${buildSlug({ domain: reportRun.domain || lead.domain_of_interest, id: reportRun.id })}` : null;
+  // An inquiry can name several domains — a report link for EACH that's been run.
+  const reports = Array.isArray(reportRuns) ? reportRuns.filter((x) => x && x.id) : [];
+  const reportHrefFor = (rr) => `#/r/${buildSlug({ domain: rr.domain, id: rr.id })}`;
   // Money: always prefix a currency symbol. Apollo's printed values often come back
   // bare ("4.8M", "61.1M"); a plain integer gets thousands separators.
   const money = (v) => {
@@ -4050,8 +4053,10 @@ function renderLead(el, lead, reportRun) {
     + (standing ? `<div class="lead-standing">${escapeHtml(standing)}</div>` : '')
     + (lead.email ? `<div class="lead-sub">${escapeHtml(lead.email)}${lead.domain_of_interest ? ` · inquiring about <strong>${escapeHtml(lead.domain_of_interest)}</strong>` : ''}</div>` : '')
     + `</div>`
-    // Deep-link to an existing Domain Owner report for the inquired domain.
-    + (reportHref ? `<a class="lead-report-link" href="${reportHref}">📄 Ownership report on file for ${escapeHtml(lead.domain_of_interest || 'this domain')} — open ↗</a>` : '')
+    // Deep-link to an existing Domain Owner report — one link per inquired domain.
+    + (reports.length
+        ? reports.map((rr) => `<a class="lead-report-link" href="${reportHrefFor(rr)}">📄 Ownership report on file for ${escapeHtml(rr.domain)} — open ↗</a>`).join('')
+        : (reportHref ? `<a class="lead-report-link" href="${reportHref}">📄 Ownership report on file for ${escapeHtml(lead.domain_of_interest || 'this domain')} — open ↗</a>` : ''))
     // Who they are — reach + overview + work history + highlights.
     + personSection
     // Company facts headline.
