@@ -22,16 +22,23 @@ import { cleanDomainInput } from '../lib/util.js';
 import { trackDomain } from '../lib/domainscout.js';
 import { emailDomain, isFreeEmail } from '../lib/leads/triage.js';
 
-// Has a Domain Owner report already been run for the inquired domain? Return the
-// newest completed (or report-bearing errored) run so the dossier can deep-link to it.
-async function existingReport(domainRaw) {
-  const domain = String(domainRaw || '').trim().toLowerCase().replace(/^https?:\/\//, '').replace(/^www\./, '').replace(/\/.*$/, '');
+// Has a Domain Owner report already been run for a domain? Return the newest
+// completed (or report-bearing errored) run so the dossier can deep-link to it.
+async function reportForDomain(domain) {
   if (!domain || !/\./.test(domain)) return null;
   try {
     const runs = await listRuns({ q: domain, limit: 10, statuses: ['done'], reportStatuses: ['error'] });
     const hit = runs.find((r) => String(r.domain).toLowerCase() === domain);
     return hit ? { id: hit.id, domain: hit.domain, created_at: hit.created_at } : null;
   } catch { return null; }
+}
+
+// One report link per inquired domain (an inquiry can name several — "swerve.com,
+// swerve.ai"). Returns the reports that exist, in the order the domains were listed.
+async function existingReports(domainRaw) {
+  const domains = parseDomains(domainRaw);
+  const found = await Promise.all(domains.map((d) => reportForDomain(d)));
+  return found.filter(Boolean);
 }
 
 export const config = { maxDuration: 30 };
@@ -67,14 +74,32 @@ function readForm(b) {
   };
 }
 
-// Pre-warm the FREE Domain Owner report for the inquired domain the moment a lead
+// Split a raw "domain(s) of interest" field into every distinct valid domain. An
+// inquiry often lists MORE THAN ONE name ("swerve.com, swerve.ai" / "a.com and b.io")
+// — each should get its own free report. Tokenized on commas / whitespace / and / slashes
+// (cleanDomainInput strips whitespace, so an un-split multi-domain string is invalid and
+// would silently kick nothing). Deduped, order preserved.
+function parseDomains(raw) {
+  const out = [];
+  const seen = new Set();
+  for (const tok of String(raw || '').split(/[,;|/\s]+|\band\b/i)) {
+    if (!tok || !tok.includes('.')) continue;
+    let d;
+    try { d = cleanDomainInput(tok); } catch { continue; } // not a valid domain → skip this token
+    if (seen.has(d)) continue;
+    seen.add(d);
+    out.push(d);
+  }
+  return out;
+}
+
+// Pre-warm the FREE Domain Owner report for an inquired domain the moment a lead
 // lands — so by the time a human reviews, the free pre-flight is already done (no
 // 5-minute wait) and the dossier's "Ownership report on file" banner is live. Kicks
 // the same shallow research pipeline as the Research tab, deduped (skips if a run
 // already exists / is in flight) and fully best-effort — never blocks the lead.
-async function kickFreeReport(domainRaw) {
-  let domain;
-  try { domain = cleanDomainInput(domainRaw); } catch { return; } // not a valid domain → skip
+async function kickFreeReport(domain) {
+  if (!domain) return;
   try {
     const runs = await listRuns({ q: domain, limit: 10, statuses: ['queued', 'running', 'done'], reportStatuses: ['error'] });
     if (runs.some((r) => String(r.domain).toLowerCase() === domain)) return; // already have / running
@@ -82,6 +107,11 @@ async function kickFreeReport(domainRaw) {
     const runId = await createRun({ domain });
     await inngest.send({ name: RUN_REQUESTED, data: { runId, domain, phase: 'shallow' } });
   } catch { /* best-effort — a failed pre-warm never affects the lead */ }
+}
+
+// Kick a free report for EVERY domain named in the inquiry (parsed + deduped).
+async function kickFreeReports(domainRaw) {
+  for (const domain of parseDomains(domainRaw)) await kickFreeReport(domain);
 }
 
 async function handlePost(req, res) {
@@ -111,9 +141,9 @@ async function handlePost(req, res) {
     });
     // Fire-and-forget the enrichment; the deterministic URL is returned NOW.
     try { await inngest.send({ name: LEAD_REQUESTED, data: { lead_key: key } }); } catch { /* best-effort */ }
-    // Pre-warm the free Domain Owner report for the inquired domain in parallel, so
-    // it's already run by the time a human reviews the lead (no 5-minute wait).
-    if (form.domain_of_interest) await kickFreeReport(form.domain_of_interest);
+    // Pre-warm the free Domain Owner report for EVERY inquired domain, so they're
+    // already run by the time a human reviews the lead (no 5-minute wait).
+    if (form.domain_of_interest) await kickFreeReports(form.domain_of_interest);
   }
   res.status(200).json({ ok: true, key, url: leadUrl(key) });
 }
@@ -131,8 +161,8 @@ async function handleGet(req, res) {
   if (!key) { res.status(400).json({ error: 'Missing key' }); return; }
   const lead = await getLeadByKey(key);
   if (!lead) { res.status(404).json({ error: 'Lead not found' }); return; }
-  const report_run = await existingReport(lead.domain_of_interest);
-  res.status(200).json({ lead, report_run });
+  const report_runs = await existingReports(lead.domain_of_interest);
+  res.status(200).json({ lead, report_run: report_runs[0] || null, report_runs });
 }
 
 export default async function handler(req, res) {

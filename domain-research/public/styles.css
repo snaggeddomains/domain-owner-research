@@ -1593,6 +1593,10 @@ body.drawer-open { overflow: hidden; }
 .ns-related { columns: 1; }
 .ns-summary { font-style: italic; color: var(--navy); margin: 4px 0 10px; }
 .ns-note { margin-top: 10px; font-size: 13px; }
+/* Likely-related analysis banner sits above the still-visible pairing list. */
+.ns-relate-top:not(:empty) { margin-bottom: 14px; padding-bottom: 12px; border-bottom: 1.5px dashed var(--line); }
+.ns-relate-hits { margin: 6px 0 2px; }
+.ns-relate-hits li { padding: 2px 0; }
 .ns-conf { font-size: 11px; font-weight: 700; text-transform: uppercase; padding: 1px 6px; border-radius: 4px; }
 .ns-conf-high { background: #d1f0d6; color: #176a2b; }
 .ns-conf-medium { background: #fdf0c8; color: #8a6300; }
