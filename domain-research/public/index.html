@@ -864,6 +864,15 @@
             <input id="ev-price" type="text" inputmode="numeric" placeholder="price, e.g. 7000 (optional)" class="ev-price-input" />
             <button id="ev-go" type="submit">Evaluate</button>
           </form>
+          <div class="tc-widget">
+            <form id="tc-form" class="tc-form" autocomplete="off">
+              <span class="tc-label">TLD demand</span>
+              <input id="tc-q" type="text" placeholder="a word, e.g. distribute" autocapitalize="off" autocorrect="off" spellcheck="false" />
+              <button id="tc-go" type="submit" class="tc-go">Count TLDs</button>
+            </form>
+            <div id="tc-result" class="tc-result" hidden></div>
+            <p class="tc-hint muted">How many TLDs the word is already registered in — a quick demand read (like DotDB), free.</p>
+          </div>
           <div id="ev-recent" class="sr-recent" hidden>
             <div class="sr-recent-head">Recent evaluations</div>
             <ul id="ev-recent-list" class="sr-recent-list"></ul>
@@ -1178,6 +1187,6 @@ The model parses it into structured filters (TLDs, length, budget, tone, etc.) a
     </div>
 
     <!-- Bump ?v= on any public/app.js or styles.css change to bust caches. -->
-    <script src="app.js?v=20260717sharecopy"></script>
+    <script src="app.js?v=20260718tldcount"></script>
   </body>
 </html>

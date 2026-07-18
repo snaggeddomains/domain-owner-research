@@ -277,6 +277,7 @@ const els = {
   topbarResearch: $('topbar-research'),
   evForm: $('ev-form'), evDomain: $('ev-domain'), evPrice: $('ev-price'), evGo: $('ev-go'), evRefresh: $('ev-refresh'),
   evStatus: $('ev-status'), evResult: $('ev-result'), evRecent: $('ev-recent'),
+  tcForm: $('tc-form'), tcQ: $('tc-q'), tcGo: $('tc-go'), tcResult: $('tc-result'),
   nsModeToggle: $('ns-modetoggle'), nsMatchToggle: $('ns-matchtoggle'),
   nsDomainForm: $('ns-domain-form'), nsDomain: $('ns-domain'),
   nsNsForm: $('ns-ns-form'), nsNs: $('ns-ns'), nsTld: $('ns-tld'),
@@ -9922,6 +9923,73 @@ function evEvidence(data) {
   return `<details class="ev-card ev-evidence"><summary class="ev-h3">Evidence & chatter <span class="muted">— forum / web / inbox</span></summary>${body}</details>`;
 }
 
+// ── TLD demand count (DotDB-style, free) ──────────────────────────────────
+// How many TLDs a word is already registered in. Used two ways: a standalone
+// lookup box on the SNAP Eval page, and an auto-loaded demand signal inside a
+// report. Cached server-side per SLD, so re-looks are instant.
+function tcSld(input) {
+  return String(input || '').trim().toLowerCase().replace(/^https?:\/\//, '').split('/')[0].split('.')[0].replace(/[^a-z0-9-]/g, '');
+}
+async function tcFetch(q) {
+  const res = await fetch(`/research/api/tldcount?q=${encodeURIComponent(q)}`);
+  if (!res.ok) throw new Error(res.status === 403 ? 'No access' : `HTTP ${res.status}`);
+  return res.json();
+}
+// A demand read from the raw count: more extensions taken = more proven demand
+// for the word (but also less scarcity). Kept qualitative — it's a signal, not a score.
+function tcRead(count) {
+  if (count >= 60) return { label: 'high demand', cls: 'hi', note: 'The word is registered across most major extensions — strong proven demand (and a well-worn term).' };
+  if (count >= 25) return { label: 'solid demand', cls: 'mid', note: 'Registered in a healthy spread of extensions — real, established demand for the word.' };
+  if (count >= 8) return { label: 'some demand', cls: 'lo', note: 'Registered in a handful of extensions — modest but real interest in the word.' };
+  return { label: 'thin demand', cls: 'thin', note: 'Registered in only a few extensions — little proven demand, or a very niche / coined word.' };
+}
+function tcRenderStandalone(data) {
+  if (!els.tcResult) return;
+  const count = Number(data.count) || 0;
+  const r = tcRead(count);
+  const exts = (data.extensions || []).slice(0, 60);
+  const more = (data.extensions || []).length - exts.length;
+  const chips = exts.map((t) => `<span class="tc-ext">.${escapeHtml(t)}</span>`).join('');
+  els.tcResult.innerHTML = `<div class="tc-out">
+    <div class="tc-num-wrap"><span class="tc-num tc-${r.cls}">${count}</span><span class="tc-num-lbl">TLD${count === 1 ? '' : 's'} registered<br><span class="tc-word">${escapeHtml(data.sld || '')}</span></span>
+      <span class="tc-band tc-band-${r.cls}">${r.label}</span></div>
+    <p class="tc-note muted">${escapeHtml(r.note)}${data.source === 'dotdb' ? ' <em>(via DotDB)</em>' : ''}</p>
+    ${chips ? `<details class="tc-exts"><summary>See the ${count} extension${count === 1 ? '' : 's'}${more > 0 ? ` (+${more} more)` : ''}</summary><div class="tc-extlist">${chips}${more > 0 ? `<span class="tc-ext muted">+${more}…</span>` : ''}</div></details>` : ''}
+  </div>`;
+  els.tcResult.hidden = false;
+}
+async function tcLookup(q) {
+  const sld = tcSld(q);
+  if (!sld || !els.tcResult) return;
+  els.tcResult.hidden = false;
+  els.tcResult.innerHTML = `<div class="tc-loading muted"><span class="ev-spinner"></span> Counting TLDs for <strong>${escapeHtml(sld)}</strong>…</div>`;
+  try {
+    tcRenderStandalone(await tcFetch(sld));
+  } catch (e) {
+    els.tcResult.innerHTML = `<div class="tc-err muted">Couldn't count TLDs: ${escapeHtml(String(e.message || e))}</div>`;
+  }
+}
+els.tcForm?.addEventListener('submit', (e) => { e.preventDefault(); tcLookup(els.tcQ && els.tcQ.value); });
+
+// The compact in-report version — a one-line demand signal, filled async.
+async function evLoadTldCount(sld) {
+  const el = document.getElementById('ev-tldcount');
+  if (!el || !sld) return;
+  try {
+    const data = await tcFetch(sld);
+    const count = Number(data.count) || 0;
+    const r = tcRead(count);
+    const top = (data.extensions || []).slice(0, 14).map((t) => `<span class="tc-ext">.${escapeHtml(t)}</span>`).join('');
+    const more = (data.extensions || []).length - Math.min(14, (data.extensions || []).length);
+    el.innerHTML = `<div class="ev-card ev-tc-card">
+      <h3 class="ev-h3">TLD demand <span class="muted">— how many extensions "${escapeHtml(data.sld || sld)}" is registered in</span></h3>
+      <div class="ev-tc-row"><span class="tc-num tc-${r.cls}">${count}</span><span class="tc-band tc-band-${r.cls}">${r.label}</span>
+        <span class="muted ev-tc-note">${escapeHtml(r.note)}</span></div>
+      ${top ? `<div class="tc-extlist ev-tc-exts">${top}${more > 0 ? `<span class="tc-ext muted">+${more}…</span>` : ''}</div>` : ''}
+    </div>`;
+  } catch { el.innerHTML = ''; /* silent — it's a bonus signal */ }
+}
+
 function renderEvaluate(data) {
   if (!els.evResult) return;
   const ev = data.evaluation || {};
@@ -9940,6 +10008,7 @@ function renderEvaluate(data) {
     ${evComps(data)}
     ${evBandLadder(data)}
     ${evTldLandscape(data)}
+    <div id="ev-tldcount"></div>
     ${evBuyers(data)}
     ${evQuality(data)}
     ${evContext(data)}
@@ -9954,6 +10023,9 @@ function renderEvaluate(data) {
   // Appraise.net loads async (decoupled) — only when the eval didn't already get it.
   const apr = ev.signals && ev.signals.appraisals && ev.signals.appraisals.appraise;
   if (ev.domain && !(apr && apr.mid > 0)) evLoadAppraise(ev.domain);
+  // TLD demand count loads async (decoupled, free, cached per SLD).
+  const evSld = (ev.signals && ev.signals.sld) || tcSld(ev.domain);
+  if (evSld) evLoadTldCount(evSld);
 }
 
 els.evForm?.addEventListener('submit', (e) => {
