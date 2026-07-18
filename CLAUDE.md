@@ -10,8 +10,44 @@ Source of truth for any Claude Code session picking up work on this repo. **Read
 2. **`git fetch` before any work.** The SessionStart hook does this and warns if your branch is behind. If it warns: read the new commits (`git log --oneline HEAD..origin/main`) before changing anything, or you'll duplicate work or conflict with another session.
 3. **One session is primary.** If multiple sessions are open on this repo, designate one as the merger; others stay on their own feature branches and don't push to `main` without coordination.
 4. **Push often.** A frozen session loses chat memory but not pushed work. Commit + push at every reviewable checkpoint.
-5. **Decisions live in the repo, not chat.** When architectural decisions change, update this file (and/or `domain-research/SPEC.md`). Don't rely on prior conversation transcripts being available.
+5. **Decisions live in the repo, not chat — update memory EVERY checkpoint.** When you ship a feature/fix, add or update its `CLAUDE.md` section **in the same commit as the code** (code + memory ship together). Don't let more than one shippable change go by without a memory note. The chat transcript is NOT a backup — if a session dies (or an account is suspended), only what's committed here survives. Keep sections concise: what it does, the key files, the gotchas, any one-time setup.
 6. **Don't reinvent existing sources.** ~26 sources are already wired in `domain-research/lib/sources/index.js`. Check there before adding a new one.
+
+---
+
+## TLD Count + valuation calibration + cross-app valuate endpoint (2026-07-18)
+
+- **TLD Count tool** — a free DotDB-style "how many TLDs is this word registered in"
+  demand read. `lib/evaluate/tldcount.js` `countRegistrations(input)` probes every IANA
+  TLD (`<sld>.<tld>`) for nameservers via `node:dns` (bounded concurrency, round-robin
+  public resolvers), cache-first per SLD (kind **`tc`**); pluggable DotDB path if
+  `DOTDB_API_KEY` is ever set. `api/tldcount.js` (`?q=<word>` → `{sld,count,extensions}`),
+  gated by **domain_owner OR evaluate**. UI: standalone **Research** tab `/research/tld-count`
+  (`#view-tldcount`, the `tc*`/`tld*` helpers in app.js) AND an auto-loaded demand card in
+  the SNAP Eval report. Validated: distribute → 88 (DotDB shows 91). DNS is UDP-53 so it
+  only runs on Vercel, never the sandbox.
+- **SNAP Eval valuation fix — premium names were laughably low** (distribute.com $29K when
+  Appraise.net said $1.3–1.95M). Two root causes fixed in `lib/evaluate/`: (1) **signals.js**
+  raised the Appraise.net poll cap **9s→24s** — it's async (poll-to-complete ~12s) and the
+  short cap was dropping the appraisal from the blend entirely; (2) **score.js** now bounds a
+  name-specific appraisal DOWN to comps **only when the comp set is robust (≥4 comps)** — with
+  a thin/stale set (distribute's one 2016 sale) the appraisal is the better signal and ANCHORS
+  the value (weight 3.4 for a dictionary word). Well-comped names unchanged. Rob's calibration:
+  basis = **retail ask** (not wholesale clearing), distribute.com target **$300K+**.
+- **TLD demand → valuation.** `computeValuation` applies a bounded **demand multiplier
+  [0.9–1.15]** from the TLD count (high count = proven demand supports value; minimal = caps
+  it), dampened for very common words (zipf ≥4.5) to avoid double-counting brandability.
+  Surfaced in the verdict LLM context + the valuation audit (`valuation.tld_demand`) + the
+  in-report card (shows its % effect on value).
+- **⚠️ STILL OPEN:** this fixed the PREMIUM tier (appraisal-driven). The **retail-ask rescale
+  for mid/low tiers** (comp-driven names are still wholesale-basis) + the band/max-bid math
+  under a retail-ask fair value are a pending calibration pass — needs live spot-checks from Rob.
+- **Internal valuate endpoint** `api/internal/valuate.js` — server-to-server (`x-internal-secret`
+  == `RESEARCH_INTERNAL_SECRET`, same pattern as the admin-side internal endpoints): `POST
+  {domains:[…]}` → per-domain `{appraisal:{mid,low,high}, tld_count, tld_band}`. Lightweight
+  (no NameBio comps/firmographics), cache-first (kinds `ap`/`tc`), bounded + fail-open. Lets the
+  **admin SNAP-Opportunities "worth a look" picks** reuse research's valuation keys WITHOUT
+  duplicating them into the admin project. `appraisalOnly()` exported from signals.js.
 
 ---
 
