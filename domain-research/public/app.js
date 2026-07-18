@@ -9987,23 +9987,32 @@ els.tldForm?.addEventListener('submit', (e) => {
   tcLookup(q);
 });
 
-// The compact in-report version — a one-line demand signal, filled async.
-async function evLoadTldCount(sld) {
+// The compact in-report demand card. `mult` (from the valuation) shows how the count
+// nudged the value — so it's clear this now FACTORS INTO the number, not just a stat.
+function evRenderTldCount(data, sld, mult) {
   const el = document.getElementById('ev-tldcount');
-  if (!el || !sld) return;
-  try {
-    const data = await tcFetch(sld);
-    const count = Number(data.count) || 0;
-    const r = tcRead(count);
-    const top = (data.extensions || []).slice(0, 14).map((t) => `<span class="tc-ext">.${escapeHtml(t)}</span>`).join('');
-    const more = (data.extensions || []).length - Math.min(14, (data.extensions || []).length);
-    el.innerHTML = `<div class="ev-card ev-tc-card">
-      <h3 class="ev-h3">TLD demand <span class="muted">— how many extensions "${escapeHtml(data.sld || sld)}" is registered in</span></h3>
-      <div class="ev-tc-row"><span class="tc-num tc-${r.cls}">${count}</span><span class="tc-band tc-band-${r.cls}">${r.label}</span>
+  if (!el) return;
+  const count = Number(data.count) || 0;
+  const r = tcRead(count);
+  const top = (data.extensions || []).slice(0, 14).map((t) => `<span class="tc-ext">.${escapeHtml(t)}</span>`).join('');
+  const more = (data.extensions || []).length - Math.min(14, (data.extensions || []).length);
+  const m = mult && Number(mult.mult);
+  const effect = m && Math.abs(m - 1) >= 0.01
+    ? `<span class="tc-band tc-band-${m > 1 ? 'hi' : 'thin'}" title="applied to the valuation">${m > 1 ? '↑' : '↓'} ${Math.round(Math.abs(m - 1) * 100)}% on value</span>` : '';
+  el.innerHTML = `<div class="ev-card ev-tc-card">
+      <h3 class="ev-h3">TLD demand <span class="muted">— how many extensions "${escapeHtml(data.sld || sld || '')}" is registered in</span></h3>
+      <div class="ev-tc-row"><span class="tc-num tc-${r.cls}">${count}</span><span class="tc-band tc-band-${r.cls}">${r.label}</span>${effect}
         <span class="muted ev-tc-note">${escapeHtml(r.note)}</span></div>
       ${top ? `<div class="tc-extlist ev-tc-exts">${top}${more > 0 ? `<span class="tc-ext muted">+${more}…</span>` : ''}</div>` : ''}
     </div>`;
-  } catch { el.innerHTML = ''; /* silent — it's a bonus signal */ }
+}
+// Prefer the value the eval already computed (part of the valuation, instant); only
+// fetch if the eval didn't capture it (cold cache during the run).
+async function evLoadTldCount(sld) {
+  const el = document.getElementById('ev-tldcount');
+  if (!el || !sld) return;
+  try { evRenderTldCount(await tcFetch(sld), sld, null); }
+  catch { el.innerHTML = ''; /* silent — it's a bonus signal */ }
 }
 
 function renderEvaluate(data) {
@@ -10039,9 +10048,12 @@ function renderEvaluate(data) {
   // Appraise.net loads async (decoupled) — only when the eval didn't already get it.
   const apr = ev.signals && ev.signals.appraisals && ev.signals.appraisals.appraise;
   if (ev.domain && !(apr && apr.mid > 0)) evLoadAppraise(ev.domain);
-  // TLD demand count loads async (decoupled, free, cached per SLD).
+  // TLD demand — prefer the value the eval already computed (it now factors into the
+  // valuation); only fetch if the run didn't capture it (cold TLD cache during the run).
   const evSld = (ev.signals && ev.signals.sld) || tcSld(ev.domain);
-  if (evSld) evLoadTldCount(evSld);
+  const serverDemand = ev.signals && ev.signals.tld_demand;
+  if (serverDemand) evRenderTldCount(serverDemand, evSld, ev.valuation && ev.valuation.tld_demand);
+  else if (evSld) evLoadTldCount(evSld);
 }
 
 els.evForm?.addEventListener('submit', (e) => {

@@ -228,22 +228,33 @@ export function buildAnchors({ quality, namebio, namebioComps, tracker, dealOffe
   if (appraise && appraise.mid > 0) {
     const disc = 0.85;
     const rawMid = appraise.mid * disc;
-    // Real SOLD comps are the ceiling of reality. Appraise.net is TRAFFIC-based and
-    // wildly over-appraises high-volume keywords (dog.app → $925K vs comps maxing at
-    // $65K), so when we have a comp reference, BOUND the appraisal anchor to a sane
-    // multiple of it. It still pulls DOWN freely when it's conservative (below comps —
-    // the alliteration case). And when the raw appraisal sits far ABOVE the comps it's
-    // unreliable, so it loses the heavy non-premium weight.
-    const apMid = compRef > 0 ? Math.min(rawMid, compRef * 1.6) : rawMid;
-    const farAbove = compRef > 0 && rawMid > compRef * 2.5;
-    const weight = qScore >= 85 ? 1.1 : (farAbove ? 1.0 : 2.6);
+    // Real SOLD comps are a reality-check on Appraise.net (which over-weights traffic
+    // on high-volume keywords, e.g. dog.app → $925K). BUT that check is only valid when
+    // the comp set is actually ROBUST (enough, and recent). A THIN or STALE set is NOT a
+    // reliable ceiling — for a premium dictionary word with one old sale (distribute.com:
+    // a single 2016 $30K sale), bounding the appraisal down to that comp is exactly the
+    // bug that pinned it at $29K. So bound to comps ONLY when the comp set is robust;
+    // otherwise the name-specific appraisal is the BEST signal and it anchors the value.
+    const compCount = nbComps.length + trackerDeals.length;
+    const robustComps = compCount >= 4 && compRef > 0;
+    const apMid = robustComps ? Math.min(rawMid, compRef * 1.6) : rawMid;
+    const farAbove = robustComps && rawMid > compRef * 2.5;
+    // Weight: with robust comps the appraisal is a supporting check (old tiering). With
+    // thin/absent comps it's the PRIMARY evidence — heavily so for a real dictionary word,
+    // whose scarcity/brand value only the appraisal (and buyers) can read.
+    const dictWord = (quality && quality.dictionary_class) === 'word';
+    const weight = robustComps
+      ? (qScore >= 85 ? 1.1 : (farAbove ? 1.0 : 2.6))
+      : (dictWord ? 3.4 : 2.2);
     anchors.push({
       source: 'appraise_net',
-      low: Math.min((appraise.low || appraise.mid) * disc * 0.8, apMid * 0.85),
+      low: robustComps ? Math.min((appraise.low || appraise.mid) * disc * 0.8, apMid * 0.85) : apMid * 0.72,
       mid: apMid,
-      high: Math.min((appraise.high || appraise.mid) * disc * 1.25, apMid * 1.3),
+      high: robustComps ? Math.min((appraise.high || appraise.mid) * disc * 1.25, apMid * 1.3) : (appraise.high || appraise.mid) * disc,
       weight,
-      note: `Appraise.net estimate $${niceRound(appraise.mid).toLocaleString()}${apMid < rawMid ? ` (bounded to comps — Appraise.net over-weights traffic)` : ' — name-specific valuation (reflects brandability)'}${qScore >= 85 || farAbove ? '' : '; weighted for this tier'}.`,
+      note: robustComps
+        ? `Appraise.net estimate $${niceRound(appraise.mid).toLocaleString()}${apMid < rawMid ? ' (bounded to a robust comp set — Appraise.net over-weights traffic)' : ' — name-specific valuation (reflects brandability)'}${qScore >= 85 || farAbove ? '' : '; weighted for this tier'}.`
+        : `Appraise.net estimate $${niceRound(appraise.mid).toLocaleString()} — name-specific valuation; comps too thin/stale to bound it, so it anchors the value.`,
     });
   }
 
@@ -371,7 +382,23 @@ export function computeValuation(input) {
   // one multiplier (lib/evaluate/brandfit.js). Defaults to 1 when the signal is absent.
   const fitMult = (input && input.connotation && Number(input.connotation.mult)) || 1;
 
-  const valueMult = synergyMult * tmMult * brandMult * fitMult;
+  // TLD-demand lever — how many TLDs the word is already registered in (DotDB-style).
+  // HIGH count = proven, broad commercial demand for the word → supports resale value;
+  // MINIMAL = little demand (very niche or coined) → caps it. Bounded + tunable. Dampened
+  // for very common dictionary words, where brandability already prices the commonness
+  // (so we don't double-count the same "it's a common word" signal twice).
+  const demand = input && input.tldDemand;
+  let demandMult = 1;
+  let demandNote = '';
+  if (demand && Number.isFinite(demand.count)) {
+    const c = demand.count;
+    let m = c >= 60 ? 1.15 : c >= 25 ? 1.08 : c >= 8 ? 1.0 : c >= 3 ? 0.95 : 0.9;
+    if (m > 1 && brand && Number(brand.zipf) >= 4.5) m = 1 + (m - 1) * 0.5; // very common word — halve the bonus
+    demandMult = m;
+    demandNote = `Registered in ${c} TLD${c === 1 ? '' : 's'} (${demand.band || 'demand'}) — ${m > 1 ? 'proven demand supports value' : m < 1 ? 'thin demand caps value' : 'neutral'}.`;
+  }
+
+  const valueMult = synergyMult * tmMult * brandMult * fitMult * demandMult;
 
   let fairMid = niceRound(blended.mid * valueMult);
 
@@ -431,6 +458,7 @@ export function computeValuation(input) {
     price_band: verdictBand,
     // Multipliers applied on top of the blended comps (visible for audit).
     synergy_mult: Math.round(synergyMult * 100) / 100,
+    tld_demand: demand && Number.isFinite(demand.count) ? { count: demand.count, band: demand.band || null, mult: Math.round(demandMult * 100) / 100, note: demandNote } : null,
     brandability: brand ? { score: brand.score, tier: brand.tier, commonness: brand.commonness, zipf: brand.zipf, mult: Math.round(brandMult * 100) / 100 } : null,
     trademark: tmNote ? { mult: Math.round(tmMult * 100) / 100, note: tmNote } : null,
     connotation: (input && input.connotation) ? {

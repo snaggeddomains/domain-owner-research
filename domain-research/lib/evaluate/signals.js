@@ -20,7 +20,20 @@ import { searchEmailThreads, emailIngestConfigured } from '../email/threads.js';
 import { getDealComps } from '../db/dealComps.js';
 import { getToolLookup, saveToolLookup } from '../db/tools.js';
 import { trackerComps, trackerCompsConfigured } from './trackerComps.js';
+import { countRegistrations } from './tldcount.js';
 import { scoreQuality } from './quality.js';
+
+// Demand band from the raw TLD-registration count (how many TLDs the word is taken
+// in). More extensions registered = more proven commercial demand for the word.
+// Kept qualitative — the valuation multiplier lives in score.js.
+function tldDemandBand(count) {
+  if (count == null) return null;
+  if (count >= 60) return 'high';
+  if (count >= 25) return 'solid';
+  if (count >= 8) return 'some';
+  if (count >= 3) return 'thin';
+  return 'minimal';
+}
 import { scoreBrandability } from './brandability.js';
 import { classifyBrandFit } from './brandfit.js';
 import { domainRenewal } from './renewal.js';
@@ -264,12 +277,16 @@ export async function gatherSignals(domain, env = process.env) {
   const [
     rdapData, liveData, dsData, appraiseRes, atomRes,
     nameproData, webDomain, webTerm,
-    nbComps, nbComparables, dealHistory, emailThreads, tmData, renewal, brandFit,
+    nbComps, nbComparables, dealHistory, emailThreads, tmData, renewal, brandFit, tldReg,
   ] = await Promise.all([
     tool('rdap_whois', { domain: d }, env),
     tool('livesite_inspect', { domain: d }, env),
     tool('domainscout_lookup', { domain: d }, env),
-    withTimeout(appraiseGather(d, env), 9000, { data: null, note: 'still computing' }),
+    // Appraise.net is async (poll-to-complete). The source's own poll budget is ~12s,
+    // so this outer cap MUST exceed it or we'd always give up before the job lands —
+    // which was silently dropping strong appraisals (distribute.com $1.3M) from the
+    // blend. 24s is safe within the 60s function budget (this runs in parallel).
+    withTimeout(appraiseGather(d, env), 24000, { data: null, note: 'still computing' }),
     atomGather(d, env),
     tool('namepros_search', { domain: d }, env),
     tool('web_search', { query: `"${d}"` }, env),
@@ -281,6 +298,10 @@ export async function gatherSignals(domain, env = process.env) {
     withTimeout(tool('trademark_search', { query: sld }, env), 8000, null),
     withTimeout(domainRenewal(d, env), 8000, null),
     withTimeout(classifyBrandFit(sld, env, self && self.connotation), 9000, null),
+    // TLD demand count — cache-first per SLD (kind 'tc'), so a warm word is instant.
+    // A cold word does the DNS sweep; capped so it fails-open (null) rather than
+    // stretching the eval — it warms for the next run / the standalone tool.
+    withTimeout(countRegistrations(sld, { env }), 9000, null),
   ]);
 
   const appraise = normalizeAppraise(appraiseRes && appraiseRes.data);
@@ -310,6 +331,7 @@ export async function gatherSignals(domain, env = process.env) {
     appraisals: { appraise, atom, appraise_note: appraiseNote, atom_note: atomNote },
     trademark: normalizeTrademark(tmData, sld),
     renewal: renewal || null,
+    tld_demand: (tldReg && Number.isFinite(tldReg.count)) ? { count: tldReg.count, band: tldDemandBand(tldReg.count), extensions: tldReg.extensions || [] } : null,
     comps: { namebio: nbComps, namebio_comps: nbComparables, tracker: trackerSold, deal_history: dealHistory },
     namepros: nameproData && Array.isArray(nameproData.results) ? nameproData.results.slice(0, 8) : [],
     web: {
