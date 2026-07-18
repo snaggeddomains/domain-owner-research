@@ -217,6 +217,15 @@ async function appraiseGather(d, env) {
   return { data, note };
 }
 
+// Appraise.net value ONLY (mid/low/high), cache-first, no comps/quality/atom — for the
+// lightweight cross-app "valued picks" pass (admin SNAP Opportunities). Fail-open → null.
+export async function appraisalOnly(domain, env = process.env) {
+  try {
+    const res = await appraiseGather(String(domain).toLowerCase(), env);
+    return normalizeAppraise(res && res.data);
+  } catch { return null; }
+}
+
 // Atom has a HARD ~10/day cap — cache the value per domain (kind 'at') so re-runs
 // never re-spend a quota slot; surface the cap message as a note when exhausted.
 async function atomGather(d, env) {
