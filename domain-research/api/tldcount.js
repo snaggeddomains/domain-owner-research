@@ -8,7 +8,7 @@
 //
 // Gated by the `evaluate` module (SNAP Eval signal); admins auto-pass.
 
-import { isAuthed, requirePermission } from '../lib/auth.js';
+import { isAuthed, requireUser, userCan } from '../lib/auth.js';
 import { withCategory } from '../lib/db/usage.js';
 import { listToolLookups } from '../lib/db/tools.js';
 import { countRegistrations, toSld } from '../lib/evaluate/tldcount.js';
@@ -23,8 +23,14 @@ export default async function handler(req, res) {
     res.status(401).json({ error: 'Not authenticated' });
     return;
   }
-  const user = await requirePermission(req, res, 'evaluate');
-  if (!user) return; // requirePermission already wrote 401/403
+  // Standalone Research tool AND the SNAP Eval in-report signal both hit this —
+  // allow either the base research module or the evaluate module (admins pass).
+  const user = await requireUser(req, res);
+  if (!user) return;
+  if (!userCan(user, 'domain_owner') && !userCan(user, 'evaluate')) {
+    res.status(403).json({ error: "You don't have access to this tool" });
+    return;
+  }
 
   // Recent lookups list.
   if (req.query.list) {

@@ -212,6 +212,9 @@
         <!-- Auction owners — the marketplace handle → owner registry (auto-built from
              Namecheap sales). Gated by the `domain_owner` permission. -->
         <a id="nav-auctionowners" class="nav-btn" href="/research/auction-owners" hidden>Auction Owners</a>
+        <!-- TLD Count — how many TLDs a word is registered in (free demand read).
+             Gated by the `domain_owner` permission; shown by JS. -->
+        <a id="nav-tldcount" class="nav-btn" href="/research/tld-count" hidden>TLD Count</a>
         </span>
         <!-- SNAP sub-nav (shown in the SNAP section): SNAP Eval + SNAP Opportunities.
              SNAP Opportunities is the auctions/snap feed in the admin app (full nav). -->
@@ -864,21 +867,26 @@
             <input id="ev-price" type="text" inputmode="numeric" placeholder="price, e.g. 7000 (optional)" class="ev-price-input" />
             <button id="ev-go" type="submit">Evaluate</button>
           </form>
-          <div class="tc-widget">
-            <form id="tc-form" class="tc-form" autocomplete="off">
-              <span class="tc-label">TLD demand</span>
-              <input id="tc-q" type="text" placeholder="a word, e.g. distribute" autocapitalize="off" autocorrect="off" spellcheck="false" />
-              <button id="tc-go" type="submit" class="tc-go">Count TLDs</button>
-            </form>
-            <div id="tc-result" class="tc-result" hidden></div>
-            <p class="tc-hint muted">How many TLDs the word is already registered in — a quick demand read (like DotDB), free.</p>
-          </div>
           <div id="ev-recent" class="sr-recent" hidden>
             <div class="sr-recent-head">Recent evaluations</div>
             <ul id="ev-recent-list" class="sr-recent-list"></ul>
           </div>
           <div id="ev-status" class="sr-status" hidden></div>
           <div id="ev-result" hidden></div>
+        </section>
+
+        <!-- TLD Count — standalone DotDB-style demand read -->
+        <section id="view-tldcount" hidden>
+          <div class="hero tool-hero">
+            <h1 class="hero-title">TLD <span class="accent">Count</span></h1>
+            <p class="hero-sub">Type a <strong>word</strong> (or a domain) and see how many TLDs it's already registered in — a quick, free demand read (like DotDB). More extensions taken = more proven demand for the word.</p>
+          </div>
+          <form id="tld-form" class="search tld-form" autocomplete="off">
+            <input id="tld-q" type="text" placeholder="a word, e.g. distribute" autocapitalize="off" autocorrect="off" spellcheck="false" />
+            <button id="tld-go" type="submit">Count TLDs</button>
+          </form>
+          <div id="tld-status" class="sr-status" hidden></div>
+          <div id="tld-result" class="tc-result" hidden></div>
         </section>
 
         <section id="view-bulk-eval" hidden>
@@ -1187,6 +1195,6 @@ The model parses it into structured filters (TLDs, length, budget, tone, etc.) a
     </div>
 
     <!-- Bump ?v= on any public/app.js or styles.css change to bust caches. -->
-    <script src="app.js?v=20260718tldcount"></script>
+    <script src="app.js?v=20260718tldcount2"></script>
   </body>
 </html>

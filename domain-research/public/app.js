@@ -277,7 +277,8 @@ const els = {
   topbarResearch: $('topbar-research'),
   evForm: $('ev-form'), evDomain: $('ev-domain'), evPrice: $('ev-price'), evGo: $('ev-go'), evRefresh: $('ev-refresh'),
   evStatus: $('ev-status'), evResult: $('ev-result'), evRecent: $('ev-recent'),
-  tcForm: $('tc-form'), tcQ: $('tc-q'), tcGo: $('tc-go'), tcResult: $('tc-result'),
+  navTldcount: $('nav-tldcount'),
+  tldForm: $('tld-form'), tldQ: $('tld-q'), tldGo: $('tld-go'), tldStatus: $('tld-status'), tldResult: $('tld-result'),
   nsModeToggle: $('ns-modetoggle'), nsMatchToggle: $('ns-matchtoggle'),
   nsDomainForm: $('ns-domain-form'), nsDomain: $('ns-domain'),
   nsNsForm: $('ns-ns-form'), nsNs: $('ns-ns'), nsTld: $('ns-tld'),
@@ -511,7 +512,7 @@ function clearHash() {
 // the SPA): Domain DB Screen at /dbscreen, DB Search at /dbsearch.
 const VANITY_TOOLS = ['dbscreen', 'dbsearch'];
 function currentToolRoute() {
-  let m = location.pathname.match(/^\/research\/(trademark|appraisal|naming|dbscreen|dbsearch|nameserver|sales|portfolio|person|evaluate|bulk-eval|beeper|whois|auction-owners|diq|admin)(?:\/(.+?))?\/?$/);
+  let m = location.pathname.match(/^\/research\/(trademark|appraisal|naming|dbscreen|dbsearch|nameserver|sales|portfolio|person|evaluate|bulk-eval|tld-count|beeper|whois|auction-owners|diq|admin)(?:\/(.+?))?\/?$/);
   if (!m) m = location.pathname.match(/^\/(dbscreen|dbsearch)(?:\/(.+?))?\/?$/);
   if (!m) return null;
   return { tool: m[1], slug: m[2] ? decodeURIComponent(m[2]) : '' };
@@ -541,6 +542,7 @@ const TOOL_PERMISSION = {
   person: 'person',
   evaluate: 'evaluate',
   'bulk-eval': 'bulk_eval',
+  'tld-count': 'domain_owner',
 };
 
 // ── Cross-module domain context (action bar + ⌘K palette; workspace-ready) ──
@@ -793,6 +795,11 @@ function route() {
   }
   if (tr && tr.tool === 'bulk-eval') {
     showView('bulk-eval');
+    return;
+  }
+  if (tr && tr.tool === 'tld-count') {
+    showView('tld-count');
+    if (tr.slug) { if (els.tldQ) els.tldQ.value = tr.slug; tcLookup(tr.slug); }
     return;
   }
   if (tr && tr.tool === 'admin') {
@@ -2575,6 +2582,7 @@ function gateNavByPermissions(user) {
   if (els.navWhois) els.navWhois.hidden = !can('whois');
   if (els.navAuctionOwners) els.navAuctionOwners.hidden = !can('domain_owner');
   if (els.navDiq) els.navDiq.hidden = !can('domain_owner');
+  if (els.navTldcount) els.navTldcount.hidden = !can('domain_owner');
   if (els.navSales) els.navSales.hidden = !can('sales');
   // SNAP sub-nav: SNAP Eval needs `evaluate`; SNAP Opportunities (admin app) needs
   // reports access. Hidden buttons just don't render inside the SNAP group.
@@ -3848,6 +3856,7 @@ const VIEWS = {
   'person-runs': { view: 'view-person-runs', nav: 'nav-person' },
   evaluate: { view: 'view-evaluate', nav: 'nav-snap-eval' },
   'bulk-eval': { view: 'view-bulk-eval', nav: 'nav-bulk-eval' },
+  'tld-count': { view: 'view-tldcount', nav: 'nav-tldcount' },
   admin: { view: 'view-admin', nav: 'nav-admin' },
   lead: { view: 'view-lead', nav: 'nav-lead' }, // deep-link only (no nav tab)
 };
@@ -6852,6 +6861,7 @@ els.navTrademark?.addEventListener('click', (e) => { if (newTabClick(e)) return;
 els.navAppraisal?.addEventListener('click', (e) => { if (newTabClick(e)) return; e.preventDefault(); setToolUrl('appraisal', ''); route(); });
 els.navSnapEval?.addEventListener('click', (e) => { if (newTabClick(e)) return; e.preventDefault(); setToolUrl('evaluate', ''); route(); });
 els.navBulkEval?.addEventListener('click', (e) => { if (newTabClick(e)) return; e.preventDefault(); setToolUrl('bulk-eval', ''); route(); });
+els.navTldcount?.addEventListener('click', (e) => { if (newTabClick(e)) return; e.preventDefault(); setToolUrl('tld-count', ''); route(); });
 
 // ── Bulk Eval — rank a list/CSV of domains by investability ─────────────────
 let beLast = null; // last results (for CSV)
@@ -9944,32 +9954,38 @@ function tcRead(count) {
   return { label: 'thin demand', cls: 'thin', note: 'Registered in only a few extensions — little proven demand, or a very niche / coined word.' };
 }
 function tcRenderStandalone(data) {
-  if (!els.tcResult) return;
+  if (!els.tldResult) return;
   const count = Number(data.count) || 0;
   const r = tcRead(count);
-  const exts = (data.extensions || []).slice(0, 60);
+  const exts = (data.extensions || []).slice(0, 120);
   const more = (data.extensions || []).length - exts.length;
   const chips = exts.map((t) => `<span class="tc-ext">.${escapeHtml(t)}</span>`).join('');
-  els.tcResult.innerHTML = `<div class="tc-out">
+  els.tldResult.innerHTML = `<div class="tc-out">
     <div class="tc-num-wrap"><span class="tc-num tc-${r.cls}">${count}</span><span class="tc-num-lbl">TLD${count === 1 ? '' : 's'} registered<br><span class="tc-word">${escapeHtml(data.sld || '')}</span></span>
       <span class="tc-band tc-band-${r.cls}">${r.label}</span></div>
     <p class="tc-note muted">${escapeHtml(r.note)}${data.source === 'dotdb' ? ' <em>(via DotDB)</em>' : ''}</p>
-    ${chips ? `<details class="tc-exts"><summary>See the ${count} extension${count === 1 ? '' : 's'}${more > 0 ? ` (+${more} more)` : ''}</summary><div class="tc-extlist">${chips}${more > 0 ? `<span class="tc-ext muted">+${more}…</span>` : ''}</div></details>` : ''}
+    ${chips ? `<details class="tc-exts" open><summary>The ${count} extension${count === 1 ? '' : 's'}${more > 0 ? ` (+${more} more)` : ''}</summary><div class="tc-extlist">${chips}${more > 0 ? `<span class="tc-ext muted">+${more}…</span>` : ''}</div></details>` : ''}
   </div>`;
-  els.tcResult.hidden = false;
+  els.tldResult.hidden = false;
 }
 async function tcLookup(q) {
   const sld = tcSld(q);
-  if (!sld || !els.tcResult) return;
-  els.tcResult.hidden = false;
-  els.tcResult.innerHTML = `<div class="tc-loading muted"><span class="ev-spinner"></span> Counting TLDs for <strong>${escapeHtml(sld)}</strong>…</div>`;
+  if (!sld || !els.tldResult) return;
+  els.tldResult.hidden = false;
+  els.tldResult.innerHTML = `<div class="tc-loading muted"><span class="ev-spinner"></span> Counting TLDs for <strong>${escapeHtml(sld)}</strong>…</div>`;
   try {
     tcRenderStandalone(await tcFetch(sld));
   } catch (e) {
-    els.tcResult.innerHTML = `<div class="tc-err muted">Couldn't count TLDs: ${escapeHtml(String(e.message || e))}</div>`;
+    els.tldResult.innerHTML = `<div class="tc-err muted">Couldn't count TLDs: ${escapeHtml(String(e.message || e))}</div>`;
   }
 }
-els.tcForm?.addEventListener('submit', (e) => { e.preventDefault(); tcLookup(els.tcQ && els.tcQ.value); });
+els.tldForm?.addEventListener('submit', (e) => {
+  e.preventDefault();
+  const q = (els.tldQ && els.tldQ.value || '').trim();
+  if (!q) return;
+  setToolUrl('tld-count', tcSld(q));
+  tcLookup(q);
+});
 
 // The compact in-report version — a one-line demand signal, filled async.
 async function evLoadTldCount(sld) {
