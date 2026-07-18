@@ -1996,6 +1996,38 @@ a.sr-ag-co-link:hover { border-color: var(--coral); color: var(--coral-deep); ba
 .ev-h3 .muted { font-weight: 500; }
 .muted { color: var(--muted); }
 
+/* TLD demand count (DotDB-style) — standalone widget + in-report signal */
+.tc-widget { margin: 8px 0 2px; }
+.tc-form { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.tc-label { font-size: .72rem; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--navy-3); }
+.tc-form input { flex: 1 1 220px; min-width: 160px; padding: 8px 11px; border: 1px solid var(--line); border-radius: var(--radius-sm); font-size: .92rem; }
+.tc-go { padding: 8px 14px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--paper); color: var(--navy); font-weight: 600; cursor: pointer; }
+.tc-go:hover { background: var(--bg); }
+.tc-hint { font-size: .78rem; margin: 4px 0 0; }
+.tc-result { margin-top: 10px; }
+.tc-loading { display: flex; align-items: center; gap: 8px; font-size: .9rem; }
+.tc-out { background: var(--paper); border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 14px 16px; box-shadow: var(--shadow-sm); }
+.tc-num-wrap { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.tc-num { font-size: 2.4rem; font-weight: 800; line-height: 1; font-variant-numeric: tabular-nums; color: var(--navy); }
+.tc-num.tc-hi { color: #0b8f3a; } .tc-num.tc-mid { color: #1f9d55; } .tc-num.tc-lo { color: #b07d12; } .tc-num.tc-thin { color: var(--navy-3); }
+.tc-num-lbl { font-size: .82rem; color: var(--muted); line-height: 1.25; }
+.tc-word { font-weight: 700; color: var(--navy); }
+.tc-band { font-size: .68rem; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; border-radius: 999px; padding: 3px 10px; border: 1px solid; white-space: nowrap; }
+.tc-band-hi { color: #0b8f3a; background: rgba(11,143,58,.1); border-color: rgba(11,143,58,.4); }
+.tc-band-mid { color: #1f9d55; background: rgba(31,157,85,.1); border-color: rgba(31,157,85,.38); }
+.tc-band-lo { color: #b07d12; background: rgba(217,154,60,.12); border-color: rgba(217,154,60,.45); }
+.tc-band-thin { color: var(--navy-3); background: rgba(94,124,141,.1); border-color: rgba(94,124,141,.35); }
+.tc-note { font-size: .84rem; margin: 8px 0 0; }
+.tc-exts { margin-top: 8px; }
+.tc-exts summary { cursor: pointer; font-size: .82rem; color: var(--teal-deep); }
+.tc-extlist { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 8px; }
+.tc-ext { font-size: .75rem; font-variant-numeric: tabular-nums; padding: 2px 7px; border: 1px solid var(--line); border-radius: 999px; background: var(--bg); color: var(--navy); }
+.tc-err { font-size: .88rem; }
+.ev-tc-card .ev-tc-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.ev-tc-card .tc-num { font-size: 1.9rem; }
+.ev-tc-note { font-size: .85rem; flex: 1 1 240px; }
+.ev-tc-exts { margin-top: 10px; }
+
 /* Verdict header */
 .ev-verdict { display: flex; gap: 20px; align-items: stretch; flex-wrap: wrap; background: var(--paper); border: 1px solid var(--line); border-radius: var(--radius); padding: 20px 22px; box-shadow: var(--shadow-md); }
 .ev-verdict-main { flex: 1 1 340px; min-width: 280px; }
