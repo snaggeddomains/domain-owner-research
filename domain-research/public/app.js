@@ -10102,6 +10102,23 @@ async function evLoadTldCount(sld) {
   catch { el.innerHTML = ''; /* silent — it's a bonus signal */ }
 }
 
+// Renewal cost tile — "what it costs US to hold, per year". A premium renewal is a
+// margin-eating recurring cost (already fed into the verdict; this makes it visible).
+function evRenewalCard(data) {
+  const rc = data.evaluation && data.evaluation.signals && data.evaluation.signals.renewal_cost;
+  if (!rc || rc.renewal == null) return '';
+  const prem = rc.premium && rc.premium.is_premium;
+  const money = (n) => (n == null ? '—' : `$${Number(n).toLocaleString(undefined, { maximumFractionDigits: 2 })}`);
+  return `<div class="ev-card">
+    <h3 class="ev-h3">Renewal cost <span class="muted">— what it costs us to hold, per year (if acquired)</span></h3>
+    <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap">
+      <span style="font-size:22px;font-weight:800;color:${prem ? '#c0492f' : 'inherit'}">${money(rc.renewal)}/yr</span>
+      <span class="tc-band tc-band-${prem ? 'hi' : 'mid'}">${prem ? `⚠️ registry-premium${rc.multiple ? ` · ${rc.multiple}× standard` : ''}` : 'standard'}</span>
+    </div>
+    <p class="muted" style="font-size:12px;margin:6px 0 0">${escapeHtml(rc.note || '')}</p>
+  </div>`;
+}
+
 function renderEvaluate(data) {
   if (!els.evResult) return;
   const ev = data.evaluation || {};
@@ -10121,6 +10138,7 @@ function renderEvaluate(data) {
     ${evBandLadder(data)}
     ${evTldLandscape(data)}
     <div id="ev-tldcount"></div>
+    ${evRenewalCard(data)}
     ${evBuyers(data)}
     ${evQuality(data)}
     ${evContext(data)}
