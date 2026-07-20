@@ -80,6 +80,21 @@ const els = {
   reportMeta: $('report-meta'),
   exportPdf: $('export-pdf'),
   outreachBtn: $('outreach-btn'),
+  pipedriveBtn: $('pipedrive-btn'),
+  pipedriveDrawer: $('pipedrive-drawer'),
+  pipedriveBackdrop: $('pipedrive-backdrop'),
+  pipedriveClose: $('pipedrive-close'),
+  pdDomain: $('pd-domain'),
+  pdSource: $('pd-source'),
+  pdAssignee: $('pd-assignee'),
+  pdPriority: $('pd-priority'),
+  pdBuyerName: $('pd-buyer-name'),
+  pdBuyerEmail: $('pd-buyer-email'),
+  pdBudget: $('pd-budget'),
+  pdContext: $('pd-context'),
+  pdStatus: $('pd-status'),
+  pdCancel: $('pd-cancel'),
+  pdSubmit: $('pd-submit'),
   outreachDrawer: $('outreach-drawer'),
   outreachBackdrop: $('outreach-backdrop'),
   outreachClose: $('outreach-close'),
@@ -458,6 +473,7 @@ let currentRunId = null;
 // all — instead of firing a duplicate run.
 const domainRuns = new Map();
 let canOutreach = false;
+let canPipedrive = false;
 // On-demand phone enhance (FullEnrich, premium) is gated like the deep pass.
 let canEnhance = false;
 
@@ -1949,6 +1965,7 @@ function renderReport(report) {
   renderConfidence(band);
   els.reportActions.hidden = false;
   if (els.outreachBtn) els.outreachBtn.hidden = !(canOutreach && currentRunId);
+  if (els.pipedriveBtn) els.pipedriveBtn.hidden = !(canPipedrive && currentReportDomain);
 
   // Structured summary up top (when present), then the supporting narrative.
   const summaryHtml = data ? renderSummary(data) : '';
@@ -2619,6 +2636,9 @@ function gateNavByPermissions(user) {
   // this user may use it so renderReport can show/hide the launcher button.
   canOutreach = can('outreach');
   if (els.outreachBtn && (!canOutreach || !currentRunId)) els.outreachBtn.hidden = true;
+  // Add-to-Pipedrive is also a report-page feature (+ inline on whois/appraisal).
+  canPipedrive = can('pipedrive');
+  if (els.pipedriveBtn && (!canPipedrive || !currentReportDomain)) els.pipedriveBtn.hidden = true;
   // Lessons lives in the umbrella Admin module now; its tab stays hidden here
   // (the element is kept only so the /research/admin deep link still routes).
   if (els.navAdmin) els.navAdmin.hidden = true;
@@ -4269,7 +4289,18 @@ function whoisShareHtml(domain) {
   return `<div class="wi-share-row">`
     + `<button type="button" class="wi-share" data-share-url="${escapeHtml(url)}" title="Copy a public whois.com link to share">🔗 Copy share link</button>`
     + `<a class="wi-share-open" href="${escapeHtml(url)}" target="_blank" rel="noopener">open ↗</a>`
+    + pipedriveInlineBtn(domain, 'whois')
     + `</div>`;
+}
+
+// Inline "Add to Pipedrive" button for the innerHTML-rebuilt surfaces (whois / appraisal).
+// Returns '' unless the user holds the permission. A delegated click handler (document)
+// reads the domain + surface off the data attributes and opens the drawer.
+function pipedriveInlineBtn(domain, surface, extra) {
+  if (!canPipedrive) return '';
+  const ap = extra && extra.appraisal != null && String(extra.appraisal).trim()
+    ? ` data-pd-appraisal="${escapeHtml(String(extra.appraisal))}"` : '';
+  return `<button type="button" class="pd-inline-btn" data-pd-open="1" data-pd-domain="${escapeHtml(String(domain || ''))}" data-pd-surface="${escapeHtml(surface || '')}"${ap} title="Create a buy-side deal in Pipedrive">➕ Add to Pipedrive</button>`;
 }
 function renderWhois(w) {
   if (w.available) {
@@ -4763,7 +4794,8 @@ function renderAppraisal(domain, a, meta) {
   const freshness = updatedAt
     ? ` Appraised ${escapeHtml(agoLabel(updatedAt))} · <button type="button" class="ap-refresh" data-refresh="${escapeHtml(domain)}">Refresh</button>`
     : '';
-  const metaRow = `<div class="ap-meta"><span class="ap-badge ap-badge-primary">Appraise.net</span>${freshness}</div>`;
+  const estVal = pickr(a, ['estimatedValue', 'estimated_value', 'value', 'estimate', 'midValue', 'mid_value', 'appraisedValue', 'appraised_value', 'usd', 'price']);
+  const metaRow = `<div class="ap-meta"><span class="ap-badge ap-badge-primary">Appraise.net</span>${freshness}${pipedriveInlineBtn(domain, 'appraisal', { appraisal: estVal })}</div>`;
   els.apResult.hidden = false;
   els.apResult.innerHTML =
     `<div class="tool-title">${escapeHtml(domain)}</div>` +
@@ -6584,6 +6616,151 @@ function closeOutreach() {
   document.body.classList.remove('drawer-open');
 }
 
+// ── Add to Pipedrive (buy-side deal) ────────────────────────────────────────
+// A slide-over that turns the current research surface into a buy-side deal in
+// Pipedrive (via /api/pipedrive → the admin internal endpoint). Context (domain +
+// any prefill) is passed by the launcher; the drawer collects source/assignee/etc.
+let pipedriveCtx = null;
+let pipedriveMetaCache = null;
+
+// The public share URL for the CURRENT report (same shape as the Share button), so
+// the deal carries a link the assignee can open. '' when not on a report hash.
+function currentReportShareUrl() {
+  const m = (location.hash || '').match(/^#\/r\/(.+)$/);
+  if (!m) return '';
+  const slug = m[1];
+  const u = slug.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i);
+  if (u) {
+    const dom = slug.slice(0, u.index).replace(/-+$/, '');
+    const short = u[0].replace(/-/g, '').slice(0, 8);
+    return `${location.origin}/research/r/${dom}-${short}`;
+  }
+  return `${location.origin}/research/r/${slug}`;
+}
+
+function pipedriveStatus(msg, kind) {
+  if (!els.pdStatus) return;
+  els.pdStatus.hidden = !msg;
+  els.pdStatus.textContent = msg || '';
+  els.pdStatus.className = 'od-status' + (kind ? ` od-status-${kind}` : '');
+}
+
+async function loadPipedriveMeta() {
+  if (pipedriveMetaCache) return pipedriveMetaCache;
+  try {
+    const res = await fetch('/research/api/pipedrive');
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || `meta ${res.status}`);
+    pipedriveMetaCache = { assignees: data.assignees || [], sources: data.sources || [] };
+  } catch (e) {
+    pipedriveMetaCache = { assignees: [], sources: [], error: String((e && e.message) || e) };
+  }
+  return pipedriveMetaCache;
+}
+
+// ctx: { domain, surface, reportLink?, appraisalValue?, likelyOwner?, ownerContact? }
+async function openPipedrive(ctx) {
+  if (!els.pipedriveDrawer || !canPipedrive || !ctx || !ctx.domain) return;
+  pipedriveCtx = ctx;
+  els.pipedriveDrawer.hidden = false;
+  document.body.classList.add('drawer-open');
+  if (els.pdDomain) els.pdDomain.textContent = ctx.domain;
+  // Reset the form.
+  if (els.pdBuyerName) els.pdBuyerName.value = '';
+  if (els.pdBuyerEmail) els.pdBuyerEmail.value = '';
+  if (els.pdBudget) els.pdBudget.value = '';
+  if (els.pdPriority) els.pdPriority.value = '';
+  if (els.pdSubmit) els.pdSubmit.disabled = false;
+  pipedriveStatus('');
+  // Context summary (what will be attached to the deal automatically).
+  if (els.pdContext) {
+    const bits = [];
+    if (ctx.reportLink) bits.push('📄 Research report link');
+    if (ctx.appraisalValue) bits.push(`💰 Appraisal $${escapeHtml(String(Math.round(Number(ctx.appraisalValue))))}`);
+    els.pdContext.hidden = !bits.length;
+    els.pdContext.innerHTML = bits.length ? `Will attach: ${bits.join(' · ')}` : '';
+  }
+  // Populate the source + assignee selects from the cached meta.
+  pipedriveStatus('Loading…');
+  const meta = await loadPipedriveMeta();
+  pipedriveStatus(meta.error ? `Couldn't reach Pipedrive: ${meta.error}` : '', meta.error ? 'error' : '');
+  if (els.pdSource) {
+    const opts = (meta.sources || []);
+    els.pdSource.innerHTML = opts.length
+      ? opts.map((s) => `<option value="${escapeHtml(s)}">${escapeHtml(s)}</option>`).join('')
+      : `<option value="Proactive (we're chasing it)">Proactive (we're chasing it)</option>`;
+    // Default a report/appraisal/whois lookup to "Proactive" when present.
+    const proactive = opts.find((s) => /proactive/i.test(s));
+    if (proactive) els.pdSource.value = proactive;
+  }
+  if (els.pdAssignee) {
+    const people = (meta.assignees || []);
+    els.pdAssignee.innerHTML = `<option value="">Unassigned / Inbox</option>`
+      + people.map((p) => `<option value="${escapeHtml(p.email)}">${escapeHtml(p.name)}</option>`).join('');
+  }
+}
+
+function closePipedrive() {
+  if (!els.pipedriveDrawer) return;
+  els.pipedriveDrawer.hidden = true;
+  document.body.classList.remove('drawer-open');
+}
+
+async function submitPipedrive() {
+  if (!pipedriveCtx || !els.pdSubmit) return;
+  const source = els.pdSource ? els.pdSource.value : '';
+  if (!source) { pipedriveStatus('Pick a source / channel.', 'err'); return; }
+  els.pdSubmit.disabled = true;
+  pipedriveStatus('Adding…');
+  const payload = {
+    domain: pipedriveCtx.domain,
+    source,
+    assigneeEmail: els.pdAssignee ? els.pdAssignee.value : '',
+    priority: els.pdPriority ? els.pdPriority.value : '',
+    buyerName: els.pdBuyerName ? els.pdBuyerName.value.trim() : '',
+    buyerEmail: els.pdBuyerEmail ? els.pdBuyerEmail.value.trim() : '',
+    budgetRange: els.pdBudget ? els.pdBudget.value.trim() : '',
+    reportLink: pipedriveCtx.reportLink || '',
+    appraisalValue: pipedriveCtx.appraisalValue || '',
+    likelyOwner: pipedriveCtx.likelyOwner || '',
+    ownerContact: pipedriveCtx.ownerContact || '',
+  };
+  try {
+    const res = await fetch('/research/api/pipedrive', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || data.ok === false) throw new Error(data.error || `create ${res.status}`);
+    const verb = data.created ? 'Added to Pipedrive' : 'Already in Pipedrive';
+    const link = data.url ? ` — <a href="${escapeHtml(data.url)}" target="_blank" rel="noopener">open the deal ↗</a>` : '';
+    pipedriveStatus('', '');
+    if (els.pdStatus) { els.pdStatus.hidden = false; els.pdStatus.className = 'od-status od-status-ok'; els.pdStatus.innerHTML = `✓ ${verb}${link}`; }
+  } catch (e) {
+    pipedriveStatus(`Couldn't create the deal: ${String((e && e.message) || e)}`, 'err');
+    els.pdSubmit.disabled = false;
+  }
+}
+
+// Launcher from the report header (uses the current report's domain + share link).
+function openPipedriveFromReport() {
+  if (!currentReportDomain) return;
+  openPipedrive({ domain: currentReportDomain, surface: 'owner', reportLink: currentReportShareUrl() });
+}
+
+// Delegated launcher for the inline buttons on the whois / appraisal surfaces.
+document.addEventListener('click', (e) => {
+  const btn = e.target && e.target.closest ? e.target.closest('[data-pd-open]') : null;
+  if (!btn) return;
+  e.preventDefault();
+  openPipedrive({
+    domain: btn.getAttribute('data-pd-domain') || '',
+    surface: btn.getAttribute('data-pd-surface') || '',
+    appraisalValue: btn.getAttribute('data-pd-appraisal') || '',
+  });
+});
+
 // Cache of finished (LLM-sharpened) drafts, keyed by run + selection, so
 // reopening or toggling back is instant.
 const outreachCache = {};
@@ -6748,11 +6925,17 @@ async function saveOutreachTemplate() {
 els.outreachBtn?.addEventListener('click', openOutreach);
 els.outreachClose?.addEventListener('click', closeOutreach);
 els.outreachBackdrop?.addEventListener('click', closeOutreach);
+els.pipedriveBtn?.addEventListener('click', openPipedriveFromReport);
+els.pipedriveClose?.addEventListener('click', closePipedrive);
+els.pipedriveBackdrop?.addEventListener('click', closePipedrive);
+els.pdCancel?.addEventListener('click', closePipedrive);
+els.pdSubmit?.addEventListener('click', submitPipedrive);
 els.historyClose?.addEventListener('click', closeHistory);
 els.historyBackdrop?.addEventListener('click', closeHistory);
 document.addEventListener('keydown', (e) => {
   if (e.key !== 'Escape') return;
   if (els.historyDrawer && !els.historyDrawer.hidden) { closeHistory(); return; }
+  if (els.pipedriveDrawer && !els.pipedriveDrawer.hidden) { closePipedrive(); return; }
   if (els.outreachDrawer && !els.outreachDrawer.hidden) closeOutreach();
 });
 els.odScenarioSel?.addEventListener('change', () => { if (outreachLoaded) loadOutreach(els.odScenarioSel.value); });

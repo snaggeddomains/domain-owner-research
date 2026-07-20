@@ -1447,6 +1447,28 @@ body.modal-open { overflow: hidden; }
 .od-status-err { color: var(--coral-deep); }
 .od-status-warn { color: var(--coral-deep); }
 .od-status-busy { color: var(--navy-3); }
+.od-status-ok { color: var(--teal-deep); font-weight: 600; }
+.od-status-ok a { color: var(--teal-deep); }
+
+/* Add-to-Pipedrive: inline launcher (whois / appraisal surfaces) + drawer bits. */
+.pd-inline-btn {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 4px 10px; font-size: 12px; font-weight: 600;
+  color: var(--navy-1); background: var(--paper-2, #f4f1ea);
+  border: 1px solid var(--line, #e3ddcf); border-radius: 999px;
+  cursor: pointer; margin-left: 6px;
+}
+.pd-inline-btn:hover { background: var(--coral); color: #fff; border-color: var(--coral); }
+.pd-req { color: var(--coral-deep); }
+.pd-context {
+  margin-top: 2px; padding: 8px 10px; font-size: 12.5px;
+  color: var(--navy-2); background: var(--paper-2, #f4f1ea);
+  border-radius: 8px;
+}
+#pipedrive-btn {
+  background: var(--coral); color: #fff; border-color: var(--coral);
+}
+#pipedrive-btn:hover { background: var(--coral-deep); border-color: var(--coral-deep); }
 
 .od-actions {
   display: flex; gap: 10px; justify-content: flex-end;

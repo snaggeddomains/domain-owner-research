@@ -35,7 +35,7 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="apple-mobile-web-app-title" content="Snagged Research" />
     <meta name="theme-color" content="#254254" />
-    <link rel="stylesheet" href="styles.css?v=20260710multi" />
+    <link rel="stylesheet" href="styles.css?v=20260720pipedrive" />
     <!-- Layout: horizontal tab nav (Admin-style), no sidebar. -->
   </head>
   <body>
@@ -282,6 +282,7 @@
             <div id="report-actions" class="report-actions" hidden>
               <button id="research-new" class="tool-new-report" type="button">+ New report</button>
               <button id="outreach-btn" type="button" hidden>✉ Draft outreach</button>
+              <button id="pipedrive-btn" type="button" hidden>➕ Add to Pipedrive</button>
               <button id="export-pdf" type="button">Export PDF</button>
             </div>
           </div>
@@ -1184,6 +1185,59 @@ The model parses it into structured filters (TLDs, length, budget, tone, etc.) a
       </div>
     </aside>
 
+    <!-- Add-to-Pipedrive slide-over drawer (opened from owner-report / appraisal / whois).
+         Reuses the .od-* outreach-drawer styles. Creates a buy-side deal via /api/pipedrive. -->
+    <aside id="pipedrive-drawer" class="outreach-drawer" hidden>
+      <div class="od-backdrop" id="pipedrive-backdrop"></div>
+      <div class="od-panel" role="dialog" aria-modal="true" aria-labelledby="pd-title">
+        <div class="od-head">
+          <div>
+            <div class="od-title" id="pd-title">Add to Pipedrive</div>
+            <div class="od-domain" id="pd-domain"></div>
+          </div>
+          <button id="pipedrive-close" class="od-close" type="button" aria-label="Close">×</button>
+        </div>
+        <div class="od-body">
+          <div class="od-field">
+            <label class="od-label" for="pd-source">Source / channel <span class="pd-req">*</span></label>
+            <select id="pd-source" class="od-select"></select>
+          </div>
+          <div class="od-field">
+            <label class="od-label" for="pd-assignee">Assign to</label>
+            <select id="pd-assignee" class="od-select"></select>
+          </div>
+          <div class="od-field">
+            <label class="od-label" for="pd-priority">Priority</label>
+            <select id="pd-priority" class="od-select">
+              <option value="">—</option>
+              <option value="Top">Top</option>
+              <option value="High">High</option>
+              <option value="Normal">Normal</option>
+              <option value="Low">Low</option>
+            </select>
+          </div>
+          <div class="od-field">
+            <label class="od-label" for="pd-buyer-name">Client / buyer name</label>
+            <input id="pd-buyer-name" class="od-input" type="text" autocomplete="off" placeholder="Optional" />
+          </div>
+          <div class="od-field">
+            <label class="od-label" for="pd-buyer-email">Client / buyer email</label>
+            <input id="pd-buyer-email" class="od-input" type="email" autocomplete="off" placeholder="Optional" />
+          </div>
+          <div class="od-field">
+            <label class="od-label" for="pd-budget">Budget range</label>
+            <input id="pd-budget" class="od-input" type="text" autocomplete="off" placeholder="e.g. $5k–$25k" />
+          </div>
+          <div id="pd-context" class="pd-context" hidden></div>
+          <div id="pd-status" class="od-status" hidden></div>
+        </div>
+        <div class="od-actions">
+          <button id="pd-cancel" class="od-btn od-btn-ghost" type="button">Cancel</button>
+          <button id="pd-submit" class="od-btn od-btn-primary" type="button">Add to Pipedrive</button>
+        </div>
+      </div>
+    </aside>
+
     <!-- DomainIQ historical-WHOIS drawer (the "History" quick action). Runs
          domainiq_lookup on demand and distills the ownership lineage. -->
     <aside id="history-drawer" class="history-drawer" hidden>
@@ -1214,6 +1268,6 @@ The model parses it into structured filters (TLDs, length, budget, tone, etc.) a
     </div>
 
     <!-- Bump ?v= on any public/app.js or styles.css change to bust caches. -->
-    <script src="app.js?v=20260720renewalroute"></script>
+    <script src="app.js?v=20260720pipedrive"></script>
   </body>
 </html>

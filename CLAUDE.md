@@ -15,6 +15,35 @@ Source of truth for any Claude Code session picking up work on this repo. **Read
 
 ---
 
+## Add to Pipedrive — buy-side deal button on research surfaces (2026-07-20)
+
+Phase 1c of the Pipedrive buy-side deal-flow integration (Phase 1b lives in snagged-admin).
+An "➕ Add to Pipedrive" button on three surfaces turns a domain into a tracked buy-side
+deal. Pipedrive's API token lives ONLY in snagged-admin, so this app is a thin, gated proxy.
+
+- **Cross-app client** `lib/pipedrive.js`: `pipedriveConfigured()`, `pipedriveMeta()` (GET
+  assignable owners + Source/Channel labels), `createBuyDeal(input)` (POST). Calls admin's
+  `/api/internal/pipedrive-deal` server-to-server with `x-internal-secret ==
+  RESEARCH_INTERNAL_SECRET` (same pattern as `lib/email/threads.js`). Env `ADMIN_INTERNAL_BASE`
+  (default `https://app.snagged.com`). Both unset → the button hides (503).
+- **API** `api/pipedrive.js` (gated by the `pipedrive` module perm; admins auto-pass):
+  `GET` → drawer metadata; `POST {domain, source, assigneeEmail?, priority?, buyerName?,
+  buyerEmail?, budgetRange?, reportLink?, appraisalValue?, …}` → `{ok, dealId, created, url,
+  notified}`. Domain + source required; numeric/string fields sanitized; `withCategory('pipedrive')`.
+- **UI** (`public/app.js`): `canPipedrive = can('pipedrive')`. Three launchers —
+  (1) **owner report** header button `#pipedrive-btn` (`openPipedriveFromReport`, attaches the
+  report's public share link); (2) **whois** + (3) **appraisal** inline buttons injected via
+  `pipedriveInlineBtn(domain, surface, {appraisal})` (whois share row + appraisal `.ap-meta`),
+  opened by a delegated `[data-pd-open]` click handler. Shared slide-over `#pipedrive-drawer`
+  (reuses the `.od-*` outreach-drawer styles) collects source/assignee/priority/buyer/budget →
+  `submitPipedrive()` → shows "✓ Added — open the deal ↗". Assignee dropdown is the ACTIVE
+  Pipedrive users only (so you never assign to someone the deal can't route to; blank =
+  Unassigned / Inbox). `.pd-*` styles in styles.css. Cache-bust `?v=20260720pipedrive`.
+- **Permission:** `research.pipedrive` (module) added in snagged-admin `dashboard/lib/permissions.ts`
+  (MODULES + CATALOG, group Research; stored flat as `pipedrive`). Grant per-user; admins auto-pass.
+- **One-time setup:** none new — reuses `RESEARCH_INTERNAL_SECRET` + `ADMIN_INTERNAL_BASE`
+  (already set) and the admin-side Pipedrive setup (pipeline/stages/fields, applied 2026-07-20).
+
 ## TLD Count + valuation calibration + cross-app valuate endpoint (2026-07-18)
 
 - **TLD Count tool** — a free DotDB-style "how many TLDs is this word registered in"
