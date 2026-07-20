@@ -3985,6 +3985,7 @@ function leadBullets(text) {
     .map((s) => s.trim()).filter((s) => s.length > 3).slice(0, 8);
 }
 function renderLead(el, lead, reportRun, reportRuns) {
+  currentLeadForPd = { lead, reportRuns: reportRuns || (reportRun ? [reportRun] : []) };
   const r = lead.result || {};
   const p = r.person || null;
   const c = r.company || null;
@@ -4097,8 +4098,11 @@ function renderLead(el, lead, reportRun, reportRuns) {
     + `</div>`;
 
   const name = escapeHtml(lead.name || lead.email || 'Lead');
+  // Add-to-Pipedrive launcher (buy-side): visible only with the permission + a real domain.
+  const canPd = canPipedrive && !!(lead.domain_of_interest && /\./.test(lead.domain_of_interest));
+  const pdBtn = canPd ? `<button type="button" class="lead-pd-btn" data-pd-lead="1">➕ Add to Pipedrive</button>` : '';
   el.innerHTML =
-    `<div class="lead-head"><h1 class="lead-name">${name}</h1>`
+    `<div class="lead-head"><div class="lead-head-top"><h1 class="lead-name">${name}</h1>${pdBtn}</div>`
     + (standing ? `<div class="lead-standing">${escapeHtml(standing)}</div>` : '')
     + (lead.email ? `<div class="lead-sub">${escapeHtml(lead.email)}${lead.domain_of_interest ? ` · inquiring about <strong>${escapeHtml(lead.domain_of_interest)}</strong>` : ''}</div>` : '')
     + `</div>`
@@ -6622,6 +6626,34 @@ function closeOutreach() {
 // any prefill) is passed by the launcher; the drawer collects source/assignee/etc.
 let pipedriveCtx = null;
 let pipedriveMetaCache = null;
+let currentLeadForPd = null; // the lead being viewed on the dossier, for its Pipedrive button
+
+// Build the Pipedrive drawer context from a viewed lead (buyer + domains + budget +
+// the report link + the triage-suggested assignee). Splits a multi-domain inquiry
+// into the primary domain + the rest as additionalDomains.
+function pipedriveCtxFromLead(lead, reportRuns) {
+  if (!lead) return null;
+  const domains = String(lead.domain_of_interest || '').split(/[,;|/\s]+|\band\b/i)
+    .map((d) => d.trim()).filter((d) => d && d.includes('.'));
+  const primary = domains[0] || String(lead.domain_of_interest || '').trim();
+  if (!primary || !primary.includes('.')) return null;
+  const rr = Array.isArray(reportRuns) ? reportRuns.find((x) => x && x.id && String(x.domain || '').toLowerCase() === primary.toLowerCase()) : null;
+  const reportLink = rr ? `${location.origin}/research/r/${primary}-${String(rr.id).replace(/-/g, '').slice(0, 8)}` : '';
+  // Triage tier → the same routing the dossier suggests (VIP→Rob, else team inbox).
+  const tier = (lead.tier || (lead.result && lead.result.triage && lead.result.triage.tier) || '').toLowerCase();
+  const assigneeEmail = tier === 'vip' ? 'rob@snagged.com' : tier === 'notable' ? 'brian@snagged.com' : '';
+  return {
+    domain: primary,
+    surface: 'lead',
+    buyerName: lead.name || '',
+    buyerEmail: lead.email || '',
+    budgetRange: lead.budget || '',
+    additionalDomains: domains.slice(1).join(', '),
+    reportLink,
+    assigneeEmail,
+    defaultSource: 'Website form', // it arrived via the contact form
+  };
+}
 
 // The public share URL for the CURRENT report (same shape as the Share button), so
 // the deal carries a link the assignee can open. '' when not on a report hash.
@@ -6665,11 +6697,11 @@ async function openPipedrive(ctx) {
   els.pipedriveDrawer.hidden = false;
   document.body.classList.add('drawer-open');
   if (els.pdDomain) els.pdDomain.textContent = ctx.domain;
-  // Reset the form.
-  if (els.pdBuyerName) els.pdBuyerName.value = '';
-  if (els.pdBuyerEmail) els.pdBuyerEmail.value = '';
-  if (els.pdBudget) els.pdBudget.value = '';
-  if (els.pdPriority) els.pdPriority.value = '';
+  // Prefill the form (a lead carries the buyer + budget; a lookup leaves them blank).
+  if (els.pdBuyerName) els.pdBuyerName.value = ctx.buyerName || '';
+  if (els.pdBuyerEmail) els.pdBuyerEmail.value = ctx.buyerEmail || '';
+  if (els.pdBudget) els.pdBudget.value = ctx.budgetRange || '';
+  if (els.pdPriority) els.pdPriority.value = ctx.priority || '';
   if (els.pdSubmit) els.pdSubmit.disabled = false;
   pipedriveStatus('');
   // Context summary (what will be attached to the deal automatically).
@@ -6677,26 +6709,34 @@ async function openPipedrive(ctx) {
     const bits = [];
     if (ctx.reportLink) bits.push('📄 Research report link');
     if (ctx.appraisalValue) bits.push(`💰 Appraisal $${escapeHtml(String(Math.round(Number(ctx.appraisalValue))))}`);
+    if (ctx.additionalDomains) bits.push(`＋ ${escapeHtml(String(ctx.additionalDomains))}`);
     els.pdContext.hidden = !bits.length;
     els.pdContext.innerHTML = bits.length ? `Will attach: ${bits.join(' · ')}` : '';
   }
   // Populate the source + assignee selects from the cached meta.
   pipedriveStatus('Loading…');
   const meta = await loadPipedriveMeta();
-  pipedriveStatus(meta.error ? `Couldn't reach Pipedrive: ${meta.error}` : '', meta.error ? 'error' : '');
+  pipedriveStatus(meta.error ? `Couldn't reach Pipedrive: ${meta.error}` : '', meta.error ? 'err' : '');
   if (els.pdSource) {
     const opts = (meta.sources || []);
     els.pdSource.innerHTML = opts.length
       ? opts.map((s) => `<option value="${escapeHtml(s)}">${escapeHtml(s)}</option>`).join('')
       : `<option value="Proactive (we're chasing it)">Proactive (we're chasing it)</option>`;
-    // Default a report/appraisal/whois lookup to "Proactive" when present.
-    const proactive = opts.find((s) => /proactive/i.test(s));
-    if (proactive) els.pdSource.value = proactive;
+    // Default source: a lead came in via the website form; a lookup is us chasing it.
+    const ds = (ctx.defaultSource || '').toLowerCase();
+    const want = ds
+      ? opts.find((s) => s.toLowerCase() === ds) || opts.find((s) => s.toLowerCase().includes(ds.split(' ')[0]))
+      : opts.find((s) => /proactive/i.test(s));
+    if (want) els.pdSource.value = want;
   }
   if (els.pdAssignee) {
     const people = (meta.assignees || []);
     els.pdAssignee.innerHTML = `<option value="">Unassigned / Inbox</option>`
       + people.map((p) => `<option value="${escapeHtml(p.email)}">${escapeHtml(p.name)}</option>`).join('');
+    // Prefill a suggested assignee (e.g. a lead's triage route) when it maps to a user.
+    if (ctx.assigneeEmail && people.some((p) => p.email.toLowerCase() === ctx.assigneeEmail.toLowerCase())) {
+      els.pdAssignee.value = people.find((p) => p.email.toLowerCase() === ctx.assigneeEmail.toLowerCase()).email;
+    }
   }
 }
 
@@ -6722,6 +6762,7 @@ async function submitPipedrive() {
     budgetRange: els.pdBudget ? els.pdBudget.value.trim() : '',
     reportLink: pipedriveCtx.reportLink || '',
     appraisalValue: pipedriveCtx.appraisalValue || '',
+    additionalDomains: pipedriveCtx.additionalDomains || '',
     likelyOwner: pipedriveCtx.likelyOwner || '',
     ownerContact: pipedriveCtx.ownerContact || '',
   };
@@ -6749,9 +6790,18 @@ function openPipedriveFromReport() {
   openPipedrive({ domain: currentReportDomain, surface: 'owner', reportLink: currentReportShareUrl() });
 }
 
-// Delegated launcher for the inline buttons on the whois / appraisal surfaces.
+// Delegated launcher for the inline buttons on the whois / appraisal surfaces + the
+// lead dossier (whose richer context comes from the stashed currentLeadForPd).
 document.addEventListener('click', (e) => {
-  const btn = e.target && e.target.closest ? e.target.closest('[data-pd-open]') : null;
+  if (!e.target || !e.target.closest) return;
+  const leadBtn = e.target.closest('[data-pd-lead]');
+  if (leadBtn) {
+    e.preventDefault();
+    const ctx = currentLeadForPd && pipedriveCtxFromLead(currentLeadForPd.lead, currentLeadForPd.reportRuns);
+    if (ctx) openPipedrive(ctx);
+    return;
+  }
+  const btn = e.target.closest('[data-pd-open]');
   if (!btn) return;
   e.preventDefault();
   openPipedrive({

@@ -339,7 +339,14 @@ button:disabled { opacity: .55; cursor: progress; }
 .lead-spin { display: inline-block; animation: lead-spin 1.2s linear infinite; }
 @keyframes lead-spin { to { transform: rotate(360deg); } }
 .lead-head { margin: 8px 0 16px; }
+.lead-head-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 .lead-name { font-size: clamp(1.8rem, 4vw, 2.4rem); margin: 0; }
+.lead-pd-btn {
+  flex: none; padding: 8px 14px; font-size: 13px; font-weight: 700;
+  color: #fff; background: var(--coral); border: 1px solid var(--coral);
+  border-radius: 999px; cursor: pointer;
+}
+.lead-pd-btn:hover { background: var(--coral-deep); border-color: var(--coral-deep); }
 .lead-sub { color: var(--navy-2); margin-top: 4px; font-size: 15px; }
 .lead-verdict { border: 2px solid var(--line); border-radius: var(--radius); padding: 16px 18px; margin-bottom: 18px; }
 .lead-verdict.lead-vip { border-color: #cf3030; background: rgba(207,48,48,.06); }
