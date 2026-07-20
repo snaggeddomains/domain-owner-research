@@ -21,6 +21,7 @@ import { getDealComps } from '../db/dealComps.js';
 import { getToolLookup, saveToolLookup } from '../db/tools.js';
 import { trackerComps, trackerCompsConfigured } from './trackerComps.js';
 import { countRegistrations } from './tldcount.js';
+import { renewalPrice } from './renewalprice.js';
 import { scoreQuality } from './quality.js';
 
 // Demand band from the raw TLD-registration count (how many TLDs the word is taken
@@ -286,7 +287,7 @@ export async function gatherSignals(domain, env = process.env) {
   const [
     rdapData, liveData, dsData, appraiseRes, atomRes,
     nameproData, webDomain, webTerm,
-    nbComps, nbComparables, dealHistory, emailThreads, tmData, renewal, brandFit, tldReg,
+    nbComps, nbComparables, dealHistory, emailThreads, tmData, renewal, brandFit, tldReg, renewalCost,
   ] = await Promise.all([
     tool('rdap_whois', { domain: d }, env),
     tool('livesite_inspect', { domain: d }, env),
@@ -311,6 +312,8 @@ export async function gatherSignals(domain, env = process.env) {
     // A cold word does the DNS sweep; capped so it fails-open (null) rather than
     // stretching the eval — it warms for the next run / the standalone tool.
     withTimeout(countRegistrations(sld, { env }), 9000, null),
+    // Renewal cost if WE acquired it — standard TLD renewal + registry-premium refinement.
+    withTimeout(renewalPrice(d, env), 10000, null),
   ]);
 
   const appraise = normalizeAppraise(appraiseRes && appraiseRes.data);
@@ -341,6 +344,7 @@ export async function gatherSignals(domain, env = process.env) {
     trademark: normalizeTrademark(tmData, sld),
     renewal: renewal || null,
     tld_demand: (tldReg && Number.isFinite(tldReg.count)) ? { count: tldReg.count, band: tldDemandBand(tldReg.count), extensions: tldReg.extensions || [] } : null,
+    renewal_cost: renewalCost || null,
     comps: { namebio: nbComps, namebio_comps: nbComparables, tracker: trackerSold, deal_history: dealHistory },
     namepros: nameproData && Array.isArray(nameproData.results) ? nameproData.results.slice(0, 8) : [],
     web: {

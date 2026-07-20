@@ -51,6 +51,25 @@ Source of truth for any Claude Code session picking up work on this repo. **Read
 
 ---
 
+## Renewal Price lookup — "what will it cost US to hold" (2026-07-20)
+
+Standalone Research tool `/research/renewal` + a SNAP Eval signal. Answers "if we ACQUIRED
+this name, what does it cost to RENEW each year" — the standard registry/registrar cost for
+a new owner, NOT what the current owner pays with promos.
+
+- **Engine** `lib/evaluate/renewalprice.js` `renewalPrice(domain, env)`: (1) Porkbun's PUBLIC
+  `pricing/get` (no key, no rate limit, all TLDs) → the standard `{registration,renewal,transfer}`
+  for the TLD; (2) `porkbunCheck` (extended to return `renewal` from `additional.renewal.price`,
+  cache kind `pkd` bumped `_v`→2) refines it for a registry-**PREMIUM** name, which renews at a
+  multiple of standard (a real recurring holding cost). Returns `{standard, premium, renewal
+  (effective), multiple, note}`, fail-open. Premium detection is best-effort (checkDomain often
+  won't price a REGISTERED name — then we report the standard TLD renewal).
+- **API** `api/renewal.js` (`?domain=`), gated `evaluate` OR `domain_owner`. Standalone tab
+  `#view-renewal` + `nav-renewal` (the `renewal*` helpers in app.js), mirrors the TLD-count tool.
+- **SNAP Eval**: `signals.js` gathers it → `signals.renewal_cost`; `verdict.js` feeds it to the
+  buy/don't-buy LLM context (a premium renewal = a margin-eating hold cost). Cache-bust
+  `?v=20260720renewal`.
+
 ## Plural detection — `is_plural` flag (2026-07-20)
 
 The Domain Name Search "exclude Plurals" filter was a SLD regex (`[^suaio]s$`, in

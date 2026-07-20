@@ -215,6 +215,7 @@
         <!-- TLD Count — how many TLDs a word is registered in (free demand read).
              Gated by the `domain_owner` permission; shown by JS. -->
         <a id="nav-tldcount" class="nav-btn" href="/research/tld-count" hidden>TLD Count</a>
+        <a id="nav-renewal" class="nav-btn" href="/research/renewal" hidden>Renewal Price</a>
         </span>
         <!-- SNAP sub-nav (shown in the SNAP section): SNAP Eval + SNAP Opportunities.
              SNAP Opportunities is the auctions/snap feed in the admin app (full nav). -->
@@ -894,6 +895,19 @@
           <div id="tld-result" class="tc-result" hidden></div>
         </section>
 
+        <section id="view-renewal" hidden>
+          <div class="hero tool-hero">
+            <h1 class="hero-title">Renewal <span class="accent">Price</span></h1>
+            <p class="hero-sub">Type a domain and see what it would cost <strong>us</strong> to renew each year if we acquired it — the standard registry/registrar renewal, and a loud flag if it's a <strong>registry-premium</strong> name that renews at a multiple of the standard rate (a recurring holding cost that eats resale margin). Not what the current owner pays with promos.</p>
+          </div>
+          <form id="renewal-form" class="search tld-form" autocomplete="off">
+            <input id="renewal-q" type="text" placeholder="a domain, e.g. turbo.app" autocapitalize="off" autocorrect="off" spellcheck="false" />
+            <button id="renewal-go" type="submit">Check renewal</button>
+          </form>
+          <div id="renewal-status" class="sr-status" hidden></div>
+          <div id="renewal-result" class="tc-result" hidden></div>
+        </section>
+
         <section id="view-bulk-eval" hidden>
           <div class="hero tool-hero">
             <h1 class="hero-title">Bulk <span class="accent">Eval</span></h1>
@@ -1200,6 +1214,6 @@ The model parses it into structured filters (TLDs, length, budget, tone, etc.) a
     </div>
 
     <!-- Bump ?v= on any public/app.js or styles.css change to bust caches. -->
-    <script src="app.js?v=20260720dropcampaign3"></script>
+    <script src="app.js?v=20260720renewal"></script>
   </body>
 </html>

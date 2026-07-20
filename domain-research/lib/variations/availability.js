@@ -25,7 +25,7 @@ export async function porkbunCheck(domain, env = process.env) {
   const d = String(domain || '').toLowerCase().trim();
   const { apikey, secret } = keys(env);
   if (!apikey || !secret || !d) return null;
-  try { const row = await getToolLookup('pkd', d); if (row && row.data && row.data._v === 1) return row.data; } catch { /* miss */ }
+  try { const row = await getToolLookup('pkd', d); if (row && row.data && row.data._v === 2) return row.data; } catch { /* miss */ }
   try {
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), 8000);
@@ -42,11 +42,13 @@ export async function porkbunCheck(domain, env = process.env) {
       return { error: true, rateLimited: /rate|limit|throttl|too many|second/i.test(JSON.stringify(raw.message || raw)) };
     }
     const resp = raw.response || {};
+    const add = resp.additional || {};
     const out = {
-      _v: 1,
+      _v: 2,
       available: String(resp.avail || '').toLowerCase() === 'yes',
       premium: String(resp.premium || '').toLowerCase() === 'yes',
-      price: num(resp.price) || num(resp.additional && resp.additional.registration && resp.additional.registration.price),
+      price: num(resp.price) || num(add.registration && add.registration.price),
+      renewal: num(add.renewal && add.renewal.price), // per-domain renewal (premium names carry a distinct, higher one)
     };
     try { await saveToolLookup('pkd', d, out); } catch { /* best-effort */ }
     return out;

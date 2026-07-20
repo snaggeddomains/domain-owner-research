@@ -283,6 +283,8 @@ const els = {
   evStatus: $('ev-status'), evResult: $('ev-result'), evRecent: $('ev-recent'),
   navTldcount: $('nav-tldcount'),
   tldForm: $('tld-form'), tldQ: $('tld-q'), tldGo: $('tld-go'), tldStatus: $('tld-status'), tldResult: $('tld-result'),
+  navRenewal: $('nav-renewal'),
+  renewalForm: $('renewal-form'), renewalQ: $('renewal-q'), renewalGo: $('renewal-go'), renewalStatus: $('renewal-status'), renewalResult: $('renewal-result'),
   nsModeToggle: $('ns-modetoggle'), nsMatchToggle: $('ns-matchtoggle'),
   nsDomainForm: $('ns-domain-form'), nsDomain: $('ns-domain'),
   nsNsForm: $('ns-ns-form'), nsNs: $('ns-ns'), nsTld: $('ns-tld'),
@@ -547,6 +549,7 @@ const TOOL_PERMISSION = {
   evaluate: 'evaluate',
   'bulk-eval': 'bulk_eval',
   'tld-count': 'domain_owner',
+  renewal: 'domain_owner',
 };
 
 // ── Cross-module domain context (action bar + ⌘K palette; workspace-ready) ──
@@ -2587,6 +2590,7 @@ function gateNavByPermissions(user) {
   if (els.navAuctionOwners) els.navAuctionOwners.hidden = !can('domain_owner');
   if (els.navDiq) els.navDiq.hidden = !can('domain_owner');
   if (els.navTldcount) els.navTldcount.hidden = !can('domain_owner');
+  if (els.navRenewal) els.navRenewal.hidden = !can('domain_owner');
   if (els.navSales) els.navSales.hidden = !can('sales');
   // SNAP sub-nav: SNAP Eval needs `evaluate`; SNAP Opportunities (admin app) needs
   // reports access. Hidden buttons just don't render inside the SNAP group.
@@ -3861,6 +3865,7 @@ const VIEWS = {
   evaluate: { view: 'view-evaluate', nav: 'nav-snap-eval' },
   'bulk-eval': { view: 'view-bulk-eval', nav: 'nav-bulk-eval' },
   'tld-count': { view: 'view-tldcount', nav: 'nav-tldcount' },
+  renewal: { view: 'view-renewal', nav: 'nav-renewal' },
   admin: { view: 'view-admin', nav: 'nav-admin' },
   lead: { view: 'view-lead', nav: 'nav-lead' }, // deep-link only (no nav tab)
 };
@@ -6900,6 +6905,7 @@ els.navAppraisal?.addEventListener('click', (e) => { if (newTabClick(e)) return;
 els.navSnapEval?.addEventListener('click', (e) => { if (newTabClick(e)) return; e.preventDefault(); setToolUrl('evaluate', ''); route(); });
 els.navBulkEval?.addEventListener('click', (e) => { if (newTabClick(e)) return; e.preventDefault(); setToolUrl('bulk-eval', ''); route(); });
 els.navTldcount?.addEventListener('click', (e) => { if (newTabClick(e)) return; e.preventDefault(); setToolUrl('tld-count', ''); route(); });
+els.navRenewal?.addEventListener('click', (e) => { if (newTabClick(e)) return; e.preventDefault(); setToolUrl('renewal', ''); route(); });
 
 // ── Bulk Eval — rank a list/CSV of domains by investability ─────────────────
 let beLast = null; // last results (for CSV)
@@ -10023,6 +10029,49 @@ els.tldForm?.addEventListener('submit', (e) => {
   if (!q) return;
   setToolUrl('tld-count', tcSld(q));
   tcLookup(q);
+});
+
+// ── Renewal Price ─────────────────────────────────────────────────────────────
+const usd0 = (n) => (n == null ? '—' : `$${Number(n).toLocaleString(undefined, { maximumFractionDigits: 2 })}`);
+async function renewalFetch(domain) {
+  const res = await fetch(`/research/api/renewal?domain=${encodeURIComponent(domain)}`);
+  if (!res.ok) throw new Error(res.status === 403 ? 'No access' : `HTTP ${res.status}`);
+  return res.json();
+}
+function renewalRender(d) {
+  if (!els.renewalResult) return;
+  const prem = d.premium && d.premium.is_premium;
+  const eff = d.renewal;
+  const cls = prem ? 'hi' : eff != null ? 'mid' : 'thin';
+  const std = d.standard || {};
+  els.renewalResult.innerHTML = `<div class="tc-out">
+    <div class="tc-num-wrap"><span class="tc-num tc-${cls}">${eff != null ? usd0(eff) : '—'}</span><span class="tc-num-lbl">per-year renewal<br><span class="tc-word">${escapeHtml(d.domain || '')}</span></span>
+      <span class="tc-band tc-band-${cls}">${prem ? '⚠️ registry-premium' : eff != null ? 'standard' : 'unknown'}</span></div>
+    <p class="tc-note muted">${escapeHtml(d.note || '')}</p>
+    <div class="tc-extlist" style="gap:14px">
+      <span class="tc-ext">register ${usd0(std.registration)}</span>
+      <span class="tc-ext">renew ${usd0(std.renewal)}</span>
+      <span class="tc-ext">transfer ${usd0(std.transfer)}</span>
+      ${prem ? `<span class="tc-ext" style="background:#fdeadf;color:#c0492f">premium renew ${usd0(d.premium.renewal)}${d.multiple ? ` · ${d.multiple}× standard` : ''}</span>` : ''}
+    </div>
+    <p class="tc-note muted" style="font-size:12px">Standard registry/registrar cost for a NEW owner (via Porkbun) — not what the current owner pays with promos.</p>
+  </div>`;
+  els.renewalResult.hidden = false;
+}
+async function renewalLookup(q) {
+  const domain = String(q || '').trim().toLowerCase().replace(/^https?:\/\//, '').split('/')[0];
+  if (!domain || !domain.includes('.') || !els.renewalResult) return;
+  els.renewalResult.hidden = false;
+  els.renewalResult.innerHTML = `<div class="tc-loading muted"><span class="ev-spinner"></span> Checking renewal for <strong>${escapeHtml(domain)}</strong>…</div>`;
+  try { renewalRender(await renewalFetch(domain)); }
+  catch (e) { els.renewalResult.innerHTML = `<div class="tc-err muted">Couldn't check renewal: ${escapeHtml(String(e.message || e))}</div>`; }
+}
+els.renewalForm?.addEventListener('submit', (e) => {
+  e.preventDefault();
+  const q = (els.renewalQ && els.renewalQ.value || '').trim();
+  if (!q) return;
+  setToolUrl('renewal', '');
+  renewalLookup(q);
 });
 
 // The compact in-report demand card. `mult` (from the valuation) shows how the count
