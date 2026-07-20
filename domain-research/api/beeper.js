@@ -43,7 +43,7 @@ export default async function handler(req, res) {
 
   // Seed the baseline status so the very next cron tick can detect a CHANGE.
   const seed = await rdapStatus(domain).catch(() => null);
-  const row = await addWatch({ domain, userId, note: body.note || null, seed });
+  const row = await addWatch({ domain, userId, note: body.note || null, seed, dropCampaign: Boolean(body.drop_campaign), autoRegister: Boolean(body.auto_register) });
   if (!row) { res.status(500).json({ error: 'Beeper storage not configured — run the beeper_watches table SQL.' }); return; }
   res.status(201).json({ ok: true, watch: row, status: seed });
 }

@@ -4,13 +4,16 @@ import { cadenceInfo } from '../beeper/cadence.js';
 // Beeper watches — one row per (domain, user). The cron polls 'watching' rows.
 const T = 'beeper_watches';
 const tableMissing = (e) => /relation .* does not exist|does not exist|schema cache|PGRST205|42P01/i.test(String(e?.message || e?.code || e));
-// The `expiration` column is a later addition — detect "column not found" so a
-// write can retry without it before the one-time migration is run.
+// Later-added columns — detect "column not found" so a write can retry without them
+// before the one-time migration is run. `expiration` (cadence) + the Drop Campaign
+// trio (drop_campaign / auto_register / campaign) all degrade gracefully.
 const columnMissing = (e) => /could not find the .* column|column .* does not exist|PGRST204|42703/i.test(String(e?.message || e?.code || e));
+const OPTIONAL_COLS = ['expiration', 'drop_campaign', 'auto_register', 'campaign'];
+const stripOptional = (row) => { const r = { ...row }; for (const c of OPTIONAL_COLS) delete r[c]; return r; };
 
 export function beeperConfigured() { return isDbConfigured(); }
 
-export async function addWatch({ domain, userId, note = null, seed = null }) {
+export async function addWatch({ domain, userId, note = null, seed = null, dropCampaign = false, autoRegister = false }) {
   if (!isDbConfigured() || !domain) return null;
   const row = {
     domain: String(domain).toLowerCase().trim(),
@@ -20,19 +23,19 @@ export async function addWatch({ domain, userId, note = null, seed = null }) {
     last_status: seed && seed.ok ? seed.statuses : null,
     last_http: seed && seed.ok ? seed.code : null,
     last_checked: seed && seed.ok ? new Date().toISOString() : null,
-    // Seed the expiration so the adaptive cadence can classify this watch
-    // immediately (best-effort column — stripped + retried if not yet migrated).
+    // Best-effort columns — stripped + retried if not yet migrated.
     ...(seed && seed.ok && seed.expiration ? { expiration: seed.expiration } : {}),
+    ...(dropCampaign ? { drop_campaign: true } : {}),
+    ...(dropCampaign && autoRegister ? { auto_register: true } : {}),
   };
   try {
     const { data, error } = await getDb().from(T).upsert(row, { onConflict: 'domain,user_id' }).select('*').single();
     if (error) throw error;
     return data || null;
   } catch (e) {
-    if (columnMissing(e) && 'expiration' in row) {
-      const { expiration, ...rest } = row;
+    if (columnMissing(e) && OPTIONAL_COLS.some((c) => c in row)) {
       try {
-        const { data, error } = await getDb().from(T).upsert(rest, { onConflict: 'domain,user_id' }).select('*').single();
+        const { data, error } = await getDb().from(T).upsert(stripOptional(row), { onConflict: 'domain,user_id' }).select('*').single();
         if (error) throw error;
         return data || null;
       } catch (e2) {
@@ -120,10 +123,9 @@ export async function updateWatch(id, patch) {
     const { error } = await getDb().from(T).update(patch).eq('id', id);
     if (error) throw error;
   } catch (e) {
-    if (columnMissing(e) && 'expiration' in patch) {
-      // Pre-migration: drop the new column and still persist last_checked/status.
-      const { expiration, ...rest } = patch;
-      try { const { error } = await getDb().from(T).update(rest).eq('id', id); if (error) throw error; return; }
+    if (columnMissing(e) && OPTIONAL_COLS.some((c) => c in patch)) {
+      // Pre-migration: drop the new column(s) and still persist last_checked/status.
+      try { const { error } = await getDb().from(T).update(stripOptional(patch)).eq('id', id); if (error) throw error; return; }
       catch (e2) { if (!tableMissing(e2)) console.error('updateWatch:', e2?.message || e2); return; }
     }
     if (!tableMissing(e)) console.error('updateWatch:', e?.message || e);

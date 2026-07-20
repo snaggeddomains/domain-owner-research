@@ -250,6 +250,9 @@ const els = {
   beeperForm: $('beeper-form'),
   beeperDomain: $('beeper-domain'),
   beeperAdd: $('beeper-add'),
+  beeperCampaign: $('beeper-campaign'),
+  beeperAutoreg: $('beeper-autoreg'),
+  beeperAutoregWrap: $('beeper-autoreg-wrap'),
   beeperList: $('beeper-list'),
   beeperStatus: $('beeper-status'),
   srForm: $('sr-form'), srDomain: $('sr-domain'), srGo: $('sr-go'), srStatus: $('sr-status'),
@@ -4154,12 +4157,21 @@ function renderBeeper(watches) {
     + section('✓ Finished', 'dropped / renewed / stopped', groups.done);
   els.beeperList.querySelectorAll('.beeper-stop').forEach((b) => b.addEventListener('click', () => stopBeeperWatch(b.getAttribute('data-id'))));
 }
+// Auto-register only makes sense with a drop campaign — enable/disable it in tandem.
+if (els.beeperCampaign) els.beeperCampaign.addEventListener('change', () => {
+  const on = els.beeperCampaign.checked;
+  if (els.beeperAutoreg) { els.beeperAutoreg.disabled = !on; if (!on) els.beeperAutoreg.checked = false; }
+  if (els.beeperAutoregWrap) els.beeperAutoregWrap.style.opacity = on ? '1' : '.55';
+});
 async function addBeeperWatch() {
   const domain = (els.beeperDomain.value || '').trim();
   if (!domain) return;
+  const dropCampaign = !!(els.beeperCampaign && els.beeperCampaign.checked);
+  const autoRegister = dropCampaign && !!(els.beeperAutoreg && els.beeperAutoreg.checked);
+  if (autoRegister && !confirm(`Auto-register ${domain} the instant it becomes registerable? This spends real money (via NameSilo — the account must be funded and NAMESILO_API_KEY set).`)) return;
   setToolStatus(els.beeperStatus, `Adding ${domain}…`);
   try {
-    const res = await fetch('/research/api/beeper', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ domain }) });
+    const res = await fetch('/research/api/beeper', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ domain, drop_campaign: dropCampaign, auto_register: autoRegister }) });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || `Failed (${res.status})`);
     els.beeperDomain.value = '';

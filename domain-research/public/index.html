@@ -650,6 +650,10 @@
             <input id="beeper-domain" type="text" placeholder="e.g. thru.id" autocomplete="off" autocapitalize="off" spellcheck="false" />
             <button id="beeper-add" type="submit">Watch</button>
           </form>
+          <div class="beeper-campaign-opts" style="margin:8px 0 0;font-size:13px;display:flex;flex-wrap:wrap;gap:14px;align-items:center">
+            <label style="cursor:pointer"><input type="checkbox" id="beeper-campaign" /> 🎯 <strong>Drop campaign</strong> — also poll registrar + marketplace availability as it nears the drop</label>
+            <label style="cursor:pointer;opacity:.55" id="beeper-autoreg-wrap"><input type="checkbox" id="beeper-autoreg" disabled /> ⚡ Auto-register the instant it's registerable <span class="muted">(NameSilo · spends real money)</span></label>
+          </div>
           <div id="beeper-status" class="tool-status" hidden></div>
           <ul id="beeper-list" class="beeper-list"></ul>
         </section>
@@ -1195,6 +1199,6 @@ The model parses it into structured filters (TLDs, length, budget, tone, etc.) a
     </div>
 
     <!-- Bump ?v= on any public/app.js or styles.css change to bust caches. -->
-    <script src="app.js?v=20260718valfix"></script>
+    <script src="app.js?v=20260720dropcampaign"></script>
   </body>
 </html>

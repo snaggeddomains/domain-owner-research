@@ -741,6 +741,30 @@ every user's watches; each row carries `submitted_by` for the who-added-it chip;
   if not exists expiration timestamptz`) on the research project.
 - **Safety cap** still applies (`BEEPER_MAX_WATCH_DAYS`, default 60) → auto-stops a watch.
 
+## Drop Campaign — availability poll + auto-register (2026-07-20)
+
+A per-watch add-on for names we're actively trying to LAND (a client's drop). Beeper owns
+the registry timeline (RDAP + 1-min cadence in pendingDelete); a Drop Campaign adds the two
+signals RDAP can't give, on the SAME due-tick (so cadence gives it increasing frequency):
+
+- **Registerable-now** — `porkbunCheck` (authoritative "can I buy it this second"). On the
+  first `avail:yes` it alerts LOUDLY, and if **auto_register** is on, calls
+  `attemptRegister` (`lib/beeper/register.js`). **Porkbun's API has NO register endpoint**,
+  so auto-register uses **NameSilo** (single self-contained GET, charges the balance) — set
+  `NAMESILO_API_KEY` (research project) + fund the account to ARM it; else it falls back to
+  an urgent "register manually NOW" alert. Guardrails: fires ONCE, skips a PREMIUM over
+  `BEEPER_AUTO_REGISTER_MAX` ($500 default).
+- **Listed-for-sale** — `domainscout_lookup` (`track:false`): a catcher grabbed it and put
+  it on a marketplace → alert to buy it. None of these read the domain's homepage.
+- **Wiring:** `lib/beeper/dropcampaign.js` (`campaignDue` gates it to the delete lifecycle;
+  `runCampaign` returns state + newly-fired `alerts[]`). `api/cron/beeper.js` runs it after
+  the RDAP block for `drop_campaign` watches and fires `notifyCampaign` (bell + email).
+  Columns `drop_campaign`/`auto_register`/`campaign(jsonb)` on `beeper_watches` (migration
+  `supabase/migrations/0012_beeper_dropcampaign.sql`; writes strip+retry until migrated).
+  API `api/beeper.js` accepts `drop_campaign`/`auto_register`; UI = two checkboxes on the
+  Beeper add form (auto-register gated behind the campaign toggle + a confirm). Cache-bust
+  `?v=20260720dropcampaign`. **Setup: run 0012 + set `NAMESILO_API_KEY` to arm auto-register.**
+
 ---
 
 # Sales Research Agent (Phase 1A — Upgrade) — 2026-06-05

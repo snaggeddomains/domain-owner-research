@@ -1,6 +1,7 @@
 import { activeWatches, updateWatch } from '../../lib/db/beeper.js';
 import { rdapStatus, describeStatus, inDeletionLifecycle } from '../../lib/beeper/rdap.js';
 import { isDue } from '../../lib/beeper/cadence.js';
+import { campaignDue, runCampaign } from '../../lib/beeper/dropcampaign.js';
 import { getUser } from '../../lib/db/users.js';
 import { createNotification } from '../../lib/db/notifications.js';
 import { sendEmail, isEmailConfigured } from '../../lib/email.js';
@@ -174,6 +175,35 @@ async function notify(watch, s, kind) {
   } catch { /* non-fatal */ }
 }
 
+// Drop Campaign alerts (registerable / auto-registered / listed-for-sale). Loud + urgent
+// — these are the moments the whole campaign exists for. Bell + email, best-effort.
+async function notifyCampaign(watch, alerts) {
+  if (!alerts || !alerts.length) return;
+  const domain = watch.domain;
+  const registered = alerts.find((a) => a.kind === 'registered');
+  const lead = registered || alerts[0];
+  const headline = registered ? `🎉 ${domain} AUTO-REGISTERED — we got it!` : `🎯 ${domain} — ${lead.detail}`;
+  const body = alerts.map((a) => `• ${a.detail}`).join('\n');
+  try {
+    if (watch.user_id) {
+      await createNotification({ user_id: watch.user_id, kind: 'beeper', title: headline, body, link: '/research/beeper' });
+    }
+  } catch { /* non-fatal */ }
+  try {
+    if (watch.user_id && isEmailConfigured()) {
+      const u = await getUser(watch.user_id).catch(() => null);
+      if (u && u.email && u.email !== 'legacy-admin') {
+        await sendEmail({
+          to: u.email,
+          subject: registered ? `🎉 ${domain} auto-registered` : `🎯 ${domain} — drop campaign alert`,
+          text: `Drop campaign — ${domain}\n\n${headline}\n\n${body}\n\nManage: https://research.snagged.com/research/beeper`,
+          html: `<p style="font-size:15px;font-weight:700">${headline}</p><ul>${alerts.map((a) => `<li>${a.detail}</li>`).join('')}</ul><p><a href="https://research.snagged.com/research/beeper">Manage your watches</a></p>`,
+        });
+      }
+    }
+  } catch { /* non-fatal */ }
+}
+
 export default async function handler(req, res) {
   const auth = req.headers.authorization || '';
   if (process.env.CRON_SECRET && auth !== `Bearer ${process.env.CRON_SECRET}`) {
@@ -287,6 +317,19 @@ export default async function handler(req, res) {
         if (!kind) kind = 'expired';
       }
       if (kind) await notify(w, s, kind);
+
+      // Drop Campaign layer — when the drop is imminent, ALSO check registerable
+      // (Porkbun) + listed-for-sale (DomainScout) and optionally auto-register. Runs
+      // on the same due-tick, so Beeper's cadence gives it the increasing frequency.
+      if (campaignDue(w, s.statuses)) {
+        try {
+          const camp = await runCampaign(w, process.env);
+          const { alerts, ...state } = camp;
+          await notifyCampaign(w, alerts);
+          patch.campaign = state; // persist for next-tick comparison (drops the transient alerts)
+        } catch { /* fail-open — never let the campaign layer break the RDAP watch */ }
+      }
+
       await updateWatch(w.id, patch);
     }
   }
