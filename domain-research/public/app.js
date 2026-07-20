@@ -4199,7 +4199,7 @@ async function addBeeperWatch() {
   if (!domain) return;
   const dropCampaign = !!(els.beeperCampaign && els.beeperCampaign.checked);
   const autoRegister = dropCampaign && !!(els.beeperAutoreg && els.beeperAutoreg.checked);
-  if (autoRegister && !confirm(`Auto-register ${domain} the instant it becomes registerable? This spends real money (via NameSilo — the account must be funded and NAMESILO_API_KEY set).`)) return;
+  if (autoRegister && !confirm(`Auto-register ${domain} the instant it becomes registerable? This spends real money (via Dynadot — the account must be funded and DYNADOT_API_KEY + DYNADOT_API_SECRET set).`)) return;
   setToolStatus(els.beeperStatus, `Adding ${domain}…`);
   try {
     const res = await fetch('/research/api/beeper', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ domain, drop_campaign: dropCampaign, auto_register: autoRegister }) });
