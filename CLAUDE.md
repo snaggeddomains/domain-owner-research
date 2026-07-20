@@ -749,11 +749,14 @@ signals RDAP can't give, on the SAME due-tick (so cadence gives it increasing fr
 
 - **Registerable-now** — `porkbunCheck` (authoritative "can I buy it this second"). On the
   first `avail:yes` it alerts LOUDLY, and if **auto_register** is on, calls
-  `attemptRegister` (`lib/beeper/register.js`). **Porkbun's API has NO register endpoint**,
-  so auto-register uses **NameSilo** (single self-contained GET, charges the balance) — set
-  `NAMESILO_API_KEY` (research project) + fund the account to ARM it; else it falls back to
-  an urgent "register manually NOW" alert. Guardrails: fires ONCE, skips a PREMIUM over
-  `BEEPER_AUTO_REGISTER_MAX` ($500 default).
+  `attemptRegister` (`lib/beeper/register.js`, **registrar-agnostic** — pick via
+  `BEEPER_REGISTER_PROVIDER`, else auto-detect from keys). **Porkbun's API has NO register
+  endpoint** (excluded). The CLEAN providers (single call, account-default contact) are
+  **NameSilo** (`NAMESILO_API_KEY`) and **Dynadot** (`DYNADOT_API_KEY`) — set one + fund the
+  account to ARM. GoDaddy/Namecheap are stubbed (`not_wired`) — they need a full
+  contact-profile payload (+ Namecheap a static-IP allowlist); wire on request. No armed
+  provider → falls back to an urgent "register manually NOW" alert. Guardrails: fires ONCE,
+  skips a PREMIUM over `BEEPER_AUTO_REGISTER_MAX` ($500 default).
 - **Listed-for-sale** — `domainscout_lookup` (`track:false`): a catcher grabbed it and put
   it on a marketplace → alert to buy it. None of these read the domain's homepage.
 - **Wiring:** `lib/beeper/dropcampaign.js` (`campaignDue` gates it to the delete lifecycle;
