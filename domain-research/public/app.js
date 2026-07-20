@@ -518,7 +518,7 @@ function clearHash() {
 // the SPA): Domain DB Screen at /dbscreen, DB Search at /dbsearch.
 const VANITY_TOOLS = ['dbscreen', 'dbsearch'];
 function currentToolRoute() {
-  let m = location.pathname.match(/^\/research\/(trademark|appraisal|naming|dbscreen|dbsearch|nameserver|sales|portfolio|person|evaluate|bulk-eval|tld-count|beeper|whois|auction-owners|diq|admin)(?:\/(.+?))?\/?$/);
+  let m = location.pathname.match(/^\/research\/(trademark|appraisal|naming|dbscreen|dbsearch|nameserver|sales|portfolio|person|evaluate|bulk-eval|tld-count|renewal|beeper|whois|auction-owners|diq|admin)(?:\/(.+?))?\/?$/);
   if (!m) m = location.pathname.match(/^\/(dbscreen|dbsearch)(?:\/(.+?))?\/?$/);
   if (!m) return null;
   return { tool: m[1], slug: m[2] ? decodeURIComponent(m[2]) : '' };
@@ -807,6 +807,11 @@ function route() {
   if (tr && tr.tool === 'tld-count') {
     showView('tld-count');
     if (tr.slug) { if (els.tldQ) els.tldQ.value = tr.slug; tcLookup(tr.slug); }
+    return;
+  }
+  if (tr && tr.tool === 'renewal') {
+    showView('renewal');
+    if (tr.slug) { if (els.renewalQ) els.renewalQ.value = tr.slug; renewalLookup(tr.slug); }
     return;
   }
   if (tr && tr.tool === 'admin') {
