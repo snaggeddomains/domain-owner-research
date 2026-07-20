@@ -39,6 +39,13 @@ deal. Pipedrive's API token lives ONLY in snagged-admin, so this app is a thin, 
   `submitPipedrive()` → shows "✓ Added — open the deal ↗". Assignee dropdown is the ACTIVE
   Pipedrive users only (so you never assign to someone the deal can't route to; blank =
   Unassigned / Inbox). `.pd-*` styles in styles.css. Cache-bust `?v=20260720pipedrive`.
+- **Lead dossier button too (2026-07-20).** The inbound-lead dossier (`#/lead/<key>`,
+  `renderLead`) also gets an Add-to-Pipedrive button — `pipedriveCtxFromLead` prefills the drawer
+  from the parsed inquiry (buyer name/email, budget, the primary domain + the rest as
+  additionalDomains, the on-file report share link) and a triage-suggested assignee (tier VIP→Rob /
+  Notable→Brian) with source defaulted to "Website form". This is the buy-side triage convert from
+  the research side; the admin **Reports → Buy-Side Inquiries** queue is the dedicated list version
+  (snagged-admin `lib/inquiries.ts` + `app/reports/inquiries/`).
 - **Permission:** `research.pipedrive` (module) added in snagged-admin `dashboard/lib/permissions.ts`
   (MODULES + CATALOG, group Research; stored flat as `pipedrive`). Grant per-user; admins auto-pass.
 - **One-time setup:** none new — reuses `RESEARCH_INTERNAL_SECRET` + `ADMIN_INTERNAL_BASE`
