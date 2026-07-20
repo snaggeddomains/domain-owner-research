@@ -11,6 +11,8 @@
 // Namecheap / GoDaddy also work but need a full contact-profile payload (and Namecheap a
 // static-IP allowlist) — wired on request, see registerGodaddy/registerNamecheap notes.
 
+import crypto from 'node:crypto';
+
 // → { ok, registrar, code, detail } | { ok:false, reason, detail }
 async function registerNamesilo(domain, env) {
   const key = env.NAMESILO_API_KEY;
@@ -26,19 +28,36 @@ async function registerNamesilo(domain, env) {
   } catch (e) { return { ok: false, registrar: 'namesilo', reason: 'error', detail: String((e && e.message) || e) }; }
 }
 
-// Dynadot: single call, account default contact + balance. api3.json returns
-// { RegisterResponse: { ResponseCode:"0", Status:"success", Expiration, ... } };
-// ResponseCode "0" AND/OR Status "success" = success, else Error carries the reason.
+// Dynadot: RESTful API v2 (account default contact + balance). Dynadot now ENFORCES the
+// X-Signature header on sensitive commands (register), so this needs BOTH the Production
+// Key (Authorization: Bearer) AND the Secret Key (to sign). Signature = base64 HMAC-SHA256
+// over `apiKey\npath\nrequestId\nbody` with the Secret Key (per Dynadot's REST API doc).
+// ⚠️ VERIFY LIVE with a cheap throwaway before trusting the auto-buy — built from their
+// published spec, not exercised here (it spends money). The alert fallback covers a failure.
 async function registerDynadot(domain, env) {
   const key = env.DYNADOT_API_KEY;
-  const url = `https://api.dynadot.com/api3.json?key=${encodeURIComponent(key)}&command=register&domain=${encodeURIComponent(domain)}&duration=1&currency=usd`;
+  const secret = env.DYNADOT_API_SECRET;
+  if (!secret) return { ok: false, registrar: 'dynadot', reason: 'no_secret', detail: 'DYNADOT_API_SECRET required — Dynadot enforces X-Signature on register.' };
+  const path = '/restful/v2/domains/register';
+  const body = JSON.stringify({ domain, duration: 1, currency: 'usd' });
+  const requestId = '';
+  const stringToSign = `${key}\n${path}\n${requestId}\n${body}`;
+  const sig = crypto.createHmac('sha256', secret).update(stringToSign, 'utf8').digest('base64');
   try {
-    const raw = await (await fetch(url, { cache: 'no-store' })).json().catch(() => ({}));
-    const r = (raw && (raw.RegisterResponse || raw.Response || raw)) || {};
-    const status = String(r.Status || r.status || '').toLowerCase();
-    const rc = String(r.ResponseCode ?? r.responseCode ?? '').trim();
-    if (status === 'success' || rc === '0') return { ok: true, registrar: 'dynadot', code: rc || 'success', detail: r.Expiration || r.expiration || 'registered' };
-    return { ok: false, registrar: 'dynadot', code: rc || status || 'error', detail: r.Error || r.error || `Dynadot status ${status || rc || 'unknown'}` };
+    const res = await fetch(`https://api.dynadot.com${path}`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json', 'X-Signature': sig, ...(requestId ? { 'X-Request-Id': requestId } : {}) },
+      body,
+      cache: 'no-store',
+    });
+    const raw = await res.json().catch(() => ({}));
+    // REST v2 wraps status in various shapes; treat an explicit success/200/code-0 as OK.
+    const r = (raw && (raw.data || raw.RegisterResponse || raw.response || raw)) || {};
+    const status = String(r.status || r.Status || raw.status || '').toLowerCase();
+    const code = String(r.code ?? r.Code ?? r.ResponseCode ?? raw.code ?? '').trim();
+    const okFlag = res.ok && (status === 'success' || status === 'ok' || code === '0' || code === '200');
+    if (okFlag) return { ok: true, registrar: 'dynadot', code: code || status || String(res.status), detail: r.expiration || r.Expiration || 'registered' };
+    return { ok: false, registrar: 'dynadot', code: code || status || String(res.status), detail: r.error || r.Error || r.message || raw.message || `Dynadot HTTP ${res.status}` };
   } catch (e) { return { ok: false, registrar: 'dynadot', reason: 'error', detail: String((e && e.message) || e) }; }
 }
 
@@ -58,7 +77,7 @@ export function registerProvider(env = process.env) {
   const explicit = String(env.BEEPER_REGISTER_PROVIDER || '').toLowerCase();
   if (explicit && PROVIDERS[explicit]) return explicit;
   if (env.NAMESILO_API_KEY) return 'namesilo';
-  if (env.DYNADOT_API_KEY) return 'dynadot';
+  if (env.DYNADOT_API_KEY && env.DYNADOT_API_SECRET) return 'dynadot';
   if (env.GODADDY_API_KEY && env.GODADDY_API_SECRET) return 'godaddy';
   if (env.NAMECHEAP_API_KEY && env.NAMECHEAP_API_USER) return 'namecheap';
   return null;
@@ -69,8 +88,8 @@ export function registerConfigured(env = process.env) { return Boolean(registerP
 export async function attemptRegister(domain, env = process.env) {
   const p = registerProvider(env);
   if (!p) return { ok: false, reason: 'no_registrar', detail: 'No register-capable registrar configured (set BEEPER_REGISTER_PROVIDER + its keys).' };
-  const key = { namesilo: env.NAMESILO_API_KEY, dynadot: env.DYNADOT_API_KEY, godaddy: env.GODADDY_API_KEY, namecheap: env.NAMECHEAP_API_KEY }[p];
-  if (!key && (p === 'namesilo' || p === 'dynadot')) return { ok: false, reason: 'no_key', detail: `${p} selected but its API key isn't set.` };
+  if (p === 'namesilo' && !env.NAMESILO_API_KEY) return { ok: false, reason: 'no_key', detail: 'NameSilo selected but NAMESILO_API_KEY is not set.' };
+  if (p === 'dynadot' && !(env.DYNADOT_API_KEY && env.DYNADOT_API_SECRET)) return { ok: false, reason: 'no_key', detail: 'Dynadot needs BOTH DYNADOT_API_KEY and DYNADOT_API_SECRET.' };
   return PROVIDERS[p](String(domain).toLowerCase(), env);
 }
 
