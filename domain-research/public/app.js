@@ -4148,8 +4148,14 @@ function beeperRowHtml(w) {
     ? chip('#e2efe5', '#2f7d4f', '🎯 campaign', 'Drop campaign — also polls registrar + marketplace availability')
       + (w.auto_register ? chip('#fdeadf', '#c0492f', '⚡ auto-register', 'Auto-registers via Dynadot the instant it is registerable') : '')
     : '';
-  return `<li class="beeper-row${dropped ? ' beeper-dropped' : ''}"${w.drop_campaign ? ' style="border-left:3px solid #2f7d4f"' : ''}>`
-    + `<div><strong>${escapeHtml(w.domain)}</strong>${who}${cadence}${campaign} — <span class="beeper-state">${escapeHtml(beeperStateLabel(w))}</span><div class="muted beeper-meta">${escapeHtml(when)}</div></div>`
+  const stateLabel = beeperStateLabel(w);
+  // EMERGENCY: a name in pending-delete (or actively confirming a drop) is days/hours from
+  // dropping — flag it loud red. `dropped` (already available) stays the green success state.
+  const emergency = !dropped && (/pending\s*delete/i.test(stateLabel) || w.status === 'pending_drop' || w.status === 'held_registered');
+  const cls = 'beeper-row' + (dropped ? ' beeper-dropped' : emergency ? ' beeper-urgent' : w.drop_campaign ? ' beeper-campaign-row' : '');
+  const state = emergency ? `🚨 ${stateLabel} — DROPPING SOON` : stateLabel;
+  return `<li class="${cls}">`
+    + `<div><strong>${escapeHtml(w.domain)}</strong>${who}${cadence}${campaign} — <span class="beeper-state">${escapeHtml(state)}</span><div class="muted beeper-meta">${escapeHtml(when)}</div></div>`
     + `<button type="button" class="beeper-stop" data-id="${escapeHtml(w.id)}">Stop</button>`
     + `</li>`;
 }
@@ -4178,8 +4184,9 @@ if (els.beeperTestReg) els.beeperTestReg.addEventListener('click', async () => {
   try {
     const res = await fetch('/research/api/beeper', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ action: 'test_register' }) });
     const d = await res.json();
-    const label = d.signing_ok ? '✅ Signing accepted' : '❌ Signing rejected';
-    setToolStatus(els.beeperStatus, `${label} — ${d.note}${d.result && d.result.detail ? ` [${d.result.detail}]` : ''}`, !d.signing_ok);
+    const rawDetail = d.result && d.result.detail != null ? (typeof d.result.detail === 'string' ? d.result.detail : JSON.stringify(d.result.detail)) : '';
+    // Show the raw registrar detail only when it failed (useful for debugging the signing).
+    setToolStatus(els.beeperStatus, `${d.signing_ok ? '✅' : '❌'} ${d.note}${!d.signing_ok && rawDetail ? ` — ${rawDetail}` : ''}`, !d.signing_ok);
   } catch (e) { setToolStatus(els.beeperStatus, e.message || String(e), true); }
 });
 async function addBeeperWatch() {

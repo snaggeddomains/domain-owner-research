@@ -1901,9 +1901,15 @@ a.sr-ag-co-link:hover { border-color: var(--coral); color: var(--coral-deep); ba
 .beeper-form { display:flex; gap:8px; margin:12px 0; flex-wrap:wrap; }
 .beeper-form input { flex:1 1 260px; max-width:360px; padding:10px 12px; border:1.5px solid var(--line); border-radius:10px; font-size:1rem; }
 .beeper-form button { padding:10px 18px; border:0; border-radius:10px; background:var(--coral-deep,#c0492f); color:#fff; font-weight:700; cursor:pointer; }
-.beeper-list { list-style:none; margin:14px 0 0; padding:0; max-width:680px; }
+.beeper-list { list-style:none; margin:14px 0 0; padding:0; max-width:none; }
 .beeper-row { display:flex; align-items:center; gap:12px; padding:12px 14px; border:1.5px solid var(--line); border-radius:12px; margin-bottom:8px; }
-.beeper-row .beeper-state { font-weight:600; color:var(--navy); }
+.beeper-row > div:first-child { flex:1 1 auto; min-width:0; }
+/* Don't break "pending delete" mid-phrase (the list is now full-width, so it fits). */
+.beeper-row .beeper-state { font-weight:600; color:var(--navy); white-space:nowrap; }
+/* EMERGENCY — pending delete / confirming a drop: loud red so it reads as urgent. */
+.beeper-row.beeper-urgent { border-color:#c0392b; background:#fdecea; border-left:5px solid #c0392b; }
+.beeper-row.beeper-urgent .beeper-state { color:#c0392b; font-weight:800; }
+.beeper-row.beeper-campaign-row { border-left:3px solid #2f7d4f; }
 .beeper-who { display:inline-block; font-size:.7rem; font-weight:700; color:var(--teal-deep,#1f6f7a); background:rgba(31,111,122,.12); border:1px solid rgba(31,111,122,.35); border-radius:999px; padding:1px 8px; vertical-align:middle; }
 .beeper-row .beeper-meta { font-size:.8rem; margin-top:2px; }
 .beeper-row.beeper-dropped { border-color:#2f7d4f; background:#e9f7ec; }
