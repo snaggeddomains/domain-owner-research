@@ -652,7 +652,8 @@
           </form>
           <div class="beeper-campaign-opts" style="margin:8px 0 0;font-size:13px;display:flex;flex-wrap:wrap;gap:14px;align-items:center">
             <label style="cursor:pointer"><input type="checkbox" id="beeper-campaign" /> 🎯 <strong>Drop campaign</strong> — also poll registrar + marketplace availability as it nears the drop</label>
-            <label style="cursor:pointer;opacity:.55" id="beeper-autoreg-wrap"><input type="checkbox" id="beeper-autoreg" disabled /> ⚡ Auto-register the instant it's registerable <span class="muted">(NameSilo · spends real money)</span></label>
+            <label style="cursor:pointer;opacity:.55" id="beeper-autoreg-wrap"><input type="checkbox" id="beeper-autoreg" disabled /> ⚡ Auto-register the instant it's registerable <span class="muted">(Dynadot · spends real money)</span></label>
+            <button type="button" id="beeper-test-reg" class="nav-btn" style="font-size:12px">🧪 Test auto-register (Dynadot sandbox)</button>
           </div>
           <div id="beeper-status" class="tool-status" hidden></div>
           <ul id="beeper-list" class="beeper-list"></ul>
@@ -1199,6 +1200,6 @@ The model parses it into structured filters (TLDs, length, budget, tone, etc.) a
     </div>
 
     <!-- Bump ?v= on any public/app.js or styles.css change to bust caches. -->
-    <script src="app.js?v=20260720dropcampaign"></script>
+    <script src="app.js?v=20260720dropcampaign2"></script>
   </body>
 </html>

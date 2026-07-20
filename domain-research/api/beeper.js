@@ -2,6 +2,7 @@ import { isAuthed, currentUser, userCan } from '../lib/auth.js';
 import { isValidDomain, normalizeDomain } from '../lib/util.js';
 import { addWatch, listWatches, stopWatch } from '../lib/db/beeper.js';
 import { rdapStatus } from '../lib/beeper/rdap.js';
+import { attemptRegister } from '../lib/beeper/register.js';
 
 // Beeper — watch a domain's RDAP status and get alerted the moment it changes
 // (especially the drop to available). Gated by the `beeper` module permission.
@@ -35,6 +36,28 @@ export default async function handler(req, res) {
     // Shared list → any Beeper user can stop any watch (not just their own).
     await stopWatch(body.id);
     res.status(200).json({ ok: true });
+    return;
+  }
+
+  // Validate the Dynadot auto-register signing against Dynadot's SANDBOX (no real money).
+  // Registers a throwaway test name — we only care that it gets PAST the X-Signature/auth
+  // check: an auth/signature error = signing broken; success OR a domain-level reply
+  // (not-available / insufficient-funds) = signing WORKS → the production buy will fire.
+  if (body.action === 'test_register') {
+    const testDomain = 'snagged-dropcampaign-test.com';
+    const r = await attemptRegister(testDomain, process.env, { provider: 'dynadot', sandbox: true });
+    const blob = `${r.code || ''} ${r.detail || ''} ${r.reason || ''}`.toLowerCase();
+    const authBroken = /signature|unauthor|forbidden|401|403|invalid.*(key|token|sign)|no_key|missing/.test(blob);
+    res.status(200).json({
+      ok: true,
+      signing_ok: !r.reason && !authBroken, // got past auth/signature
+      registered: Boolean(r.ok),
+      result: r,
+      note: r.reason === 'no_key'
+        ? 'Set DYNADOT_SANDBOX_KEY + DYNADOT_SANDBOX_SECRET in the research project, then redeploy.'
+        : authBroken ? 'Auth/signature was REJECTED — the signing scheme needs a fix.'
+        : 'Signing accepted ✓ — the production auto-register path is proven.',
+    });
     return;
   }
 

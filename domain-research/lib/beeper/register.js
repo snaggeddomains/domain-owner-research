@@ -34,17 +34,19 @@ async function registerNamesilo(domain, env) {
 // over `apiKey\npath\nrequestId\nbody` with the Secret Key (per Dynadot's REST API doc).
 // ⚠️ VERIFY LIVE with a cheap throwaway before trusting the auto-buy — built from their
 // published spec, not exercised here (it spends money). The alert fallback covers a failure.
-async function registerDynadot(domain, env) {
-  const key = env.DYNADOT_API_KEY;
-  const secret = env.DYNADOT_API_SECRET;
-  if (!secret) return { ok: false, registrar: 'dynadot', reason: 'no_secret', detail: 'DYNADOT_API_SECRET required — Dynadot enforces X-Signature on register.' };
+async function registerDynadot(domain, env, opts = {}) {
+  const sandbox = Boolean(opts.sandbox);
+  const key = sandbox ? env.DYNADOT_SANDBOX_KEY : env.DYNADOT_API_KEY;
+  const secret = sandbox ? env.DYNADOT_SANDBOX_SECRET : env.DYNADOT_API_SECRET;
+  const base = sandbox ? 'https://api-sandbox.dynadot.com' : 'https://api.dynadot.com';
+  if (!key || !secret) return { ok: false, registrar: 'dynadot', reason: 'no_key', detail: sandbox ? 'DYNADOT_SANDBOX_KEY / DYNADOT_SANDBOX_SECRET not set.' : 'DYNADOT_API_KEY / DYNADOT_API_SECRET required — Dynadot enforces X-Signature on register.' };
   const path = '/restful/v2/domains/register';
   const body = JSON.stringify({ domain, duration: 1, currency: 'usd' });
   const requestId = '';
   const stringToSign = `${key}\n${path}\n${requestId}\n${body}`;
   const sig = crypto.createHmac('sha256', secret).update(stringToSign, 'utf8').digest('base64');
   try {
-    const res = await fetch(`https://api.dynadot.com${path}`, {
+    const res = await fetch(`${base}${path}`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json', 'X-Signature': sig, ...(requestId ? { 'X-Request-Id': requestId } : {}) },
       body,
@@ -85,12 +87,12 @@ export function registerProvider(env = process.env) {
 
 export function registerConfigured(env = process.env) { return Boolean(registerProvider(env)); }
 
-export async function attemptRegister(domain, env = process.env) {
-  const p = registerProvider(env);
-  if (!p) return { ok: false, reason: 'no_registrar', detail: 'No register-capable registrar configured (set BEEPER_REGISTER_PROVIDER + its keys).' };
+export async function attemptRegister(domain, env = process.env, opts = {}) {
+  const p = opts.provider || registerProvider(env);
+  if (!p || !PROVIDERS[p]) return { ok: false, reason: 'no_registrar', detail: 'No register-capable registrar configured (set BEEPER_REGISTER_PROVIDER + its keys).' };
   if (p === 'namesilo' && !env.NAMESILO_API_KEY) return { ok: false, reason: 'no_key', detail: 'NameSilo selected but NAMESILO_API_KEY is not set.' };
-  if (p === 'dynadot' && !(env.DYNADOT_API_KEY && env.DYNADOT_API_SECRET)) return { ok: false, reason: 'no_key', detail: 'Dynadot needs BOTH DYNADOT_API_KEY and DYNADOT_API_SECRET.' };
-  return PROVIDERS[p](String(domain).toLowerCase(), env);
+  if (p === 'dynadot' && !opts.sandbox && !(env.DYNADOT_API_KEY && env.DYNADOT_API_SECRET)) return { ok: false, reason: 'no_key', detail: 'Dynadot needs BOTH DYNADOT_API_KEY and DYNADOT_API_SECRET.' };
+  return PROVIDERS[p](String(domain).toLowerCase(), env, opts);
 }
 
 export default { registerProvider, registerConfigured, attemptRegister };

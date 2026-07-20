@@ -253,6 +253,7 @@ const els = {
   beeperCampaign: $('beeper-campaign'),
   beeperAutoreg: $('beeper-autoreg'),
   beeperAutoregWrap: $('beeper-autoreg-wrap'),
+  beeperTestReg: $('beeper-test-reg'),
   beeperList: $('beeper-list'),
   beeperStatus: $('beeper-status'),
   srForm: $('sr-form'), srDomain: $('sr-domain'), srGo: $('sr-go'), srStatus: $('sr-status'),
@@ -4139,8 +4140,16 @@ function beeperRowHtml(w) {
   const who = w.submitted_by ? ` <span class="beeper-who" title="Added by ${escapeHtml(w.submitted_by)}">${escapeHtml(w.submitted_by)}</span>` : '';
   const terminal = w.status === 'dropped' || w.status === 'resolved' || w.status === 'expired';
   const cadence = terminal ? '' : beeperCadenceChip(w);
-  return `<li class="beeper-row${dropped ? ' beeper-dropped' : ''}">`
-    + `<div><strong>${escapeHtml(w.domain)}</strong>${who}${cadence} — <span class="beeper-state">${escapeHtml(beeperStateLabel(w))}</span><div class="muted beeper-meta">${escapeHtml(when)}</div></div>`
+  // Delineate campaign watches: 🎯 = polling registrar/marketplace availability too;
+  // ⚡ = will auto-register on the drop. (Only shows once migration 0012 has persisted
+  // the flags — no chip on a "campaign" add = the flags didn't save, run 0012.)
+  const chip = (bg, fg, txt, tip) => ` <span title="${escapeHtml(tip)}" style="display:inline-block;padding:1px 8px;border-radius:999px;font-size:11px;font-weight:700;background:${bg};color:${fg};white-space:nowrap">${txt}</span>`;
+  const campaign = w.drop_campaign
+    ? chip('#e2efe5', '#2f7d4f', '🎯 campaign', 'Drop campaign — also polls registrar + marketplace availability')
+      + (w.auto_register ? chip('#fdeadf', '#c0492f', '⚡ auto-register', 'Auto-registers via Dynadot the instant it is registerable') : '')
+    : '';
+  return `<li class="beeper-row${dropped ? ' beeper-dropped' : ''}"${w.drop_campaign ? ' style="border-left:3px solid #2f7d4f"' : ''}>`
+    + `<div><strong>${escapeHtml(w.domain)}</strong>${who}${cadence}${campaign} — <span class="beeper-state">${escapeHtml(beeperStateLabel(w))}</span><div class="muted beeper-meta">${escapeHtml(when)}</div></div>`
     + `<button type="button" class="beeper-stop" data-id="${escapeHtml(w.id)}">Stop</button>`
     + `</li>`;
 }
@@ -4162,6 +4171,16 @@ if (els.beeperCampaign) els.beeperCampaign.addEventListener('change', () => {
   const on = els.beeperCampaign.checked;
   if (els.beeperAutoreg) { els.beeperAutoreg.disabled = !on; if (!on) els.beeperAutoreg.checked = false; }
   if (els.beeperAutoregWrap) els.beeperAutoregWrap.style.opacity = on ? '1' : '.55';
+});
+// Sandbox smoke-test the Dynadot auto-register signing (no real money).
+if (els.beeperTestReg) els.beeperTestReg.addEventListener('click', async () => {
+  setToolStatus(els.beeperStatus, 'Testing Dynadot sandbox register…');
+  try {
+    const res = await fetch('/research/api/beeper', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ action: 'test_register' }) });
+    const d = await res.json();
+    const label = d.signing_ok ? '✅ Signing accepted' : '❌ Signing rejected';
+    setToolStatus(els.beeperStatus, `${label} — ${d.note}${d.result && d.result.detail ? ` [${d.result.detail}]` : ''}`, !d.signing_ok);
+  } catch (e) { setToolStatus(els.beeperStatus, e.message || String(e), true); }
 });
 async function addBeeperWatch() {
   const domain = (els.beeperDomain.value || '').trim();
