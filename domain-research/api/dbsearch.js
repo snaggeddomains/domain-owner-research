@@ -133,7 +133,16 @@ function buildUniverse(p, ascending, countMode) {
   // yet POS-enriched have a null/empty array and won't match — coverage fills in
   // as the structural backfill runs.
   const pos = csv(p.part_of_speech); if (pos) q = q.overlaps('part_of_speech', pos);
-  const forms = csv(p.exclude_forms); if (forms) for (const f of forms) if (FORM_SLD[f]) q = q.not('sld', 'match', FORM_SLD[f]);
+  // Word-form exclusions. The SLD regex catches consonant+s plurals (cats, offences)
+  // but MISSES vowel+s plurals whose singular ends in a vowel (croatias←croatia,
+  // aleppos←aleppo) — deliberately, to avoid false-flagging atlas/virus/canvas. The
+  // enriched `is_plural` flag (singular is a real dictionary word) catches those. Apply
+  // BOTH: the regex covers not-yet-flagged rows, `is_plural` covers the vowel+s gap.
+  const forms = csv(p.exclude_forms);
+  if (forms) for (const f of forms) {
+    if (FORM_SLD[f]) q = q.not('sld', 'match', FORM_SLD[f]);
+    if (f === 'plural') q = q.not('is_plural', 'is', true);
+  }
   const kw = str(p.keyword); if (kw) q = q.or(`keywords.cs.{${kw.toLowerCase()}},sld.ilike.%${kw.toLowerCase()}%`);
   return q.order(UNIVERSE_SORT[p.sort] || 'domain', { ascending, nullsFirst: false });
 }

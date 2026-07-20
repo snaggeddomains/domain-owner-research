@@ -51,6 +51,33 @@ Source of truth for any Claude Code session picking up work on this repo. **Read
 
 ---
 
+## Plural detection — `is_plural` flag (2026-07-20)
+
+The Domain Name Search "exclude Plurals" filter was a SLD regex (`[^suaio]s$`, in
+`api/dbsearch.js` `FORM_SLD.plural`) that catches consonant+s plurals (cats, offences)
+but **deliberately skips vowel+s** (so it won't false-flag atlas/virus/canvas) — thus it
+missed every plural whose singular ends in a vowel (croatias←croatia, aleppos←aleppo,
+anorexias←anorexia). The NameClub import surfaced ~30% such plurals.
+
+- **Fix = an `is_plural` enrichment flag** on `name_universe`: a plural = SLD ends in
+  s/es/ies AND the singular is a real word in the `english_words` table (same naming
+  project). Catches the vowel+s proper-noun plurals precisely; `atlas`→`atla` isn't a word
+  so it's NOT flagged (validated: croatias/aleppos/anorexias/boxes/cats = true;
+  atlas/virus/canvas/bonus/mantra = false).
+- **dbsearch** (`api/dbsearch.js`) now applies BOTH on "exclude Plurals": the regex
+  (`.not('sld','match',…)`, covers not-yet-flagged rows) AND `.not('is_plural','is',true)`
+  (covers the vowel+s gap). NULL is treated as "keep", so coverage fills in as the flag is set.
+- **SQL** `supabase/naming_is_plural.sql` — column + partial index + an **idempotent,
+  re-runnable** backfill (only flips still-unflagged rows). Run in the NAMING project SQL
+  editor (long timeout; batch by first letter if needed). **Re-run after big marketplace
+  imports** (NameClub etc.) so new plurals get flagged — or wire it into the post-import
+  structural backfill.
+- **Scope:** Universe only. Master uses the same regex (`FORM_DOMAIN`) but has no `sld`
+  column and english_words is a different project (no cross-project join), so its `is_plural`
+  is a later follow-up.
+
+---
+
 ## What this project is
 
 A serverless Vercel + Inngest + Supabase app at **research.snagged.com** that takes a domain and produces a defensible ownership/contact report. Two-tier execution: a **free pre-flight pass** (RDAP, WHOIS, DNS, Wayback, marketplace check, registration cluster) and a paid **"go deeper" pass** (WhoisXML, DomainIQ, BigDomainData, Whoxy, reverse-WHOIS, RocketReach lookup, web/Brave search, trademark, valuation). Standalone Trademark and Appraisal tools are also live.
