@@ -10,6 +10,7 @@ const els = {
   topbarSnap: $('topbar-snap'),
   topbarAdmin: $('topbar-admin'),
   topbarReports: $('topbar-reports'),
+  topbarDeals: $('topbar-deals'),
   topbarAccount: $('topbar-account'),
   navAccountEmail: $('nav-account-email'),
   // Profile menu (avatar dropdown) — name, email-on-done toggle, change password.
@@ -2456,6 +2457,8 @@ async function checkAuth() {
       // Reports section now also hosts Corporate Portfolios (a research-app page),
       // so a portfolio-only user should see Reports in the header too.
       if (els.topbarReports) els.topbarReports.hidden = !(canEnterReports(u) || u.is_admin || (u.permissions && u.permissions.portfolio));
+      // Deals — the buy-side CRM (admin app); shown to anyone with deals access.
+      if (els.topbarDeals) els.topbarDeals.hidden = !(u.is_admin || (u.permissions && (u.permissions.deals || u.permissions['deals.all'])));
       if (els.navAccount) els.navAccount.hidden = false;
       renderProfile(u);
       startNotifPolling();
@@ -2466,6 +2469,7 @@ async function checkAuth() {
       if (els.topbarAccount) els.topbarAccount.hidden = true;
       if (els.topbarAdmin) els.topbarAdmin.hidden = true;
       if (els.topbarReports) els.topbarReports.hidden = true;
+      if (els.topbarDeals) els.topbarDeals.hidden = true;
       if (els.navAccount) els.navAccount.hidden = true;
     }
   } catch {
@@ -2474,6 +2478,7 @@ async function checkAuth() {
     if (els.topbarAccount) els.topbarAccount.hidden = true;
     if (els.topbarAdmin) els.topbarAdmin.hidden = true;
     if (els.topbarReports) els.topbarReports.hidden = true;
+      if (els.topbarDeals) els.topbarDeals.hidden = true;
     if (els.navAccount) els.navAccount.hidden = true;
   }
 }

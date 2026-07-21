@@ -35,7 +35,7 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="apple-mobile-web-app-title" content="Snagged Research" />
     <meta name="theme-color" content="#254254" />
-    <link rel="stylesheet" href="styles.css?v=20260721adddeal2" />
+    <link rel="stylesheet" href="styles.css?v=20260721dealsnav" />
     <!-- Layout: horizontal tab nav (Admin-style), no sidebar. -->
   </head>
   <body>
@@ -90,6 +90,8 @@
           <a href="/research/evaluate" id="topbar-snap" hidden>SNAP</a>
           <!-- Top-level Reports module; shown by JS to anyone with reports access. -->
           <a href="/reports" id="topbar-reports" hidden>Reports</a>
+          <!-- Deals — the buy-side CRM (admin app). Shown by JS to anyone with deals access. -->
+          <a href="/deals" id="topbar-deals" hidden>Deals</a>
         </nav>
         <div class="topbar__account" id="topbar-account" hidden>
           <!-- Back — in-app history nav (handy in the installed PWA where there's
@@ -1275,6 +1277,6 @@ The model parses it into structured filters (TLDs, length, budget, tone, etc.) a
     </div>
 
     <!-- Bump ?v= on any public/app.js or styles.css change to bust caches. -->
-    <script src="app.js?v=20260721adddeal2"></script>
+    <script src="app.js?v=20260721dealsnav"></script>
   </body>
 </html>
