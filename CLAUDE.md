@@ -17,9 +17,14 @@ Source of truth for any Claude Code session picking up work on this repo. **Read
 
 ## Add to Pipedrive — buy-side deal button on research surfaces (2026-07-20)
 
-Phase 1c of the Pipedrive buy-side deal-flow integration (Phase 1b lives in snagged-admin).
+**2026-07-21 — Pipedrive DROPPED for a native in-house CRM (snagged-admin "Deals" module).**
+The button + drawer are UNCHANGED here (still labeled "Add to Pipedrive" — a cosmetic rename
+is a pending follow-up), but the admin internal endpoint it POSTs to (`/api/internal/pipedrive-deal`,
+path kept) now creates a NATIVE deal on the admin Deals board instead of a Pipedrive deal, and
+returns that deal's URL. Everything below still describes the research-side wiring accurately.
+
 An "➕ Add to Pipedrive" button on three surfaces turns a domain into a tracked buy-side
-deal. Pipedrive's API token lives ONLY in snagged-admin, so this app is a thin, gated proxy.
+deal. The deal record + board live in snagged-admin; this app is a thin, gated proxy.
 
 - **Cross-app client** `lib/pipedrive.js`: `pipedriveConfigured()`, `pipedriveMeta()` (GET
   assignable owners + Source/Channel labels), `createBuyDeal(input)` (POST). Calls admin's
@@ -44,8 +49,8 @@ deal. Pipedrive's API token lives ONLY in snagged-admin, so this app is a thin, 
   from the parsed inquiry (buyer name/email, budget, the primary domain + the rest as
   additionalDomains, the on-file report share link) and a triage-suggested assignee (tier VIP→Rob /
   Notable→Brian) with source defaulted to "Website form". This is the buy-side triage convert from
-  the research side; the admin **Reports → Buy-Side Inquiries** queue is the dedicated list version
-  (snagged-admin `lib/inquiries.ts` + `app/reports/inquiries/`).
+  the research side; the admin **Admin → Buy-Side Inquiries** queue is the dedicated list version
+  (snagged-admin `lib/inquiries.ts` + `app/admin/inquiries/`).
 - **Permission:** `research.pipedrive` (module) added in snagged-admin `dashboard/lib/permissions.ts`
   (MODULES + CATALOG, group Research; stored flat as `pipedrive`). Grant per-user; admins auto-pass.
 - **One-time setup:** none new — reuses `RESEARCH_INTERNAL_SECRET` + `ADMIN_INTERNAL_BASE`
