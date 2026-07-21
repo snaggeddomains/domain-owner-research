@@ -4100,7 +4100,7 @@ function renderLead(el, lead, reportRun, reportRuns) {
   const name = escapeHtml(lead.name || lead.email || 'Lead');
   // Add-to-Pipedrive launcher (buy-side): visible only with the permission + a real domain.
   const canPd = canPipedrive && !!(lead.domain_of_interest && /\./.test(lead.domain_of_interest));
-  const pdBtn = canPd ? `<button type="button" class="lead-pd-btn" data-pd-lead="1">➕ Add to Pipedrive</button>` : '';
+  const pdBtn = canPd ? `<button type="button" class="lead-pd-btn" data-pd-lead="1">➕ Add to Deal</button>` : '';
   el.innerHTML =
     `<div class="lead-head"><div class="lead-head-top"><h1 class="lead-name">${name}</h1>${pdBtn}</div>`
     + (standing ? `<div class="lead-standing">${escapeHtml(standing)}</div>` : '')
@@ -4304,7 +4304,7 @@ function pipedriveInlineBtn(domain, surface, extra) {
   if (!canPipedrive) return '';
   const ap = extra && extra.appraisal != null && String(extra.appraisal).trim()
     ? ` data-pd-appraisal="${escapeHtml(String(extra.appraisal))}"` : '';
-  return `<button type="button" class="pd-inline-btn" data-pd-open="1" data-pd-domain="${escapeHtml(String(domain || ''))}" data-pd-surface="${escapeHtml(surface || '')}"${ap} title="Create a buy-side deal in Pipedrive">➕ Add to Pipedrive</button>`;
+  return `<button type="button" class="pd-inline-btn" data-pd-open="1" data-pd-domain="${escapeHtml(String(domain || ''))}" data-pd-surface="${escapeHtml(surface || '')}"${ap} title="Create a buy-side deal">➕ Add to Deal</button>`;
 }
 function renderWhois(w) {
   if (w.available) {
@@ -6716,7 +6716,7 @@ async function openPipedrive(ctx) {
   // Populate the source + assignee selects from the cached meta.
   pipedriveStatus('Loading…');
   const meta = await loadPipedriveMeta();
-  pipedriveStatus(meta.error ? `Couldn't reach Pipedrive: ${meta.error}` : '', meta.error ? 'err' : '');
+  pipedriveStatus(meta.error ? `Couldn't reach the deal service: ${meta.error}` : '', meta.error ? 'err' : '');
   if (els.pdSource) {
     const opts = (meta.sources || []);
     els.pdSource.innerHTML = opts.length

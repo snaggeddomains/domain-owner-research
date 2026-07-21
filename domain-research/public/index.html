@@ -35,7 +35,7 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="apple-mobile-web-app-title" content="Snagged Research" />
     <meta name="theme-color" content="#254254" />
-    <link rel="stylesheet" href="styles.css?v=20260720pipedrive2" />
+    <link rel="stylesheet" href="styles.css?v=20260721adddeal" />
     <!-- Layout: horizontal tab nav (Admin-style), no sidebar. -->
   </head>
   <body>
@@ -282,7 +282,7 @@
             <div id="report-actions" class="report-actions" hidden>
               <button id="research-new" class="tool-new-report" type="button">+ New report</button>
               <button id="outreach-btn" type="button" hidden>✉ Draft outreach</button>
-              <button id="pipedrive-btn" type="button" hidden>➕ Add to Pipedrive</button>
+              <button id="pipedrive-btn" type="button" hidden>➕ Add to Deal</button>
               <button id="export-pdf" type="button">Export PDF</button>
             </div>
           </div>
@@ -1192,7 +1192,7 @@ The model parses it into structured filters (TLDs, length, budget, tone, etc.) a
       <div class="od-panel" role="dialog" aria-modal="true" aria-labelledby="pd-title">
         <div class="od-head">
           <div>
-            <div class="od-title" id="pd-title">Add to Pipedrive</div>
+            <div class="od-title" id="pd-title">Add to Deal</div>
             <div class="od-domain" id="pd-domain"></div>
           </div>
           <button id="pipedrive-close" class="od-close" type="button" aria-label="Close">×</button>
@@ -1233,7 +1233,7 @@ The model parses it into structured filters (TLDs, length, budget, tone, etc.) a
         </div>
         <div class="od-actions">
           <button id="pd-cancel" class="od-btn od-btn-ghost" type="button">Cancel</button>
-          <button id="pd-submit" class="od-btn od-btn-primary" type="button">Add to Pipedrive</button>
+          <button id="pd-submit" class="od-btn od-btn-primary" type="button">Add to Deal</button>
         </div>
       </div>
     </aside>
@@ -1268,6 +1268,6 @@ The model parses it into structured filters (TLDs, length, budget, tone, etc.) a
     </div>
 
     <!-- Bump ?v= on any public/app.js or styles.css change to bust caches. -->
-    <script src="app.js?v=20260720pipedrive2"></script>
+    <script src="app.js?v=20260721adddeal"></script>
   </body>
 </html>
