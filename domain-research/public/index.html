@@ -35,7 +35,7 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="apple-mobile-web-app-title" content="Snagged Research" />
     <meta name="theme-color" content="#254254" />
-    <link rel="stylesheet" href="styles.css?v=20260721adddeal" />
+    <link rel="stylesheet" href="styles.css?v=20260721adddeal2" />
     <!-- Layout: horizontal tab nav (Admin-style), no sidebar. -->
   </head>
   <body>
@@ -1226,7 +1226,14 @@ The model parses it into structured filters (TLDs, length, budget, tone, etc.) a
           </div>
           <div class="od-field">
             <label class="od-label" for="pd-budget">Budget range</label>
-            <input id="pd-budget" class="od-input" type="text" autocomplete="off" placeholder="e.g. $5k–$25k" />
+            <select id="pd-budget" class="od-select">
+              <option value="">—</option>
+              <option value="Under $5k">Under $5k</option>
+              <option value="$5k–$25k">$5k–$25k</option>
+              <option value="$25k–$50k">$25k–$50k</option>
+              <option value="$50k–$100k">$50k–$100k</option>
+              <option value="$100k+">$100k+</option>
+            </select>
           </div>
           <div id="pd-context" class="pd-context" hidden></div>
           <div id="pd-status" class="od-status" hidden></div>
@@ -1268,6 +1275,6 @@ The model parses it into structured filters (TLDs, length, budget, tone, etc.) a
     </div>
 
     <!-- Bump ?v= on any public/app.js or styles.css change to bust caches. -->
-    <script src="app.js?v=20260721adddeal"></script>
+    <script src="app.js?v=20260721adddeal2"></script>
   </body>
 </html>

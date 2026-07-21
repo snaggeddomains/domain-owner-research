@@ -6691,6 +6691,25 @@ async function loadPipedriveMeta() {
 }
 
 // ctx: { domain, surface, reportLink?, appraisalValue?, likelyOwner?, ownerContact? }
+// Map a raw budget (a lead's free-text) to one of the drawer's canonical band options.
+function pdBudgetBand(raw) {
+  const s = String(raw || '').toLowerCase().replace(/,/g, '').trim();
+  if (!s) return '';
+  const BANDS = ['Under $5k', '$5k–$25k', '$25k–$50k', '$50k–$100k', '$100k+'];
+  for (const b of BANDS) if (s === b.toLowerCase()) return b;
+  if (/100\s*k?\s*\+|over\s*100|100\s*k?\s*(plus|or more)/.test(s)) return '$100k+';
+  const nums = [];
+  const re = /(\d+(?:\.\d+)?)\s*([km])?/g; let m;
+  while ((m = re.exec(s))) { let n = parseFloat(m[1]); if (m[2] === 'k') n *= 1000; else if (m[2] === 'm') n *= 1e6; else if (n < 1000) n *= 1000; nums.push(n); }
+  if (!nums.length) return '';
+  const top = Math.max(...nums);
+  if (top <= 5000) return 'Under $5k';
+  if (top <= 25000) return '$5k–$25k';
+  if (top <= 50000) return '$25k–$50k';
+  if (top <= 100000) return '$50k–$100k';
+  return '$100k+';
+}
+
 async function openPipedrive(ctx) {
   if (!els.pipedriveDrawer || !canPipedrive || !ctx || !ctx.domain) return;
   pipedriveCtx = ctx;
@@ -6700,7 +6719,7 @@ async function openPipedrive(ctx) {
   // Prefill the form (a lead carries the buyer + budget; a lookup leaves them blank).
   if (els.pdBuyerName) els.pdBuyerName.value = ctx.buyerName || '';
   if (els.pdBuyerEmail) els.pdBuyerEmail.value = ctx.buyerEmail || '';
-  if (els.pdBudget) els.pdBudget.value = ctx.budgetRange || '';
+  if (els.pdBudget) els.pdBudget.value = pdBudgetBand(ctx.budgetRange);
   if (els.pdPriority) els.pdPriority.value = ctx.priority || '';
   if (els.pdSubmit) els.pdSubmit.disabled = false;
   pipedriveStatus('');
@@ -6774,10 +6793,12 @@ async function submitPipedrive() {
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok || data.ok === false) throw new Error(data.error || `create ${res.status}`);
-    const verb = data.created ? 'Added to Pipedrive' : 'Already in Pipedrive';
+    const verb = data.created ? 'Deal created' : 'Already a deal';
     const link = data.url ? ` — <a href="${escapeHtml(data.url)}" target="_blank" rel="noopener">open the deal ↗</a>` : '';
     pipedriveStatus('', '');
     if (els.pdStatus) { els.pdStatus.hidden = false; els.pdStatus.className = 'od-status od-status-ok'; els.pdStatus.innerHTML = `✓ ${verb}${link}`; }
+    // Flash the green success, then auto-close so the user isn't left to X out.
+    setTimeout(() => { if (els.pipedriveDrawer && !els.pipedriveDrawer.hidden) closePipedrive(); }, 1600);
   } catch (e) {
     pipedriveStatus(`Couldn't create the deal: ${String((e && e.message) || e)}`, 'err');
     els.pdSubmit.disabled = false;
