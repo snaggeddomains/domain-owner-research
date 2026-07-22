@@ -40,8 +40,10 @@ deal. The deal record + board live in snagged-admin; this app is a thin, gated p
   report's public share link); (2) **whois** + (3) **appraisal** inline buttons injected via
   `pipedriveInlineBtn(domain, surface, {appraisal})` (whois share row + appraisal `.ap-meta`),
   opened by a delegated `[data-pd-open]` click handler. Shared slide-over `#pipedrive-drawer`
-  (reuses the `.od-*` outreach-drawer styles) collects source/assignee/priority/buyer/budget →
-  `submitPipedrive()` → shows "✓ Added — open the deal ↗". Assignee dropdown is the ACTIVE
+  (reuses the `.od-*` outreach-drawer styles) collects an **editable Target domain** (`#pd-target-domain`,
+  prefilled from the surface's domain — added 2026-07-22 so the drawer's field set matches the admin
+  Buy-Side Inquiries convert modal exactly) + source/assignee/priority/buyer/budget →
+  `submitPipedrive()` (reads the editable domain, not the ctx) → shows "✓ Added — open the deal ↗". Assignee dropdown is the ACTIVE
   Pipedrive users only (so you never assign to someone the deal can't route to; blank =
   Unassigned / Inbox). `.pd-*` styles in styles.css. Cache-bust `?v=20260720pipedrive`.
 - **Lead dossier button too (2026-07-20).** The inbound-lead dossier (`#/lead/<key>`,

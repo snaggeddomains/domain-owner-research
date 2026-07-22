@@ -86,6 +86,7 @@ const els = {
   pipedriveBackdrop: $('pipedrive-backdrop'),
   pipedriveClose: $('pipedrive-close'),
   pdDomain: $('pd-domain'),
+  pdTargetDomain: $('pd-target-domain'),
   pdSource: $('pd-source'),
   pdAssignee: $('pd-assignee'),
   pdPriority: $('pd-priority'),
@@ -6721,6 +6722,7 @@ async function openPipedrive(ctx) {
   els.pipedriveDrawer.hidden = false;
   document.body.classList.add('drawer-open');
   if (els.pdDomain) els.pdDomain.textContent = ctx.domain;
+  if (els.pdTargetDomain) els.pdTargetDomain.value = ctx.domain || '';
   // Prefill the form (a lead carries the buyer + budget; a lookup leaves them blank).
   if (els.pdBuyerName) els.pdBuyerName.value = ctx.buyerName || '';
   if (els.pdBuyerEmail) els.pdBuyerEmail.value = ctx.buyerEmail || '';
@@ -6772,12 +6774,14 @@ function closePipedrive() {
 
 async function submitPipedrive() {
   if (!pipedriveCtx || !els.pdSubmit) return;
+  const domain = els.pdTargetDomain ? els.pdTargetDomain.value.trim() : pipedriveCtx.domain;
+  if (!domain) { pipedriveStatus('Enter a target domain.', 'err'); return; }
   const source = els.pdSource ? els.pdSource.value : '';
   if (!source) { pipedriveStatus('Pick a source / channel.', 'err'); return; }
   els.pdSubmit.disabled = true;
   pipedriveStatus('Adding…');
   const payload = {
-    domain: pipedriveCtx.domain,
+    domain,
     source,
     assigneeEmail: els.pdAssignee ? els.pdAssignee.value : '',
     priority: els.pdPriority ? els.pdPriority.value : '',

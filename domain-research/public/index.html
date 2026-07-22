@@ -1201,6 +1201,10 @@ The model parses it into structured filters (TLDs, length, budget, tone, etc.) a
         </div>
         <div class="od-body">
           <div class="od-field">
+            <label class="od-label" for="pd-target-domain">Target domain <span class="pd-req">*</span></label>
+            <input id="pd-target-domain" class="od-input" type="text" autocomplete="off" placeholder="example.com" />
+          </div>
+          <div class="od-field">
             <label class="od-label" for="pd-source">Source / channel <span class="pd-req">*</span></label>
             <select id="pd-source" class="od-select"></select>
           </div>
@@ -1277,6 +1281,6 @@ The model parses it into structured filters (TLDs, length, budget, tone, etc.) a
     </div>
 
     <!-- Bump ?v= on any public/app.js or styles.css change to bust caches. -->
-    <script src="app.js?v=20260721dealsnav"></script>
+    <script src="app.js?v=20260722dealfields"></script>
   </body>
 </html>
