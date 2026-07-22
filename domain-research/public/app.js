@@ -646,14 +646,66 @@ function renderDomainBar() {
   bar.hidden = false;
 }
 
-// ── ⌘K / Ctrl-K quick-switch palette ──
+// ── ⌘K / Ctrl-K quick-switch palette (universal + type-ahead) ──
+// Two behaviors from one box:
+//  • Type a DOMAIN (has a dot) → the domain tools, to run that name in any of them.
+//  • Type anything else → a fuzzy search over EVERY accessible destination across the
+//    whole portfolio (Research tools + Admin / SNAP / Reports / Deals + their sub-tabs),
+//    ranked so the best match pops to the top (e.g. "app" → Appraise first).
 let cmdkIdx = 0;
-function cmdkMods() { return DOMAIN_MODULES.filter((m) => canModule(currentUser, m.perm)); }
+let cmdkView = []; // the currently-rendered (filtered + ranked) item list
+// Domain-tool routes are already covered by a domain tool — don't also list their nav btn.
+const CMDK_DOMAIN_HREFS = new Set(['/research', '/research/whois', '/research/appraisal', '/research/trademark', '/research/dbscreen', '/research/nameserver', '/research/beeper']);
+function looksLikeDomain(s) { return /\./.test(s) && /^[a-z0-9.-]+$/i.test(s); }
+function cmdkDomainTools() {
+  return DOMAIN_MODULES.filter((m) => canModule(currentUser, m.perm))
+    .map((m) => ({ kind: 'domain', label: m.label, icon: m.icon, tool: m.tool, run: m.run }));
+}
+// Every accessible nav destination, read LIVE from the DOM (topbar sections + every
+// sub-tab), so it always mirrors what the user can actually reach — no separate registry
+// to keep in sync. Permission-hidden items carry `hidden`; we skip those.
+function cmdkNavDests() {
+  const out = []; const seen = new Set();
+  const push = (el, icon) => {
+    if (!el || el.hidden) return;
+    const href = el.getAttribute('href'); if (!href) return;
+    if (CMDK_DOMAIN_HREFS.has(href) || seen.has(href)) return;
+    seen.add(href);
+    out.push({ kind: 'nav', label: (el.textContent || '').trim(), icon, href, el });
+  };
+  document.querySelectorAll('.topbar__nav a').forEach((a) => push(a, '▸'));
+  document.querySelectorAll('.nav-btn').forEach((a) => push(a, '·'));
+  return out.filter((d) => d.label);
+}
+// Rank a label against the query: exact prefix > word-prefix > substring > subsequence.
+function cmdkScore(label, q) {
+  if (!q) return 1;
+  const l = label.toLowerCase();
+  if (l.startsWith(q)) return 100;
+  if (l.split(/[\s/&-]+/).some((w) => w.startsWith(q))) return 80;
+  const idx = l.indexOf(q);
+  if (idx >= 0) return 50 - Math.min(idx, 40);
+  let i = 0; for (const ch of l) { if (ch === q[i]) i += 1; if (i === q.length) break; }
+  return i === q.length ? 12 : -1;
+}
 function renderCmdkList() {
-  const mods = cmdkMods();
-  cmdkIdx = Math.max(0, Math.min(cmdkIdx, mods.length - 1));
-  els.cmdkList.innerHTML = mods.map((m, i) => `<li class="cmdk-item${i === cmdkIdx ? ' active' : ''}" data-tool="${m.tool}">${m.icon} ${escapeHtml(m.label)}</li>`).join('');
-  els.cmdkList.querySelectorAll('.cmdk-item').forEach((li) => li.addEventListener('click', () => runCmdk(li.dataset.tool)));
+  const raw = (els.cmdkDomain.value || '').trim();
+  let items;
+  if (looksLikeDomain(raw)) {
+    items = cmdkDomainTools(); // domain mode — run this name in any tool
+  } else {
+    const all = [...cmdkDomainTools(), ...cmdkNavDests()];
+    const q = raw.toLowerCase();
+    items = !q ? all
+      : all.map((it) => ({ it, s: cmdkScore(it.label, q) })).filter((x) => x.s > 0)
+          .sort((a, b) => b.s - a.s).map((x) => x.it);
+  }
+  cmdkView = items;
+  cmdkIdx = Math.max(0, Math.min(cmdkIdx, Math.max(0, items.length - 1)));
+  els.cmdkList.innerHTML = items.length
+    ? items.map((m, i) => `<li class="cmdk-item${i === cmdkIdx ? ' active' : ''}" data-i="${i}">${m.icon} ${escapeHtml(m.label)}</li>`).join('')
+    : '<li class="cmdk-item cmdk-empty">No matches</li>';
+  els.cmdkList.querySelectorAll('.cmdk-item[data-i]').forEach((li) => li.addEventListener('click', () => runCmdkItem(cmdkView[Number(li.dataset.i)])));
 }
 function openCmdk() {
   if (!els.cmdk) return;
@@ -664,14 +716,21 @@ function openCmdk() {
   els.cmdkDomain.focus(); els.cmdkDomain.select();
 }
 function closeCmdk() { if (els.cmdk) els.cmdk.hidden = true; }
-function runCmdk(tool) {
-  let d;
-  try { d = cleanDomainInput(els.cmdkDomain.value, { requireValid: false }); }
-  catch { d = (els.cmdkDomain.value || '').trim(); }
-  const m = DOMAIN_MODULES.find((x) => x.tool === tool);
-  if (!m || !d) return;
+function runCmdkItem(item) {
+  if (!item) return;
+  if (item.kind === 'domain') {
+    let d;
+    try { d = cleanDomainInput(els.cmdkDomain.value, { requireValid: false }); }
+    catch { d = (els.cmdkDomain.value || '').trim(); }
+    const domain = looksLikeDomain(d) ? d : activeDomain; // search-mode query isn't the domain
+    closeCmdk();
+    if (domain) { item.run(domain); return; }
+    const btn = document.getElementById('nav-' + item.tool); // no domain → just open the tool
+    if (btn) btn.click();
+    return;
+  }
   closeCmdk();
-  m.run(d);
+  if (item.el) item.el.click(); else if (item.href) window.location.assign(item.href);
 }
 // Collapse a tool's hero+search into the compact "<seed> <label>" header once a
 // result is showing (CSS .report-open); restore the entry when off.
@@ -8141,11 +8200,11 @@ els.whoisResult?.addEventListener('click', (e) => { const b = e.target.closest('
 // Cross-module action bar + ⌘K quick-switch.
 els.domainBarK?.addEventListener('click', openCmdk);
 els.cmdk?.addEventListener('click', (e) => { if (e.target === els.cmdk) closeCmdk(); });
+els.cmdkDomain?.addEventListener('input', () => { cmdkIdx = 0; renderCmdkList(); });
 els.cmdkDomain?.addEventListener('keydown', (e) => {
-  const mods = cmdkMods();
-  if (e.key === 'ArrowDown') { e.preventDefault(); cmdkIdx = Math.min(mods.length - 1, cmdkIdx + 1); renderCmdkList(); }
+  if (e.key === 'ArrowDown') { e.preventDefault(); cmdkIdx = Math.min(cmdkView.length - 1, cmdkIdx + 1); renderCmdkList(); }
   else if (e.key === 'ArrowUp') { e.preventDefault(); cmdkIdx = Math.max(0, cmdkIdx - 1); renderCmdkList(); }
-  else if (e.key === 'Enter') { e.preventDefault(); if (mods[cmdkIdx]) runCmdk(mods[cmdkIdx].tool); }
+  else if (e.key === 'Enter') { e.preventDefault(); runCmdkItem(cmdkView[cmdkIdx]); }
 });
 document.addEventListener('keydown', (e) => {
   if ((e.metaKey || e.ctrlKey) && (e.key === 'k' || e.key === 'K')) {

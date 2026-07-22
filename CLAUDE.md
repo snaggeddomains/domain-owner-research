@@ -689,6 +689,22 @@ admin Reports tabs); `VIEW_SECTION.portfolio = 'reports'`. So viewing it lights 
 Reports + shows the Reports sub-nav. Admin side: `research.portfolio` added to that
 repo's permissions + `REPORTS_TABS` (see snagged-admin CLAUDE.md).
 
+## ⌘K palette — universal + type-ahead (2026-07-22)
+
+The Cmd/Ctrl-K quick-switch (`public/app.js`, `#cmdk`) is now a universal, filtering command
+palette (was: an unfiltered list of the domain tools for the typed domain). Two behaviors from
+one box: type a **domain** (has a dot) → the domain tools, to run that name in any of them; type
+**anything else** → a fuzzy search over EVERY accessible destination across the whole portfolio.
+- **Universal list built LIVE from the DOM** (`cmdkNavDests`): every `.topbar__nav a` (Research /
+  Admin / SNAP / Reports / Deals) + every `.nav-btn` sub-tab, skipping `hidden` (permission-gated)
+  ones and the domain-tool routes (covered by `cmdkDomainTools`). No separate registry to sync —
+  it mirrors exactly what the user can reach. Selecting a nav dest `.click()`s the real element
+  (SPA-routes in-app, full-navs cross-app).
+- **Ranking** (`cmdkScore`): exact-prefix > word-prefix > substring > subsequence, so "app" →
+  Appraise to the top. Live-filters on `input`; ↑↓/Enter over the filtered `cmdkView`.
+- A domain tool chosen in search mode runs for the `activeDomain` (or just opens the tool if none).
+  Cache-bust `?v=20260722cmdk`.
+
 ## Domain data model — canonical (do not let this drift)
 
 Two domain corpora in **separate Supabase projects**; the search reads both.
