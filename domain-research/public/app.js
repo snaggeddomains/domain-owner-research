@@ -2022,9 +2022,11 @@ function aoMarketUrl(o, domain) {
 }
 function aoOwnerLine(o, domain) {
   const url = aoMarketUrl(o, domain);
+  // Show just the bidder HANDLE (e.g. "domainxt") — the marketplace is already implied by
+  // the card + the link target, so the "namecheap/" prefix is noise.
   const handle = url
-    ? `<a href="${escapeHtml(url)}" target="_blank" rel="noopener"><code>${escapeHtml(o.marketplace)}/${escapeHtml(o.handle)}</code> ↗</a>`
-    : `<code>${escapeHtml(o.marketplace)}/${escapeHtml(o.handle)}</code>`;
+    ? `<a href="${escapeHtml(url)}" target="_blank" rel="noopener"><code>${escapeHtml(o.handle)}</code> ↗</a>`
+    : `<code>${escapeHtml(o.handle)}</code>`;
   const who = o.owner_name
     ? `→ <strong>${escapeHtml(o.owner_name)}</strong>${o.owner_type ? ` <span class="muted">· ${escapeHtml(o.owner_type)}</span>` : ''}`
       + (o.confidence === 'confirmed' ? '<span class="ao-chip ao-conf">confirmed</span>' : '<span class="ao-chip">likely</span>')
