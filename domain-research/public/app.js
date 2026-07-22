@@ -1968,6 +1968,7 @@ function renderReport(report) {
   els.reportActions.hidden = false;
   if (els.outreachBtn) els.outreachBtn.hidden = !(canOutreach && currentRunId);
   if (els.pipedriveBtn) els.pipedriveBtn.hidden = !(canPipedrive && currentReportDomain);
+  if (canPipedrive && currentReportDomain) updateDealButton(currentReportDomain);
 
   // Structured summary up top (when present), then the supporting narrative.
   const summaryHtml = data ? renderSummary(data) : '';
@@ -6814,9 +6815,28 @@ async function submitPipedrive() {
   }
 }
 
-// Launcher from the report header (uses the current report's domain + share link).
+// If a deal already exists for the report's domain, flip the header button to
+// "View deal" (linking to it) instead of "Add to Deal" — no duplicate creation.
+let currentReportDealUrl = null;
+async function updateDealButton(domain) {
+  currentReportDealUrl = null;
+  if (!els.pipedriveBtn) return;
+  els.pipedriveBtn.textContent = '➕ Add to Deal';
+  if (!canPipedrive || !domain) return;
+  try {
+    const res = await fetch(`/research/api/pipedrive?domain=${encodeURIComponent(domain)}`, { headers: { Accept: 'application/json' } });
+    const data = await res.json().catch(() => ({}));
+    if (res.ok && data.deal && data.deal.url && domain === currentReportDomain) {
+      currentReportDealUrl = data.deal.url;
+      els.pipedriveBtn.textContent = '🔗 View Deal';
+    }
+  } catch { /* fail-open — stays "Add to Deal" */ }
+}
+
+// Launcher from the report header — opens the existing deal if there is one, else the drawer.
 function openPipedriveFromReport() {
   if (!currentReportDomain) return;
+  if (currentReportDealUrl) { window.open(currentReportDealUrl, '_blank', 'noopener'); return; }
   openPipedrive({ domain: currentReportDomain, surface: 'owner', reportLink: currentReportShareUrl() });
 }
 

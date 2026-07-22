@@ -14,19 +14,22 @@ export function pipedriveConfigured() {
   return Boolean(SECRET);
 }
 
-// GET the drawer metadata: assignable Pipedrive owners + the Source/Channel enum labels.
-export async function pipedriveMeta() {
-  if (!SECRET) return { assignees: [], sources: [] };
+// GET the drawer metadata: assignable owners + the Source/Channel labels. Optionally
+// pass a `domain` to also learn whether a deal already EXISTS for it (so the surface can
+// show "View deal" instead of "Add to Deal") — returns `deal:{id,url,stage,status}|null`.
+export async function pipedriveMeta(domain) {
+  if (!SECRET) return { assignees: [], sources: [], deal: null };
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), 15000);
   try {
-    const res = await fetch(`${BASE}/api/internal/pipedrive-deal`, {
+    const qs = domain ? `?domain=${encodeURIComponent(domain)}` : '';
+    const res = await fetch(`${BASE}/api/internal/pipedrive-deal${qs}`, {
       headers: { 'x-internal-secret': SECRET },
       signal: ctrl.signal,
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.error || `pipedrive meta ${res.status}`);
-    return { assignees: data.assignees || [], sources: data.sources || [] };
+    return { assignees: data.assignees || [], sources: data.sources || [], deal: data.deal || null };
   } finally {
     clearTimeout(timer);
   }

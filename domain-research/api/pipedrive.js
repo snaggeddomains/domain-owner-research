@@ -28,10 +28,13 @@ export default async function handler(req, res) {
     return;
   }
 
-  // GET — drawer metadata (assignable owners + Source/Channel labels).
+  // GET — drawer metadata (assignable owners + Source/Channel labels) +, when a
+  // ?domain= is passed, whether a deal already exists for it (deal:{id,url,…}|null).
   if (req.method === 'GET') {
     try {
-      const meta = await pipedriveMeta();
+      let d = '';
+      try { d = req.query.domain ? cleanDomainInput(String(req.query.domain)) : ''; } catch { d = ''; }
+      const meta = await pipedriveMeta(d || undefined);
       res.status(200).json({ ok: true, ...meta });
     } catch (e) {
       res.status(502).json({ error: String((e && e.message) || e) });
