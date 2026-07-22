@@ -57,32 +57,58 @@ export function extractSignals(report, domain = '') {
   const domainRoot = rootOf(hostOf(`http://${domain}`) || domain);
 
   // ── marketplace / for-sale ────────────────────────────────────────────────
-  let listed = false;
+  // The AUTHORITATIVE real-time marketplace sources (DomainScout + the page-scrape check)
+  // WIN. We only fall back to inferring "listed" from owner_type / the narrative when NO
+  // marketplace source authoritatively resolved the state — otherwise a narrative that
+  // merely *claims* a listing (agent inference) would wrongly override a for-sale strip
+  // that clearly says "not listed" (e.g. electron.ai: for_sale:false, any_listed:false,
+  // yet the narrative claimed it was "listed across multiple marketplaces").
+  let listed = false;           // a source affirmatively found a live listing
+  let checkedNotListed = false; // a source ran and found NO listing
   const platforms = [];
   const prices = [];
   for (const d of traceData(trace, 'marketplace_check')) {
-    if (d.any_listed) listed = true;
-    for (const ch of Array.isArray(d.channels) ? d.channels : []) {
+    const chans = Array.isArray(d.channels) ? d.channels : [];
+    let any = d.any_listed === true;
+    for (const ch of chans) {
       if (ch && ch.listed) {
-        listed = true;
+        any = true;
         if (ch.channel) platforms.push(String(ch.channel));
         for (const p of Array.isArray(ch.prices) ? ch.prices : []) prices.push(String(p));
       }
     }
-    if (d.seller_portfolio && d.seller_portfolio.for_sale) listed = true;
+    if (d.seller_portfolio && d.seller_portfolio.for_sale) any = true;
+    if (any) listed = true;
+    else if (chans.length || d.any_listed === false) checkedNotListed = true;
+  }
+  for (const d of traceData(trace, 'domainscout_lookup')) {
+    const mps = Array.isArray(d.marketplaces) ? d.marketplaces : [];
+    let any = d.for_sale === true;
+    for (const m of mps) {
+      if (m && m.listed) {
+        any = true;
+        if (m.name) platforms.push(String(m.name));
+        if (m.price) prices.push(String(m.price));
+      }
+    }
+    if (any) listed = true;
+    else if (mps.length || d.for_sale === false) checkedNotListed = true;
   }
   const ownerType = sum.ownerType || json.owner_type || null;
-  if (ownerType === 'domain_investor' || ownerType === 'marketplace_only') listed = true;
-  // Narrative fallback for the platform name if the trace didn't give one.
-  if (!platforms.length) {
-    const m = narrative.match(MARKETPLACE_RE);
-    if (m && /\b(listed|for sale|asking|buy now|make offer)\b/i.test(narrative)) {
-      platforms.push(...m.map((x) => x.replace(/\.com$/i, '')));
-      if (m.length) listed = listed || /\b(listed|for sale|asking|buy now|make offer)\b/i.test(narrative);
+  // Fall back to owner_type / narrative ONLY when no marketplace source authoritatively
+  // said "not listed" — so we never contradict the verified for-sale strip.
+  if (!listed && !checkedNotListed) {
+    if (ownerType === 'domain_investor' || ownerType === 'marketplace_only') listed = true;
+    if (!platforms.length) {
+      const m = narrative.match(MARKETPLACE_RE);
+      if (m && /\b(listed|for sale|asking|buy now|make offer)\b/i.test(narrative)) {
+        platforms.push(...m.map((x) => x.replace(/\.com$/i, '')));
+        listed = true;
+      }
     }
   }
   const platform = [...new Set(platforms.map((p) => p.toLowerCase()))]
-    .map((p) => ({ afternic: 'Afternic', godaddy: 'GoDaddy', sedo: 'Sedo', atom: 'Atom', dan: 'Dan', squadhelp: 'Squadhelp', dynadot: 'Dynadot' }[p] || (p.charAt(0).toUpperCase() + p.slice(1))))
+    .map((p) => ({ afternic: 'Afternic', godaddy: 'GoDaddy', sedo: 'Sedo', atom: 'Atom', dan: 'Dan', squadhelp: 'Squadhelp', dynadot: 'Dynadot', namecheap: 'Namecheap', sav: 'Sav', dropcatch: 'DropCatch' }[p] || (p.charAt(0).toUpperCase() + p.slice(1))))
     .join(' / ');
 
   // ── live site / redirect / parked ─────────────────────────────────────────
@@ -155,6 +181,9 @@ export function extractSignals(report, domain = '') {
     contactPath: Array.isArray(json.contact_path) ? json.contact_path : [],
     timeline: Array.isArray(json.timeline) ? json.timeline : [],
     listed,
+    // A marketplace source ran and authoritatively found NO live listing — lets the drafter
+    // avoid claiming "listed for sale" even when the narrative loosely implies it.
+    verifiedNotListed: !listed && checkedNotListed,
     platform,
     prices,
     redirectsToParent,

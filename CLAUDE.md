@@ -276,6 +276,18 @@ real opening emails ("Domain Owner Initial Outreach" playbook).
 - **Permission**: catalog key `research.outreach` (action) added in the
   snagged-admin Users editor (`dashboard/lib/permissions.ts`); stored flat as
   `outreach` in the `permissions` JSONB. Grant per-user there.
+- **For-sale signal now AUTHORITATIVE (2026-07-22).** The outreach draft was claiming a
+  domain was "listed for sale across multiple marketplaces" when it wasn't (e.g. electron.ai:
+  `domainscout_lookup.for_sale:false` + `marketplace_check.any_listed:false`, yet the agent
+  NARRATIVE loosely said "listed"). Fix in `signals.js`: read BOTH `marketplace_check` and
+  `domainscout_lookup` traces; `listed` is true only if a source AFFIRMATIVELY found a listing,
+  and a source that ran + found none sets `checkedNotListed`. The owner_type/narrative fallback
+  (`domain_investor`/`marketplace_only` → listed; narrative marketplace-name scrape) now fires
+  ONLY when `!listed && !checkedNotListed` — so a verified for-sale strip never gets overridden
+  by narrative inference. New signal `verifiedNotListed`; `generate.js` adds a **"For-sale status"**
+  context line + a HARD RULE telling the drafter to trust the verified status over the narrative
+  (don't claim/name marketplaces when NOT listed). `classify.js` `listed_for_sale` still scores
+  `domainInvestor` (4) so a true investor still pitches as one — just without the false listing.
 
 ---
 

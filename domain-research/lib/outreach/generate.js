@@ -29,6 +29,7 @@ PROCESS (think it through, then write):
 
 HARD RULES:
 - Use ONLY facts present in the provided context. NEVER invent a name, company, acquisition, platform, price, or relationship. If you need a value you don't have, leave a clearly bracketed placeholder like [COMPANY] for Rob to fill — do not guess.
+- The "For-sale status" line is the AUTHORITATIVE, real-time marketplace check. If it says NOT listed, do NOT claim or imply the domain is listed/for sale on any marketplace, and do NOT name marketplaces — even if the narrative loosely says "listed for sale". Trust the verified status over the narrative.
 - SHORT: roughly 4-9 sentences. Cut anything that isn't earning its place. No corporate filler.
 - Match Rob's warmth and directness. No pricing or commitments beyond the templates' spirit.
 - Subject line EXACTLY: <DOMAIN> Domain Inquiry. Sign off "-Rob".
@@ -52,6 +53,7 @@ function compactTimeline(tl) {
 function indicatorList(sig) {
   const on = [];
   if (sig.listed) on.push(`listed-for-sale${sig.platform ? ` on ${sig.platform}` : ''}`);
+  else if (sig.verifiedNotListed) on.push('verified-NOT-listed-for-sale');
   if (sig.redirectsToParent) on.push(`redirects-to-parent${sig.parentHost ? ` (${sig.parentHost})` : ''}`);
   if (sig.acquisition) on.push('acquisition/inheritance');
   if (sig.formerOperator) on.push('former-operator');
@@ -72,6 +74,7 @@ Likely owner: ${sig.likelyOwner || '(not established)'}
 Owner type: ${sig.ownerType || 'unknown'}
 Address as: ${sig.namedContactNames && sig.namedContactNames.length ? sig.namedContactNames.join(', ') : sig.firstName || '(no clear name — "Hi there")'}
 Key indicators: ${indicatorList(sig)}
+For-sale status: ${sig.listed ? `LISTED for sale${sig.platform ? ` on ${sig.platform}` : ''}` : sig.verifiedNotListed ? 'VERIFIED NOT listed for sale (do not claim otherwise)' : 'unknown'}
 Bottom line: ${sig.summary || '(none)'}
 
 Contacts:
