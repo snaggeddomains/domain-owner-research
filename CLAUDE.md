@@ -65,6 +65,16 @@ deal. The deal record + board live in snagged-admin; this app is a thin, gated p
 - **One-time setup:** none new — reuses `RESEARCH_INTERNAL_SECRET` + `ADMIN_INTERNAL_BASE`
   (already set) and the admin-side Pipedrive setup (pipeline/stages/fields, applied 2026-07-20).
 
+## Internal kick-research endpoint (2026-07-22)
+
+`api/internal/kick-research.js` — server-to-server, `x-internal-secret == RESEARCH_INTERNAL_SECRET`
+(same pattern as `internal/valuate.js`). `POST {domain}` → dedupes against existing
+queued/running/done runs (or an errored run that still saved a pre-flight report) and, if none,
+`createRun` + `inngest.send(RUN_REQUESTED, {phase:'shallow'})` → returns `{ok, runId, existed}`.
+Kicks the **free pre-flight** pass only (no paid credits). Mirrors the `prewarmDomainReport` the
+inquiry intake already does. Consumed by snagged-admin's Deals CRM so a manually-added deal gets a
+Domain Owner report to auto-link (see admin CLAUDE.md "Auto-research + dossier links").
+
 ## TLD Count + valuation calibration + cross-app valuate endpoint (2026-07-18)
 
 - **TLD Count tool** — a free DotDB-style "how many TLDs is this word registered in"
