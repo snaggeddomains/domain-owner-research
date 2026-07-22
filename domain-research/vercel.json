@@ -1,7 +1,8 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "crons": [
-    { "path": "/api/cron/beeper", "schedule": "* * * * *" }
+    { "path": "/api/cron/beeper", "schedule": "* * * * *" },
+    { "path": "/api/cron/mine-outreach", "schedule": "0 7 * * *" }
   ],
   "redirects": [
     {

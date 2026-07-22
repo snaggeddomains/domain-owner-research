@@ -618,6 +618,27 @@ create index if not exists idx_dr_auction_owners_handle on domain_research_aucti
 create index if not exists idx_dr_auction_owners_domains on domain_research_auction_owners using gin (domains);
 
 
+-- Mined real outreach examples (Rob's actual first-touch emails from the deal
+-- mailboxes) — a growing, referenceable "voice toolkit" the drafter pulls from
+-- alongside the built-in templates. Lightly redacted (domain + recipient name →
+-- placeholders); tagged by scenario so the drafter can retrieve the relevant ones.
+create table if not exists domain_research_outreach_examples (
+  id            uuid primary key default gen_random_uuid(),
+  ext_id        text unique,                        -- dedupe key (mailbox:threadId or msg id)
+  domain        text,                               -- the domain the email was about
+  subject       text,
+  body          text not null,                      -- placeholderized opener text
+  situation     text,                               -- short scenario label
+  tags          text[] not null default '{}',       -- indicator tags (listed, former-operator, …)
+  source        text not null default 'gmail',      -- gmail|manual
+  from_addr     text,
+  sent_at       timestamptz,
+  created_at    timestamptz not null default now()
+);
+create index if not exists idx_dr_outreach_examples_tags on domain_research_outreach_examples using gin (tags);
+create index if not exists idx_dr_outreach_examples_created on domain_research_outreach_examples (created_at desc);
+
+
 -- ── Enable RLS (no policies → backend secret key only) ──────────────────────
 do $$
 declare t text;

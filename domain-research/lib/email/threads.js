@@ -41,3 +41,11 @@ export async function fetchEmailThread(mailbox, threadId) {
   const data = await call({ action: 'thread', mailbox, thread_id: threadId });
   return data.thread || null;
 }
+
+// Broad search with an explicit Gmail query + result cap (for mining, not the
+// domain-scoped chat suggest). Returns thread stubs; [] when not configured.
+export async function searchEmailThreadsRaw(query, max = 40) {
+  if (!SECRET) return [];
+  const data = await call({ q: String(query || '').trim(), max: String(max) });
+  return Array.isArray(data.threads) ? data.threads : [];
+}

@@ -276,6 +276,30 @@ real opening emails ("Domain Owner Initial Outreach" playbook).
 - **Permission**: catalog key `research.outreach` (action) added in the
   snagged-admin Users editor (`dashboard/lib/permissions.ts`); stored flat as
   `outreach` in the `permissions` JSONB. Grant per-user there.
+- **Referenceable outreach toolkit — mine real sent emails + "Try again" (2026-07-22).** The 7
+  built-in templates are now just a baseline; the drafter also learns from Rob's REAL sent openers.
+  - **Corpus:** `domain_research_outreach_examples` (schema.sql; RLS via the `domain_research_%`
+    loop) — `lib/db/outreachExamples.js` (`listExamples`/`countExamples`/`upsertExample`, best-effort).
+  - **Mining:** `lib/outreach/mine.js` `mineOutreachExamples` searches the deal mailboxes via the
+    admin internal Gmail endpoint (`email/threads.js` `searchEmailThreadsRaw`, query
+    `subject:(Domain Inquiry) from:snagged.com`), extracts the FIRST snagged.com opener from each
+    thread, redacts the domain + greeting name → `[DOMAIN]`/`[First Name]`, tags it by scenario
+    (`tagText`), upserts by `ext_id=mailbox:threadId`. `relevantExamples(signals, all, k)` ranks by
+    tag-overlap with the report. Triggered by cron `api/cron/mine-outreach.js` (`vercel.json` daily
+    `0 7 * * *`, CRON_SECRET) + on-demand `POST /api/outreach {action:'mine'}`. Fail-open (no Gmail
+    creds / no DB → mines nothing, drafter still works off templates).
+  - **Draft context:** `generate.js` gets a "REAL PAST OUTREACH (learn the VOICE… don't copy facts)"
+    block from the top-3 relevant examples, alongside the full narrative it already reads.
+  - **"Try again"** (renamed from Regenerate): the drawer button now sends `retry:true` +
+    `previous_body`; `generateOutreach` raises temperature to 1 and instructs a MATERIALLY DIFFERENT
+    draft that re-reads every input and doesn't repeat the prior attempt. Skips the skeleton on retry.
+    Cache-bust `?v=20260722outreach2`.
+  - **Setup:** run the `domain_research_outreach_examples` table on the research project; mining
+    reuses `ADMIN_INTERNAL_BASE` + `RESEARCH_INTERNAL_SECRET` (already set).
+- **Report NARRATIVE also respects the authoritative for-sale strip (2026-07-22).** Strengthened the
+  agent `SYSTEM_PROMPT` (`lib/agent.js`): marketplace_check + domainscout_lookup are AUTHORITATIVE —
+  if they ran and found no live listing, do NOT write "listed for sale" or name a marketplace, no
+  matter how strongly the owner reads as an investor. (Pairs with the outreach-signal fix below.)
 - **For-sale signal now AUTHORITATIVE (2026-07-22).** The outreach draft was claiming a
   domain was "listed for sale across multiple marketplaces" when it wasn't (e.g. electron.ai:
   `domainscout_lookup.for_sale:false` + `marketplace_check.any_listed:false`, yet the agent

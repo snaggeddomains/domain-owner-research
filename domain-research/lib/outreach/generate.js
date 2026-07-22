@@ -90,6 +90,16 @@ FULL RESEARCH NARRATIVE (the agent's own synthesis — your richest context):
 ${sig.narrative || '(none)'}`;
 }
 
+// Real past openers (mined from Rob's sent mail) — reference for VOICE + structure,
+// NOT facts to copy. The drafter learns phrasing/tone from these, then writes fresh.
+function examplesBlock(examples) {
+  if (!Array.isArray(examples) || !examples.length) return '';
+  return examples
+    .slice(0, 3)
+    .map((ex, i) => `EXAMPLE ${i + 1}${ex.situation ? ` (${ex.situation})` : ''}${(ex.tags && ex.tags.length) ? ` [${ex.tags.join(', ')}]` : ''}:\n${String(ex.body || '').trim().slice(0, 1200)}`)
+    .join('\n\n— — —\n\n');
+}
+
 function catalogBlock(catalog) {
   return catalog
     .map(
@@ -167,10 +177,12 @@ export function fallbackDraft(catalog, ranked, sig) {
   };
 }
 
-// catalog: [{ id, name, useWhen, adjustment, text, builtin }]
-// ranked:  [{ id, name, score, reasons }] (built-in prior)
-// forced:  { mode:'auto'|'template'|'bespoke', templateId? }
-export async function generateOutreach({ signals, catalog, ranked, forced = { mode: 'auto' }, env = process.env }) {
+// catalog:  [{ id, name, useWhen, adjustment, text, builtin }]
+// ranked:   [{ id, name, score, reasons }] (built-in prior)
+// forced:   { mode:'auto'|'template'|'bespoke', templateId? }
+// examples: [{ body, situation, tags }] mined real openers (voice reference)
+// retry:    true → take another deep look; vary the angle; don't repeat previousBody
+export async function generateOutreach({ signals, catalog, ranked, forced = { mode: 'auto' }, examples = [], retry = false, previousBody = '', env = process.env }) {
   if (!env.ANTHROPIC_API_KEY) return { ...fallbackDraft(catalog, ranked, signals), fallback: true };
 
   let forcedNote = '';
@@ -180,14 +192,19 @@ export async function generateOutreach({ signals, catalog, ranked, forced = { mo
     forcedNote = `\n\nUSER OVERRIDE: use template "${forced.templateId}" (approach "template", template_id "${forced.templateId}"). Adapt it to the context.`;
   }
 
+  const exBlock = examplesBlock(examples);
+  const retryNote = retry
+    ? `\n\nTRY AGAIN: this is a regeneration. Take another deep look at ALL the inputs (indicators, contacts, timeline, full narrative, and the real examples) and produce a MATERIALLY DIFFERENT draft — a different angle, hook, or structure. Do NOT lightly reword the previous attempt${previousBody ? `:\n--- previous attempt (do not repeat) ---\n${String(previousBody).slice(0, 1200)}\n---` : '.'}`
+    : '';
+
   const userPrompt = `REPORT CONTEXT
 ${contextBlock(signals)}
 
 DETERMINISTIC RANKING (indicator-based prior; strongest first):
 ${rankingBlock(ranked)}
-
+${exBlock ? `\nREAL PAST OUTREACH (Rob's own sent openers — learn the VOICE, tone, and structure; do NOT copy their specific facts):\n${exBlock}\n` : ''}
 TEMPLATE CATALOG (understand each before choosing):
-${catalogBlock(catalog)}${forcedNote}
+${catalogBlock(catalog)}${forcedNote}${retryNote}
 
 Interpret the situation, choose the approach, and write the opener now. Be thorough about context, concise on the page, and personalize with verifiable hooks only.`;
 
@@ -197,6 +214,7 @@ Interpret the situation, choose the approach, and write the opener now. Be thoro
     const resp = await client.messages.create({
       model,
       max_tokens: 1500,
+      temperature: retry ? 1 : 0.7,
       system: [{ type: 'text', text: SYSTEM, cache_control: { type: 'ephemeral' } }],
       messages: [{ role: 'user', content: userPrompt }],
     });

@@ -6934,10 +6934,11 @@ document.addEventListener('click', (e) => {
 const outreachCache = {};
 let outreachSeq = 0;
 
-async function fetchOutreach(scenarioId, mode) {
+async function fetchOutreach(scenarioId, mode, opts = {}) {
   const payload = { run_id: currentRunId };
   if (scenarioId) payload.scenario_id = scenarioId;
   if (mode === 'skeleton') payload.mode = 'skeleton';
+  if (opts.retry) { payload.retry = true; payload.previous_body = opts.previousBody || ''; }
   const res = await fetch('/research/api/outreach', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -6967,17 +6968,23 @@ async function loadOutreach(scenarioId, opts = {}) {
   }
 
   if (els.odCopy) els.odCopy.disabled = true;
-  setOutreachStatus('Sharpening with AI…', 'busy');
+  setOutreachStatus(opts.retry ? 'Taking another look…' : 'Sharpening with AI…', 'busy');
+
+  // On a "Try again" we skip the deterministic skeleton (we want a fresh LLM take,
+  // and we hand it the current draft so it produces something materially different).
+  const retryOpts = opts.retry ? { retry: true, previousBody: (els.odBody && els.odBody.value) || '' } : {};
 
   // Instant skeleton (deterministic, no LLM) — only applied if the full draft
   // hasn't already arrived and this is still the active load.
   let fullArrived = false;
-  fetchOutreach(scenarioId, 'skeleton')
-    .then((sk) => { if (seq === outreachSeq && !fullArrived) { renderOutreach(sk); outreachLoaded = true; } })
-    .catch(() => {});
+  if (!opts.retry) {
+    fetchOutreach(scenarioId, 'skeleton')
+      .then((sk) => { if (seq === outreachSeq && !fullArrived) { renderOutreach(sk); outreachLoaded = true; } })
+      .catch(() => {});
+  }
 
   try {
-    const data = await fetchOutreach(scenarioId, 'full');
+    const data = await fetchOutreach(scenarioId, 'full', retryOpts);
     if (seq !== outreachSeq) return; // superseded by a newer load
     fullArrived = true;
     renderOutreach(data);
@@ -7109,7 +7116,8 @@ document.addEventListener('keydown', (e) => {
 els.odScenarioSel?.addEventListener('change', () => { if (outreachLoaded) loadOutreach(els.odScenarioSel.value); });
 els.odRegen?.addEventListener('click', () => {
   const sel = els.odScenarioSel ? els.odScenarioSel.value : null;
-  loadOutreach(sel === '__bespoke__' ? '__bespoke__' : sel, { force: true });
+  // "Try again" = force a fresh, materially-different draft that re-reads every input.
+  loadOutreach(sel === '__bespoke__' ? '__bespoke__' : sel, { force: true, retry: true });
 });
 els.odCopySubject?.addEventListener('click', () => copyText(els.odSubject ? els.odSubject.value : '', els.odCopySubject));
 els.odCopyBody?.addEventListener('click', () => copyText(els.odBody ? els.odBody.value : '', els.odCopyBody));
