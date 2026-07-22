@@ -4047,6 +4047,40 @@ function renderLead(el, lead, reportRun, reportRuns) {
   const prof = (p && p.professional) || {};
   const bg = r.background || {};
   const employer = prof.employer || (r.company && r.company.company) || null;
+
+  // Auto-link URLs / emails / bare domains / @social-handles inside dossier prose so
+  // things like an Instagram handle (@_nevaehthompson) render as a real hyperlink, not
+  // plain text. Escape first, then stash each link behind a placeholder so later passes
+  // don't re-match inside an <a>. @handles resolve to the matching known social profile
+  // when we have one, else default to Instagram (the common case in these dossiers).
+  const socialHandleUrl = (h) => {
+    const hit = social.find((s) => s && s.url && new RegExp(`/${h}/?$`, 'i').test(String(s.url)));
+    return (hit && hit.url) ? String(hit.url) : `https://instagram.com/${h}`;
+  };
+  const linkifyLead = (text) => {
+    let s = escapeHtml(String(text == null ? '' : text));
+    const slots = [];
+    const stash = (html) => `  ${slots.push(html) - 1}  `;
+    // Emails first — shields the "@" from the handle pass.
+    s = s.replace(/\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/g, (m) => stash(`<a href="mailto:${m}">${m}</a>`).trim());
+    // Full URLs.
+    s = s.replace(/\bhttps?:\/\/[^\s<>"']+/g, (m) => {
+      const trail = (m.match(/[.,;:)]+$/) || [''])[0];
+      const url = m.slice(0, m.length - trail.length);
+      return stash(`<a href="${url}" target="_blank" rel="noopener">${url}</a>`) + trail;
+    });
+    // Bare domains (conservative TLD set so prose like "Resorts." never false-matches).
+    s = s.replace(/\b(?:www\.)?[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.(?:com|net|org|io|ai|co|xyz|app|dev|so|me|gg|tv|info|biz)\b(?:\/[^\s<>"']*)?/gi, (m) => {
+      const trail = (m.match(/[.,;:)]+$/) || [''])[0];
+      const host = m.slice(0, m.length - trail.length);
+      const href = `https://${host.replace(/^www\./i, '')}`;
+      return stash(`<a href="${href}" target="_blank" rel="noopener">${host}</a>`) + trail;
+    });
+    // @social-handles.
+    s = s.replace(/(^|[\s(])@([A-Za-z0-9._]{2,30})/g, (full, pre, h) =>
+      `${pre}${stash(`<a href="${socialHandleUrl(h)}" target="_blank" rel="noopener">@${h}</a>`)}`);
+    return s.replace(/ (\d+) /g, (_, i) => slots[Number(i)]);
+  };
   const personBig =
     (liUrl || li != null
       ? leadBig('LinkedIn', (liUrl ? `<a href="${escapeHtml(liUrl)}" target="_blank" rel="noopener">${li != null ? num(li) : 'Profile ↗'}</a>` : num(li)) + (li != null ? ' <span class="lead-unit">connections</span>' : ''))
@@ -4071,11 +4105,11 @@ function renderLead(el, lead, reportRun, reportRuns) {
       }).join('')}</ul>`
     : '';
   const hlHtml = highlights.length
-    ? `<div class="lead-sub-h">Highlights</div><ul class="lead-about">${highlights.slice(0, 6).map((h) => `<li>${escapeHtml(String(h))}</li>`).join('')}</ul>`
+    ? `<div class="lead-sub-h">Highlights</div><ul class="lead-about">${highlights.slice(0, 6).map((h) => `<li>${linkifyLead(String(h))}</li>`).join('')}</ul>`
     : '';
   const personSection =
     (personBig ? `<div class="lead-bigrow lead-bigrow--person">${personBig}</div>` : '')
-    + (overview ? `<div class="lead-overview">${escapeHtml(overview)}</div>` : '')
+    + (overview ? `<div class="lead-overview">${linkifyLead(overview)}</div>` : '')
     + workHtml + hlHtml
     + `<div class="lead-links"><a href="${escapeHtml(googleUrl)}" target="_blank" rel="noopener">Google them ↗</a>`
     + (liUrl ? ` <a href="${escapeHtml(liUrl)}" target="_blank" rel="noopener">LinkedIn ↗</a>` : '') + `</div>`;
@@ -4111,7 +4145,7 @@ function renderLead(el, lead, reportRun, reportRuns) {
     + (lead.budget ? `<span><span class="lead-inq-k">Budget</span> ${escapeHtml(lead.budget)}</span>` : '')
     + ((r.location || lead.location) ? `<span><span class="lead-inq-k">Location</span> ${escapeHtml(r.location || lead.location)}</span>` : '')
     + `</span>`
-    + (r.message || lead.message ? `<div class="lead-quote">“${escapeHtml(r.message || lead.message)}”</div>` : '')
+    + (r.message || lead.message ? `<div class="lead-quote">“${linkifyLead(r.message || lead.message)}”</div>` : '')
     + `<div class="lead-links">`
     + (liUrl ? `<a href="${escapeHtml(liUrl)}" target="_blank" rel="noopener">LinkedIn ↗</a>` : '')
     + (gmailSearch ? `<a href="${escapeHtml(gmailSearch)}" target="_blank" rel="noopener">Open the email ↗</a>` : '')
@@ -4123,7 +4157,7 @@ function renderLead(el, lead, reportRun, reportRuns) {
   const pdBtn = canPd ? `<button type="button" class="lead-pd-btn" data-pd-lead="1">➕ Add to Deal</button>` : '';
   el.innerHTML =
     `<div class="lead-head"><div class="lead-head-top"><h1 class="lead-name">${name}</h1>${pdBtn}</div>`
-    + (standing ? `<div class="lead-standing">${escapeHtml(standing)}</div>` : '')
+    + (standing ? `<div class="lead-standing">${linkifyLead(standing)}</div>` : '')
     + (lead.email ? `<div class="lead-sub">${escapeHtml(lead.email)}${lead.domain_of_interest ? ` · inquiring about <strong>${escapeHtml(lead.domain_of_interest)}</strong>` : ''}</div>` : '')
     + `</div>`
     // Deep-link to an existing Domain Owner report — one link per inquired domain.
@@ -4143,6 +4177,25 @@ function renderLead(el, lead, reportRun, reportRuns) {
     + `<div class="lead-section-h">📨 The inquiry</div>`
     + inquiry
     + (lead.status === 'failed' ? `<div class="lead-loading">Some enrichment hit an error${lead.error ? `: ${escapeHtml(String(lead.error).slice(0, 160))}` : ''}. The details above are still accurate.</div>` : '');
+  // If this inquiry already turned into a deal, flip the launcher to "View Deal".
+  if (canPd) updateLeadDealButton(el, lead.domain_of_interest);
+}
+
+// Flip the dossier's "➕ Add to Deal" to "🔗 View Deal" (opening the existing deal) when a
+// deal already exists for the inquired domain. Mirrors updateDealButton on the report header.
+let currentLeadDealUrl = null;
+async function updateLeadDealButton(el, domain) {
+  currentLeadDealUrl = null;
+  const btn = el && el.querySelector('.lead-pd-btn');
+  if (!btn || !domain) return;
+  try {
+    const res = await fetch(`/research/api/pipedrive?domain=${encodeURIComponent(domain)}`, { headers: { Accept: 'application/json' } });
+    const data = await res.json().catch(() => ({}));
+    if (res.ok && data.deal && data.deal.url) {
+      currentLeadDealUrl = data.deal.url;
+      btn.textContent = '🔗 View Deal';
+    }
+  } catch { /* fail-open — stays "Add to Deal" */ }
 }
 
 // ── Beeper — RDAP drop watcher ──────────────────────────────────────────────
@@ -6860,6 +6913,8 @@ document.addEventListener('click', (e) => {
   const leadBtn = e.target.closest('[data-pd-lead]');
   if (leadBtn) {
     e.preventDefault();
+    // Already a deal → open it (View Deal); otherwise open the Add-to-Deal drawer.
+    if (currentLeadDealUrl) { window.open(currentLeadDealUrl, '_blank', 'noopener'); return; }
     const ctx = currentLeadForPd && pipedriveCtxFromLead(currentLeadForPd.lead, currentLeadForPd.reportRuns);
     if (ctx) openPipedrive(ctx);
     return;

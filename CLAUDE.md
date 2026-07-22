@@ -53,6 +53,14 @@ deal. The deal record + board live in snagged-admin; this app is a thin, gated p
   Notable→Brian) with source defaulted to "Website form". This is the buy-side triage convert from
   the research side; the admin **Deals → Buy-Side Inquiries** queue is the dedicated list version
   (snagged-admin `lib/inquiries.ts` + `app/deals/inquiries/`).
+- **Lead dossier polish (2026-07-22).** (1) The dossier prose (overview / standing / highlights /
+  the buyer's quoted message) is run through `linkifyLead` in `renderLead` — auto-links URLs,
+  emails, bare domains (curated TLD set), and **@social-handles** (e.g. an Instagram
+  `@_nevaehthompson` → instagram.com, or the matching known `social[]` profile URL) so they're
+  real hyperlinks, not plain text. (2) The dossier's **Add-to-Deal launcher flips to "🔗 View
+  Deal"** when a deal already exists for the inquired domain — `updateLeadDealButton(el, domain)`
+  checks `GET api/pipedrive?domain=` (same `data.deal.url` the report header uses); the
+  `[data-pd-lead]` click opens the deal instead of the drawer. Cache-bust `?v=20260722leadlinks`.
 - **New buy-side inquiry → triage notification (2026-07-22).** `api/lead-enrich.js` POST (the
   Zapier "New Submission" hook) now pings the triage team the moment a NEW buy-side inquiry lands:
   `notifyTriageOfInquiry` bells (`createNotification`, kind `inquiry`, link `/research/#/lead/<key>`)
