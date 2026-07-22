@@ -83,6 +83,12 @@ Kicks the **free pre-flight** pass only (no paid credits). Mirrors the `prewarmD
 inquiry intake already does. Consumed by snagged-admin's Deals CRM so a manually-added deal gets a
 Domain Owner report to auto-link (see admin CLAUDE.md "Auto-research + dossier links").
 
+`api/internal/report-summary.js` — same auth. `GET ?domain=` → `{ok, likely_owner, owner_type,
+owner_contact, summary, appraisal:{mid,low,high}|null}`. Owner fields = newest DONE run's report
+PART-1 via `summarizeReport` (`lib/reportSummary.js`) + best email/phone from `contacts[]`
+(primary tier first); appraisal = cache-first `appraisalOnly`. All fail-open to null. Lets the
+admin Deals sidebar auto-fill likely owner / owner contact / appraisal once research has run.
+
 ## TLD Count + valuation calibration + cross-app valuate endpoint (2026-07-18)
 
 - **TLD Count tool** — a free DotDB-style "how many TLDs is this word registered in"
