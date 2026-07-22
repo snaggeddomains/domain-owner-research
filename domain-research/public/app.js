@@ -1966,6 +1966,7 @@ function renderReport(report) {
   const band = data && data.confidence ? String(data.confidence).toLowerCase() : extractConfidence(md);
   renderConfidence(band);
   els.reportActions.hidden = false;
+  if (els.exportPdf) els.exportPdf.hidden = false;
   if (els.outreachBtn) els.outreachBtn.hidden = !(canOutreach && currentRunId);
   if (els.pipedriveBtn) els.pipedriveBtn.hidden = !(canPipedrive && currentReportDomain);
   if (canPipedrive && currentReportDomain) updateDealButton(currentReportDomain);
@@ -3642,7 +3643,17 @@ function enterResultMode(domain) {
   setReportTitle(domain);
   clearReportMeta();
   els.reportConfidence.hidden = true;
-  els.reportActions.hidden = true;
+  // Show the action bar early with just "Add to Deal" (it only needs the domain), so a
+  // deal can be created while the report is still gathering — no need to wait for it to
+  // finish. Report-dependent actions (outreach / export) stay hidden until renderReport.
+  if (canPipedrive && domain) {
+    els.reportActions.hidden = false;
+    if (els.pipedriveBtn) { els.pipedriveBtn.hidden = false; updateDealButton(domain); }
+  } else {
+    els.reportActions.hidden = true;
+  }
+  if (els.outreachBtn) els.outreachBtn.hidden = true;
+  if (els.exportPdf) els.exportPdf.hidden = true;
   els.report.hidden = true;
   if (els.reportFeedback) els.reportFeedback.hidden = true;
   if (els.reportNotes) els.reportNotes.hidden = true;
