@@ -3211,6 +3211,15 @@ function startPolling(runId, label, opts = {}) {
   currentRunId = runId;
   els.go.disabled = true;
   if (els.runControls) els.runControls.hidden = false;
+  // Keep the action row (incl. Add-to-Deal) present through the whole gathering phase — a
+  // deal can be created off just the domain, no need to wait for the report to finish.
+  if (currentReportDomain) {
+    if (els.reportActions) els.reportActions.hidden = false;
+    if (els.pipedriveBtn) {
+      els.pipedriveBtn.hidden = !canPipedrive;
+      if (canPipedrive) updateDealButton(currentReportDomain);
+    }
+  }
   clearTimers();
 
   // Live elapsed clock, ticking once a second; the poll updates the stage label.
@@ -3706,12 +3715,17 @@ function enterResultMode(domain) {
   setReportTitle(domain);
   clearReportMeta();
   els.reportConfidence.hidden = true;
-  // Show the action bar early with just "Add to Deal" (it only needs the domain), so a
-  // deal can be created while the report is still gathering — no need to wait for it to
-  // finish. Report-dependent actions (outreach / export) stay hidden until renderReport.
-  if (canPipedrive && domain) {
+  // Show the action bar early (it holds "+ New report" + "Add to Deal", which only need the
+  // domain), so a deal can be created while the report is still gathering — no need to wait
+  // for it to finish. The row itself is NOT gated on the deal permission (New report/Export
+  // aren't deal-related); only the Add-to-Deal button is. Report-dependent actions (outreach /
+  // export) stay hidden until renderReport.
+  if (domain) {
     els.reportActions.hidden = false;
-    if (els.pipedriveBtn) { els.pipedriveBtn.hidden = false; updateDealButton(domain); }
+    if (els.pipedriveBtn) {
+      els.pipedriveBtn.hidden = !canPipedrive;
+      if (canPipedrive) updateDealButton(domain);
+    }
   } else {
     els.reportActions.hidden = true;
   }
