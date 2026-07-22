@@ -53,6 +53,13 @@ deal. The deal record + board live in snagged-admin; this app is a thin, gated p
   Notable→Brian) with source defaulted to "Website form". This is the buy-side triage convert from
   the research side; the admin **Deals → Buy-Side Inquiries** queue is the dedicated list version
   (snagged-admin `lib/inquiries.ts` + `app/deals/inquiries/`).
+- **New buy-side inquiry → triage notification (2026-07-22).** `api/lead-enrich.js` POST (the
+  Zapier "New Submission" hook) now pings the triage team the moment a NEW buy-side inquiry lands:
+  `notifyTriageOfInquiry` bells (`createNotification`, kind `inquiry`, link `/research/#/lead/<key>`)
+  + emails every user who can triage (`userCan(u,'pipedrive')` OR admin), best-effort. Gated to
+  **new** leads only (`getLeadByKey` before upsert — a re-submission/enrichment re-run never
+  re-pings) AND buy-side intent only (`looksBuySide`, mirrors the admin queue). No new env/table
+  (reuses `domain_research_notifications` + `sendEmail`).
 - **Permission:** `research.pipedrive` (module) added in snagged-admin `dashboard/lib/permissions.ts`
   (MODULES + CATALOG, group Research; stored flat as `pipedrive`). Grant per-user; admins auto-pass.
 - **One-time setup:** none new — reuses `RESEARCH_INTERNAL_SECRET` + `ADMIN_INTERNAL_BASE`

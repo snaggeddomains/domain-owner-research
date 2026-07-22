@@ -12,12 +12,15 @@
 // The person deep-dive + Apollo firmographics run past the 60s API cap, so they
 // run in the runLead Inngest fn; POST returns immediately.
 
-import { requirePermission } from '../lib/auth.js';
+import { requirePermission, userCan } from '../lib/auth.js';
 import { isDbConfigured } from '../lib/db/supabase.js';
 import { inngest, LEAD_REQUESTED, RUN_REQUESTED } from '../lib/inngest/client.js';
 import { leadKey } from '../lib/leads/key.js';
 import { upsertLead, getLeadByKey, listLeads } from '../lib/db/leads.js';
 import { listRuns, createRun } from '../lib/db/runs.js';
+import { listUsers } from '../lib/db/users.js';
+import { createNotification } from '../lib/db/notifications.js';
+import { sendEmail, isEmailConfigured } from '../lib/email.js';
 import { cleanDomainInput } from '../lib/util.js';
 import { trackDomain } from '../lib/domainscout.js';
 import { emailDomain, isFreeEmail } from '../lib/leads/triage.js';
@@ -114,6 +117,56 @@ async function kickFreeReports(domainRaw) {
   for (const domain of parseDomains(domainRaw)) await kickFreeReport(domain);
 }
 
+// Buy-side unless the intent CLEARLY says sell (and not acquire). Mirrors the admin
+// Buy-Side Inquiries queue's looksBuySide so the notification matches what's triaged.
+function looksBuySide(intent) {
+  const s = String(intent || '').toLowerCase();
+  if (!s) return true;
+  if (/\bsell\b|selling|list|apprais/.test(s) && !/acqui|buy|purchas/.test(s)) return false;
+  return true;
+}
+
+function esc(s) {
+  return String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+}
+
+// A new buy-side inquiry landed → ping everyone who can triage it (the `pipedrive`
+// module permission that gates Deals → Buy-Side Inquiries, plus admins). Bell + email,
+// best-effort, deep-linked to the dossier. Fires only for NEW leads (see handlePost).
+async function notifyTriageOfInquiry({ key, name, email, domainRaw, intent, budget }) {
+  try {
+    const users = await listUsers();
+    const triagers = (users || []).filter((u) => u && (userCan(u, 'admin') || userCan(u, 'pipedrive')));
+    if (!triagers.length) return;
+    const who = name || email || 'Someone';
+    const domains = parseDomains(domainRaw);
+    const domainLabel = domains.length ? domains.join(', ') : (domainRaw || '—');
+    const title = `New buy-side inquiry — ${who}`;
+    const bits = [domainLabel && `Domain: ${domainLabel}`, budget && `Budget: ${budget}`, intent && `Intent: ${intent}`].filter(Boolean).join(' · ');
+    const link = `/research/#/lead/${key}`;
+    const emailOn = isEmailConfigured();
+    const dossier = leadUrl(key);
+    await Promise.allSettled(
+      triagers.flatMap((u) => {
+        const jobs = [createNotification({ user_id: u.id, kind: 'inquiry', title, body: bits || 'Review in Buy-Side Inquiries.', link })];
+        if (emailOn) {
+          jobs.push(sendEmail({
+            to: u.email,
+            subject: `🟢 ${title}`,
+            text: `${who} submitted a buy-side inquiry.\n\n${bits}\n\nReview it: ${dossier}`,
+            html: `<p><strong>${esc(who)}</strong> submitted a buy-side inquiry.</p>`
+              + (bits ? `<p style="color:#4a5b66">${esc(bits)}</p>` : '')
+              + `<p><a href="${esc(dossier)}" style="display:inline-block;padding:10px 16px;background:#e48069;color:#fff;text-decoration:none;border-radius:8px;font-weight:700">Review inquiry</a></p>`,
+          }));
+        }
+        return jobs;
+      }),
+    );
+  } catch (e) {
+    console.error('notifyTriageOfInquiry failed:', e && e.message);
+  }
+}
+
 async function handlePost(req, res) {
   // Machine-to-machine auth — a shared secret header, NOT a session (Zapier has no
   // cookie). If the secret is unset we refuse rather than run open.
@@ -133,6 +186,10 @@ async function handlePost(req, res) {
   const companyDomain = isFreeEmail(email) ? null : emailDomain(email);
 
   if (isDbConfigured()) {
+    // Is this the first time we've seen this lead? Only NEW inquiries notify triage
+    // (a re-submission / enrichment re-run must not re-ping everyone).
+    let isNew = true;
+    try { isNew = !(await getLeadByKey(key)); } catch { /* treat as new */ }
     await upsertLead({
       lead_key: key, email, name,
       company_domain: companyDomain,
@@ -144,6 +201,10 @@ async function handlePost(req, res) {
     // Pre-warm the free Domain Owner report for EVERY inquired domain, so they're
     // already run by the time a human reviews the lead (no 5-minute wait).
     if (form.domain_of_interest) await kickFreeReports(form.domain_of_interest);
+    // Ping the triage team about a NEW buy-side inquiry (bell + email), best-effort.
+    if (isNew && looksBuySide(form.intent)) {
+      await notifyTriageOfInquiry({ key, name, email, domainRaw: form.domain_of_interest, intent: form.intent, budget: form.budget });
+    }
   }
   res.status(200).json({ ok: true, key, url: leadUrl(key) });
 }
