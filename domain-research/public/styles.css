@@ -1450,6 +1450,9 @@ body.modal-open { overflow: hidden; }
 .od-select:focus, .od-input:focus, .od-textarea:focus { outline: none; border-color: var(--coral); }
 .od-why { margin-top: 8px; font-size: 12.5px; color: var(--navy-2); line-height: 1.45; }
 
+.od-generating { display: flex; align-items: center; gap: 10px; padding: 40px 8px; font-size: 14px; font-weight: 600; color: var(--navy-2); }
+.od-gen-spinner { width: 20px; height: 20px; border-radius: 50%; border: 3px solid var(--line); border-top-color: var(--coral-deep); animation: od-gen-spin .7s linear infinite; flex: 0 0 auto; }
+@keyframes od-gen-spin { to { transform: rotate(360deg); } }
 .od-status { margin-top: 4px; font-size: 13px; color: var(--navy-2); }
 .od-status-err { color: var(--coral-deep); }
 .od-status-warn { color: var(--coral-deep); }

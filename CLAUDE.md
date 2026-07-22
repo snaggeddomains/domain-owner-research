@@ -296,6 +296,18 @@ real opening emails ("Domain Owner Initial Outreach" playbook).
     Cache-bust `?v=20260722outreach2`.
   - **Setup:** run the `domain_research_outreach_examples` table on the research project; mining
     reuses `ADMIN_INTERNAL_BASE` + `RESEARCH_INTERNAL_SECRET` (already set).
+- **Outreach drawer polish (2026-07-22).** (1) **Address only reachable contacts.** `signals.js`
+  now derives the greeting names from the **PRIMARY tier** named contacts only (`primaryNamed`),
+  not every non-tertiary name — so an email is addressed to the person(s) we actually have a
+  contact route for (e.g. Ron), not a co-founder we only know by name (Mitch). `multiStakeholder`
+  requires >1 primary-tier person (narrative "team/owners" language no longer forces it). A new
+  generate.js HARD RULE tells the LLM to greet ONLY the "Address as" names. (2) **Spinner, not a
+  skeleton.** The drawer no longer flashes the deterministic template-fill (it read as finished) —
+  `setOutreachGenerating(on)` swaps the subject/body for a spinner (`#od-generating`) until the AI
+  draft lands; "Try again" keeps the prior draft visible while re-thinking. Skeleton API mode is
+  now unused by the UI. (3) **Same-window "View Deal"** — `window.location.assign` instead of
+  `window.open(_blank)` (the desktop app spawned a new window, losing the session). Cache-bust
+  `?v=20260722outreach3`.
 - **Report NARRATIVE also respects the authoritative for-sale strip (2026-07-22).** Strengthened the
   agent `SYSTEM_PROMPT` (`lib/agent.js`): marketplace_check + domainscout_lookup are AUTHORITATIVE —
   if they ran and found no live listing, do NOT write "listed for sale" or name a marketplace, no

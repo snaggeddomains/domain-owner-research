@@ -113,6 +113,8 @@ const els = {
   odTplStatus: $('od-tpl-status'),
   odStatus: $('od-status'),
   odRegen: $('od-regen'),
+  odGenerating: $('od-generating'),
+  odDraftFields: $('od-draft-fields'),
   odCopy: $('od-copy'),
   historyDrawer: $('history-drawer'),
   historyBackdrop: $('history-backdrop'),
@@ -6902,7 +6904,9 @@ async function updateDealButton(domain) {
 // Launcher from the report header — opens the existing deal if there is one, else the drawer.
 function openPipedriveFromReport() {
   if (!currentReportDomain) return;
-  if (currentReportDealUrl) { window.open(currentReportDealUrl, '_blank', 'noopener'); return; }
+  // Same-window nav (the deal is same-origin app.snagged.com) — the desktop app spawns a
+  // new window on _blank, losing the session.
+  if (currentReportDealUrl) { window.location.assign(currentReportDealUrl); return; }
   openPipedrive({ domain: currentReportDomain, surface: 'owner', reportLink: currentReportShareUrl() });
 }
 
@@ -6913,8 +6917,8 @@ document.addEventListener('click', (e) => {
   const leadBtn = e.target.closest('[data-pd-lead]');
   if (leadBtn) {
     e.preventDefault();
-    // Already a deal → open it (View Deal); otherwise open the Add-to-Deal drawer.
-    if (currentLeadDealUrl) { window.open(currentLeadDealUrl, '_blank', 'noopener'); return; }
+    // Already a deal → open it (View Deal) in the same window; otherwise the drawer.
+    if (currentLeadDealUrl) { window.location.assign(currentLeadDealUrl); return; }
     const ctx = currentLeadForPd && pipedriveCtxFromLead(currentLeadForPd.lead, currentLeadForPd.reportRuns);
     if (ctx) openPipedrive(ctx);
     return;
@@ -6961,6 +6965,7 @@ async function loadOutreach(scenarioId, opts = {}) {
   const seq = ++outreachSeq;
 
   if (!opts.force && outreachCache[key]) {
+    setOutreachGenerating(false);
     renderOutreach(outreachCache[key]);
     outreachLoaded = true;
     setOutreachStatus('', '');
@@ -6968,34 +6973,35 @@ async function loadOutreach(scenarioId, opts = {}) {
   }
 
   if (els.odCopy) els.odCopy.disabled = true;
-  setOutreachStatus(opts.retry ? 'Taking another look…' : 'Sharpening with AI…', 'busy');
+  // Hide the draft entirely and show a spinner until the AI is done — no half-baked
+  // skeleton text (which read as "finished"). We keep the previous draft on-screen for a
+  // "Try again" so the user isn't staring at a blank while it re-thinks.
+  setOutreachGenerating(true);
+  setOutreachStatus(opts.retry ? 'Taking another look…' : 'Drafting the email…', 'busy');
 
-  // On a "Try again" we skip the deterministic skeleton (we want a fresh LLM take,
-  // and we hand it the current draft so it produces something materially different).
   const retryOpts = opts.retry ? { retry: true, previousBody: (els.odBody && els.odBody.value) || '' } : {};
-
-  // Instant skeleton (deterministic, no LLM) — only applied if the full draft
-  // hasn't already arrived and this is still the active load.
-  let fullArrived = false;
-  if (!opts.retry) {
-    fetchOutreach(scenarioId, 'skeleton')
-      .then((sk) => { if (seq === outreachSeq && !fullArrived) { renderOutreach(sk); outreachLoaded = true; } })
-      .catch(() => {});
-  }
 
   try {
     const data = await fetchOutreach(scenarioId, 'full', retryOpts);
     if (seq !== outreachSeq) return; // superseded by a newer load
-    fullArrived = true;
+    setOutreachGenerating(false);
     renderOutreach(data);
     outreachCache[key] = data;
     outreachLoaded = true;
     setOutreachStatus(data.fallback ? 'Drafted from the template (LLM unavailable) — edit freely.' : '', data.fallback ? 'warn' : '');
   } catch (e) {
-    if (seq === outreachSeq) setOutreachStatus(e.message || "Couldn't reach the drafting service.", 'err');
+    if (seq === outreachSeq) { setOutreachGenerating(false); setOutreachStatus(e.message || "Couldn't reach the drafting service.", 'err'); }
   } finally {
     if (seq === outreachSeq && els.odCopy) els.odCopy.disabled = false;
   }
+}
+
+// Toggle the "thinking" state: swap the draft fields for a spinner so no partial/
+// placeholder text shows until the AI-written email is actually ready.
+function setOutreachGenerating(on) {
+  if (els.odGenerating) els.odGenerating.hidden = !on;
+  if (els.odDraftFields) els.odDraftFields.hidden = on;
+  if (els.odRegen) els.odRegen.disabled = on;
 }
 
 function renderOutreach(data) {

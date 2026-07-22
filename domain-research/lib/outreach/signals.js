@@ -159,11 +159,19 @@ export function extractSignals(report, domain = '') {
     || /\b(former|previously|used to|at the time|your time with|back when|legacy)\b/i.test(narrative);
   const priorCompanyTie = acquisition || clusterTie
     || /\b(traces? back to|tied to|associated with|connected to|your time with|formerly of|ex-)\b/i.test(narrative);
-  // More than one named primary stakeholder to address (the corporate / "Hi Names" case).
-  const namedContacts = (Array.isArray(json.contacts) ? json.contacts : []).filter(
+  // Who to actually ADDRESS the email to: the named contacts we can REACH — i.e. the
+  // PRIMARY tier (the single most-likely owner we have a real contact route for). We do
+  // NOT greet lower-tier / historical stakeholders we only know by name (e.g. a co-founder
+  // with no email of ours) — Rob's rule: address only the people we can actually email.
+  const allNamed = (Array.isArray(json.contacts) ? json.contacts : []).filter(
     (c) => c && c.type === 'name' && c.value && String(c.tier || '').toLowerCase() !== 'tertiary',
   );
-  const multiStakeholder = namedContacts.length > 1 || /\b(owners|stakeholders|team|all as the owners)\b/i.test(narrative);
+  const primaryNamed = allNamed.filter((c) => String(c.tier || '').toLowerCase() === 'primary');
+  const namedContacts = primaryNamed.length ? primaryNamed : allNamed.slice(0, 1);
+  // Multiple CO-primary owners to address jointly (a real "Hi A and B" case) only when we
+  // genuinely have more than one primary-tier person — narrative "team/owners" language
+  // alone no longer forces it (that was over-addressing people we can't reach).
+  const multiStakeholder = namedContacts.length > 1;
 
   return {
     domain,
