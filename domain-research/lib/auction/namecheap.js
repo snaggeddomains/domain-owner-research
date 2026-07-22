@@ -73,9 +73,20 @@ function parseWinner(text) {
 }
 
 async function scrape(url, key) {
-  const api = `https://api.scrape.do/?token=${encodeURIComponent(key)}&render=true&super=true&url=${encodeURIComponent(url)}`;
-  const r = await fetchText(api, {}, 35000);
+  // customWait gives the SPA time to render the bid history + "from <handle>" (which
+  // load via JS after the initial paint) — without it we captured only the static
+  // shell (checkout/summary widgets), missing the actual winner.
+  const api = `https://api.scrape.do/?token=${encodeURIComponent(key)}&render=true&super=true&customWait=5000&url=${encodeURIComponent(url)}`;
+  const r = await fetchText(api, {}, 45000);
   return r && r.body ? String(r.body) : '';
+}
+// The rendered market page redirects to /market/sale/<hash>/<domain>/ — grab that hash
+// URL from wherever it lands in the HTML (canonical, og:url, a link, or an inline ref)
+// so we can read the authoritative sold-auction page even if the first parse came up empty.
+function findAnySaleUrl(html, domain) {
+  const re = new RegExp(`/market/sale/[A-Za-z0-9]+/${domain.replace(/[.]/g, '\\.')}/?`, 'i');
+  const m = String(html || '').match(re);
+  return m ? `https://www.namecheap.com${m[0].replace(/\/?$/, '/')}` : null;
 }
 const blocked = (t) => !t || /just a moment|verify you are human|access denied|attention required/i.test(t);
 
@@ -86,19 +97,25 @@ export async function detectNamecheapAuction(domain, env = {}) {
   if (!key || !d || !/\./.test(d)) return null;
   const marketUrl = `https://www.namecheap.com/market/${encodeURIComponent(d)}/`;
   try {
-    // Hop 1: the market page (may itself hold the bid history, or link to the sale page).
+    // Hop 1: the market page (redirects to the sale page, or links to it).
     let html = await scrape(marketUrl, key);
     let usedUrl = marketUrl;
-    let text = htmlToText(html).slice(0, 12000);
+    let text = htmlToText(html).slice(0, 16000);
     if (blocked(text)) return null;
     let parsed = parseWinner(text);
-    // Hop 2: if no winner yet, follow the /market/sale/<hash>/<domain>/ link.
-    if (!parsed.handle) {
-      const saleUrl = findSaleUrl(html, d);
+    // Hop 2: unless we already have a confirmed SOLD winner, jump to the authoritative
+    // /market/sale/<hash>/<domain>/ page (the redirect target) and parse THAT — it carries
+    // the "$X from <handle>" line + bid history. Runs whenever hop 1 didn't yield a sold
+    // winner (an active-listing or half-rendered shell), not only when no handle at all.
+    if (!(parsed.handle && parsed.sold)) {
+      const saleUrl = findSaleUrl(html, d) || findAnySaleUrl(html, d);
       if (saleUrl && saleUrl !== usedUrl) {
-        html = await scrape(saleUrl, key);
-        text = htmlToText(html).slice(0, 12000);
-        if (!blocked(text)) { usedUrl = saleUrl; parsed = parseWinner(text); }
+        const saleHtml = await scrape(saleUrl, key);
+        const saleText = htmlToText(saleHtml).slice(0, 16000);
+        if (!blocked(saleText)) {
+          const saleParsed = parseWinner(saleText);
+          if (saleParsed.handle && saleParsed.sold) { usedUrl = saleUrl; text = saleText; parsed = saleParsed; }
+        }
       }
     }
     // Only attribute a WINNER when the page is an actually-SOLD auction. An active
