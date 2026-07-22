@@ -26,7 +26,12 @@ const HANDLE_RE = /^[A-Za-z0-9](?:[A-Za-z0-9._-]{1,38}[A-Za-z0-9])?$/;
 const HANDLE_STOP = new Set(['the', 'this', 'sale', 'market', 'namecheap', 'seller', 'buyer', 'now',
   'here', 'our', 'your', 'price', 'bid', 'bids', 'from', 'bidder', 'bidders', 'time', 'usd', 'proxy',
   'history', 'ended', 'sold', 'extended', 'days', 'hours', 'minutes', 'seconds', 'creation', 'date',
-  'keyword', 'extensions', 'taken', 'govalue', 'search', 'partner', 'buy', 'make', 'offer', 'view']);
+  'keyword', 'extensions', 'taken', 'govalue', 'search', 'partner', 'buy', 'make', 'offer', 'view',
+  // Checkout / buy-now / listing-summary labels — NOT bidders. "Subtotal $42,000" on an
+  // active for-sale listing was being parsed as the top bid (piccolo.ai → wrong owner).
+  'subtotal', 'total', 'buynow', 'cart', 'checkout', 'amount', 'listing', 'listings', 'listed',
+  'tax', 'taxes', 'fee', 'fees', 'discount', 'shipping', 'order', 'quantity', 'qty', 'item',
+  'items', 'purchase', 'payment', 'summary', 'watchlist', 'favorite', 'estimated']);
 const clean = (h) => {
   const s = String(h || '').trim().replace(/\s*\(you\)\s*$/i, '').trim();
   return HANDLE_RE.test(s) && !HANDLE_STOP.has(s.toLowerCase()) ? s : null;
@@ -96,8 +101,11 @@ export async function detectNamecheapAuction(domain, env = {}) {
         if (!blocked(text)) { usedUrl = saleUrl; parsed = parseWinner(text); }
       }
     }
-    if (!parsed.handle) return null;
-    return { handle: parsed.handle, sold: !!parsed.sold, bidders: parsed.bidders, sale_url: usedUrl };
+    // Only attribute a WINNER when the page is an actually-SOLD auction. An active
+    // for-sale LISTING (re-listed after a prior sale, e.g. piccolo.ai) has no winner —
+    // its buy-now/subtotal price isn't a bid, so we'd otherwise mis-detect an owner.
+    if (!parsed.handle || !parsed.sold) return null;
+    return { handle: parsed.handle, sold: true, bidders: parsed.bidders, sale_url: usedUrl };
   } catch {
     return null;
   }
