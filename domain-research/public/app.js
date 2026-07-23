@@ -741,6 +741,16 @@ function openCmdk() {
   els.cmdkDomain.focus(); els.cmdkDomain.select();
 }
 function closeCmdk() { if (els.cmdk) els.cmdk.hidden = true; }
+// After an in-SPA jump, drop the cursor into the tool's main lookup field so the user can type
+// immediately (no click needed). Focuses the first visible, editable text input in the content
+// area (skips the topbar / the palette itself).
+function focusActiveLookup() {
+  setTimeout(() => {
+    const inputs = Array.from(document.querySelectorAll('input[type="text"], input[type="search"], input:not([type])'));
+    const el = inputs.find((i) => i.offsetParent !== null && !i.disabled && !i.readOnly && !i.closest('#cmdk') && !i.closest('.topbar'));
+    if (el) { el.focus(); try { el.select(); } catch { /* not selectable */ } }
+  }, 90);
+}
 function runCmdkItem(item) {
   if (!item) return;
   if (item.kind === 'domain') {
@@ -751,11 +761,12 @@ function runCmdkItem(item) {
     closeCmdk();
     if (domain) { item.run(domain); return; }
     const btn = document.getElementById('nav-' + item.tool); // no domain → just open the tool
-    if (btn) btn.click();
+    if (btn) { btn.click(); focusActiveLookup(); }
     return;
   }
   closeCmdk();
-  if (item.el) item.el.click(); else if (item.href) window.location.assign(item.href);
+  if (item.el) { item.el.click(); focusActiveLookup(); } // in-SPA tab → focus its lookup field
+  else if (item.href) window.location.assign(item.href); // cross-app → full nav (reloads)
 }
 // Collapse a tool's hero+search into the compact "<seed> <label>" header once a
 // result is showing (CSS .report-open); restore the entry when off.
