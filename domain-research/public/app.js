@@ -2121,7 +2121,52 @@ function aoOwnerLine(o, domain) {
   const others = Array.isArray(o.domains) ? o.domains.filter((x) => x !== domain) : [];
   const seen = others.length ? `<div class="ao-notes muted">also won by this handle: ${others.slice(0, 8).map((x) => escapeHtml(x)).join(', ')}${others.length > 8 ? ` +${others.length - 8}` : ''}</div>` : '';
   const notes = o.notes ? `<div class="ao-notes muted">${escapeHtml(o.notes)}</div>` : '';
-  return `<div class="ao-known"><span class="ao-key">🔑</span> won by ${handle} ${who}${ev}${seen}${notes}</div>`;
+  // Inline "identify / edit" — map this handle to a real owner and save it to the registry
+  // (domain_research_auction_owners) right from the report, no tab-hop.
+  const edit = `<button type="button" class="ao-edit-btn" data-ao-edit="1" data-mkt="${escapeHtml(o.marketplace || 'namecheap')}" data-handle="${escapeHtml(o.handle || '')}" data-domain="${escapeHtml(domain)}" data-name="${escapeHtml(o.owner_name || '')}" data-type="${escapeHtml(o.owner_type || '')}" data-conf="${escapeHtml(o.confidence || 'likely')}" data-notes="${escapeHtml(o.notes || '')}" data-ev="${escapeHtml(o.evidence_url || '')}">✎ ${o.owner_name ? 'Edit' : 'Identify owner'}</button>`;
+  return `<div class="ao-known"><span class="ao-key">🔑</span> won by ${handle} ${who}${ev} ${edit}${seen}${notes}</div>`;
+}
+// Inline editor to map an auction handle → a real owner, saved to the registry.
+function aoRenderEditor(d) {
+  const el = els.auctionOwner; if (!el) return;
+  const opt = (v, cur) => `<option value="${v}"${v === cur ? ' selected' : ''}>${v || '—'}</option>`;
+  el.innerHTML =
+    `<div class="ao-head"><span class="ao-ico">🏷️</span><strong>Identify owner</strong>`
+    + `<span class="muted ao-hint">handle <code>${escapeHtml(d.handle)}</code> → who is this? (saved across every name they won)</span></div>`
+    + `<div class="ao-editor" data-mkt="${escapeHtml(d.mkt)}" data-handle="${escapeHtml(d.handle)}" data-domain="${escapeHtml(d.domain)}" style="display:flex;flex-direction:column;gap:8px;margin-top:8px">`
+    + `<input id="ao-e-name" type="text" placeholder="Owner name (real person or company)" value="${escapeHtml(d.name || '')}" style="padding:8px 10px;border:1px solid var(--line);border-radius:8px;font-size:14px">`
+    + `<div style="display:flex;gap:8px;flex-wrap:wrap">`
+    + `<select id="ao-e-type" style="flex:1;min-width:120px;padding:8px 10px;border:1px solid var(--line);border-radius:8px">${opt('', d.type)}${opt('person', d.type)}${opt('company', d.type)}</select>`
+    + `<select id="ao-e-conf" style="flex:1;min-width:120px;padding:8px 10px;border:1px solid var(--line);border-radius:8px">${opt('likely', d.conf)}${opt('confirmed', d.conf)}</select>`
+    + `</div>`
+    + `<input id="ao-e-ev" type="url" placeholder="Evidence URL (optional — a link that proves it)" value="${escapeHtml(d.ev || '')}" style="padding:8px 10px;border:1px solid var(--line);border-radius:8px;font-size:14px">`
+    + `<input id="ao-e-notes" type="text" placeholder="Notes (optional)" value="${escapeHtml(d.notes || '')}" style="padding:8px 10px;border:1px solid var(--line);border-radius:8px;font-size:14px">`
+    + `<div style="display:flex;gap:8px;align-items:center"><button type="button" id="ao-e-save" class="sr-btn" style="background:var(--coral-deep);color:#fff;border:none;padding:8px 16px;border-radius:8px;font-weight:700;cursor:pointer">Save owner</button><button type="button" id="ao-e-cancel" class="sr-btn" style="background:transparent;border:1px solid var(--line);padding:8px 14px;border-radius:8px;cursor:pointer">Cancel</button><span id="ao-e-status" class="muted" style="font-size:12px"></span></div>`
+    + `</div>`;
+  el.hidden = false;
+  const name = document.getElementById('ao-e-name'); if (name) name.focus();
+}
+async function aoSaveEditor() {
+  const box = els.auctionOwner && els.auctionOwner.querySelector('.ao-editor'); if (!box) return;
+  const val = (id) => { const e = document.getElementById(id); return e ? String(e.value || '').trim() : ''; };
+  const owner_name = val('ao-e-name');
+  const domain = box.dataset.domain;
+  const status = document.getElementById('ao-e-status');
+  if (!owner_name) { if (status) status.textContent = 'Enter an owner name.'; return; }
+  const saveBtn = document.getElementById('ao-e-save'); if (saveBtn) saveBtn.disabled = true;
+  if (status) status.textContent = 'Saving…';
+  try {
+    const res = await fetch('/research/api/auction-owners', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ action: 'save', marketplace: box.dataset.mkt || 'namecheap', handle: box.dataset.handle, domain,
+        owner_name, owner_type: val('ao-e-type') || null, confidence: val('ao-e-conf') || 'likely', evidence_url: val('ao-e-ev') || null, notes: val('ao-e-notes') || null }),
+    });
+    if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error(j.error || `Save failed (${res.status})`); }
+    loadAuctionOwner(domain); // refresh the card with the newly-identified owner
+  } catch (e) {
+    if (status) status.textContent = e.message || 'Save failed.';
+    if (saveBtn) saveBtn.disabled = false;
+  }
 }
 function renderAuctionOwner(domain, owners, opts = {}) {
   const el = els.auctionOwner;
@@ -2157,6 +2202,17 @@ function renderAuctionOwner(domain, owners, opts = {}) {
       + `<span class="muted ao-hint">auto-detected winning bidder — surfaces across every name the same handle won</span></div>`
     + `<div class="ao-list">${rows}</div>`;
   el.hidden = false;
+  // Delegated: open the inline identify/edit editor, or save/cancel it (bound once).
+  if (!el.dataset.editBound) {
+    el.dataset.editBound = '1';
+    el.addEventListener('click', (e) => {
+      const edit = e.target.closest && e.target.closest('[data-ao-edit]');
+      if (edit) { e.preventDefault(); aoRenderEditor({ ...edit.dataset, mkt: edit.dataset.mkt }); return; }
+      if (e.target.closest && e.target.closest('#ao-e-save')) { e.preventDefault(); aoSaveEditor(); return; }
+      const cancel = e.target.closest && e.target.closest('#ao-e-cancel');
+      if (cancel) { e.preventDefault(); const box = el.querySelector('.ao-editor'); loadAuctionOwner((box && box.dataset.domain) || el.dataset.domain || ''); }
+    });
+  }
 }
 // Load (and optionally auto-detect) the auction handle for this domain. `detect`
 // is passed only when a Namecheap sale exists (from the NameBio venue), so we only
