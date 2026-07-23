@@ -661,9 +661,26 @@ function cmdkDomainTools() {
   return DOMAIN_MODULES.filter((m) => canModule(currentUser, m.perm))
     .map((m) => ({ kind: 'domain', label: m.label, icon: m.icon, tool: m.tool, run: m.run }));
 }
-// Every accessible nav destination, read LIVE from the DOM (topbar sections + every
-// sub-tab), so it always mirrors what the user can actually reach — no separate registry
-// to keep in sync. Permission-hidden items carry `hidden`; we skip those.
+// The Admin + Deals SUB-tabs live in the separate admin (Next.js) app, so they're NOT in
+// this SPA's DOM — enumerate them here (gated below by their section's topbar visibility, so
+// they only appear when the user can enter that section). Reports/SNAP sub-tabs ARE research
+// nav-btns, so those come from the DOM below and don't need listing here.
+const CMDK_CROSS_APP = [
+  { section: 'admin', label: 'Admin · Sources', href: '/admin' },
+  { section: 'admin', label: 'Admin · Configuration', href: '/admin/config' },
+  { section: 'admin', label: 'Admin · Schedule', href: '/admin/schedule' },
+  { section: 'admin', label: 'Admin · Users', href: '/admin/users' },
+  { section: 'admin', label: 'Admin · Imports', href: '/admin/imports' },
+  { section: 'admin', label: 'Admin · Lessons', href: '/research/admin' },
+  { section: 'deals', label: 'Deals · Board', href: '/deals' },
+  { section: 'deals', label: 'Deals · List', href: '/deals/list' },
+  { section: 'deals', label: 'Deals · Buy-Side Inquiries', href: '/deals/inquiries' },
+  { section: 'deals', label: 'Deals · Reporting', href: '/deals/reports' },
+];
+// Every accessible nav destination, read LIVE from the DOM (topbar sections + every sub-tab)
+// PLUS the cross-app Admin/Deals tabs above — so the palette mirrors what the user can reach.
+// Permission-hidden DOM items carry `hidden`; cross-app tabs are gated by their section's
+// topbar link visibility (which checkAuth already permission-gates).
 function cmdkNavDests() {
   const out = []; const seen = new Set();
   const push = (el, icon) => {
@@ -675,6 +692,14 @@ function cmdkNavDests() {
   };
   document.querySelectorAll('.topbar__nav a').forEach((a) => push(a, '▸'));
   document.querySelectorAll('.nav-btn').forEach((a) => push(a, '·'));
+  // Cross-app tabs (no DOM element) — full-nav on select; gated by section topbar visibility.
+  const sectionOpen = { admin: els.topbarAdmin, snap: els.topbarSnap, reports: els.topbarReports, deals: els.topbarDeals };
+  for (const d of CMDK_CROSS_APP) {
+    const topbar = sectionOpen[d.section];
+    if (!topbar || topbar.hidden || seen.has(d.href)) continue;
+    seen.add(d.href);
+    out.push({ kind: 'nav', label: d.label, icon: '▸', href: d.href, el: null });
+  }
   return out.filter((d) => d.label);
 }
 // Rank a label against the query: exact prefix > word-prefix > substring > subsequence.
