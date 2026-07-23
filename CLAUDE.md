@@ -890,6 +890,17 @@ partitions (independent refresh); write `update_<tld>.sh` + a cron for periodic 
 (esp. `.com`); the live-resolve path is now robust but only a fallback — loaded TLDs
 answer from the index.
 
+**BACKLOG — marketplace verification-token → owner triangulation (Rob, 2026-07-23).** Marketplaces
+issue a UNIQUE per-account verification string that the owner must publish as a DNS **TXT record** to
+list a domain — e.g. Afternic's `afternic-verification-<accountToken>` (same token across ALL of that
+owner's listed domains). Same idea for a unique verifying **nameserver** an owner sets to prove
+control. So a single known token (or NS) → every domain that owner listed, INCLUDING names they've
+since moved elsewhere but whose stale TXT record survives. Play: harvest the TXT/NS records for a
+seed domain we know the owner of, extract the marketplace verification token, then reverse-search
+that token across our zone/DNS corpus (and live DNS) to surface the owner's whole footprint. Strong
+signal for Nameserver Search / Domain Owner triangulation. Not built — needs a TXT store or live-TXT
+sweep + a token→domains reverse index (the zone DB holds NS, not TXT today).
+
 ---
 
 # Beeper — RDAP drop watcher (adaptive cadence, 2026-06-12)
