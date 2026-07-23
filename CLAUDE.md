@@ -704,6 +704,16 @@ one box: type a **domain** (has a dot) → the domain tools, to run that name in
   Appraise to the top. Live-filters on `input`; ↑↓/Enter over the filtered `cmdkView`.
 - A domain tool chosen in search mode runs for the `activeDomain` (or just opens the tool if none).
   Cache-bust `?v=20260722cmdk`.
+- **Focus the lookup field on a ⌘K jump (2026-07-23).** After a ⌘K jump the cursor now lands in
+  the tool's main lookup field so you can type immediately. Two fixes in `runCmdkItem` +
+  `focusActiveLookup` (`?v=20260723cmdkfocus2`): (1) a domain tool picked **by name** (search
+  mode, no domain typed) now OPENS the tool + focuses its field instead of silently re-running on
+  a stale `activeDomain` (which left the field un-focused); only a REAL typed domain runs the
+  tool. (2) `focusActiveLookup(preferId)` prefers the tool's known field via `TOOL_INPUT`
+  (research→`domain`, whois→`whois-domain`, appraisal→`ap-domain`, trademark→`tm-query`,
+  dbscreen→`db-domain`, nameserver→`ns-domain`, beeper→`beeper-domain`), scans `<textarea>` too
+  (the Owner field is a textarea — the old input-only scan could never focus it), and retries a
+  few frames since the view paints a beat after the nav click.
 
 ## Notification bell — cross-app deep-links + wrapping (2026-07-23)
 

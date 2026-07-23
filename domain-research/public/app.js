@@ -741,15 +741,32 @@ function openCmdk() {
   els.cmdkDomain.focus(); els.cmdkDomain.select();
 }
 function closeCmdk() { if (els.cmdk) els.cmdk.hidden = true; }
+// A domain tool's id → its MAIN lookup field, so a ⌘K jump lands the cursor on the RIGHT
+// field. Needed because some views also have a "recent runs" search box, and the Owner
+// tool's field is a <textarea> (which the generic input scan below would miss).
+const TOOL_INPUT = {
+  research: 'domain', whois: 'whois-domain', appraisal: 'ap-domain', trademark: 'tm-query',
+  dbscreen: 'db-domain', nameserver: 'ns-domain', beeper: 'beeper-domain',
+};
+function isFocusable(el) {
+  return !!el && el.offsetParent !== null && !el.disabled && !el.readOnly;
+}
 // After an in-SPA jump, drop the cursor into the tool's main lookup field so the user can type
-// immediately (no click needed). Focuses the first visible, editable text input in the content
-// area (skips the topbar / the palette itself).
-function focusActiveLookup() {
-  setTimeout(() => {
-    const inputs = Array.from(document.querySelectorAll('input[type="text"], input[type="search"], input:not([type])'));
-    const el = inputs.find((i) => i.offsetParent !== null && !i.disabled && !i.readOnly && !i.closest('#cmdk') && !i.closest('.topbar'));
-    if (el) { el.focus(); try { el.select(); } catch { /* not selectable */ } }
-  }, 90);
+// immediately (no click needed). Prefers the tool's known field id; otherwise the first visible
+// editable text field (incl. <textarea>) in the content area (skips the topbar / the palette).
+// Retries briefly, since the view can paint a frame after the nav click.
+function focusActiveLookup(preferId) {
+  let tries = 0;
+  const tick = () => {
+    let el = preferId ? document.getElementById(preferId) : null;
+    if (!isFocusable(el)) {
+      const fields = Array.from(document.querySelectorAll('textarea, input[type="text"], input[type="search"], input:not([type])'));
+      el = fields.find((i) => isFocusable(i) && !i.closest('#cmdk') && !i.closest('.topbar'));
+    }
+    if (el) { el.focus(); try { el.select(); } catch { /* not selectable */ } return; }
+    if (tries++ < 6) setTimeout(tick, 50); // view not painted yet — retry up to ~300ms
+  };
+  setTimeout(tick, 40);
 }
 function runCmdkItem(item) {
   if (!item) return;
@@ -757,11 +774,14 @@ function runCmdkItem(item) {
     let d;
     try { d = cleanDomainInput(els.cmdkDomain.value, { requireValid: false }); }
     catch { d = (els.cmdkDomain.value || '').trim(); }
-    const domain = looksLikeDomain(d) ? d : activeDomain; // search-mode query isn't the domain
+    const typed = looksLikeDomain(d) ? d : null; // only a REAL typed domain runs the tool
     closeCmdk();
-    if (domain) { item.run(domain); return; }
-    const btn = document.getElementById('nav-' + item.tool); // no domain → just open the tool
-    if (btn) { btn.click(); focusActiveLookup(); }
+    if (typed) { item.run(typed); return; } // domain mode → run this name in the tool
+    // Picked by NAME (search mode): open the tool + focus its field so they can just type a
+    // new name — don't silently re-run on a stale activeDomain (that left the field un-focused).
+    const btn = document.getElementById('nav-' + item.tool);
+    if (btn) btn.click();
+    focusActiveLookup(TOOL_INPUT[item.tool]);
     return;
   }
   closeCmdk();
