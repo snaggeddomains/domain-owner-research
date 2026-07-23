@@ -705,6 +705,17 @@ one box: type a **domain** (has a dot) → the domain tools, to run that name in
 - A domain tool chosen in search mode runs for the `activeDomain` (or just opens the tool if none).
   Cache-bust `?v=20260722cmdk`.
 
+## Notification bell — cross-app deep-links + wrapping (2026-07-23)
+
+`openNotifLink` (public/app.js) used to `pushState + route()` for EVERY non-hash link — which for
+a cross-app link (a deal notification's `/deals/<id>#comments`, an absolute app.snagged.com URL)
+just re-routed the SPA to its home (Domain Research). Fixed: resolve the link to a pathname; only
+`/research/*` routes in-place, everything else (`/deals`, `/admin`, `/reports`) does a real
+`window.location.assign` — so clicking a deal/@mention notification lands in the deal (and the
+admin deal-client scrolls to `#comments`). Also widened the dropdown (`.notif-menu`
+`width:min(440px,…)`) and forced `.notif-item-title/-body` to wrap (`white-space:normal;
+overflow-wrap:anywhere`) — long titles were getting cut off. Cache-bust `?v=20260723notif`.
+
 ## Domain data model — canonical (do not let this drift)
 
 Two domain corpora in **separate Supabase projects**; the search reads both.

@@ -2926,8 +2926,14 @@ function pushNotification({ kind, title, body, link }) {
 // → put them on the Domain Owner path and route() opens the report (no reload).
 function openNotifLink(link) {
   if (!link) return;
-  if (link.startsWith('#')) { history.pushState(null, '', '/research' + link); route(); }
-  else { history.pushState(null, '', link); route(); }
+  if (link.startsWith('#')) { history.pushState(null, '', '/research' + link); route(); return; }
+  // Resolve to a pathname (handles absolute app.snagged.com URLs like the deal links).
+  let path = link;
+  try { const u = new URL(link, window.location.origin); path = u.pathname + (u.hash || ''); } catch { /* keep raw */ }
+  // Only /research/* is THIS SPA — route it in place. Anything else (/deals, /admin, /reports)
+  // is a different app → do a REAL navigation (pushState+route would just land on the SPA home).
+  if (path.startsWith('/research')) { history.pushState(null, '', path); route(); }
+  else { window.location.assign(link); }
 }
 async function markNotificationsRead(ids) {
   try {
