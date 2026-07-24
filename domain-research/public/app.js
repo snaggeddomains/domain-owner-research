@@ -661,10 +661,13 @@ function cmdkDomainTools() {
   return DOMAIN_MODULES.filter((m) => canModule(currentUser, m.perm))
     .map((m) => ({ kind: 'domain', label: m.label, icon: m.icon, tool: m.tool, run: m.run }));
 }
-// The Admin + Deals SUB-tabs live in the separate admin (Next.js) app, so they're NOT in
-// this SPA's DOM — enumerate them here (gated below by their section's topbar visibility, so
-// they only appear when the user can enter that section). Reports/SNAP sub-tabs ARE research
-// nav-btns, so those come from the DOM below and don't need listing here.
+// The Admin + Deals + most Reports SUB-tabs live in the separate admin (Next.js) app, so they're
+// NOT reachable from this SPA's DOM — enumerate them here (gated below by their section's topbar
+// visibility, so they only appear when the user can enter that section). This mirrors the admin
+// app's own ⌘K palette so the two are consistent — otherwise a research page couldn't find e.g.
+// "Client Overlap" (a Reports tab) even though the admin palette can. Keep in sync with the admin
+// REPORTS_TABS/SNAP_TABS (lib/permissions.ts). SNAP Eval/Bulk Eval + SNAP Opportunities/Names ARE
+// research nav-btns (in the DOM), so they come from the DOM scan below.
 const CMDK_CROSS_APP = [
   { section: 'admin', label: 'Admin · Sources', href: '/admin' },
   { section: 'admin', label: 'Admin · Configuration', href: '/admin/config' },
@@ -672,8 +675,18 @@ const CMDK_CROSS_APP = [
   { section: 'admin', label: 'Admin · Users', href: '/admin/users' },
   { section: 'admin', label: 'Admin · Imports', href: '/admin/imports' },
   { section: 'admin', label: 'Admin · Lessons', href: '/research/admin' },
+  { section: 'reports', label: 'Reports · Site analytics', href: '/reports' },
+  { section: 'reports', label: 'Reports · Marketplace Reports', href: '/reports/marketplace' },
+  { section: 'reports', label: 'Reports · Marketplace CMS', href: '/reports/marketplace-master' },
+  { section: 'reports', label: 'Reports · Chat', href: '/reports/chat' },
+  { section: 'reports', label: 'Reports · Cost & usage', href: '/reports/cost' },
+  { section: 'reports', label: 'Reports · Client Overlap', href: '/reports/client-overlap' },
+  { section: 'reports', label: 'Reports · Social Sweep', href: '/reports/social-sweep' },
+  { section: 'reports', label: 'Reports · Content', href: '/reports/content' },
+  { section: 'reports', label: 'Reports · Corporate Portfolios', href: '/research/portfolio' },
   { section: 'deals', label: 'Deals · Board', href: '/deals' },
   { section: 'deals', label: 'Deals · List', href: '/deals/list' },
+  { section: 'deals', label: 'Deals · Owners', href: '/deals/owners' },
   { section: 'deals', label: 'Deals · Buy-Side Inquiries', href: '/deals/inquiries' },
   { section: 'deals', label: 'Deals · Reporting', href: '/deals/reports' },
 ];

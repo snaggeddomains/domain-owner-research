@@ -726,6 +726,17 @@ one box: type a **domain** (has a dot) → the domain tools, to run that name in
   dbscreen→`db-domain`, nameserver→`ns-domain`, beeper→`beeper-domain`), scans `<textarea>` too
   (the Owner field is a textarea — the old input-only scan could never focus it), and retries a
   few frames since the view paints a beat after the nav click.
+- **Cross-app Reports tabs in the palette (2026-07-24).** The palette found nothing for e.g.
+  "Client Overlap" on a research page while the admin app's ⌘K did — because the admin **Reports**
+  sub-tabs live in the Next.js app (not this SPA's DOM), the research DOM's few reports links are
+  individually `[hidden]` (so the DOM scan skips them), and `CMDK_CROSS_APP` only listed Admin + Deals.
+  Fixed by enumerating the FULL Reports set in `CMDK_CROSS_APP` (Site analytics / Marketplace Reports /
+  Marketplace CMS / Chat / Cost & usage / **Client Overlap** / Social Sweep / Content / Corporate
+  Portfolios) + the missing Deals·Owners, each gated by its section's topbar visibility (like the
+  existing Admin/Deals entries). Now the research palette mirrors the admin palette's coverage. Keep
+  `CMDK_CROSS_APP` in sync with admin `REPORTS_TABS`/`SNAP_TABS` (lib/permissions.ts). SNAP Eval/Bulk
+  Eval + SNAP Opportunities/Names stay DOM-sourced (their nav-btns aren't individually hidden).
+  Cache-bust `?v=20260724cmdkreports`.
 
 ## Notification bell — cross-app deep-links + wrapping (2026-07-23)
 
