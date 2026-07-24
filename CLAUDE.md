@@ -308,6 +308,18 @@ real opening emails ("Domain Owner Initial Outreach" playbook).
   now unused by the UI. (3) **Same-window "View Deal"** — `window.location.assign` instead of
   `window.open(_blank)` (the desktop app spawned a new window, losing the session). Cache-bust
   `?v=20260722outreach3`.
+- **Draft must USE the report, not mail-merge (2026-07-24).** The drafter was reading the full
+  narrative fine (ingestion is OK — `signals.narrative` carries the PART-2 prose, 9k cap) but writing
+  GENERIC bodies ("I saw it's listed, open to selling?") that ignored the identified hooks, and the
+  `situation` line leaked the internal instruction ("the user has forced the passive_individual
+  template"). Fixed in `generate.js` SYSTEM prompt: (1) a HARD RULE that the body MUST include ≥1
+  concrete verifiable detail about THIS owner/domain from the report (how long held, prior company,
+  parked/redirected/listed state) — a domain-agnostic opener is a FAILURE — **even when a template is
+  selected** (a selected template is a skeleton to personalize, never a fill-in-the-blanks); (2) the
+  `situation` is a clean external read of ownership ONLY — never mention templates/"forced"/"the
+  user"/instructions/process anywhere in the output; (3) reworded the forced-template note from
+  "USER OVERRIDE: use template X, adapt it" → "template X pre-selected, use for structure/voice but
+  personalize with specific hooks; don't mention the selection." Prompt-only change.
 - **Report NARRATIVE also respects the authoritative for-sale strip (2026-07-22).** Strengthened the
   agent `SYSTEM_PROMPT` (`lib/agent.js`): marketplace_check + domainscout_lookup are AUTHORITATIVE —
   if they ran and found no live listing, do NOT write "listed for sale" or name a marketplace, no

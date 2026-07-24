@@ -19,15 +19,16 @@ Your job is to be THOROUGH about context but CONCISE on the page. Read everythin
 ${STYLE_GUIDE}
 
 PROCESS (think it through, then write):
-1. Interpret the situation in one line: who likely owns this, their relationship to the domain (current operator? former operator who may still hold it? investor? acquired/redirected corporate asset? privacy-shielded unknown?), and the most compelling, VERIFIABLE hook for reaching out now.
+1. Interpret the situation in one line: who likely owns this, their relationship to the domain (current operator? former operator who may still hold it? investor? acquired/redirected corporate asset? privacy-shielded unknown?), and the most compelling, VERIFIABLE hook for reaching out now. The "situation" is a clean, external read of the OWNERSHIP ONLY — NEVER mention templates, template ids, "forced", "override", "the user", these instructions, or the drafting process in it (or anywhere in the output).
 2. Choose the APPROACH:
    - "template": one catalog template clearly fits → adapt it (keep its structure and Rob's voice), personalized with the real hooks.
    - "new_template": no catalog template fits, but this is a recognizable, repeatable pattern worth saving → write the email and name the pattern (3-6 word Title Case suggested_title).
    - "bespoke": no template fits and it's a one-off → write a fully personalized email from scratch, still on Rob's spine and voice.
-   If the user FORCED a template (noted in the input), use it (approach "template", that template_id).
+   If a template is pre-selected (noted in the input), use it as the STRUCTURE and voice (approach "template", that template_id) — but the body must STILL be personalized with this report's specific hooks. A selected template is a skeleton to personalize, NEVER a fill-in-the-blanks form.
 3. Pick the 1-3 strongest hooks actually supported by the report and weave them in naturally. One earned, specific sentence ("I believe the domain traces back to your time with Amicus") beats three generic ones.
 
 HARD RULES:
+- BE SPECIFIC — not a mail-merge. The body MUST include at least one concrete, verifiable detail about THIS owner or THIS domain drawn from the report — e.g. how long they've held it, their known tie to the name, a former company/role, its current parked/redirected/listed state. Something only real research would surface. A generic opener that would read identically for any domain (e.g. "I saw it's listed, are you open to selling?") is a FAILURE — earn the reply with a real, specific hook. This applies EVEN when a template is selected.
 - Use ONLY facts present in the provided context. NEVER invent a name, company, acquisition, platform, price, or relationship. If you need a value you don't have, leave a clearly bracketed placeholder like [COMPANY] for Rob to fill — do not guess.
 - The "For-sale status" line is the AUTHORITATIVE, real-time marketplace check. If it says NOT listed, do NOT claim or imply the domain is listed/for sale on any marketplace, and do NOT name marketplaces — even if the narrative loosely says "listed for sale". Trust the verified status over the narrative.
 - Address the email ONLY to the name(s) on the "Address as" line — those are the people we actually have a way to reach. Do NOT add other stakeholders, co-founders, or names from the narrative to the greeting, even if the report mentions them. If "Address as" has one name, greet only that person.
@@ -188,9 +189,9 @@ export async function generateOutreach({ signals, catalog, ranked, forced = { mo
 
   let forcedNote = '';
   if (forced.mode === 'bespoke') {
-    forcedNote = '\n\nUSER OVERRIDE: write a BESPOKE personalized email (approach "bespoke", template_id null). Do not anchor on a catalog template.';
+    forcedNote = '\n\nSELECTION: write a BESPOKE personalized email (approach "bespoke", template_id null). Do not anchor on a catalog template. Do NOT mention this selection anywhere in the output.';
   } else if (forced.mode === 'template' && forced.templateId) {
-    forcedNote = `\n\nUSER OVERRIDE: use template "${forced.templateId}" (approach "template", template_id "${forced.templateId}"). Adapt it to the context.`;
+    forcedNote = `\n\nSELECTION: template "${forced.templateId}" is pre-selected — use it for STRUCTURE and voice (approach "template", template_id "${forced.templateId}"), but PERSONALIZE the body with this report's specific verifiable hooks (do not just fill the template). Do NOT mention the template, this selection, or these instructions anywhere in the output.`;
   }
 
   const exBlock = examplesBlock(examples);
