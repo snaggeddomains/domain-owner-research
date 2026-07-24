@@ -768,7 +768,7 @@ function isFocusable(el) {
 // immediately (no click needed). Prefers the tool's known field id; otherwise the first visible
 // editable text field (incl. <textarea>) in the content area (skips the topbar / the palette).
 // Retries briefly, since the view can paint a frame after the nav click.
-function focusActiveLookup(preferId) {
+function focusActiveLookup(preferId, maxTries = 6, intervalMs = 50) {
   let tries = 0;
   const tick = () => {
     let el = preferId ? document.getElementById(preferId) : null;
@@ -777,10 +777,21 @@ function focusActiveLookup(preferId) {
       el = fields.find((i) => isFocusable(i) && !i.closest('#cmdk') && !i.closest('.topbar'));
     }
     if (el) { el.focus(); try { el.select(); } catch { /* not selectable */ } return; }
-    if (tries++ < 6) setTimeout(tick, 50); // view not painted yet — retry up to ~300ms
+    if (tries++ < maxTries) setTimeout(tick, intervalMs);
   };
   setTimeout(tick, 40);
 }
+// A ⌘K jump that FULL-NAVIGATES to the research app (cross-app, or a /research/* href) reloads the
+// page, so the in-SPA focusActiveLookup can't run. We stash a one-shot intent in sessionStorage
+// (same-origin app.snagged.com, so it survives the nav from the admin app too) and, on boot, focus
+// the landing view's lookup field once it paints. Poll longer here — auth + first render is async.
+function cmdkBootFocus() {
+  try {
+    if (sessionStorage.getItem('cmdkFocus')) { sessionStorage.removeItem('cmdkFocus'); focusActiveLookup(null, 60, 100); }
+  } catch { /* sessionStorage blocked — ignore */ }
+}
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', cmdkBootFocus);
+else cmdkBootFocus();
 function runCmdkItem(item) {
   if (!item) return;
   if (item.kind === 'domain') {
@@ -799,7 +810,12 @@ function runCmdkItem(item) {
   }
   closeCmdk();
   if (item.el) { item.el.click(); focusActiveLookup(); } // in-SPA tab → focus its lookup field
-  else if (item.href) window.location.assign(item.href); // cross-app → full nav (reloads)
+  else if (item.href) {
+    // Full nav reloads the page — if we're landing on the research app, leave a one-shot flag so
+    // the boot handler focuses the lookup field there (the in-SPA focus can't survive the reload).
+    try { if (/^\/research(\/|$|\?|#)/.test(item.href)) sessionStorage.setItem('cmdkFocus', '1'); } catch { /* ignore */ }
+    window.location.assign(item.href);
+  }
 }
 // Collapse a tool's hero+search into the compact "<seed> <label>" header once a
 // result is showing (CSS .report-open); restore the entry when off.

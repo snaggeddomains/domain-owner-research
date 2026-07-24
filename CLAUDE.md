@@ -737,6 +737,15 @@ one box: type a **domain** (has a dot) → the domain tools, to run that name in
   `CMDK_CROSS_APP` in sync with admin `REPORTS_TABS`/`SNAP_TABS` (lib/permissions.ts). SNAP Eval/Bulk
   Eval + SNAP Opportunities/Names stay DOM-sourced (their nav-btns aren't individually hidden).
   Cache-bust `?v=20260724cmdkreports`.
+- **Focus the lookup after a ⌘K jump that RELOADS onto research (2026-07-24).** The in-SPA
+  `focusActiveLookup` can't survive a full page reload, so a ⌘K selection that full-navigates onto
+  the research app (a `/research/*` cross-app href, OR a jump from the ADMIN app's palette) landed
+  with no cursor in the search bar. Fix: a one-shot `sessionStorage['cmdkFocus']` flag (same-origin
+  `app.snagged.com`, so it survives admin→research) — `runCmdkItem` sets it before a `/research`
+  `window.location.assign`; the admin `command-palette.tsx` sets it before its `/research` assign;
+  and `cmdkBootFocus()` (run at DOMContentLoaded) consumes the flag and calls `focusActiveLookup`
+  with a LONGER poll (60×100ms — auth + first render is async). `focusActiveLookup` gained
+  `(preferId, maxTries, intervalMs)`. Cache-bust `?v=20260724cmdkfocus3`.
 
 ## Notification bell — cross-app deep-links + wrapping (2026-07-23)
 
