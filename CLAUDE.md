@@ -997,21 +997,30 @@ window — the owner let them lapse (a restore is deliberately expensive), so th
 to drop and cheap to grab. Sam's ask: "Status = redemption period," stay away from domain
 investors. Reuses Beeper's RDAP + adaptive cadence; **no new vendor/env key**.
 
-- **Curation** `lib/expiring/candidates.js` `curateSlice`: keyset-pages the `.ai` zone
-  (`zone_domains`, tld='ai', ~1.08M rows) in slices, keeping only clean one-word
-  (`/^[a-z]+$/`, len 3–12) **dictionary** SLDs (`filterDictionaryWords` batch) whose NS
-  are **non-parked** (`classifyPair(...).generic` = the investor tell → flagged `parked`,
-  hidden from the report by default). Cursor persisted in `domain_research_expiring_ai_meta`;
-  wraps at the end to pick up newly-loaded names. Upserts `insertCandidate` (ON CONFLICT DO
-  NOTHING — never clobbers learned scan state). Tunable `EXPIRING_AI_MIN_LEN`/`_MAX_LEN`.
+- **Curation = DICTIONARY-driven, NOT zone-driven** `lib/expiring/candidates.js` `curateSlice`:
+  keyset-pages the naming `english_words` table, enumerating good one-word `<word>.ai`
+  (`/^[a-z]+$/`, len 3–12) as candidates (`insertCandidate`, ON CONFLICT DO NOTHING). **Why not
+  the zone:** a name in redemption/pending-delete has been REMOVED from the `.ai` zone (delegation
+  pulled when it lapses), so curating from `zone_domains` structurally MISSES exactly the names
+  this report exists to find (rica.ai/dealt.ai — expired, in redemption, gone from the zone). So we
+  build our OWN candidate universe from the dictionary and let RDAP discover each name's real
+  status. Cursor (a word) persisted in `domain_research_expiring_ai_meta`; wraps at the end.
+  Tunable `EXPIRING_AI_MIN_LEN`/`_MAX_LEN`.
 - **Adaptive scan** `lib/expiring/scan.js` `scanDue`: pulls the STALEST candidates
   (`last_checked` nulls-first), `isDue`-filters via **Beeper's `checkIntervalMs`** (cadence.js
-  reads a candidate row's `expiration`+`last_status`), RDAP-checks the due ones (`rdapStatus`),
-  writes back status + **captures `expiration`** so far-out names are only re-scanned rarely
-  (Rob's note: we know each name's expiry, only re-scan the ones getting close). Detects the
-  transition INTO redemption (`redemption.js` `inRedemptionWindow` = redemption OR
-  pending-delete ONLY — pending-RESTORE/auto-renew are the owner reclaiming, NOT a drop) and
-  returns freshly-entered (non-parked) names to alert.
+  reads a candidate row's `expiration`+`last_status`), RDAP-checks the due ones (`rdapStatus` —
+  now also returns `nameservers`), writes back status + **captures `expiration`** so far-out names
+  are only re-scanned rarely (Rob's note: we know each name's expiry, only re-scan the ones getting
+  close). **Unregistered (404/available) dictionary names re-check only WEEKLY** (`dueForCandidate`)
+  so the scan doesn't hammer nic.ai's RDAP on tens of thousands of empty words. Detects the
+  transition INTO redemption (`redemption.js` `inRedemptionWindow` = redemption OR pending-delete
+  ONLY — pending-RESTORE/auto-renew are the owner reclaiming, NOT a drop) and returns freshly-
+  entered names to alert.
+- **`parked` is INFO, not a default filter.** Computed from the live RDAP nameservers
+  (`looksParked` = `classifyPair(...).generic`), but the report SHOWS ALL redemption names by
+  default — a lapsing name sits on registrar-default DNS (registrar-servers/domaincontrol) which
+  the generic-NS test flags, and hiding those would hide most good drops (rica.ai is on Namecheap
+  default DNS). `?hideParked=1` is an OPTIONAL filter for the few on true investor-parking NS.
 - **Scan/curate cron** `api/cron/expiring-ai.js` (vercel.json `*/10 * * * *`, CRON_SECRET): curate a
   slice + scan due + fire an in-app **bell** (only) to `expiring`/admin users when good names enter
   redemption. Query knobs `?curate=N&scan=N&nocurate&noscan` for backfill/tuning.
@@ -1023,7 +1032,8 @@ investors. Reuses Beeper's RDAP + adaptive cadence; **no new vendor/env key**.
   cron is bell-only) so rob (admin) isn't double-emailed. **No Slack yet** — Slack lives in the
   admin project; a pending follow-up if wanted.
 - **API** `api/expiring.js` (gated `expiring`): `GET` → `{configured, stats, rows}` (in-redemption
-  or dropped, parked excluded; `?parked=1`/`?dismissed=1` to include); `POST {action:dismiss|undismiss, domain}`.
+  or dropped, ALL shown; `?hideParked=1` to hide investor-parking NS, `?dismissed=1` to include
+  dismissed); `POST {action:dismiss|undismiss, domain}`.
 - **DB** `lib/db/expiringAi.js` + table `domain_research_expiring_ai` (domain pk, sld, nameservers[],
   parked, expiration, last_status[], in_redemption, redemption_since, available, last_checked,
   emailed_at, dismissed) — RLS auto-enabled by the `domain_research_%` loop.
@@ -1037,8 +1047,10 @@ investors. Reuses Beeper's RDAP + adaptive cadence; **no new vendor/env key**.
 - **Permission:** `research.expiring` in snagged-admin `dashboard/lib/permissions.ts` (MODULES +
   SNAP_TABS + CATALOG group SNAP; stored flat as `expiring`). Grant per-user; admins auto-pass.
 - **One-time setup:** run `supabase/migrations/0013_expiring_ai.sql` on the research project.
-  Needs the `.ai` zone loaded (`zone_domains_ai`, already live) + naming `english_words` (already).
-  Coverage fills in gradually as the cron curates the zone + learns each name's expiration.
+  Needs the naming `english_words` table (already live) — NOT the zone. Coverage fills in as the
+  cron enumerates the dictionary (a few hours to seed all candidates) then RDAP-learns each name's
+  status/expiration (first full pass ~1–2 days, paced to respect nic.ai RDAP; then steady-state is
+  cheap — only near-expiry names re-check often). Force early: `GET /research/api/cron/expiring-ai?curate=5000&scan=800` with the CRON_SECRET bearer.
 
 ---
 

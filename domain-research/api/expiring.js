@@ -57,11 +57,11 @@ export default async function handler(req, res) {
   }
 
   if (!isConfigured()) { res.status(200).json({ configured: false, stats: null, rows: [] }); return; }
-  const includeParked = req.query.parked === '1';
+  const hideParked = req.query.hideParked === '1';
   const includeDismissed = req.query.dismissed === '1';
   try {
     const [rows, st] = await Promise.all([
-      redemptionList({ includeParked, includeDismissed }),
+      redemptionList({ hideParked, includeDismissed }),
       stats(),
     ]);
     res.status(200).json({ configured: true, stats: st, rows: rows.map(shape) });

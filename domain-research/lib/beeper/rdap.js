@@ -67,13 +67,16 @@ export async function rdapStatus(domain) {
     if (r.code === 200 && r.data) {
       const statuses = [...new Set((r.data.status || []).map((s) => String(s).toLowerCase().trim()))].sort();
       const exp = (r.data.events || []).find((e) => e && e.eventAction === 'expiration');
-      return { ok: true, code: 200, available: false, statuses, expiration: (exp && exp.eventDate) || null, source: url };
+      const nameservers = [...new Set((r.data.nameservers || [])
+        .map((n) => String((n && (n.ldhName || n.name)) || '').toLowerCase().replace(/\.+$/, '').trim())
+        .filter(Boolean))];
+      return { ok: true, code: 200, available: false, statuses, expiration: (exp && exp.eventDate) || null, nameservers, source: url };
     }
     // 404 (and some registries' 200-with-notfound) → not registered → available.
-    if (r.code === 404) return { ok: true, code: 404, available: true, statuses: [], expiration: null, source: url };
+    if (r.code === 404) return { ok: true, code: 404, available: true, statuses: [], expiration: null, nameservers: [], source: url };
     // 429 / 5xx / network → try the next endpoint.
   }
-  return { ok: false, code: null, available: null, statuses: [], expiration: null, source: null };
+  return { ok: false, code: null, available: null, statuses: [], expiration: null, nameservers: [], source: null };
 }
 
 // Is the domain IN the deletion/expiry pipeline (heading toward a possible drop)?

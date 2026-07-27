@@ -48,8 +48,10 @@ export async function updateCandidate(domain, patch) {
 }
 
 // The report: names currently in the redemption/delete window (or just dropped),
-// freshest first, excluding dismissed + parked (investor-held) by default.
-export async function redemptionList({ includeParked = false, includeDismissed = false, limit = 200 } = {}) {
+// freshest first. Shows ALL by default — a lapsing name that sits on registrar-
+// default DNS (or any parking host) is being ABANDONED, so we don't hide it;
+// `hideParked` is an OPTIONAL filter for the handful truly on investor-parking NS.
+export async function redemptionList({ hideParked = false, includeDismissed = false, limit = 200 } = {}) {
   if (!isDbConfigured()) return [];
   let q = getDb()
     .from(T)
@@ -58,7 +60,7 @@ export async function redemptionList({ includeParked = false, includeDismissed =
     .order('redemption_since', { ascending: false, nullsFirst: false })
     .limit(Math.min(limit, 500));
   if (!includeDismissed) q = q.eq('dismissed', false);
-  if (!includeParked) q = q.eq('parked', false);
+  if (hideParked) q = q.eq('parked', false);
   const { data, error } = await q;
   if (error) return [];
   return data || [];
@@ -78,7 +80,6 @@ export async function unemailedRedemption({ limit = 200 } = {}) {
     .from(T)
     .select('domain,sld,expiration,last_status,redemption_since,available')
     .eq('in_redemption', true)
-    .eq('parked', false)
     .eq('dismissed', false)
     .is('emailed_at', null)
     .order('redemption_since', { ascending: false, nullsFirst: false })
@@ -104,7 +105,7 @@ export async function stats() {
   const db = getDb();
   const [tot, red, uns] = await Promise.all([
     db.from(T).select('domain', { count: 'exact', head: true }),
-    db.from(T).select('domain', { count: 'exact', head: true }).eq('in_redemption', true).eq('parked', false),
+    db.from(T).select('domain', { count: 'exact', head: true }).eq('in_redemption', true),
     db.from(T).select('domain', { count: 'exact', head: true }).is('last_checked', null),
   ]);
   return { total: tot.count || 0, in_redemption: red.count || 0, unscanned: uns.count || 0 };

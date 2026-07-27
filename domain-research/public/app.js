@@ -10728,7 +10728,7 @@ function expiringRender(rows) {
 }
 async function expiringLoad() {
   if (!els.expiringResult) return;
-  const parked = els.xpParked && els.xpParked.checked ? '&parked=1' : '';
+  const parked = els.xpParked && els.xpParked.checked ? '&hideParked=1' : '';
   els.expiringResult.innerHTML = `<div class="tc-loading muted"><span class="ev-spinner"></span> Loading…</div>`;
   try {
     const res = await fetch(`/research/api/expiring?_=${Date.now()}${parked}`);
