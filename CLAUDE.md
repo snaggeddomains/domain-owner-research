@@ -336,6 +336,21 @@ real opening emails ("Domain Owner Initial Outreach" playbook).
   context line + a HARD RULE telling the drafter to trust the verified status over the narrative
   (don't claim/name marketplaces when NOT listed). `classify.js` `listed_for_sale` still scores
   `domainInvestor` (4) so a true investor still pitches as one — just without the false listing.
+- **For-sale fix pt.2 — the strip result wasn't reaching outreach (2026-07-27).** The 2026-07-22 fix
+  only works if a `domainscout_lookup`/`marketplace_check` trace is in the SAVED run — but the report's
+  "For sale" strip is a LIVE client-side call, so its authoritative "Not listed (10 checked)" result is
+  NOT in `run.report.trace` that `extractSignals` reads. With no authoritative trace, the narrative
+  fallback fired and (because it only needed a marketplace NAME + a for-sale word anywhere in the whole
+  doc) wrongly claimed **arc.com "listed for sale on GoDaddy"** — GoDaddy was just the registrar / a
+  lookup link, and the strip said NOT listed. Two fixes: (1) `api/outreach.js` `withForSaleTrace` runs
+  the SAME authoritative check (`domainscout_lookup`, fallback `marketplace_check`, `track:false`,
+  skips a `pending` DomainScout) fresh and INJECTS it as a trace before `extractSignals` — so
+  `verifiedNotListed` is set like the strip shows. (2) `signals.js` narrative fallback now requires the
+  marketplace name + for-sale phrase in the **SAME sentence** (`MARKETPLACE_TEST`/`FORSALE_PHRASE_RE`),
+  since these hosts are also registrars and doc-wide co-occurrence isn't a listing. Validated: arc.com
+  → `listed:false, verifiedNotListed:true`; a genuine one-sentence "listed for sale on Afternic" still
+  → `listed:true`. **NB the drafter DOES use the report context** (acquisition, redirect, etc. were all
+  real) — this only stops the fabricated for-sale hook.
 
 ---
 

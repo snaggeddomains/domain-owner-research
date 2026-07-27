@@ -8,6 +8,34 @@ import { listTemplates, createTemplate } from '../lib/db/outreachTemplates.js';
 import { listExamples } from '../lib/db/outreachExamples.js';
 import { mineOutreachExamples, relevantExamples } from '../lib/outreach/mine.js';
 import { withCategory } from '../lib/db/usage.js';
+import { runTool } from '../lib/sources/index.js';
+
+// The report's "For sale" strip is a LIVE client-side call, so its authoritative
+// "not listed" result isn't in the saved run trace that extractSignals reads — which
+// let the narrative fallback wrongly infer "listed for sale on <marketplace>" (e.g.
+// arc.com: strip says "Not listed (10 checked)", yet the draft claimed GoDaddy). Run
+// the SAME authoritative check now and inject it as a trace so `verifiedNotListed` is
+// set correctly and the drafter's hard rule kicks in. Best-effort; leaves the run
+// untouched on any failure or if the trace already carries an authoritative check.
+async function withForSaleTrace(run, env) {
+  const report = (run && run.report) || {};
+  const trace = Array.isArray(report.trace) ? [...report.trace] : [];
+  if (trace.some((t) => t && (t.tool === 'domainscout_lookup' || t.tool === 'marketplace_check') && t.data)) return run;
+  const domain = (run && run.domain) || '';
+  if (!domain) return run;
+  for (const tool of ['domainscout_lookup', 'marketplace_check']) {
+    try {
+      const r = await runTool(tool, { domain, track: false }, env);
+      if (!r || !r.ok || !r.data) continue;
+      // Don't trust a DomainScout result that hasn't been scanned yet (pending) — it
+      // reports for_sale:false with no data, which would falsely read as "not listed".
+      if (tool === 'domainscout_lookup' && r.data.pending) continue;
+      trace.push({ tool, data: JSON.stringify(r.data) });
+      return { ...run, report: { ...report, trace } };
+    } catch { /* try the next / leave as-is */ }
+  }
+  return run;
+}
 
 // Owner-outreach draft generator for a finished report.
 //   POST { run_id, scenario_id? }            -> draft (auto-selected, or forced to
@@ -78,7 +106,8 @@ export default async function handler(req, res) {
     res.status(404).json({ error: 'Run not found' });
     return;
   }
-  const signals = extractSignals(run.report || {}, run.domain || '');
+  const runFS = await withForSaleTrace(run, process.env);
+  const signals = extractSignals(runFS.report || {}, run.domain || '');
 
   // ── Save a custom template ────────────────────────────────────────────────
   if (body.action === 'save_template') {

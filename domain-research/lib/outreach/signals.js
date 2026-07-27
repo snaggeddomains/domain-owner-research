@@ -8,6 +8,8 @@
 import { extractReportJson, summarizeReport } from '../reportSummary.js';
 
 const MARKETPLACE_RE = /\b(afternic|godaddy|dan\.com|\bdan\b|sedo|atom\.com|\batom\b|squadhelp|namecheap market|sav\.com|efty|brandbucket|dynadot)\b/gi;
+const MARKETPLACE_TEST = new RegExp(MARKETPLACE_RE.source, 'i');   // non-global, for .test() in a loop
+const FORSALE_PHRASE_RE = /\b(listed|for sale|asking|buy now|make offer)\b/i;
 
 function hostOf(url) {
   try {
@@ -100,9 +102,16 @@ export function extractSignals(report, domain = '') {
   if (!listed && !checkedNotListed) {
     if (ownerType === 'domain_investor' || ownerType === 'marketplace_only') listed = true;
     if (!platforms.length) {
-      const m = narrative.match(MARKETPLACE_RE);
-      if (m && /\b(listed|for sale|asking|buy now|make offer)\b/i.test(narrative)) {
-        platforms.push(...m.map((x) => x.replace(/\.com$/i, '')));
+      // Require a marketplace name and a for-sale phrase in the SAME sentence — not just
+      // both present somewhere in the narrative. Otherwise a report that merely names
+      // GoDaddy/Dynadot (registrar links) and, separately, says the name is NOT for sale
+      // reads as "listed on GoDaddy" (the arc.com false positive). Marketplaces here are
+      // also registrars, so co-occurrence across the whole doc is not enough.
+      const hitSentence = narrative
+        .split(/[.!?\n]+/)
+        .find((s) => MARKETPLACE_TEST.test(s) && FORSALE_PHRASE_RE.test(s));
+      if (hitSentence) {
+        platforms.push(...(hitSentence.match(MARKETPLACE_RE) || []).map((x) => x.replace(/\.com$/i, '')));
         listed = true;
       }
     }
