@@ -54,9 +54,10 @@ export async function updateCandidate(domain, patch) {
   }
 }
 
-// The report: names currently in the redemption/delete window (or just dropped),
-// freshest first. Shows ALL by default — a lapsing name that sits on registrar-
-// default DNS (or any parking host) is being ABANDONED, so we don't hide it;
+// The report: names currently IN the redemption / pending-delete window, freshest
+// first. We deliberately do NOT show `available`/dropped names — those are either
+// already gone (register them directly) or a gated dictionary word whose .ai was
+// simply never registered; neither is what this "about to drop" report is for.
 // `hideParked` is an OPTIONAL filter for the handful truly on investor-parking NS.
 export async function redemptionList({ hideParked = false, includeDismissed = false, limit = 200 } = {}) {
   if (!isDbConfigured()) return [];
@@ -64,7 +65,7 @@ export async function redemptionList({ hideParked = false, includeDismissed = fa
     let q = getDb()
       .from(T)
       .select(cols)
-      .or('in_redemption.eq.true,available.eq.true')
+      .eq('in_redemption', true)
       .order('redemption_since', { ascending: false, nullsFirst: false })
       .limit(Math.min(limit, 500));
     if (!includeDismissed) q = q.eq('dismissed', false);
