@@ -1,0 +1,71 @@
+// Expiring .ai — the SNAP "which good one-word .ai names are about to drop" report.
+// Reads the curated watchlist for names currently in the redemption / pending-delete
+// window (investor-parked names excluded by default). Gated by the `expiring` module
+// (admins auto-pass). Read-only; the cron does the scanning.
+//
+//   GET /api/expiring                → { configured, stats, rows }
+//   GET /api/expiring?parked=1        → include likely-investor (parked-NS) names
+//   GET /api/expiring?dismissed=1     → include dismissed names
+//   POST { action:'dismiss'|'undismiss', domain }
+import { isAuthed, requireUser, userCan } from '../lib/auth.js';
+import { redemptionList, stats, setDismissed, isConfigured } from '../lib/db/expiringAi.js';
+import { phaseLabel } from '../lib/expiring/redemption.js';
+
+export const config = { maxDuration: 20 };
+
+function canUse(user) {
+  return userCan(user, 'expiring') || userCan(user, 'admin');
+}
+
+// Shape a stored row for the UI (compute a phase label + days-to-expiry).
+function shape(r) {
+  const s = { ok: true, available: r.available, statuses: r.last_status || [] };
+  const exp = r.expiration ? Date.parse(r.expiration) : NaN;
+  const days = Number.isNaN(exp) ? null : Math.round((exp - Date.now()) / 86_400_000);
+  return {
+    domain: r.domain,
+    sld: r.sld,
+    phase: r.available ? 'dropped' : phaseLabel(s),
+    in_redemption: r.in_redemption,
+    available: r.available,
+    statuses: r.last_status || [],
+    expiration: r.expiration || null,
+    days_to_expiry: days,
+    redemption_since: r.redemption_since || null,
+    last_checked: r.last_checked || null,
+    parked: r.parked,
+  };
+}
+
+export default async function handler(req, res) {
+  res.setHeader('Cache-Control', 'no-store');
+  if (!isAuthed(req)) { res.status(401).json({ error: 'Not authenticated' }); return; }
+  const user = await requireUser(req, res);
+  if (!user) return;
+  if (!canUse(user)) { res.status(403).json({ error: "You don't have access to this tool" }); return; }
+
+  if (req.method === 'POST') {
+    const b = req.body || {};
+    const domain = String(b.domain || '').toLowerCase().trim();
+    if (!domain || (b.action !== 'dismiss' && b.action !== 'undismiss')) {
+      res.status(400).json({ error: 'action (dismiss|undismiss) and domain required' });
+      return;
+    }
+    try { await setDismissed(domain, b.action === 'dismiss'); res.status(200).json({ ok: true }); }
+    catch (e) { res.status(500).json({ error: String((e && e.message) || e) }); }
+    return;
+  }
+
+  if (!isConfigured()) { res.status(200).json({ configured: false, stats: null, rows: [] }); return; }
+  const includeParked = req.query.parked === '1';
+  const includeDismissed = req.query.dismissed === '1';
+  try {
+    const [rows, st] = await Promise.all([
+      redemptionList({ includeParked, includeDismissed }),
+      stats(),
+    ]);
+    res.status(200).json({ configured: true, stats: st, rows: rows.map(shape) });
+  } catch (e) {
+    res.status(500).json({ error: String((e && e.message) || e) });
+  }
+}

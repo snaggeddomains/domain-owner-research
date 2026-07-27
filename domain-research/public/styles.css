@@ -2393,3 +2393,22 @@ a.sr-ag-co-link:hover { border-color: var(--coral); color: var(--coral-deep); ba
 .cv-why { font-size: 12.5px; font-style: italic; margin-top: 6px; }
 .cv-reveal { margin-top: 6px; padding: 8px 14px; border-radius: 8px; border: 1px solid #d5b45a; background: #fff; color: #8a6d10; cursor: pointer; font-size: 13px; font-weight: 600; }
 .cv-reveal:disabled { opacity: 0.6; cursor: default; }
+
+/* Expiring .ai — SNAP redemption-window report */
+.xp-head { margin: 4px 0 10px; }
+.xp-stats { display: flex; gap: 18px; flex-wrap: wrap; align-items: baseline; }
+.xp-stat { font-size: 14px; }
+.xp-stat b { font-size: 18px; }
+.xp-controls { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; margin: 6px 0 14px; }
+.xp-toggle { font-size: 13px; color: #4a5b66; display: inline-flex; gap: 6px; align-items: center; cursor: pointer; }
+.xp-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.xp-table th { text-align: left; font-size: 11.5px; text-transform: uppercase; letter-spacing: .03em; color: #7c8b95; padding: 6px 10px; border-bottom: 1px solid #e6ecef; }
+.xp-table td { padding: 9px 10px; border-bottom: 1px solid #f0f4f6; vertical-align: top; }
+.xp-dom a { font-weight: 700; color: #1f6b52; text-decoration: none; }
+.xp-dom a:hover { text-decoration: underline; }
+.xp-chip { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 700; letter-spacing: .02em; }
+.xp-exp { white-space: nowrap; }
+.xp-expd, .xp-since { font-size: 12px; }
+.xp-ns { max-width: 220px; }
+.xp-dismiss { padding: 2px 8px; font-size: 12px; }
+.xp-empty, .xp-err { padding: 24px 0; font-size: 14px; }

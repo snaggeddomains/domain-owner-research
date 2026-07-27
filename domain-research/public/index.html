@@ -224,6 +224,7 @@
         <span id="nav-snap-group" class="nav-group" hidden>
           <a id="nav-snap-eval" class="nav-btn" href="/research/evaluate">SNAP Eval</a>
           <a id="nav-bulk-eval" class="nav-btn" href="/research/bulk-eval">Bulk Eval</a>
+          <a id="nav-expiring" class="nav-btn" href="/research/expiring" hidden>Expiring .ai</a>
           <a id="nav-snap-opps" class="nav-btn" href="/reports/opportunities">SNAP Opportunities</a>
           <a id="nav-snap-names" class="nav-btn" href="/reports/snap-names">SNAP Names</a>
         </span>
@@ -911,6 +912,21 @@
           <div id="renewal-result" class="tc-result" hidden></div>
         </section>
 
+        <section id="view-expiring" hidden>
+          <div class="hero tool-hero">
+            <h1 class="hero-title">Expiring <span class="accent">.ai</span></h1>
+            <p class="hero-sub">Good one-word <strong>.ai</strong> names that just entered the <strong>redemption / pending-delete</strong> window — the owner let them lapse, so they're about to drop and are cheap to grab (a restore is deliberately expensive). Curated from the full .ai zone against our dictionary; likely domain-investor (parked) names are hidden by default.</p>
+          </div>
+          <div id="expiring-head" class="xp-head"></div>
+          <div class="xp-controls">
+            <label class="xp-toggle"><input id="xp-parked" type="checkbox" /> Show likely-investor (parked) names</label>
+            <button id="xp-refresh" type="button" class="be-ghost">↻ Refresh</button>
+            <button id="xp-csv" type="button" class="be-ghost" hidden>⬇ CSV</button>
+          </div>
+          <div id="expiring-status" class="sr-status" hidden></div>
+          <div id="expiring-result"></div>
+        </section>
+
         <section id="view-bulk-eval" hidden>
           <div class="hero tool-hero">
             <h1 class="hero-title">Bulk <span class="accent">Eval</span></h1>
@@ -1284,6 +1300,6 @@ The model parses it into structured filters (TLDs, length, budget, tone, etc.) a
     </div>
 
     <!-- Bump ?v= on any public/app.js or styles.css change to bust caches. -->
-    <script src="app.js?v=20260724cmdkfocus3"></script>
+    <script src="app.js?v=20260727expiring"></script>
   </body>
 </html>

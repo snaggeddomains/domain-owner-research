@@ -304,6 +304,9 @@ const els = {
   tldForm: $('tld-form'), tldQ: $('tld-q'), tldGo: $('tld-go'), tldStatus: $('tld-status'), tldResult: $('tld-result'),
   navRenewal: $('nav-renewal'),
   renewalForm: $('renewal-form'), renewalQ: $('renewal-q'), renewalGo: $('renewal-go'), renewalStatus: $('renewal-status'), renewalResult: $('renewal-result'),
+  navExpiring: $('nav-expiring'),
+  expiringHead: $('expiring-head'), expiringResult: $('expiring-result'), expiringStatus: $('expiring-status'),
+  xpParked: $('xp-parked'), xpRefresh: $('xp-refresh'), xpCsv: $('xp-csv'),
   nsModeToggle: $('ns-modetoggle'), nsMatchToggle: $('ns-matchtoggle'),
   nsDomainForm: $('ns-domain-form'), nsDomain: $('ns-domain'),
   nsNsForm: $('ns-ns-form'), nsNs: $('ns-ns'), nsTld: $('ns-tld'),
@@ -538,7 +541,7 @@ function clearHash() {
 // the SPA): Domain DB Screen at /dbscreen, DB Search at /dbsearch.
 const VANITY_TOOLS = ['dbscreen', 'dbsearch'];
 function currentToolRoute() {
-  let m = location.pathname.match(/^\/research\/(trademark|appraisal|naming|dbscreen|dbsearch|nameserver|sales|portfolio|person|evaluate|bulk-eval|tld-count|renewal|beeper|whois|auction-owners|diq|admin)(?:\/(.+?))?\/?$/);
+  let m = location.pathname.match(/^\/research\/(trademark|appraisal|naming|dbscreen|dbsearch|nameserver|sales|portfolio|person|evaluate|bulk-eval|tld-count|renewal|expiring|beeper|whois|auction-owners|diq|admin)(?:\/(.+?))?\/?$/);
   if (!m) m = location.pathname.match(/^\/(dbscreen|dbsearch)(?:\/(.+?))?\/?$/);
   if (!m) return null;
   return { tool: m[1], slug: m[2] ? decodeURIComponent(m[2]) : '' };
@@ -976,6 +979,11 @@ function route() {
   if (tr && tr.tool === 'renewal') {
     showView('renewal');
     if (tr.slug) { if (els.renewalQ) els.renewalQ.value = tr.slug; renewalLookup(tr.slug); }
+    return;
+  }
+  if (tr && tr.tool === 'expiring') {
+    showView('expiring');
+    expiringLoad();
     return;
   }
   if (tr && tr.tool === 'admin') {
@@ -2830,6 +2838,7 @@ function gateNavByPermissions(user) {
   // reports access. Hidden buttons just don't render inside the SNAP group.
   if (els.navSnapEval) els.navSnapEval.hidden = !can('evaluate');
   if (els.navBulkEval) els.navBulkEval.hidden = !can('bulk_eval');
+  if (els.navExpiring) els.navExpiring.hidden = !can('expiring');
   if (els.navSnapOpps) els.navSnapOpps.hidden = !(Boolean(user && user.is_admin) || canEnterReports(user));
   if (els.navSnapNames) els.navSnapNames.hidden = !(Boolean(user && user.is_admin) || canEnterReports(user) || Boolean(perms.snap_names) || perms['reports.snap_names'] === true);
   // Reports sub-nav: Corporate Portfolios (a research-app page) needs `portfolio`;
@@ -4133,6 +4142,7 @@ const VIEWS = {
   'bulk-eval': { view: 'view-bulk-eval', nav: 'nav-bulk-eval' },
   'tld-count': { view: 'view-tldcount', nav: 'nav-tldcount' },
   renewal: { view: 'view-renewal', nav: 'nav-renewal' },
+  expiring: { view: 'view-expiring', nav: 'nav-expiring' },
   admin: { view: 'view-admin', nav: 'nav-admin' },
   lead: { view: 'view-lead', nav: 'nav-lead' }, // deep-link only (no nav tab)
 };
@@ -4148,7 +4158,7 @@ const SECTION_NAV = {
   snap: { group: 'nav-snap-group', topbar: 'topbar-snap' },
   reports: { group: 'nav-reports-group', topbar: 'topbar-reports' },
 };
-const VIEW_SECTION = { evaluate: 'snap', 'bulk-eval': 'snap', portfolio: 'reports', 'portfolio-runs': 'reports' };
+const VIEW_SECTION = { evaluate: 'snap', 'bulk-eval': 'snap', expiring: 'snap', portfolio: 'reports', 'portfolio-runs': 'reports' };
 const sectionForView = (name) => VIEW_SECTION[name] || 'research';
 
 function showView(name) {
@@ -7496,6 +7506,7 @@ els.navSnapEval?.addEventListener('click', (e) => { if (newTabClick(e)) return; 
 els.navBulkEval?.addEventListener('click', (e) => { if (newTabClick(e)) return; e.preventDefault(); setToolUrl('bulk-eval', ''); route(); });
 els.navTldcount?.addEventListener('click', (e) => { if (newTabClick(e)) return; e.preventDefault(); setToolUrl('tld-count', ''); route(); });
 els.navRenewal?.addEventListener('click', (e) => { if (newTabClick(e)) return; e.preventDefault(); setToolUrl('renewal', ''); route(); });
+els.navExpiring?.addEventListener('click', (e) => { if (newTabClick(e)) return; e.preventDefault(); setToolUrl('expiring', ''); route(); });
 
 // ── Bulk Eval — rank a list/CSV of domains by investability ─────────────────
 let beLast = null; // last results (for CSV)
@@ -10663,6 +10674,102 @@ els.renewalForm?.addEventListener('submit', (e) => {
   setToolUrl('renewal', '');
   renewalLookup(q);
 });
+
+// ── Expiring .ai — SNAP report of good one-word .ai names in the redemption window ─
+let expiringLast = [];
+function xpPhaseChip(r) {
+  const p = r.phase || (r.available ? 'dropped' : 'registered');
+  const map = {
+    dropped: ['DROPPED', '#166534', '#dcfce7'],
+    'pending delete': ['PENDING DELETE', '#9a3412', '#ffedd5'],
+    redemption: ['REDEMPTION', '#b45309', '#fef3c7'],
+    registered: ['registered', '#475569', '#e2e8f0'],
+  };
+  const [label, fg, bg] = map[p] || map.registered;
+  return `<span class="xp-chip" style="color:${fg};background:${bg}">${label}</span>`;
+}
+function xpDays(r) {
+  if (r.days_to_expiry == null) return '<span class="muted">—</span>';
+  const d = r.days_to_expiry;
+  if (d < 0) return `<span style="color:#9a3412">${Math.abs(d)}d ago</span>`;
+  return `${d}d`;
+}
+function expiringRenderHead(stats) {
+  if (!els.expiringHead) return;
+  if (!stats) { els.expiringHead.innerHTML = ''; return; }
+  els.expiringHead.innerHTML = `<div class="xp-stats">
+    <span class="xp-stat"><b>${(stats.in_redemption || 0).toLocaleString()}</b> in redemption</span>
+    <span class="xp-stat"><b>${(stats.total || 0).toLocaleString()}</b> names watched</span>
+    <span class="xp-stat muted">${(stats.unscanned || 0).toLocaleString()} awaiting first scan</span>
+  </div>`;
+}
+function expiringRender(rows) {
+  expiringLast = rows || [];
+  if (els.xpCsv) els.xpCsv.hidden = !expiringLast.length;
+  if (!els.expiringResult) return;
+  if (!expiringLast.length) {
+    els.expiringResult.innerHTML = `<div class="xp-empty muted">No .ai names are in the redemption window right now. This fills in as the scanner learns each name's expiration and watches the ones getting close — check back, or you'll get a bell + email the moment good names enter redemption.</div>`;
+    return;
+  }
+  const rowsHtml = expiringLast.map((r) => `<tr>
+    <td class="xp-dom"><a href="/research/appraisal/${encodeURIComponent(r.domain)}" title="Appraise ${escapeHtml(r.domain)}">${escapeHtml(r.domain)}</a></td>
+    <td>${xpPhaseChip(r)}</td>
+    <td class="xp-exp">${xpDays(r)}${r.expiration ? `<div class="muted xp-expd">${escapeHtml(String(r.expiration).slice(0, 10))}</div>` : ''}</td>
+    <td class="xp-since muted">${r.redemption_since ? escapeHtml(String(r.redemption_since).slice(0, 10)) : '—'}</td>
+    <td class="xp-ns muted">${r.parked ? '⚠️ parked' : (r.statuses || []).slice(0, 2).join(', ')}</td>
+    <td class="xp-act"><button type="button" class="xp-dismiss be-ghost" data-xp-dismiss="${escapeHtml(r.domain)}" title="Hide this name">✕</button></td>
+  </tr>`).join('');
+  els.expiringResult.innerHTML = `<table class="xp-table">
+    <thead><tr><th>Domain</th><th>Phase</th><th>Expires</th><th>In redemption since</th><th>Status / NS</th><th></th></tr></thead>
+    <tbody>${rowsHtml}</tbody></table>`;
+  els.expiringResult.querySelectorAll('[data-xp-dismiss]').forEach((btn) => {
+    btn.addEventListener('click', () => expiringDismiss(btn.getAttribute('data-xp-dismiss')));
+  });
+}
+async function expiringLoad() {
+  if (!els.expiringResult) return;
+  const parked = els.xpParked && els.xpParked.checked ? '&parked=1' : '';
+  els.expiringResult.innerHTML = `<div class="tc-loading muted"><span class="ev-spinner"></span> Loading…</div>`;
+  try {
+    const res = await fetch(`/research/api/expiring?_=${Date.now()}${parked}`);
+    if (res.status === 403) { els.expiringResult.innerHTML = `<div class="tc-err muted">You don't have access to this tool.</div>`; return; }
+    const d = await res.json();
+    if (d && d.configured === false) {
+      els.expiringResult.innerHTML = `<div class="xp-empty muted">The Expiring .ai watchlist isn't set up yet (run migration 0013 on the research project).</div>`;
+      expiringRenderHead(null);
+      return;
+    }
+    expiringRenderHead(d.stats);
+    expiringRender(d.rows || []);
+  } catch (e) {
+    els.expiringResult.innerHTML = `<div class="tc-err muted">Couldn't load: ${escapeHtml(String(e.message || e))}</div>`;
+  }
+}
+async function expiringDismiss(domain) {
+  if (!domain) return;
+  try {
+    await fetch('/research/api/expiring', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ action: 'dismiss', domain }) });
+    expiringLast = expiringLast.filter((r) => r.domain !== domain);
+    expiringRender(expiringLast);
+  } catch { /* non-fatal */ }
+}
+function expiringCsv() {
+  if (!expiringLast.length) return;
+  const head = ['domain', 'phase', 'expiration', 'days_to_expiry', 'redemption_since', 'parked', 'statuses'];
+  const lines = [head.join(',')].concat(expiringLast.map((r) => [
+    r.domain, r.phase, r.expiration || '', r.days_to_expiry == null ? '' : r.days_to_expiry,
+    r.redemption_since || '', r.parked ? 'yes' : 'no', `"${(r.statuses || []).join('; ')}"`,
+  ].join(',')));
+  const blob = new Blob([lines.join('\n')], { type: 'text/csv' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'expiring-ai.csv';
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+els.xpParked?.addEventListener('change', expiringLoad);
+els.xpRefresh?.addEventListener('click', expiringLoad);
+els.xpCsv?.addEventListener('click', expiringCsv);
 
 // The compact in-report demand card. `mult` (from the valuation) shows how the count
 // nudged the value — so it's clear this now FACTORS INTO the number, not just a stat.
