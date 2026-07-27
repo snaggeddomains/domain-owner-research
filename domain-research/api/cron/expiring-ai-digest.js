@@ -50,7 +50,7 @@ export default async function handler(req, res) {
   const html =
     `<div style="font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#26343d">
       <p style="font-size:15px;font-weight:700;margin:0 0 4px">${esc(subject)}</p>
-      <p style="color:#4a5b66;margin:0 0 12px">These one-word dictionary <strong>.ai</strong> names just entered the redemption / pending-delete window — the owner let them lapse, so they're about to drop and are cheap to grab (a restore is deliberately expensive). Non-parked only (staying away from domain investors).</p>
+      <p style="color:#4a5b66;margin:0 0 12px">These one-word dictionary <strong>.ai</strong> names just entered the redemption period — the owner let them lapse, so they're heading toward a drop and are cheap to grab (a restore is deliberately expensive).</p>
       <table style="border-collapse:collapse;font-size:14px">${rows.map(rowHtml).join('')}</table>
       <p style="margin:14px 0 0"><a href="https://research.snagged.com/research/expiring" style="display:inline-block;padding:9px 15px;background:#1f6b52;color:#fff;text-decoration:none;border-radius:8px;font-weight:700">See the full list</a></p>
     </div>`;

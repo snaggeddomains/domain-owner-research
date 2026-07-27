@@ -8,22 +8,18 @@
 // The specific EPP status the report keys on.
 const REDEMPTION_RE = /redemption/i;
 const PENDING_DELETE_RE = /pending\s*delete|pendingdelete/i;
-// The "heading toward a drop" set = redemption OR pending-delete ONLY. Deliberately
-// NARROWER than Beeper's lifecycle: pending-RESTORE / auto-renew mean the owner is
-// RECLAIMING the name (going the other way), so they are NOT the drop signal here.
-const PIPELINE_RE = /(redemption|pending\s*delete|pendingdelete)/i;
-
 export function isRedemption(statuses) {
   return (statuses || []).some((s) => REDEMPTION_RE.test(String(s)));
 }
 export function isPendingDelete(statuses) {
   return (statuses || []).some((s) => PENDING_DELETE_RE.test(String(s)));
 }
-// In the redemption/pending-delete window (the report's inclusion test). Restore/
-// auto-renew are NOT the drop signal — a name being restored is going the OTHER
-// way — so, unlike Beeper's broad lifecycle, we don't count them here.
+// The report's inclusion test — REDEMPTION PERIOD ONLY (Rob's call, 2026-07-27).
+// We deliberately do NOT include pending-delete: that's the final ~5-day window and
+// a distinct status; the report is scoped to the redemption period (where the owner
+// could still restore). Restore/auto-renew are excluded too (owner reclaiming).
 export function inRedemptionWindow(statuses) {
-  return (statuses || []).some((s) => PIPELINE_RE.test(String(s)));
+  return isRedemption(statuses);
 }
 
 // A one-line phase label for the report/alerts.

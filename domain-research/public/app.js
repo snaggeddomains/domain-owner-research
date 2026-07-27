@@ -10709,7 +10709,7 @@ function expiringRender(rows) {
   if (els.xpCsv) els.xpCsv.hidden = !expiringLast.length;
   if (!els.expiringResult) return;
   if (!expiringLast.length) {
-    els.expiringResult.innerHTML = `<div class="xp-empty muted">No .ai names are in the redemption window right now. This fills in as the scanner learns each name's expiration and watches the ones getting close — check back, or you'll get a bell + email the moment good names enter redemption.</div>`;
+    els.expiringResult.innerHTML = `<div class="xp-empty muted">No .ai names are in the redemption period right now. This fills in as the scanner learns each name's expiration and watches the ones getting close — check back, or you'll get a bell + email the moment good names enter redemption.</div>`;
     return;
   }
   const rowsHtml = expiringLast.map((r) => `<tr>

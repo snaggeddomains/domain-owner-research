@@ -1027,8 +1027,8 @@ investors. Reuses Beeper's RDAP + adaptive cadence; **no new vendor/env key**.
   are only re-scanned rarely (Rob's note: we know each name's expiry, only re-scan the ones getting
   close). **Unregistered (404/available) dictionary names re-check only WEEKLY** (`dueForCandidate`)
   so the scan doesn't hammer nic.ai's RDAP on tens of thousands of empty words. Detects the
-  transition INTO redemption (`redemption.js` `inRedemptionWindow` = redemption OR pending-delete
-  ONLY — pending-RESTORE/auto-renew are the owner reclaiming, NOT a drop) and returns freshly-
+  transition INTO redemption (`redemption.js` `inRedemptionWindow` = **redemption period ONLY** —
+  Rob's call 2026-07-27: NOT pending-delete, NOT pending-restore/auto-renew) and returns freshly-
   entered names to alert.
 - **`parked` is INFO, not a default filter.** Computed from the live RDAP nameservers
   (`looksParked` = `classifyPair(...).generic`), but the report SHOWS ALL redemption names by
