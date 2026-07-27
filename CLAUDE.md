@@ -1012,16 +1012,24 @@ investors. Reuses Beeper's RDAP + adaptive cadence; **no new vendor/env key**.
   transition INTO redemption (`redemption.js` `inRedemptionWindow` = redemption OR
   pending-delete ONLY — pending-RESTORE/auto-renew are the owner reclaiming, NOT a drop) and
   returns freshly-entered (non-parked) names to alert.
-- **Cron** `api/cron/expiring-ai.js` (vercel.json `*/10 * * * *`, CRON_SECRET): curate a slice
-  + scan due + **alert** (bell + email, `notifyTriageOfInquiry`-style) the users who can see it
-  (`expiring` OR admin) when good names enter redemption. Query knobs `?curate=N&scan=N&nocurate&noscan`
-  for backfill/tuning. **No Slack yet** — Slack lives in the admin project; bell+email for v1
-  (Slack is a pending follow-up if wanted).
+- **Scan/curate cron** `api/cron/expiring-ai.js` (vercel.json `*/10 * * * *`, CRON_SECRET): curate a
+  slice + scan due + fire an in-app **bell** (only) to `expiring`/admin users when good names enter
+  redemption. Query knobs `?curate=N&scan=N&nocurate&noscan` for backfill/tuning.
+- **Digest email cron** `api/cron/expiring-ai-digest.js` (vercel.json `0 6,10,13,16,19,22 * * *` = ~6×/day,
+  CRON_SECRET): emails **only the NEWLY-entered** redemption names (non-parked, `emailed_at is null`)
+  to **rob@ + sam@** (env `EXPIRING_AI_EMAILS`, comma-separated) then stamps `emailed_at` (via
+  `unemailedRedemption`/`markEmailed`) — so it's a stream of updates as names cross in, never
+  re-sent. `?dry=1` previews without sending/stamping. Email is the ONLY email channel (the scan
+  cron is bell-only) so rob (admin) isn't double-emailed. **No Slack yet** — Slack lives in the
+  admin project; a pending follow-up if wanted.
 - **API** `api/expiring.js` (gated `expiring`): `GET` → `{configured, stats, rows}` (in-redemption
   or dropped, parked excluded; `?parked=1`/`?dismissed=1` to include); `POST {action:dismiss|undismiss, domain}`.
 - **DB** `lib/db/expiringAi.js` + table `domain_research_expiring_ai` (domain pk, sld, nameservers[],
   parked, expiration, last_status[], in_redemption, redemption_since, available, last_checked,
-  dismissed) — RLS auto-enabled by the `domain_research_%` loop.
+  emailed_at, dismissed) — RLS auto-enabled by the `domain_research_%` loop.
+- **Where it lives:** the dashboard is the **5th SNAP submenu** ("Expiring .ai"). `SNAP_TABS`
+  (admin `lib/permissions.ts`) points at `/research/expiring`, so it renders in BOTH the admin SNAP
+  sub-nav (cross-app link) and the research SPA SNAP nav — the report itself is the research SPA page.
 - **UI** (`public/app.js` `expiring*` helpers; `#view-expiring` + `#nav-expiring` in the SNAP
   group; `.xp-*` styles): stats header, phase chips (REDEMPTION/PENDING DELETE/DROPPED),
   expiry + in-redemption-since, parked toggle, per-row dismiss, CSV, domain → Appraisal deep-link.

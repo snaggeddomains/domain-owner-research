@@ -69,6 +69,35 @@ export async function setDismissed(domain, dismissed = true) {
   await getDb().from(T).update({ dismissed }).eq('domain', domain);
 }
 
+// The digest cron: names that are currently in redemption (non-parked, not
+// dismissed) and haven't been emailed yet — so the ~6×/day email only carries the
+// NEW ones as they cross in, never re-sending the same names. Freshest first.
+export async function unemailedRedemption({ limit = 200 } = {}) {
+  if (!isDbConfigured()) return [];
+  const { data, error } = await getDb()
+    .from(T)
+    .select('domain,sld,expiration,last_status,redemption_since,available')
+    .eq('in_redemption', true)
+    .eq('parked', false)
+    .eq('dismissed', false)
+    .is('emailed_at', null)
+    .order('redemption_since', { ascending: false, nullsFirst: false })
+    .limit(Math.min(limit, 500));
+  if (error) return [];
+  return data || [];
+}
+
+// Stamp a batch of domains as emailed (chunked .in()).
+export async function markEmailed(domains) {
+  if (!isDbConfigured() || !domains || !domains.length) return;
+  const nowIso = new Date().toISOString();
+  const CHUNK = 200;
+  for (let i = 0; i < domains.length; i += CHUNK) {
+    const chunk = domains.slice(i, i + CHUNK);
+    await getDb().from(T).update({ emailed_at: nowIso }).in('domain', chunk);
+  }
+}
+
 // Coverage counts for the report header.
 export async function stats() {
   if (!isDbConfigured()) return { total: 0, in_redemption: 0, unscanned: 0 };

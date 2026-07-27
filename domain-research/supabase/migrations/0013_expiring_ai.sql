@@ -14,6 +14,7 @@ create table if not exists domain_research_expiring_ai (
   available        boolean not null default false, -- RDAP now not-found (dropped)
   last_http        int,                        -- last RDAP status code
   last_checked     timestamptz,               -- last RDAP scan
+  emailed_at       timestamptz,               -- when this name was sent in the digest email (null = not yet sent)
   dismissed        boolean not null default false, -- hidden from the report
   created_at       timestamptz not null default now()
 );
@@ -22,6 +23,8 @@ create table if not exists domain_research_expiring_ai (
 create index if not exists idx_expiring_ai_checked on domain_research_expiring_ai (last_checked asc nulls first);
 -- The report reads the currently-in-redemption set.
 create index if not exists idx_expiring_ai_redemption on domain_research_expiring_ai (in_redemption, redemption_since desc) where in_redemption;
+-- The digest cron pulls newly-in-redemption names not yet emailed.
+create index if not exists idx_expiring_ai_unemailed on domain_research_expiring_ai (redemption_since desc) where in_redemption and emailed_at is null;
 -- Cadence tapering leans on the expiration.
 create index if not exists idx_expiring_ai_expiration on domain_research_expiring_ai (expiration asc nulls last);
 
@@ -31,3 +34,8 @@ create table if not exists domain_research_expiring_ai_meta (
   v text,
   updated_at timestamptz not null default now()
 );
+
+-- Enable RLS (service key bypasses; no public access). schema.sql's domain_research_%
+-- loop also does this, but run it here so it's covered immediately.
+alter table domain_research_expiring_ai enable row level security;
+alter table domain_research_expiring_ai_meta enable row level security;

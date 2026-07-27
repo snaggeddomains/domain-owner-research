@@ -11,14 +11,13 @@ import { scanDue } from '../../lib/expiring/scan.js';
 import { listUsers } from '../../lib/db/users.js';
 import { userCan } from '../../lib/auth.js';
 import { createNotification } from '../../lib/db/notifications.js';
-import { sendEmail, isEmailConfigured } from '../../lib/email.js';
 
 export const config = { maxDuration: 60 };
 
-const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-
-// Alert the team when good .ai names newly enter redemption. Recipients = users
-// who can see the report (expiring perm, or admins). Best-effort.
+// In-app bell when good .ai names newly enter redemption, for users who can see
+// the report (expiring perm, or admins). The EMAIL is handled separately by the
+// ~6×/day digest cron (expiring-ai-digest → rob@/sam@), so we don't double-send;
+// this is just the real-time in-app nudge. Best-effort.
 async function alertEntered(entered) {
   if (!entered || !entered.length) return 0;
   let recipients = [];
@@ -34,23 +33,8 @@ async function alertEntered(entered) {
     : `${entered.length} .ai names entered redemption 🎯`;
   const lines = top.map((e) => `• ${e.domain}${e.phase ? ` (${e.phase})` : ''}`).join('\n');
   const link = '/research/expiring';
-  const emailOn = isEmailConfigured();
   await Promise.allSettled(
-    recipients.flatMap((u) => {
-      const jobs = [createNotification({ user_id: u.id, kind: 'expiring', title, body: lines, link })];
-      if (emailOn && u.email && u.email !== 'legacy-admin') {
-        jobs.push(sendEmail({
-          to: u.email,
-          subject: `🎯 ${title}`,
-          text: `Good one-word .ai names just entered the redemption window (about to drop):\n\n${lines}\n\nSee the list: https://research.snagged.com/research/expiring`,
-          html: `<p style="font-size:15px;font-weight:700">${esc(title)}</p>`
-            + `<p style="color:#4a5b66">Good one-word .ai names just entered the redemption window (about to drop):</p>`
-            + `<ul>${top.map((e) => `<li><strong>${esc(e.domain)}</strong>${e.phase ? ` — ${esc(e.phase)}` : ''}</li>`).join('')}</ul>`
-            + `<p><a href="https://research.snagged.com/research/expiring">See the full list</a></p>`,
-        }));
-      }
-      return jobs;
-    }),
+    recipients.map((u) => createNotification({ user_id: u.id, kind: 'expiring', title, body: lines, link })),
   );
   return recipients.length;
 }
