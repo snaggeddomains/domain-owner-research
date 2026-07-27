@@ -1009,10 +1009,17 @@ investors. Reuses Beeper's RDAP + adaptive cadence; **no new vendor/env key**.
 - **Quality gate = popular-TLD demand** (so we don't RDAP-poll tens of thousands of obscure Scrabble
   words). Each candidate word is gated by `popularTldCount` (`lib/evaluate/tldcount.js`, cache kind
   `xt`) — a bounded DNS probe of the ~26 most liquid TLDs — and only words registered in **≥
-  `EXPIRING_AI_MIN_TLDS` (default 6)** are inserted (with the count stored as `tld_count`). Validated
-  live: dealt 17 · rica 16 · lycra 13 · interlaced 12 (pass) vs ferlie 4 · oxeyes 1 (rejected). The
-  gate makes curation DNS-bound, so the slice is small (`pageSize` 150, `EXPIRING_AI_GATE_CONCURRENCY`
-  6); the `?curate=N` cron override is clamped to 400. `tld_count` shows as a "Demand" column + CSV.
+  `EXPIRING_AI_MIN_TLDS` (default 6)** are inserted (with that bounded count initially stored as
+  `tld_count`). Validated live: dealt 17 · rica 16 · lycra 13 · interlaced 12 (pass) vs ferlie 4 ·
+  oxeyes 1 (rejected). The gate makes curation DNS-bound, so the slice is small (`pageSize` 150,
+  `EXPIRING_AI_GATE_CONCURRENCY` 6); the `?curate=N` cron override is clamped to 400.
+- **Displayed "Demand" = the FULL TLD count (matches the standalone TLD Count tool).** The bounded
+  ~26-TLD probe is only the cheap internal GATE; when a name actually ENTERS redemption (scan) or is
+  seeded-and-in-redemption, `lib/expiring/demand.js` `fullTldDemand` runs the full `countRegistrations`
+  (~1,590 IANA TLDs, cache kind `tc` — the SAME function + cache the TLD Count tool uses, so the number
+  matches exactly, e.g. abacus 248) and OVERWRITES `tld_count`. It's cheap because only the handful of
+  redemption names (the only ones the report shows) ever get the full sweep. Column shown as "Demand"
+  + CSV.
 - **Adaptive scan** `lib/expiring/scan.js` `scanDue`: pulls the STALEST candidates
   (`last_checked` nulls-first), `isDue`-filters via **Beeper's `checkIntervalMs`** (cadence.js
   reads a candidate row's `expiration`+`last_status`), RDAP-checks the due ones (`rdapStatus` —

@@ -10715,7 +10715,7 @@ function expiringRender(rows) {
   const rowsHtml = expiringLast.map((r) => `<tr>
     <td class="xp-dom"><a href="/research/appraisal/${encodeURIComponent(r.domain)}" title="Appraise ${escapeHtml(r.domain)}">${escapeHtml(r.domain)}</a></td>
     <td>${xpPhaseChip(r)}</td>
-    <td class="xp-demand muted" title="Registered in this many of the top ~26 TLDs (demand signal)">${r.tld_count == null ? '—' : `${r.tld_count} TLDs`}</td>
+    <td class="xp-demand muted" title="How many TLDs the word is registered in (same as the TLD Count tool) — proven demand">${r.tld_count == null ? '—' : `${r.tld_count} TLDs`}</td>
     <td class="xp-exp">${xpDays(r)}${r.expiration ? `<div class="muted xp-expd">${escapeHtml(String(r.expiration).slice(0, 10))}</div>` : ''}</td>
     <td class="xp-since muted">${r.redemption_since ? escapeHtml(String(r.redemption_since).slice(0, 10)) : '—'}</td>
     <td class="xp-ns muted">${r.parked ? '⚠️ parked' : (r.statuses || []).slice(0, 2).join(', ')}</td>

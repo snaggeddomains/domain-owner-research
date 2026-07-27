@@ -16,6 +16,7 @@ import { isDue } from '../beeper/cadence.js';
 import { staleCandidates, updateCandidate } from '../db/expiringAi.js';
 import { inRedemptionWindow, phaseLabel } from './redemption.js';
 import { looksParked } from './candidates.js';
+import { fullTldDemand } from './demand.js';
 
 const DAY = 86_400_000;
 
@@ -73,7 +74,13 @@ export async function scanDue({ limit = 400, concurrency = 3 } = {}) {
       };
       if (s.expiration) patch.expiration = s.expiration;
       // Stamp when it first enters the window; clear if it leaves (restored/renewed).
-      if (nowInWindow && !wasInWindow) patch.redemption_since = nowIso;
+      if (nowInWindow && !wasInWindow) {
+        patch.redemption_since = nowIso;
+        // Compute the FULL TLD demand (matches the standalone TLD Count tool) once, on
+        // entry — cheap because only a handful of names ever reach redemption.
+        const full = await fullTldDemand(c.sld, process.env);
+        if (full != null) patch.tld_count = full;
+      }
       if (!nowInWindow && wasInWindow) patch.redemption_since = null;
 
       await updateCandidate(c.domain, patch);

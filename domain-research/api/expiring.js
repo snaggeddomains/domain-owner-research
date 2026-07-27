@@ -12,6 +12,7 @@ import { isAuthed, requireUser, userCan } from '../lib/auth.js';
 import { redemptionList, stats, setDismissed, isConfigured, insertCandidate, updateCandidate } from '../lib/db/expiringAi.js';
 import { phaseLabel, inRedemptionWindow } from '../lib/expiring/redemption.js';
 import { looksParked } from '../lib/expiring/candidates.js';
+import { fullTldDemand } from '../lib/expiring/demand.js';
 import { rdapStatus } from '../lib/beeper/rdap.js';
 
 export const config = { maxDuration: 30 };
@@ -34,11 +35,15 @@ async function seedDomains(raw) {
     const inWin = !s.available && inRedemptionWindow(s.statuses);
     const ns = Array.isArray(s.nameservers) ? s.nameservers : [];
     const nowIso = new Date().toISOString();
+    // For a seeded name that's in redemption, compute the full TLD demand (matches the
+    // TLD Count tool) so it shows a real number — a manual add skips the curation gate.
+    const full = inWin ? await fullTldDemand(sld, process.env) : null;
     await updateCandidate(d, {
       last_status: s.available ? [] : s.statuses, last_http: s.code, last_checked: nowIso,
       available: Boolean(s.available), in_redemption: inWin, nameservers: ns, parked: ns.length ? looksParked(ns) : false,
       ...(s.expiration ? { expiration: s.expiration } : {}),
       ...(inWin ? { redemption_since: nowIso } : {}),
+      ...(full != null ? { tld_count: full } : {}),
     });
     out.push({ domain: d, phase: phaseLabel(s), in_redemption: inWin, available: Boolean(s.available), expiration: s.expiration || null });
   }
