@@ -47,10 +47,18 @@ export async function staleCandidates(limit = 300) {
 
 export async function updateCandidate(domain, patch) {
   if (!isDbConfigured() || !domain) return;
-  const { error } = await getDb().from(T).update(patch).eq('domain', domain);
-  if (error && !/column|does not exist/i.test(error.message)) {
-    // A genuinely missing column would mean a partial migration; swallow either way
-    // (best-effort) but don't throw and break the cron.
+  // Strip-and-retry on a not-yet-migrated column (e.g. registrar) so the rest of the
+  // update (last_checked/status/…) still lands — otherwise the candidate never gets
+  // marked scanned and the cron re-does it forever.
+  let payload = { ...patch };
+  for (let i = 0; i < 4; i++) {
+    const { error } = await getDb().from(T).update(payload).eq('domain', domain);
+    if (!error) return;
+    const m = /column "?([a-z_]+)"?|Could not find the '([a-z_]+)' column/i.exec(error.message || '');
+    const col = m && (m[1] || m[2]);
+    if (!col || !(col in payload)) return;   // unknown error → best-effort swallow
+    const { [col]: _drop, ...rest } = payload;
+    payload = rest;
   }
 }
 
@@ -72,11 +80,11 @@ export async function redemptionList({ hideParked = false, includeDismissed = fa
     if (hideParked) q = q.eq('parked', false);
     return q;
   }
-  const full = 'domain,sld,tld_count,nameservers,parked,expiration,last_status,in_redemption,redemption_since,available,last_checked';
+  const full = 'domain,sld,tld_count,registrar,nameservers,parked,expiration,last_status,in_redemption,redemption_since,available,last_checked';
   let { data, error } = await build(full);
-  // tld_count column not migrated yet → retry without it.
-  if (error && /tld_count|column/i.test(error.message)) {
-    ({ data, error } = await build(full.replace('tld_count,', '')));
+  // A not-yet-migrated column (tld_count / registrar) → retry without the optional ones.
+  if (error && /tld_count|registrar|column/i.test(error.message)) {
+    ({ data, error } = await build(full.replace('tld_count,', '').replace('registrar,', '')));
   }
   if (error) return [];
   return data || [];

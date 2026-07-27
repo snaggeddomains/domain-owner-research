@@ -74,6 +74,7 @@ export async function scanDue({ limit = 500, concurrency = 4 } = {}) {
         last_checked: nowIso,
         available: Boolean(s.available),
         nameservers: ns,
+        registrar: s.registrar || null,
         parked,
       };
       if (s.expiration) patch.expiration = s.expiration;

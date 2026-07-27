@@ -40,7 +40,7 @@ async function seedDomains(raw) {
     const full = inWin ? await fullTldDemand(sld, process.env) : null;
     await updateCandidate(d, {
       last_status: s.available ? [] : s.statuses, last_http: s.code, last_checked: nowIso,
-      available: Boolean(s.available), in_redemption: inWin, nameservers: ns, parked: investorSignal(ns).investor,
+      available: Boolean(s.available), in_redemption: inWin, nameservers: ns, registrar: s.registrar || null, parked: investorSignal(ns).investor,
       ...(s.expiration ? { expiration: s.expiration } : {}),
       ...(inWin ? { redemption_since: nowIso } : {}),
       ...(full != null ? { tld_count: full } : {}),
@@ -73,6 +73,7 @@ function shape(r) {
     days_to_expiry: days,
     redemption_since: r.redemption_since || null,
     last_checked: r.last_checked || null,
+    registrar: r.registrar || null,
     nameservers: ns.slice(0, 2),      // show the actual first two NS
     investor: sig.investor,           // likely owned by an investor (on a for-sale/marketplace NS)
     marketplace: sig.marketplace,     // which marketplace, when known

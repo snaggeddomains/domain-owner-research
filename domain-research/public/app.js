@@ -10718,12 +10718,13 @@ function expiringRender(rows) {
     <td class="xp-demand muted" title="How many TLDs the word is registered in (same as the TLD Count tool) — proven demand">${r.tld_count == null ? '—' : `${r.tld_count} TLDs`}</td>
     <td class="xp-exp">${xpDays(r)}${r.expiration ? `<div class="muted xp-expd">${escapeHtml(String(r.expiration).slice(0, 10))}</div>` : ''}</td>
     <td class="xp-since muted">${r.redemption_since ? escapeHtml(String(r.redemption_since).slice(0, 10)) : '—'}</td>
+    <td class="xp-reg muted">${r.registrar ? escapeHtml(r.registrar) : '—'}</td>
     <td class="xp-ns muted">${(r.nameservers && r.nameservers.length) ? r.nameservers.map((n) => escapeHtml(n)).join('<br>') : '<span class="muted">— none</span>'}</td>
     <td class="xp-investor">${r.investor ? `<span class="xp-inv-yes" title="On a marketplace / for-sale nameserver — likely a domain investor">🏷 ${escapeHtml(r.marketplace || 'Listed for sale')}</span>` : '<span class="muted">—</span>'}</td>
     <td class="xp-act"><button type="button" class="xp-dismiss be-ghost" data-xp-dismiss="${escapeHtml(r.domain)}" title="Hide this name">✕</button></td>
   </tr>`).join('');
   els.expiringResult.innerHTML = `<table class="xp-table">
-    <thead><tr><th>Domain</th><th>Phase</th><th>Demand</th><th>Expires</th><th>In redemption since</th><th>Nameservers</th><th>Likely investor</th><th></th></tr></thead>
+    <thead><tr><th>Domain</th><th>Phase</th><th>Demand</th><th>Expires</th><th>In redemption since</th><th>Registrar</th><th>Nameservers</th><th>Likely investor</th><th></th></tr></thead>
     <tbody>${rowsHtml}</tbody></table>`;
   els.expiringResult.querySelectorAll('[data-xp-dismiss]').forEach((btn) => {
     btn.addEventListener('click', () => expiringDismiss(btn.getAttribute('data-xp-dismiss')));
@@ -10758,10 +10759,10 @@ async function expiringDismiss(domain) {
 }
 function expiringCsv() {
   if (!expiringLast.length) return;
-  const head = ['domain', 'phase', 'tld_count', 'expiration', 'days_to_expiry', 'redemption_since', 'nameservers', 'likely_investor', 'marketplace'];
+  const head = ['domain', 'phase', 'tld_count', 'expiration', 'days_to_expiry', 'redemption_since', 'registrar', 'nameservers', 'likely_investor', 'marketplace'];
   const lines = [head.join(',')].concat(expiringLast.map((r) => [
     r.domain, r.phase, r.tld_count == null ? '' : r.tld_count, r.expiration || '', r.days_to_expiry == null ? '' : r.days_to_expiry,
-    r.redemption_since || '', `"${(r.nameservers || []).join('; ')}"`, r.investor ? 'yes' : 'no', r.marketplace || '',
+    r.redemption_since || '', `"${(r.registrar || '').replace(/"/g, '')}"`, `"${(r.nameservers || []).join('; ')}"`, r.investor ? 'yes' : 'no', r.marketplace || '',
   ].join(',')));
   const blob = new Blob([lines.join('\n')], { type: 'text/csv' });
   const a = document.createElement('a');

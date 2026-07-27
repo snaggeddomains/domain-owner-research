@@ -48,7 +48,25 @@ async function fetchRdap(url) {
   }
 }
 
-// → { ok, code, available, statuses[], expiration, source }
+// The registrar name from an RDAP domain object — the entity with role 'registrar',
+// read from its vCard `fn` (e.g. "NameCheap, Inc." / "Dynadot Inc"), falling back to
+// its IANA registrar id. Null when absent.
+function registrarName(data) {
+  const ents = (data && data.entities) || [];
+  for (const e of ents) {
+    if (!e || !Array.isArray(e.roles) || !e.roles.includes('registrar')) continue;
+    const vc = e.vcardArray && e.vcardArray[1];
+    if (Array.isArray(vc)) {
+      const fn = vc.find((p) => Array.isArray(p) && p[0] === 'fn');
+      if (fn && fn[3]) return String(fn[3]).trim();
+    }
+    const pid = Array.isArray(e.publicIds) ? e.publicIds.find((p) => /iana/i.test((p && p.type) || '')) : null;
+    if (pid && pid.identifier) return `IANA #${pid.identifier}`;
+  }
+  return null;
+}
+
+// → { ok, code, available, statuses[], expiration, nameservers, registrar, source }
 //   available=true  → the domain DROPPED (404 / not found) — go grab it.
 //   statuses        → lowercased EPP statuses (e.g. ['pending delete','redemption period']).
 //   ok=false        → every endpoint failed (network/rate-limit) — don't treat as a change.
@@ -70,13 +88,13 @@ export async function rdapStatus(domain) {
       const nameservers = [...new Set((r.data.nameservers || [])
         .map((n) => String((n && (n.ldhName || n.name)) || '').toLowerCase().replace(/\.+$/, '').trim())
         .filter(Boolean))];
-      return { ok: true, code: 200, available: false, statuses, expiration: (exp && exp.eventDate) || null, nameservers, source: url };
+      return { ok: true, code: 200, available: false, statuses, expiration: (exp && exp.eventDate) || null, nameservers, registrar: registrarName(r.data), source: url };
     }
     // 404 (and some registries' 200-with-notfound) → not registered → available.
-    if (r.code === 404) return { ok: true, code: 404, available: true, statuses: [], expiration: null, nameservers: [], source: url };
+    if (r.code === 404) return { ok: true, code: 404, available: true, statuses: [], expiration: null, nameservers: [], registrar: null, source: url };
     // 429 / 5xx / network → try the next endpoint.
   }
-  return { ok: false, code: null, available: null, statuses: [], expiration: null, nameservers: [], source: null };
+  return { ok: false, code: null, available: null, statuses: [], expiration: null, nameservers: [], registrar: null, source: null };
 }
 
 // Is the domain IN the deletion/expiry pipeline (heading toward a possible drop)?

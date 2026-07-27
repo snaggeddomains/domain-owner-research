@@ -1060,8 +1060,14 @@ investors. Reuses Beeper's RDAP + adaptive cadence; **no new vendor/env key**.
   sub-nav (cross-app link) and the research SPA SNAP nav — the report itself is the research SPA page.
 - **UI** (`public/app.js` `expiring*` helpers; `#view-expiring` + `#nav-expiring` in the SNAP
   group; `.xp-*` styles): stats header, phase chip (REDEMPTION), Demand (full TLD count), expiry +
-  in-redemption-since, **first-2 nameservers**, **Likely investor** chip (marketplace name), hide-
-  investor toggle, per-row dismiss, CSV, domain → Appraisal deep-link. Cache-bust `?v=20260727expiring7`.
+  in-redemption-since, **Registrar** (from RDAP), **first-2 nameservers**, **Likely investor** chip
+  (marketplace name), hide-investor toggle, per-row dismiss, CSV, domain → Appraisal deep-link.
+  Cache-bust `?v=20260727expiring8`.
+- **Registrar column (2026-07-27).** `rdapStatus` (`lib/beeper/rdap.js`) now also returns `registrar`
+  (the role=`registrar` entity's vCard `fn` — "NameCheap, Inc." / "Dynadot Inc" — else its IANA id);
+  additive, Beeper unaffected. Stored on the candidate (`registrar` column), shown as a report column
+  + CSV. `updateCandidate` gained a strip-and-retry so a not-yet-migrated `registrar` column doesn't
+  stall the scan. **Migration:** `alter table domain_research_expiring_ai add column if not exists registrar text;`
 - **Permission:** `research.expiring` in snagged-admin `dashboard/lib/permissions.ts` (MODULES +
   SNAP_TABS + CATALOG group SNAP; stored flat as `expiring`). Grant per-user; admins auto-pass.
 - **One-time setup:** run `supabase/migrations/0013_expiring_ai.sql` on the research project.
