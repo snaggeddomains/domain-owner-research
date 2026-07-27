@@ -50,9 +50,8 @@ export default async function handler(req, res) {
 
   if (!q.nocurate) {
     try {
-      // Curation gates each word with a DNS demand probe, so keep the slice bounded
-      // (a big pageSize would time out). Clamp the manual override to 400.
-      const pageSize = q.curate ? Math.min(Math.max(Number(q.curate) || 0, 1), 400) : undefined;
+      // Curation is pure DB work now (no per-word DNS), so the slice can be large.
+      const pageSize = q.curate ? Math.min(Math.max(Number(q.curate) || 0, 1), 10000) : undefined;
       out.curate = await curateSlice({ pageSize });
     } catch (e) { out.curate = { error: String((e && e.message) || e) }; }
   }

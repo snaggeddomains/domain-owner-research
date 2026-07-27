@@ -1,28 +1,24 @@
-// Curate the Expiring .ai watchlist from OUR DICTIONARY, not the zone file.
+// Curate the Expiring .ai watchlist from OUR DICTIONARY. Enumerate good one-word
+// `is_root` words → `<word>.ai` and insert them as candidates. NO per-word DNS work
+// here — the demand/quality check is deferred to the moment a name actually reaches
+// redemption (see scan.js), so curation is fast and the only bulk lookup is a plain
+// RDAP call per .ai. (An earlier version ran a ~26-TLD DNS probe on every word here;
+// slow resolvers made each word take seconds and blew the 60s function budget — Rob's
+// "can't we just use basic RDAP?" fix.)
 //
-// Why not the zone: a name in redemption/pending-delete has been REMOVED from the
-// .ai zone (its delegation is pulled when it lapses), so curating candidates from
-// zone_domains structurally misses exactly the names this report exists to find
-// (e.g. rica.ai / dealt.ai — expired, in redemption, gone from the zone). Instead
-// we enumerate good one-word dictionary words → `<word>.ai` and let the RDAP scan
-// discover each name's real status (registered / expiration / redemption / dropped)
-// and nameservers. That's independent of the zone snapshot and catches names
-// already in the window.
+// Why the dictionary and not the zone: a name in redemption has been REMOVED from the
+// .ai zone (delegation pulled when it lapses), so the zone structurally misses exactly
+// the names we want. We build our own candidate universe from the dictionary and let
+// RDAP discover each name's real status.
 //
-// Keyset-paged over english_words (the naming project's dictionary) so each cron
-// tick inserts a bounded slice; wraps at the end (picks up dictionary growth).
+// Keyset-paged over english_words (is_root only → drops plurals/inflections) so each
+// cron tick inserts a bounded slice; wraps at the end.
 import { getNamingDb, isNamingDbConfigured } from '../db/supabase-naming.js';
 import { classifyPair } from '../nameserver/context.js';
-import { popularTldCount } from '../evaluate/tldcount.js';
 import { insertCandidate, getCursor, setCursor } from '../db/expiringAi.js';
 
 const MIN_LEN = Number(process.env.EXPIRING_AI_MIN_LEN || 3);
 const MAX_LEN = Number(process.env.EXPIRING_AI_MAX_LEN || 12);
-// Quality gate: a word must be registered in at least this many of the ~26 most
-// popular TLDs to be watched — proven cross-TLD demand, so we don't RDAP-poll tens
-// of thousands of obscure Scrabble words. Tunable (Rob: "more than 5 or 10 TLDs").
-const MIN_TLDS = Number(process.env.EXPIRING_AI_MIN_TLDS || 6);
-const GATE_CONCURRENCY = Number(process.env.EXPIRING_AI_GATE_CONCURRENCY || 6);
 const ONE_WORD = /^[a-z]+$/;
 
 // A dictionary word → its clean one-word SLD if it qualifies, else null.
@@ -35,17 +31,15 @@ export function candidateSld(word) {
 
 // Does this nameserver set look like a parking/marketplace host (likely a domain
 // investor)? Reuses the Nameserver Search generic-host classifier. Used at SCAN
-// time (from the RDAP nameservers), since curation no longer reads the zone.
+// time (from the RDAP nameservers).
 export function looksParked(nameservers) {
   return Boolean(classifyPair(nameservers || []).generic);
 }
 
-// Process one keyset slice of the dictionary. Each candidate word is quality-gated
-// by its popular-TLD demand count (≥ MIN_TLDS) before it's inserted, so obscure
-// Scrabble words never enter the watchlist. pageSize is small because the gate does
-// DNS. Returns { scanned, kept, gated, cursor, wrapped }.
-export async function curateSlice({ pageSize = 150, minTlds = MIN_TLDS } = {}) {
-  if (!isNamingDbConfigured()) return { scanned: 0, kept: 0, gated: 0, cursor: '', wrapped: false, configured: false };
+// Process one keyset slice of the dictionary. Pure DB work (no DNS), so the slice can
+// be large. Returns { scanned, kept, cursor, wrapped }.
+export async function curateSlice({ pageSize = 1500 } = {}) {
+  if (!isNamingDbConfigured()) return { scanned: 0, kept: 0, cursor: '', wrapped: false, configured: false };
   const cursor = await getCursor();
   // is_root = true drops plurals/inflections (croatias, boxes) — we watch the base word.
   let q = getNamingDb()
@@ -56,34 +50,23 @@ export async function curateSlice({ pageSize = 150, minTlds = MIN_TLDS } = {}) {
     .limit(pageSize);
   if (cursor) q = q.gt('word', cursor);
   const { data, error } = await q;
-  if (error) return { scanned: 0, kept: 0, gated: 0, cursor, wrapped: false, configured: true, error: error.message };
+  if (error) return { scanned: 0, kept: 0, cursor, wrapped: false, configured: true, error: error.message };
 
   const rows = data || [];
   // End of the dictionary → wrap to the start next tick.
   if (!rows.length) {
     await setCursor('');
-    return { scanned: 0, kept: 0, gated: 0, cursor: '', wrapped: true, configured: true };
+    return { scanned: 0, kept: 0, cursor: '', wrapped: true, configured: true };
   }
 
-  const words = rows.map((r) => candidateSld(r.word)).filter(Boolean);
-  let kept = 0, gated = 0;
-  // Gate the slice's words with bounded concurrency (each gate is a cache-first DNS
-  // probe of ~26 TLDs). A word clearing the demand bar is inserted as a candidate.
-  const queue = [...words];
-  async function worker() {
-    while (queue.length) {
-      const sld = queue.shift();
-      let count = 0;
-      try { count = (await popularTldCount(sld, { env: process.env, minTlds })).count || 0; } catch { count = 0; }
-      gated++;
-      if (count < minTlds) continue;    // obscure word — not worth watching
-      // parked unknown until the scan reads the live nameservers; NS captured then.
-      const inserted = await insertCandidate({ domain: `${sld}.ai`, sld, nameservers: [], parked: false, tldCount: count });
-      if (inserted) kept++;
-    }
+  let kept = 0;
+  for (const r of rows) {
+    const sld = candidateSld(r.word);
+    if (!sld) continue;
+    const inserted = await insertCandidate({ domain: `${sld}.ai`, sld, nameservers: [], parked: false });
+    if (inserted) kept++;
   }
-  await Promise.all(Array.from({ length: Math.min(GATE_CONCURRENCY, words.length) || 1 }, worker));
 
   await setCursor(rows[rows.length - 1].word);
-  return { scanned: rows.length, kept, gated, cursor: rows[rows.length - 1].word, wrapped: false, configured: true };
+  return { scanned: rows.length, kept, cursor: rows[rows.length - 1].word, wrapped: false, configured: true };
 }

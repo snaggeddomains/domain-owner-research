@@ -17,8 +17,13 @@ import { staleCandidates, updateCandidate } from '../db/expiringAi.js';
 import { inRedemptionWindow, phaseLabel } from './redemption.js';
 import { looksParked } from './candidates.js';
 import { fullTldDemand } from './demand.js';
+import { popularTldCount } from '../evaluate/tldcount.js';
 
 const DAY = 86_400_000;
+// Quality gate applied ONLY to names in the redemption period (Rob): a real,
+// in-demand word is registered in ≥ this many of the ~26 most liquid TLDs. Validated:
+// dealt 17 · rica 16 · interlaced 12 pass; ferlie 4 · oxeyes 1 don't.
+const MIN_TLDS = Number(process.env.EXPIRING_AI_MIN_TLDS || 6);
 
 // When is a candidate due? Unregistered (available) dictionary .ai names are the
 // bulk of the set and almost never change — re-check them weekly, not hourly (the
@@ -36,7 +41,7 @@ function dueForCandidate(c, now) {
 
 // One scan pass over the due slice. concurrency workers; bounded by `limit` rows
 // pulled (stalest first). Fail-open per name.
-export async function scanDue({ limit = 400, concurrency = 3 } = {}) {
+export async function scanDue({ limit = 500, concurrency = 4 } = {}) {
   const now = Date.now();
   const batch = await staleCandidates(limit);
   const due = batch.filter((c) => dueForCandidate(c, now));
@@ -57,7 +62,7 @@ export async function scanDue({ limit = 400, concurrency = 3 } = {}) {
 
       const wasInWindow = Boolean(c.in_redemption);
       const wasAvailable = Boolean(c.available);
-      const nowInWindow = !s.available && inRedemptionWindow(s.statuses);
+      const isRed = !s.available && inRedemptionWindow(s.statuses);
       // Parked (investor) read from the live nameservers when present; a name deep
       // in redemption often has NS stripped → treat as not-parked (it's dropping).
       const ns = Array.isArray(s.nameservers) ? s.nameservers : [];
@@ -68,19 +73,33 @@ export async function scanDue({ limit = 400, concurrency = 3 } = {}) {
         last_http: s.code,
         last_checked: nowIso,
         available: Boolean(s.available),
-        in_redemption: nowInWindow,
         nameservers: ns,
         parked,
       };
       if (s.expiration) patch.expiration = s.expiration;
-      // Stamp when it first enters the window; clear if it leaves (restored/renewed).
-      if (nowInWindow && !wasInWindow) {
-        patch.redemption_since = nowIso;
-        // Compute the FULL TLD demand (matches the standalone TLD Count tool) once, on
-        // entry — cheap because only a handful of names ever reach redemption.
-        const full = await fullTldDemand(c.sld, process.env);
-        if (full != null) patch.tld_count = full;
+
+      // The TLD lookup runs ONLY here — on names actually in the redemption period —
+      // never on the whole watchlist (Rob: "cut way down"). On the FIRST redemption
+      // sighting we run the demand check once: the bounded ~26-TLD probe decides quality
+      // (≥ MIN_TLDS), and the full count is stored for display (matches the TLD Count
+      // tool). The result is cached in tld_count so re-sightings don't re-probe.
+      let nowInWindow = false;
+      if (isRed) {
+        if (c.tld_count != null) {
+          nowInWindow = wasInWindow;                 // already demand-checked → keep the decision
+        } else {
+          const [bounded, full] = await Promise.all([
+            popularTldCount(c.sld, { env: process.env }).catch(() => ({ count: 0 })),
+            fullTldDemand(c.sld, process.env),
+          ]);
+          patch.tld_count = full != null ? full : (bounded.count || 0);
+          nowInWindow = (bounded.count || 0) >= MIN_TLDS;   // surface only in-demand names
+        }
+      } else if (c.tld_count != null) {
+        patch.tld_count = null;                      // left redemption → reset so a re-entry re-checks
       }
+      patch.in_redemption = nowInWindow;
+      if (nowInWindow && !wasInWindow) patch.redemption_since = nowIso;
       if (!nowInWindow && wasInWindow) patch.redemption_since = null;
 
       await updateCandidate(c.domain, patch);

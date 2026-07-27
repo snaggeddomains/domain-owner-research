@@ -997,47 +997,42 @@ window — the owner let them lapse (a restore is deliberately expensive), so th
 to drop and cheap to grab. Sam's ask: "Status = redemption period," stay away from domain
 investors. Reuses Beeper's RDAP + adaptive cadence; **no new vendor/env key**.
 
-- **Curation = DICTIONARY-driven, NOT zone-driven** `lib/expiring/candidates.js` `curateSlice`:
-  keyset-pages the naming `english_words` table (`is_root=true` → drops plurals/inflections),
-  enumerating good one-word `<word>.ai` (`/^[a-z]+$/`, len 3–12). **Why not the zone:** a name in
-  redemption/pending-delete has been REMOVED from the `.ai` zone (delegation pulled when it lapses),
-  so curating from `zone_domains` structurally MISSES exactly the names this report exists to find
-  (rica.ai/dealt.ai — expired, in redemption, gone from the zone). So we build our OWN candidate
-  universe from the dictionary and let RDAP discover each name's real status. Cursor (a word)
-  persisted in `domain_research_expiring_ai_meta`; wraps at the end. Tunable
+- **Curation = DICTIONARY-driven, NO DNS gate (Rob 2026-07-27: "just use basic RDAP").**
+  `lib/expiring/candidates.js` `curateSlice` keyset-pages the naming `english_words` table
+  (`is_root=true` → drops plurals/inflections), enumerating good one-word `<word>.ai` (`/^[a-z]+$/`,
+  len 3–12) and inserting them ALL — pure DB work, no per-word lookups, so slices are large
+  (`pageSize` 1500; `?curate=N` clamp 10000). **Why not the zone:** a name in redemption has been
+  REMOVED from the `.ai` zone (delegation pulled when it lapses), so the zone structurally misses the
+  names we want. Cursor (a word) in `domain_research_expiring_ai_meta`; wraps at the end. Tunable
   `EXPIRING_AI_MIN_LEN`/`_MAX_LEN`.
-- **Quality gate = popular-TLD demand** (so we don't RDAP-poll tens of thousands of obscure Scrabble
-  words). Each candidate word is gated by `popularTldCount` (`lib/evaluate/tldcount.js`, cache kind
-  `xt`) — a bounded DNS probe of the ~26 most liquid TLDs — and only words registered in **≥
-  `EXPIRING_AI_MIN_TLDS` (default 6)** are inserted (with that bounded count initially stored as
-  `tld_count`). Validated live: dealt 17 · rica 16 · lycra 13 · interlaced 12 (pass) vs ferlie 4 ·
-  oxeyes 1 (rejected). The gate makes curation DNS-bound, so the slice is small (`pageSize` 150,
-  `EXPIRING_AI_GATE_CONCURRENCY` 6); the `?curate=N` cron override is clamped to 400.
-- **Displayed "Demand" = the FULL TLD count (matches the standalone TLD Count tool).** The bounded
-  ~26-TLD probe is only the cheap internal GATE; when a name actually ENTERS redemption (scan) or is
-  seeded-and-in-redemption, `lib/expiring/demand.js` `fullTldDemand` runs the full `countRegistrations`
-  (~1,590 IANA TLDs, cache kind `tc` — the SAME function + cache the TLD Count tool uses, so the number
-  matches exactly, e.g. abacus 248) and OVERWRITES `tld_count`. It's cheap because only the handful of
-  redemption names (the only ones the report shows) ever get the full sweep. Column shown as "Demand"
-  + CSV.
-- **Adaptive scan** `lib/expiring/scan.js` `scanDue`: pulls the STALEST candidates
-  (`last_checked` nulls-first), `isDue`-filters via **Beeper's `checkIntervalMs`** (cadence.js
-  reads a candidate row's `expiration`+`last_status`), RDAP-checks the due ones (`rdapStatus` —
-  now also returns `nameservers`), writes back status + **captures `expiration`** so far-out names
-  are only re-scanned rarely (Rob's note: we know each name's expiry, only re-scan the ones getting
-  close). **Unregistered (404/available) dictionary names re-check only WEEKLY** (`dueForCandidate`)
-  so the scan doesn't hammer nic.ai's RDAP on tens of thousands of empty words. Detects the
-  transition INTO redemption (`redemption.js` `inRedemptionWindow` = **redemption period ONLY** —
-  Rob's call 2026-07-27: NOT pending-delete, NOT pending-restore/auto-renew) and returns freshly-
-  entered names to alert.
+  - **Earlier approach (removed):** a ~26-TLD DNS demand probe gated every word AT CURATION — but
+    slow TLD resolvers made each word take 4–5s (timeouts), a 150-word slice blew the 60s function
+    budget, ticks timed out mid-slice, and the backfill crawled. The TLD lookup now runs ONLY on
+    redemption names (below), and curation is just RDAP-fed.
+- **The scan is the only bulk lookup — a plain RDAP call per `.ai`** `lib/expiring/scan.js` `scanDue`:
+  pulls the STALEST candidates (`last_checked` nulls-first), `isDue`-filters via **Beeper's
+  `checkIntervalMs`**, RDAP-checks the due ones (`rdapStatus` — also returns `nameservers`), writes
+  status + **captures `expiration`** so far-out names re-scan rarely (only the ones getting close).
+  **Unregistered (404/available) names re-check only WEEKLY** (`dueForCandidate`). `inRedemptionWindow`
+  = **redemption period ONLY** (NOT pending-delete/restore/auto-renew).
+- **TLD lookup runs ONLY on names in the redemption period** (Rob: "cut way down"). On a name's FIRST
+  redemption sighting the scan runs the demand check ONCE: the **bounded ~26-TLD probe** (`popularTldCount`,
+  `lib/evaluate/tldcount.js`, cache `xt`) decides QUALITY — surface only if **≥ `EXPIRING_AI_MIN_TLDS`
+  (default 6)** (validated: dealt 17 · rica 16 · interlaced 12 pass; ferlie 4 · oxeyes 1 don't) — and
+  the **full `countRegistrations`** (`lib/expiring/demand.js` `fullTldDemand`, ~1,590 IANA TLDs, cache
+  `tc`, SAME as the TLD Count tool → matches exactly, abacus 248) is stored as `tld_count` for DISPLAY.
+  Result cached in `tld_count` so re-sightings don't re-probe; reset to null if a name leaves redemption
+  (so a re-entry re-checks). `in_redemption` = redemption AND quality-passed. So the only names ever
+  DNS-probed are the handful actually in redemption — the 89k watchlist is never gated.
 - **`parked` is INFO, not a default filter.** Computed from the live RDAP nameservers
   (`looksParked` = `classifyPair(...).generic`), but the report SHOWS ALL redemption names by
   default — a lapsing name sits on registrar-default DNS (registrar-servers/domaincontrol) which
   the generic-NS test flags, and hiding those would hide most good drops (rica.ai is on Namecheap
   default DNS). `?hideParked=1` is an OPTIONAL filter for the few on true investor-parking NS.
-- **Scan/curate cron** `api/cron/expiring-ai.js` (vercel.json `*/10 * * * *`, CRON_SECRET): curate a
-  slice + scan due + fire an in-app **bell** (only) to `expiring`/admin users when good names enter
-  redemption. Query knobs `?curate=N&scan=N&nocurate&noscan` for backfill/tuning.
+- **Scan/curate cron** `api/cron/expiring-ai.js` (vercel.json `*/5 * * * *`, CRON_SECRET): curate a
+  slice (`pageSize` 1500) + scan due (`scanDue` limit 500, concurrency 4) + fire an in-app **bell**
+  (only) to `expiring`/admin users when good names enter redemption. Query knobs
+  `?curate=N&scan=N&nocurate&noscan` for backfill/tuning.
 - **Digest email cron** `api/cron/expiring-ai-digest.js` (vercel.json `0 6,10,13,16,19,22 * * *` = ~6×/day,
   CRON_SECRET): emails **only the NEWLY-entered** redemption names (non-parked, `emailed_at is null`)
   to **rob@ + sam@** (env `EXPIRING_AI_EMAILS`, comma-separated) then stamps `emailed_at` (via

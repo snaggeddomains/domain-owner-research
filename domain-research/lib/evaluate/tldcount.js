@@ -36,8 +36,8 @@ async function ianaTlds() {
   return fallback;
 }
 
-function resolverFor(i) {
-  const r = new Resolver({ timeout: QUERY_TIMEOUT_MS, tries: 1 });
+function resolverFor(i, timeoutMs = QUERY_TIMEOUT_MS) {
+  const r = new Resolver({ timeout: timeoutMs, tries: 1 });
   const servers = RESOLVER_SETS[i % RESOLVER_SETS.length];
   if (servers) { try { r.setServers(servers); } catch { /* keep default */ } }
   return r;
