@@ -307,6 +307,7 @@ const els = {
   navExpiring: $('nav-expiring'),
   expiringHead: $('expiring-head'), expiringResult: $('expiring-result'), expiringStatus: $('expiring-status'),
   xpParked: $('xp-parked'), xpRefresh: $('xp-refresh'), xpCsv: $('xp-csv'),
+  xpSeedInput: $('xp-seed-input'), xpSeedGo: $('xp-seed-go'), xpSeedStatus: $('xp-seed-status'),
   nsModeToggle: $('ns-modetoggle'), nsMatchToggle: $('ns-matchtoggle'),
   nsDomainForm: $('ns-domain-form'), nsDomain: $('ns-domain'),
   nsNsForm: $('ns-ns-form'), nsNs: $('ns-ns'), nsTld: $('ns-tld'),
@@ -10771,6 +10772,28 @@ function expiringCsv() {
 els.xpParked?.addEventListener('change', expiringLoad);
 els.xpRefresh?.addEventListener('click', expiringLoad);
 els.xpCsv?.addEventListener('click', expiringCsv);
+async function expiringSeed() {
+  const v = (els.xpSeedInput && els.xpSeedInput.value || '').trim();
+  if (!v) return;
+  if (els.xpSeedStatus) els.xpSeedStatus.textContent = 'Scanning…';
+  if (els.xpSeedGo) els.xpSeedGo.disabled = true;
+  try {
+    const res = await fetch('/research/api/expiring', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ action: 'seed', domains: v }) });
+    const d = await res.json();
+    const seeded = (d && d.seeded) || [];
+    const inRed = seeded.filter((s) => s.in_redemption);
+    const summary = seeded.map((s) => `${s.domain}: ${s.error || s.phase || '?'}`).join(' · ');
+    if (els.xpSeedStatus) els.xpSeedStatus.textContent = `${inRed.length} in redemption. ${summary}`;
+    if (els.xpSeedInput) els.xpSeedInput.value = '';
+    expiringLoad();
+  } catch (e) {
+    if (els.xpSeedStatus) els.xpSeedStatus.textContent = `Error: ${String(e.message || e)}`;
+  } finally {
+    if (els.xpSeedGo) els.xpSeedGo.disabled = false;
+  }
+}
+els.xpSeedGo?.addEventListener('click', expiringSeed);
+els.xpSeedInput?.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); expiringSeed(); } });
 
 // The compact in-report demand card. `mult` (from the valuation) shows how the count
 // nudged the value — so it's clear this now FACTORS INTO the number, not just a stat.

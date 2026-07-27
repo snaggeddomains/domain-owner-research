@@ -1039,8 +1039,12 @@ investors. Reuses Beeper's RDAP + adaptive cadence; **no new vendor/env key**.
   cron is bell-only) so rob (admin) isn't double-emailed. **No Slack yet** — Slack lives in the
   admin project; a pending follow-up if wanted.
 - **API** `api/expiring.js` (gated `expiring`): `GET` → `{configured, stats, rows}` (in-redemption
-  or dropped, ALL shown; `?hideParked=1` to hide investor-parking NS, `?dismissed=1` to include
-  dismissed); `POST {action:dismiss|undismiss, domain}`.
+  ONLY — `redemptionList` filters `in_redemption=true`; available/dropped names are tracked but NOT
+  shown, since they're either already gone or a gated word whose .ai was never registered);
+  `?hideParked=1` to hide investor-parking NS, `?dismissed=1` to include dismissed;
+  `POST {action:dismiss|undismiss, domain}`; **`POST {action:seed, domains}`** → manually add +
+  immediately RDAP-scan specific names (bypasses the alphabetical curation walk + gate; ≤25), so a
+  human can validate/watch a name now. UI: a "＋ Watch now" input on the report.
 - **DB** `lib/db/expiringAi.js` + table `domain_research_expiring_ai` (domain pk, sld, tld_count,
   nameservers[], parked, expiration, last_status[], in_redemption, redemption_since, available,
   last_checked, emailed_at, dismissed) — RLS auto-enabled by the `domain_research_%` loop.

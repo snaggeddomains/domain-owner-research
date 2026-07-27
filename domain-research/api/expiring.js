@@ -7,11 +7,43 @@
 //   GET /api/expiring?parked=1        → include likely-investor (parked-NS) names
 //   GET /api/expiring?dismissed=1     → include dismissed names
 //   POST { action:'dismiss'|'undismiss', domain }
+//   POST { action:'seed', domains:'rica.ai dealt.ai …' }  → add + scan specific names NOW
 import { isAuthed, requireUser, userCan } from '../lib/auth.js';
-import { redemptionList, stats, setDismissed, isConfigured } from '../lib/db/expiringAi.js';
-import { phaseLabel } from '../lib/expiring/redemption.js';
+import { redemptionList, stats, setDismissed, isConfigured, insertCandidate, updateCandidate } from '../lib/db/expiringAi.js';
+import { phaseLabel, inRedemptionWindow } from '../lib/expiring/redemption.js';
+import { looksParked } from '../lib/expiring/candidates.js';
+import { rdapStatus } from '../lib/beeper/rdap.js';
 
-export const config = { maxDuration: 20 };
+export const config = { maxDuration: 30 };
+
+// Manually add + immediately RDAP-scan specific .ai names (bypasses the alphabetical
+// curation walk + quality gate — a human explicitly wants these watched). Bounded.
+async function seedDomains(raw) {
+  const list = [...new Set(String(raw || '')
+    .split(/[\s,]+/)
+    .map((s) => s.trim().toLowerCase().replace(/^https?:\/\//, '').replace(/\/.*$/, ''))
+    .filter(Boolean)
+    .map((d) => (d.includes('.') ? d : `${d}.ai`)))].slice(0, 25);
+  const out = [];
+  for (const d of list) {
+    const sld = d.split('.')[0];
+    if (!/^[a-z.]+$/.test(d) || !/^[a-z]+$/.test(sld)) { out.push({ domain: d, error: 'not a clean one-word name' }); continue; }
+    await insertCandidate({ domain: d, sld, nameservers: [], parked: false });
+    const s = await rdapStatus(d).catch(() => null);
+    if (!s || !s.ok) { out.push({ domain: d, phase: 'unknown' }); continue; }
+    const inWin = !s.available && inRedemptionWindow(s.statuses);
+    const ns = Array.isArray(s.nameservers) ? s.nameservers : [];
+    const nowIso = new Date().toISOString();
+    await updateCandidate(d, {
+      last_status: s.available ? [] : s.statuses, last_http: s.code, last_checked: nowIso,
+      available: Boolean(s.available), in_redemption: inWin, nameservers: ns, parked: ns.length ? looksParked(ns) : false,
+      ...(s.expiration ? { expiration: s.expiration } : {}),
+      ...(inWin ? { redemption_since: nowIso } : {}),
+    });
+    out.push({ domain: d, phase: phaseLabel(s), in_redemption: inWin, available: Boolean(s.available), expiration: s.expiration || null });
+  }
+  return out;
+}
 
 function canUse(user) {
   return userCan(user, 'expiring') || userCan(user, 'admin');
@@ -47,9 +79,14 @@ export default async function handler(req, res) {
 
   if (req.method === 'POST') {
     const b = req.body || {};
+    if (b.action === 'seed') {
+      try { res.status(200).json({ ok: true, seeded: await seedDomains(b.domains) }); }
+      catch (e) { res.status(500).json({ error: String((e && e.message) || e) }); }
+      return;
+    }
     const domain = String(b.domain || '').toLowerCase().trim();
     if (!domain || (b.action !== 'dismiss' && b.action !== 'undismiss')) {
-      res.status(400).json({ error: 'action (dismiss|undismiss) and domain required' });
+      res.status(400).json({ error: 'action (dismiss|undismiss|seed) required' });
       return;
     }
     try { await setDismissed(domain, b.action === 'dismiss'); res.status(200).json({ ok: true }); }

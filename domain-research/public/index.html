@@ -923,6 +923,11 @@
             <button id="xp-refresh" type="button" class="be-ghost">↻ Refresh</button>
             <button id="xp-csv" type="button" class="be-ghost" hidden>⬇ CSV</button>
           </div>
+          <div class="xp-seed">
+            <input id="xp-seed-input" type="text" placeholder="Watch specific names now (comma/space separated, e.g. rica.ai dealt.ai) — scans immediately" autocapitalize="off" autocorrect="off" spellcheck="false" />
+            <button id="xp-seed-go" type="button" class="be-ghost">＋ Watch now</button>
+            <span id="xp-seed-status" class="muted"></span>
+          </div>
           <div id="expiring-status" class="sr-status" hidden></div>
           <div id="expiring-result"></div>
         </section>
@@ -1300,6 +1305,6 @@ The model parses it into structured filters (TLDs, length, budget, tone, etc.) a
     </div>
 
     <!-- Bump ?v= on any public/app.js or styles.css change to bust caches. -->
-    <script src="app.js?v=20260727expiring3"></script>
+    <script src="app.js?v=20260727expiring4"></script>
   </body>
 </html>
