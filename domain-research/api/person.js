@@ -18,9 +18,15 @@ import { withCategory } from '../lib/db/usage.js';
 
 export const config = { maxDuration: 60 };
 
+const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+function cleanEmail(raw) {
+  const e = String(raw || '').trim().toLowerCase();
+  return EMAIL_RE.test(e) ? e : null;
+}
 function cleanUrl(raw) {
   let u = String(raw || '').trim();
   if (!u) return null;
+  if (EMAIL_RE.test(u)) return null;               // an email is not a URL
   if (!/^https?:\/\//i.test(u)) u = `https://${u}`;
   try { const parsed = new URL(u); if (!/\./.test(parsed.host)) return null; return parsed.toString(); } catch { return null; }
 }
@@ -47,17 +53,23 @@ async function handleGet(req, res) {
 }
 
 async function handleCreate(body, res, user) {
-  const url = cleanUrl(body.url);
-  if (!url) { res.status(400).json({ error: 'Provide a valid profile URL (LinkedIn, X/Twitter, Facebook, …).' }); return; }
-  const platform = platformOf(url);
+  // Accept EITHER a social-profile URL or an email address (in `email` or pasted into `url`).
+  const email = cleanEmail(body.email) || cleanEmail(body.url);
+  const url = email ? null : cleanUrl(body.url);
+  if (!email && !url) {
+    res.status(400).json({ error: 'Provide a profile URL (LinkedIn, X/Twitter, …) or an email address.' });
+    return;
+  }
+  const seed = email || url;                        // stored in input_url (text)
+  const platform = email ? { key: 'email' } : platformOf(url);
   const runId = await createPersonRun({
-    input_url: url,
+    input_url: seed,
     platform: platform ? platform.key : 'other',
     subject_name: String(body.name || '').trim() || null,
     created_by: user?.id || null,
   });
   await inngest.send({ name: PERSON_REQUESTED, data: { runId } });
-  res.status(202).json({ run_id: runId, input_url: url, platform: platform ? platform.key : 'other' });
+  res.status(202).json({ run_id: runId, input_url: seed, platform: platform ? platform.key : 'other' });
 }
 
 // PAID — resolve emails/phones for an already-run person. Bounded → inline.

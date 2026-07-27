@@ -167,6 +167,82 @@ async function identify({ url, name, company, env }) {
   return { subject, inputPage, rrProfile };
 }
 
+// Pull a plausible person name from web-search results (LinkedIn result title, the
+// knowledge-graph title, or a "First Last …" result headline).
+function nameFromWebResults(web) {
+  if (!web) return null;
+  const kg = web.knowledge_graph;
+  if (kg && kg.title && /^[A-Z][a-z]+ [A-Z][a-z'.-]+/.test(kg.title)) return kg.title;
+  const results = Array.isArray(web.results) ? web.results : [];
+  for (const r of results) {
+    if (/linkedin\.com/i.test(r.link || '') || /\|\s*LinkedIn/i.test(r.title || '')) {
+      const n = nameFromTitle(r.title || '', 'linkedin');
+      if (n) return n;
+    }
+  }
+  for (const r of results) {
+    const m = String(r.title || '').match(/^([A-Z][a-z]+ [A-Z][a-z'.-]+)\b/);
+    if (m) return m[1];
+  }
+  return null;
+}
+
+// ---- step 1 (alt): identify from an EMAIL address --------------------------
+// Resolve the person from an email: RocketReach reverse-lookup by email (the direct
+// email→person resolver — returns name/LinkedIn/phone in one paid call). On a miss,
+// web-search the email to recover a first+last name, then place a LinkedIn via the free
+// rocketreach_search. Returns identify()'s shape + any contacts the lookup surfaced.
+async function identifyByEmail({ email, name, env }) {
+  const clean = String(email || '').trim().toLowerCase();
+  const domain = clean.includes('@') ? clean.split('@')[1] : null;
+  const subject = {
+    name: name || null, title: null,
+    company: null, company_domain: domain || null,
+    email: clean, linkedin_url: null, location: null,
+    input_url: null, input_platform: 'email',
+  };
+  const contacts = { emails: [], phones: [], sources: [] };
+
+  // (1) RocketReach reverse-lookup by email (paid) — name + LinkedIn + phone at once.
+  const rr = await runTool('rocketreach_lookup', { email: clean }, env).catch(() => null);
+  if (rr && rr.ok && rr.data && rr.data.found) {
+    const d = rr.data;
+    subject.name = subject.name || d.name || null;
+    subject.title = d.current_title || d.title || null;
+    subject.company = d.current_employer || null;
+    subject.linkedin_url = d.linkedin_url || null;
+    subject.location = d.location || null;
+    for (const p of d.phones || []) contacts.phones.push({ value: typeof p === 'string' ? p : (p.number || p.value), source: 'rocketreach' });
+    for (const e of d.emails || []) contacts.emails.push({ value: typeof e === 'string' ? e : (e.email || e.value), source: 'rocketreach' });
+    if (contacts.emails.length || contacts.phones.length) contacts.sources.push('rocketreach_lookup');
+  }
+
+  // (2) Still no name → hunt them down with a web search on the email, then the local
+  // part + domain, recovering a first+last name from the results.
+  if (!subject.name) {
+    subject.name = nameFromWebResults(await webSearch(`"${clean}"`, null, env));
+    if (!subject.name && domain) {
+      const local = clean.split('@')[0].replace(/[._-]+/g, ' ');
+      subject.name = nameFromWebResults(await webSearch(`${local} ${domain}`, null, env));
+    }
+  }
+
+  // (3) Have a name but no LinkedIn → free rocketreach_search to place the profile.
+  if (subject.name && !subject.linkedin_url) {
+    const rp = (await rocketSearch({ name: subject.name, ...(subject.company ? { company: subject.company } : {}) }, env))[0] || null;
+    if (rp) {
+      subject.title = subject.title || rp.current_title || null;
+      subject.company = subject.company || rp.current_employer || null;
+      subject.linkedin_url = rp.linkedin_url || null;
+      subject.location = subject.location || rp.location || null;
+    }
+  }
+
+  // Anchor the triangulation on the LinkedIn we found (if any).
+  if (subject.linkedin_url) { subject.input_url = subject.linkedin_url; subject.input_platform = 'linkedin'; }
+  return { subject, inputPage: null, rrProfile: null, contacts };
+}
+
 // ---- step 2: triangulate + VIP --------------------------------------------
 
 async function triangulate({ subject, inputPage, env }) {
@@ -324,8 +400,14 @@ async function synthesize(parts, env) {
 
 // ---- public: the free deep dive -------------------------------------------
 
-export async function runPersonDeepDive({ url, name, company, env = process.env }) {
-  const { subject, inputPage, rrProfile } = await identify({ url, name, company, env });
+export async function runPersonDeepDive({ url, email, name, company, env = process.env }) {
+  // Accept an EMAIL seed (either the `email` field, or an email pasted into `url`).
+  const seedEmail = (email && /@/.test(email) ? email : null)
+    || (url && !/^https?:\/\//i.test(url) && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(String(url).trim()) ? String(url).trim() : null);
+  const ident = seedEmail
+    ? await identifyByEmail({ email: seedEmail, name, env })
+    : await identify({ url, name, company, env });
+  const { subject, inputPage, rrProfile } = ident;
   const candidates = await triangulate({ subject, inputPage, env });
   // Synthesize + adjudicate identity in one LLM pass (returns narrative + which
   // findings are actually the subject vs a namesake).
@@ -361,7 +443,14 @@ export async function runPersonDeepDive({ url, name, company, env = process.env 
       title: rrProfile.current_title || null, employer: rrProfile.current_employer || null,
       linkedin_url: rrProfile.linkedin_url || subject.linkedin_url || null, location: rrProfile.location || null,
       source: 'rocketreach_search',
-    } : null,
+    } : (seedEmail && (subject.title || subject.company || subject.linkedin_url) ? {
+      title: subject.title || null, employer: subject.company || null,
+      linkedin_url: subject.linkedin_url || null, location: subject.location || null,
+      source: 'rocketreach_lookup',
+    } : null),
+    // Contacts already surfaced by an EMAIL seed's reverse-lookup (phone / LinkedIn) —
+    // so the user sees them without a separate reveal. Null for a URL seed.
+    contacts: (ident.contacts && (ident.contacts.phones.length || ident.contacts.emails.length)) ? ident.contacts : null,
   };
 }
 

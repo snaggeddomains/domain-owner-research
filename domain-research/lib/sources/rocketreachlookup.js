@@ -25,20 +25,22 @@ export default {
       name: { type: 'string', description: 'Person full name, e.g. "Jane Doe"' },
       company: { type: 'string', description: 'Current employer/company to disambiguate the match' },
       linkedin_url: { type: 'string', description: 'A LinkedIn profile URL to look up directly' },
+      email: { type: 'string', description: 'An email address to reverse-look-up the person by' },
       id: { type: 'string', description: 'RocketReach profile id returned by rocketreach_search' },
     },
   },
   requiresKey: ['ROCKETREACH_API_KEY'],
-  async run({ name, company, linkedin_url, id }, { env }) {
+  async run({ name, company, linkedin_url, email, id }, { env }) {
     const headers = { 'Api-Key': env.ROCKETREACH_API_KEY, accept: 'application/json' };
     const q = new URLSearchParams();
     if (id != null && String(id) !== '') q.set('id', String(id));
+    else if (email) q.set('email', String(email).trim());   // reverse lookup by email → profile + phone + LinkedIn
     else if (linkedin_url) q.set('linkedin_url', String(linkedin_url));
     else {
       if (name) q.set('name', String(name));
       if (company) q.set('current_employer', String(company));
     }
-    if (![...q.keys()].length) throw new Error('Provide name (+company), linkedin_url, or id');
+    if (![...q.keys()].length) throw new Error('Provide name (+company), linkedin_url, email, or id');
 
     let data;
     try {

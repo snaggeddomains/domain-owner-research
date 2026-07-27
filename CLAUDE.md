@@ -1181,10 +1181,22 @@ gated by the `research.portfolio` module permission.
 # Person deep-dive — social-URL → identity + VIP + contacts (2026-07-09)
 
 Takes ONE **social-profile URL** (LinkedIn / X / Facebook / Instagram / Quora /
-YouTube / …) and produces a dossier on that person. UI at **research.snagged.com/
-research/person**, gated by the `research.person` module permission. Reuses the
-existing enrichment stack — **no new vendor/env key**. Deterministic pipeline (not
-the agent). **Free-first + reveal:** the auto pass is free-ish (search/read_url/
+YouTube / …) **or an email address** and produces a dossier on that person. UI at
+**research.snagged.com/research/person**, gated by the `research.person` module
+permission. Reuses the existing enrichment stack — **no new vendor/env key**.
+Deterministic pipeline (not the agent).
+
+- **Email seed (2026-07-27).** Paste an email instead of a URL. `identifyByEmail`
+  (`lib/person/orchestrate.js`): (1) **RocketReach reverse-lookup by email** (`rocketreach_lookup`
+  now accepts an `email` param → name / LinkedIn / phone in one paid call); (2) miss → **web-search
+  the email** (`"<email>"`, then `<local-part> <domain>`) and recover a first+last name from the
+  results (`nameFromWebResults` — LinkedIn result title / knowledge-graph); (3) name-but-no-LinkedIn →
+  free `rocketreach_search` to place the profile. Then the SAME triangulate/synthesize/VIP path runs.
+  Any phone/LinkedIn the reverse-lookup surfaced is returned as `dossier.contacts` and stored via
+  `setPersonContacts` (run marked `revealed`) so it shows without a separate paid reveal.
+  `api/person.js` accepts an email in `email` or pasted into `url` (`cleanEmail`; `input_url` holds
+  the seed, platform `email`); `runPersonDeepDive` detects an email seed and branches. FullEnrich
+  stays the contact fallback in `revealContacts` (needs a name, so it runs after we have one). **Free-first + reveal:** the auto pass is free-ish (search/read_url/
 rocketreach_search + one LLM synth); the **paid** contact lookup is a separate
 button.
 

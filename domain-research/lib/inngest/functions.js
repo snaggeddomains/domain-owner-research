@@ -24,7 +24,7 @@ import {
 import {
   getPortfolioRun, setPortfolioRunStatus, insertPortfolioDomains,
 } from '../db/portfolio.js';
-import { getPersonRun, setPersonRunStatus } from '../db/person.js';
+import { getPersonRun, setPersonRunStatus, setPersonContacts } from '../db/person.js';
 import { runPersonDeepDive } from '../person/orchestrate.js';
 import { getLeadByKey, setLeadStatus } from '../db/leads.js';
 import { runLeadEnrich } from '../leads/orchestrate.js';
@@ -636,6 +636,11 @@ export const runPerson = inngest.createFunction(
         vip_band: dossier.vip?.band || null,
         result: dossier,
       }));
+      // An EMAIL seed already resolved contacts (phone / LinkedIn) via the reverse-lookup —
+      // store them so they show without a separate paid reveal.
+      if (dossier.contacts && (dossier.contacts.phones?.length || dossier.contacts.emails?.length)) {
+        await step.run('store-contacts', () => setPersonContacts(runId, dossier.contacts));
+      }
       return { runId, ok: true, vip: dossier.vip?.band, presence: dossier.presence_count };
     } catch (err) {
       const message = String(err?.message || err);
