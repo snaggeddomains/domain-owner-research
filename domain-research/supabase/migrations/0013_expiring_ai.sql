@@ -5,7 +5,8 @@
 create table if not exists domain_research_expiring_ai (
   domain           text primary key,          -- e.g. descale.ai
   sld              text not null,              -- descale
-  nameservers      text[] not null default '{}', -- captured at curation (parked detection / display)
+  tld_count        int,                        -- # of popular TLDs the word is registered in (demand/quality gate)
+  nameservers      text[] not null default '{}', -- captured at scan (parked detection / display)
   parked           boolean not null default false, -- NS look like a parking/marketplace host (likely investor)
   expiration       timestamptz,               -- registry expiration (learned from RDAP; drives cadence)
   last_status      text[] not null default '{}', -- newest EPP statuses (lowercased)

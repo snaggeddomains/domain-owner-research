@@ -25,6 +25,7 @@ function shape(r) {
   return {
     domain: r.domain,
     sld: r.sld,
+    tld_count: r.tld_count == null ? null : r.tld_count,
     phase: r.available ? 'dropped' : phaseLabel(s),
     in_redemption: r.in_redemption,
     available: r.available,

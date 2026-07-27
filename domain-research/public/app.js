@@ -10714,13 +10714,14 @@ function expiringRender(rows) {
   const rowsHtml = expiringLast.map((r) => `<tr>
     <td class="xp-dom"><a href="/research/appraisal/${encodeURIComponent(r.domain)}" title="Appraise ${escapeHtml(r.domain)}">${escapeHtml(r.domain)}</a></td>
     <td>${xpPhaseChip(r)}</td>
+    <td class="xp-demand muted" title="Registered in this many of the top ~26 TLDs (demand signal)">${r.tld_count == null ? '—' : `${r.tld_count} TLDs`}</td>
     <td class="xp-exp">${xpDays(r)}${r.expiration ? `<div class="muted xp-expd">${escapeHtml(String(r.expiration).slice(0, 10))}</div>` : ''}</td>
     <td class="xp-since muted">${r.redemption_since ? escapeHtml(String(r.redemption_since).slice(0, 10)) : '—'}</td>
     <td class="xp-ns muted">${r.parked ? '⚠️ parked' : (r.statuses || []).slice(0, 2).join(', ')}</td>
     <td class="xp-act"><button type="button" class="xp-dismiss be-ghost" data-xp-dismiss="${escapeHtml(r.domain)}" title="Hide this name">✕</button></td>
   </tr>`).join('');
   els.expiringResult.innerHTML = `<table class="xp-table">
-    <thead><tr><th>Domain</th><th>Phase</th><th>Expires</th><th>In redemption since</th><th>Status / NS</th><th></th></tr></thead>
+    <thead><tr><th>Domain</th><th>Phase</th><th>Demand</th><th>Expires</th><th>In redemption since</th><th>Status / NS</th><th></th></tr></thead>
     <tbody>${rowsHtml}</tbody></table>`;
   els.expiringResult.querySelectorAll('[data-xp-dismiss]').forEach((btn) => {
     btn.addEventListener('click', () => expiringDismiss(btn.getAttribute('data-xp-dismiss')));
@@ -10755,9 +10756,9 @@ async function expiringDismiss(domain) {
 }
 function expiringCsv() {
   if (!expiringLast.length) return;
-  const head = ['domain', 'phase', 'expiration', 'days_to_expiry', 'redemption_since', 'parked', 'statuses'];
+  const head = ['domain', 'phase', 'tld_count', 'expiration', 'days_to_expiry', 'redemption_since', 'parked', 'statuses'];
   const lines = [head.join(',')].concat(expiringLast.map((r) => [
-    r.domain, r.phase, r.expiration || '', r.days_to_expiry == null ? '' : r.days_to_expiry,
+    r.domain, r.phase, r.tld_count == null ? '' : r.tld_count, r.expiration || '', r.days_to_expiry == null ? '' : r.days_to_expiry,
     r.redemption_since || '', r.parked ? 'yes' : 'no', `"${(r.statuses || []).join('; ')}"`,
   ].join(',')));
   const blob = new Blob([lines.join('\n')], { type: 'text/csv' });

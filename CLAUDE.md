@@ -998,14 +998,21 @@ to drop and cheap to grab. Sam's ask: "Status = redemption period," stay away fr
 investors. Reuses Beeper's RDAP + adaptive cadence; **no new vendor/env key**.
 
 - **Curation = DICTIONARY-driven, NOT zone-driven** `lib/expiring/candidates.js` `curateSlice`:
-  keyset-pages the naming `english_words` table, enumerating good one-word `<word>.ai`
-  (`/^[a-z]+$/`, len 3–12) as candidates (`insertCandidate`, ON CONFLICT DO NOTHING). **Why not
-  the zone:** a name in redemption/pending-delete has been REMOVED from the `.ai` zone (delegation
-  pulled when it lapses), so curating from `zone_domains` structurally MISSES exactly the names
-  this report exists to find (rica.ai/dealt.ai — expired, in redemption, gone from the zone). So we
-  build our OWN candidate universe from the dictionary and let RDAP discover each name's real
-  status. Cursor (a word) persisted in `domain_research_expiring_ai_meta`; wraps at the end.
-  Tunable `EXPIRING_AI_MIN_LEN`/`_MAX_LEN`.
+  keyset-pages the naming `english_words` table (`is_root=true` → drops plurals/inflections),
+  enumerating good one-word `<word>.ai` (`/^[a-z]+$/`, len 3–12). **Why not the zone:** a name in
+  redemption/pending-delete has been REMOVED from the `.ai` zone (delegation pulled when it lapses),
+  so curating from `zone_domains` structurally MISSES exactly the names this report exists to find
+  (rica.ai/dealt.ai — expired, in redemption, gone from the zone). So we build our OWN candidate
+  universe from the dictionary and let RDAP discover each name's real status. Cursor (a word)
+  persisted in `domain_research_expiring_ai_meta`; wraps at the end. Tunable
+  `EXPIRING_AI_MIN_LEN`/`_MAX_LEN`.
+- **Quality gate = popular-TLD demand** (so we don't RDAP-poll tens of thousands of obscure Scrabble
+  words). Each candidate word is gated by `popularTldCount` (`lib/evaluate/tldcount.js`, cache kind
+  `xt`) — a bounded DNS probe of the ~26 most liquid TLDs — and only words registered in **≥
+  `EXPIRING_AI_MIN_TLDS` (default 6)** are inserted (with the count stored as `tld_count`). Validated
+  live: dealt 17 · rica 16 · lycra 13 · interlaced 12 (pass) vs ferlie 4 · oxeyes 1 (rejected). The
+  gate makes curation DNS-bound, so the slice is small (`pageSize` 150, `EXPIRING_AI_GATE_CONCURRENCY`
+  6); the `?curate=N` cron override is clamped to 400. `tld_count` shows as a "Demand" column + CSV.
 - **Adaptive scan** `lib/expiring/scan.js` `scanDue`: pulls the STALEST candidates
   (`last_checked` nulls-first), `isDue`-filters via **Beeper's `checkIntervalMs`** (cadence.js
   reads a candidate row's `expiration`+`last_status`), RDAP-checks the due ones (`rdapStatus` —
@@ -1034,9 +1041,9 @@ investors. Reuses Beeper's RDAP + adaptive cadence; **no new vendor/env key**.
 - **API** `api/expiring.js` (gated `expiring`): `GET` → `{configured, stats, rows}` (in-redemption
   or dropped, ALL shown; `?hideParked=1` to hide investor-parking NS, `?dismissed=1` to include
   dismissed); `POST {action:dismiss|undismiss, domain}`.
-- **DB** `lib/db/expiringAi.js` + table `domain_research_expiring_ai` (domain pk, sld, nameservers[],
-  parked, expiration, last_status[], in_redemption, redemption_since, available, last_checked,
-  emailed_at, dismissed) — RLS auto-enabled by the `domain_research_%` loop.
+- **DB** `lib/db/expiringAi.js` + table `domain_research_expiring_ai` (domain pk, sld, tld_count,
+  nameservers[], parked, expiration, last_status[], in_redemption, redemption_since, available,
+  last_checked, emailed_at, dismissed) — RLS auto-enabled by the `domain_research_%` loop.
 - **Where it lives:** the dashboard is the **5th SNAP submenu** ("Expiring .ai"). `SNAP_TABS`
   (admin `lib/permissions.ts`) points at `/research/expiring`, so it renders in BOTH the admin SNAP
   sub-nav (cross-app link) and the research SPA SNAP nav — the report itself is the research SPA page.

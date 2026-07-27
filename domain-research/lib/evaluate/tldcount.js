@@ -110,3 +110,41 @@ export async function countRegistrations(input, { env = process.env, refresh = f
   await saveToolLookup(KIND, sld, result).catch(() => {});
   return result;
 }
+
+// The ~26 most LIQUID/popular TLDs — a bounded demand probe. Being registered across
+// many of these is a strong "real, in-demand word" signal (vs. an obscure Scrabble
+// word nobody bought), used by the Expiring .ai curator to gate its dictionary.
+export const POPULAR_TLDS = [
+  'com', 'net', 'org', 'io', 'co', 'ai', 'app', 'dev', 'xyz', 'me', 'info', 'biz', 'us',
+  'tech', 'online', 'site', 'store', 'shop', 'cloud', 'live', 'world', 'life', 'pro', 'in', 'tv', 'cc',
+];
+const XKIND = 'xt'; // cache kind for the bounded popular-TLD count (distinct from full 'tc')
+
+/**
+ * How many of the POPULAR_TLDS a word is registered in — a cheap, bounded demand
+ * signal (vs. countRegistrations' full ~1,590-TLD sweep). Cache-first (kind 'xt' by
+ * SLD). Returns { sld, count, extensions[] }. DNS (UDP-53) → Vercel only, not sandbox.
+ */
+export async function popularTldCount(input, { env = process.env, refresh = false, tlds = POPULAR_TLDS, concurrency = 15 } = {}) {
+  const sld = toSld(input);
+  if (!sld || !/^[a-z]+$/.test(sld)) return { sld: sld || '', count: 0, extensions: [] };
+
+  if (!refresh) {
+    const cached = await getToolLookup(XKIND, sld);
+    if (cached?.data && Number.isFinite(cached.data.count)) return cached.data;
+  }
+
+  const registered = [];
+  let idx = 0;
+  async function worker(wi) {
+    const resolver = resolverFor(wi);
+    while (idx < tlds.length) {
+      const tld = tlds[idx++];
+      if (await isRegistered(resolver, `${sld}.${tld}`)) registered.push(tld);
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(concurrency, tlds.length) }, (_, i) => worker(i)));
+  const result = { sld, count: registered.length, extensions: registered };
+  await saveToolLookup(XKIND, sld, result).catch(() => {});
+  return result;
+}

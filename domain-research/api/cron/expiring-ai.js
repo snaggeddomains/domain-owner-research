@@ -50,7 +50,10 @@ export default async function handler(req, res) {
 
   if (!q.nocurate) {
     try {
-      out.curate = await curateSlice({ pageSize: Number(q.curate) || undefined });
+      // Curation gates each word with a DNS demand probe, so keep the slice bounded
+      // (a big pageSize would time out). Clamp the manual override to 400.
+      const pageSize = q.curate ? Math.min(Math.max(Number(q.curate) || 0, 1), 400) : undefined;
+      out.curate = await curateSlice({ pageSize });
     } catch (e) { out.curate = { error: String((e && e.message) || e) }; }
   }
   if (!q.noscan) {

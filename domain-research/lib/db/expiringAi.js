@@ -14,12 +14,19 @@ export function isConfigured() {
 // Insert a freshly-curated candidate. ON CONFLICT DO NOTHING so a re-curation
 // never wipes the expiration/status/redemption we've already learned — it only
 // adds names we don't have yet. Returns true if it was newly inserted.
-export async function insertCandidate({ domain, sld, nameservers = [], parked = false }) {
+export async function insertCandidate({ domain, sld, nameservers = [], parked = false, tldCount = null }) {
   if (!isDbConfigured() || !domain) return false;
-  const { data, error } = await getDb()
-    .from(T)
-    .upsert({ domain, sld, nameservers, parked }, { onConflict: 'domain', ignoreDuplicates: true })
-    .select('domain');
+  const row = { domain, sld, nameservers, parked };
+  if (tldCount != null) row.tld_count = tldCount;
+  async function ins(r) {
+    return getDb().from(T).upsert(r, { onConflict: 'domain', ignoreDuplicates: true }).select('domain');
+  }
+  let { data, error } = await ins(row);
+  // tld_count column not migrated yet → strip it and retry so curation still works.
+  if (error && /tld_count|column/i.test(error.message) && 'tld_count' in row) {
+    const { tld_count, ...rest } = row;
+    ({ data, error } = await ins(rest));
+  }
   if (error) return false;
   return Boolean(data && data.length);
 }
@@ -53,15 +60,23 @@ export async function updateCandidate(domain, patch) {
 // `hideParked` is an OPTIONAL filter for the handful truly on investor-parking NS.
 export async function redemptionList({ hideParked = false, includeDismissed = false, limit = 200 } = {}) {
   if (!isDbConfigured()) return [];
-  let q = getDb()
-    .from(T)
-    .select('domain,sld,nameservers,parked,expiration,last_status,in_redemption,redemption_since,available,last_checked')
-    .or('in_redemption.eq.true,available.eq.true')
-    .order('redemption_since', { ascending: false, nullsFirst: false })
-    .limit(Math.min(limit, 500));
-  if (!includeDismissed) q = q.eq('dismissed', false);
-  if (hideParked) q = q.eq('parked', false);
-  const { data, error } = await q;
+  function build(cols) {
+    let q = getDb()
+      .from(T)
+      .select(cols)
+      .or('in_redemption.eq.true,available.eq.true')
+      .order('redemption_since', { ascending: false, nullsFirst: false })
+      .limit(Math.min(limit, 500));
+    if (!includeDismissed) q = q.eq('dismissed', false);
+    if (hideParked) q = q.eq('parked', false);
+    return q;
+  }
+  const full = 'domain,sld,tld_count,nameservers,parked,expiration,last_status,in_redemption,redemption_since,available,last_checked';
+  let { data, error } = await build(full);
+  // tld_count column not migrated yet → retry without it.
+  if (error && /tld_count|column/i.test(error.message)) {
+    ({ data, error } = await build(full.replace('tld_count,', '')));
+  }
   if (error) return [];
   return data || [];
 }
