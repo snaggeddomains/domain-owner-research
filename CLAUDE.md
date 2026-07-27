@@ -1024,11 +1024,16 @@ investors. Reuses Beeper's RDAP + adaptive cadence; **no new vendor/env key**.
   Result cached in `tld_count` so re-sightings don't re-probe; reset to null if a name leaves redemption
   (so a re-entry re-checks). `in_redemption` = redemption AND quality-passed. So the only names ever
   DNS-probed are the handful actually in redemption — the 89k watchlist is never gated.
-- **`parked` is INFO, not a default filter.** Computed from the live RDAP nameservers
-  (`looksParked` = `classifyPair(...).generic`), but the report SHOWS ALL redemption names by
-  default — a lapsing name sits on registrar-default DNS (registrar-servers/domaincontrol) which
-  the generic-NS test flags, and hiding those would hide most good drops (rica.ai is on Namecheap
-  default DNS). `?hideParked=1` is an OPTIONAL filter for the few on true investor-parking NS.
+- **Nameservers shown + binary "likely investor" (2026-07-27).** The report shows the actual **first
+  two nameservers** (so you can see spaceship / afternic / registrar-default) + a binary **Likely
+  investor** chip. Investor = the NS is a **marketplace/for-sale host** (`lib/expiring/investor.js`
+  `investorSignal` — Afternic/Sedo/Dan/Atom/HugeDomains/Sav/Bodis/ParkingCrew/…), NARROW by design:
+  registrar-DEFAULT DNS (Namecheap `registrar-servers`, GoDaddy `domaincontrol`, Spaceship, Porkbun,
+  Dynadot, NameSilo) is NOT flagged (it says nothing about ownership — this fixed dealt.ai being
+  wrongly flagged). `parked` (stored) now means this investor signal. The report still SHOWS investor
+  names by default; the "Hide likely-investor names" checkbox (`?hideParked=1`) is optional — an
+  investor name near renewal may sell cheap, so it's a toggle, not an auto-hide. (Registrar-lander
+  for-sale listings on spaceship/porkbun can't be told from NS alone — the shown NS lets a human judge.)
 - **Scan/curate cron** `api/cron/expiring-ai.js` (vercel.json `*/5 * * * *`, CRON_SECRET): curate a
   slice (`pageSize` 1500) + scan due (`scanDue` limit 500, concurrency 4) + fire an in-app **bell**
   (only) to `expiring`/admin users when good names enter redemption. Query knobs
@@ -1054,9 +1059,9 @@ investors. Reuses Beeper's RDAP + adaptive cadence; **no new vendor/env key**.
   (admin `lib/permissions.ts`) points at `/research/expiring`, so it renders in BOTH the admin SNAP
   sub-nav (cross-app link) and the research SPA SNAP nav — the report itself is the research SPA page.
 - **UI** (`public/app.js` `expiring*` helpers; `#view-expiring` + `#nav-expiring` in the SNAP
-  group; `.xp-*` styles): stats header, phase chips (REDEMPTION/PENDING DELETE/DROPPED),
-  expiry + in-redemption-since, parked toggle, per-row dismiss, CSV, domain → Appraisal deep-link.
-  Cache-bust `?v=20260727expiring`.
+  group; `.xp-*` styles): stats header, phase chip (REDEMPTION), Demand (full TLD count), expiry +
+  in-redemption-since, **first-2 nameservers**, **Likely investor** chip (marketplace name), hide-
+  investor toggle, per-row dismiss, CSV, domain → Appraisal deep-link. Cache-bust `?v=20260727expiring7`.
 - **Permission:** `research.expiring` in snagged-admin `dashboard/lib/permissions.ts` (MODULES +
   SNAP_TABS + CATALOG group SNAP; stored flat as `expiring`). Grant per-user; admins auto-pass.
 - **One-time setup:** run `supabase/migrations/0013_expiring_ai.sql` on the research project.

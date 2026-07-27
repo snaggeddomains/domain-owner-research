@@ -11,7 +11,7 @@
 import { isAuthed, requireUser, userCan } from '../lib/auth.js';
 import { redemptionList, stats, setDismissed, isConfigured, insertCandidate, updateCandidate } from '../lib/db/expiringAi.js';
 import { phaseLabel, inRedemptionWindow } from '../lib/expiring/redemption.js';
-import { looksParked } from '../lib/expiring/candidates.js';
+import { investorSignal } from '../lib/expiring/investor.js';
 import { fullTldDemand } from '../lib/expiring/demand.js';
 import { rdapStatus } from '../lib/beeper/rdap.js';
 
@@ -40,7 +40,7 @@ async function seedDomains(raw) {
     const full = inWin ? await fullTldDemand(sld, process.env) : null;
     await updateCandidate(d, {
       last_status: s.available ? [] : s.statuses, last_http: s.code, last_checked: nowIso,
-      available: Boolean(s.available), in_redemption: inWin, nameservers: ns, parked: ns.length ? looksParked(ns) : false,
+      available: Boolean(s.available), in_redemption: inWin, nameservers: ns, parked: investorSignal(ns).investor,
       ...(s.expiration ? { expiration: s.expiration } : {}),
       ...(inWin ? { redemption_since: nowIso } : {}),
       ...(full != null ? { tld_count: full } : {}),
@@ -59,6 +59,8 @@ function shape(r) {
   const s = { ok: true, available: r.available, statuses: r.last_status || [] };
   const exp = r.expiration ? Date.parse(r.expiration) : NaN;
   const days = Number.isNaN(exp) ? null : Math.round((exp - Date.now()) / 86_400_000);
+  const ns = Array.isArray(r.nameservers) ? r.nameservers : [];
+  const sig = investorSignal(ns);
   return {
     domain: r.domain,
     sld: r.sld,
@@ -71,6 +73,9 @@ function shape(r) {
     days_to_expiry: days,
     redemption_since: r.redemption_since || null,
     last_checked: r.last_checked || null,
+    nameservers: ns.slice(0, 2),      // show the actual first two NS
+    investor: sig.investor,           // likely owned by an investor (on a for-sale/marketplace NS)
+    marketplace: sig.marketplace,     // which marketplace, when known
     parked: r.parked,
   };
 }

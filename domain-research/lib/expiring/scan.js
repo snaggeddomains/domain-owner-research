@@ -15,7 +15,7 @@ import { rdapStatus } from '../beeper/rdap.js';
 import { isDue } from '../beeper/cadence.js';
 import { staleCandidates, updateCandidate } from '../db/expiringAi.js';
 import { inRedemptionWindow, phaseLabel } from './redemption.js';
-import { looksParked } from './candidates.js';
+import { investorSignal } from './investor.js';
 import { fullTldDemand } from './demand.js';
 import { popularTldCount } from '../evaluate/tldcount.js';
 
@@ -63,10 +63,10 @@ export async function scanDue({ limit = 500, concurrency = 4 } = {}) {
       const wasInWindow = Boolean(c.in_redemption);
       const wasAvailable = Boolean(c.available);
       const isRed = !s.available && inRedemptionWindow(s.statuses);
-      // Parked (investor) read from the live nameservers when present; a name deep
-      // in redemption often has NS stripped → treat as not-parked (it's dropping).
+      // "Likely investor" = the live nameservers are a marketplace/for-sale host
+      // (Afternic/Sedo/Dan/…). Narrow by design — registrar-default DNS is NOT flagged.
       const ns = Array.isArray(s.nameservers) ? s.nameservers : [];
-      const parked = ns.length ? looksParked(ns) : false;
+      const parked = investorSignal(ns).investor;
 
       const patch = {
         last_status: s.available ? [] : s.statuses,
