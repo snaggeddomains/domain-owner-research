@@ -14,8 +14,10 @@ import { phaseLabel, phaseOf } from '../lib/expiring/redemption.js';
 import { investorSignal } from '../lib/expiring/investor.js';
 import { fullTldDemand } from '../lib/expiring/demand.js';
 import { rdapStatus } from '../lib/beeper/rdap.js';
+import { fetchNamecheapAiAuctions } from '../lib/expiring/namecheap.js';
+import { syncNamecheap } from '../lib/db/expiringAi.js';
 
-export const config = { maxDuration: 30 };
+export const config = { maxDuration: 60 };
 
 // Manually add + immediately RDAP-scan specific .ai names (bypasses the alphabetical
 // curation walk + quality gate — a human explicitly wants these watched). Bounded.
@@ -103,6 +105,16 @@ export default async function handler(req, res) {
     if (b.action === 'seed') {
       try { res.status(200).json({ ok: true, seeded: await seedDomains(b.domains) }); }
       catch (e) { res.status(500).json({ error: String((e && e.message) || e) }); }
+      return;
+    }
+    // Session-authed manual Namecheap sync (so you never need the CRON_SECRET) — same
+    // work the daily cron does: fetch the auction CSV + cross-reference the watchlist.
+    if (b.action === 'sync-namecheap') {
+      try {
+        const entries = await fetchNamecheapAiAuctions();
+        const result = entries.length ? await syncNamecheap(entries) : { upserted: 0, newlyListed: 0 };
+        res.status(200).json({ ok: true, ai_auctions: entries.length, ...result });
+      } catch (e) { res.status(500).json({ error: String((e && e.message) || e) }); }
       return;
     }
     const domain = String(b.domain || '').toLowerCase().trim();

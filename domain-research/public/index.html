@@ -927,6 +927,8 @@
             <label class="xp-toggle"><input id="xp-parked" type="checkbox" /> Hide likely-investor names</label>
             <button id="xp-refresh" type="button" class="be-ghost">↻ Refresh</button>
             <button id="xp-csv" type="button" class="be-ghost" hidden>⬇ CSV</button>
+            <button id="xp-nc-sync" type="button" class="be-ghost" title="Fetch the Namecheap auction feed and cross-reference the watchlist now">🔨 Sync Namecheap</button>
+            <span id="xp-nc-status" class="muted"></span>
           </div>
           <div class="xp-seed" id="xp-seed">
             <input id="xp-seed-input" type="text" placeholder="Watch specific names now (comma/space separated, e.g. rica.ai dealt.ai) — scans immediately" autocapitalize="off" autocorrect="off" spellcheck="false" />
@@ -1311,6 +1313,6 @@ The model parses it into structured filters (TLDs, length, budget, tone, etc.) a
     </div>
 
     <!-- Bump ?v= on any public/app.js or styles.css change to bust caches. -->
-    <script src="app.js?v=20260728expiringnc"></script>
+    <script src="app.js?v=20260728expiringnc2"></script>
   </body>
 </html>

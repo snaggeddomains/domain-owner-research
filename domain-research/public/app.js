@@ -308,6 +308,7 @@ const els = {
   expiringHead: $('expiring-head'), expiringResult: $('expiring-result'), expiringStatus: $('expiring-status'),
   expiringMetrics: $('expiring-metrics'), xpControls: $('xp-controls'), xpSeed: $('xp-seed'),
   xpParked: $('xp-parked'), xpRefresh: $('xp-refresh'), xpCsv: $('xp-csv'),
+  xpNcSync: $('xp-nc-sync'), xpNcStatus: $('xp-nc-status'),
   xpSeedInput: $('xp-seed-input'), xpSeedGo: $('xp-seed-go'), xpSeedStatus: $('xp-seed-status'),
   nsModeToggle: $('ns-modetoggle'), nsMatchToggle: $('ns-matchtoggle'),
   nsDomainForm: $('ns-domain-form'), nsDomain: $('ns-domain'),
@@ -10921,6 +10922,26 @@ function expiringCsv() {
 els.xpParked?.addEventListener('change', expiringLoad);
 els.xpRefresh?.addEventListener('click', () => (xpMode === 'metrics' ? expiringLoadMetrics() : expiringLoad()));
 els.xpCsv?.addEventListener('click', expiringCsv);
+async function expiringSyncNamecheap() {
+  if (!els.xpNcSync) return;
+  els.xpNcSync.disabled = true;
+  if (els.xpNcStatus) els.xpNcStatus.textContent = 'Fetching Namecheap feed…';
+  try {
+    const res = await fetch('/research/api/expiring', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ action: 'sync-namecheap' }) });
+    const d = await res.json();
+    if (d && d.ok) {
+      if (els.xpNcStatus) els.xpNcStatus.textContent = `✓ ${(d.ai_auctions || 0).toLocaleString()} .ai auctions · ${(d.newlyListed || 0).toLocaleString()} newly listed`;
+      (xpMode === 'metrics' ? expiringLoadMetrics() : expiringLoad());
+    } else if (els.xpNcStatus) {
+      els.xpNcStatus.textContent = `Error: ${(d && d.error) || 'failed'}`;
+    }
+  } catch (e) {
+    if (els.xpNcStatus) els.xpNcStatus.textContent = `Error: ${e.message || e}`;
+  } finally {
+    els.xpNcSync.disabled = false;
+  }
+}
+els.xpNcSync?.addEventListener('click', expiringSyncNamecheap);
 document.querySelectorAll('[data-xp-mode]').forEach((b) => b.addEventListener('click', () => xpSetMode(b.getAttribute('data-xp-mode'))));
 async function expiringSeed() {
   const v = (els.xpSeedInput && els.xpSeedInput.value || '').trim();
