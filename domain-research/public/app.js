@@ -10678,6 +10678,52 @@ els.renewalForm?.addEventListener('submit', (e) => {
 
 // ── Expiring .ai — SNAP report of good one-word .ai names in the redemption window ─
 let expiringLast = [];
+let expiringSort = null;   // { key, dir } — null = server order
+// [key, label, defaultDir] — the action column is appended separately (not sortable).
+const XP_COLS = [
+  ['domain', 'Domain', 'asc'],
+  ['phase', 'Phase', 'asc'],
+  ['demand', 'Demand', 'desc'],
+  ['expires', 'Expires', 'asc'],
+  ['since', 'In redemption since', 'desc'],
+  ['registrar', 'Registrar', 'asc'],
+  ['ns', 'Nameservers', 'asc'],
+  ['investor', 'Likely investor', 'desc'],
+];
+function xpSortVal(r, key) {
+  switch (key) {
+    case 'domain': return r.domain || '';
+    case 'phase': return r.phase || (r.available ? 'dropped' : 'registered');
+    case 'demand': return r.tld_count == null ? null : Number(r.tld_count);
+    case 'expires': return r.days_to_expiry == null ? null : Number(r.days_to_expiry);
+    case 'since': return r.redemption_since || '';
+    case 'registrar': return r.registrar || '';
+    case 'ns': return (r.nameservers && r.nameservers[0]) || '';
+    case 'investor': return r.investor ? 1 : 0;
+    default: return '';
+  }
+}
+function expiringSortRows(rows) {
+  if (!expiringSort) return rows.slice();
+  const { key, dir } = expiringSort;
+  const mul = dir === 'desc' ? -1 : 1;
+  return rows.slice().sort((a, b) => {
+    const va = xpSortVal(a, key), vb = xpSortVal(b, key);
+    const na = va == null || va === '', nb = vb == null || vb === '';
+    if (na && nb) return 0;
+    if (na) return 1;                 // blanks always sort last, regardless of dir
+    if (nb) return -1;
+    const c = (typeof va === 'number' && typeof vb === 'number') ? va - vb : String(va).localeCompare(String(vb));
+    return c * mul;
+  });
+}
+function xpToggleSort(key) {
+  const col = XP_COLS.find((c) => c[0] === key);
+  if (!col) return;
+  if (expiringSort && expiringSort.key === key) expiringSort = { key, dir: expiringSort.dir === 'asc' ? 'desc' : 'asc' };
+  else expiringSort = { key, dir: col[2] };
+  expiringPaint();
+}
 function xpPhaseChip(r) {
   const p = r.phase || (r.available ? 'dropped' : 'registered');
   const map = {
@@ -10706,13 +10752,17 @@ function expiringRenderHead(stats) {
 }
 function expiringRender(rows) {
   expiringLast = rows || [];
+  expiringPaint();
+}
+function expiringPaint() {
   if (els.xpCsv) els.xpCsv.hidden = !expiringLast.length;
   if (!els.expiringResult) return;
   if (!expiringLast.length) {
     els.expiringResult.innerHTML = `<div class="xp-empty muted">No .ai names are in the redemption period right now. This fills in as the scanner learns each name's expiration and watches the ones getting close — check back, or you'll get a bell + email the moment good names enter redemption.</div>`;
     return;
   }
-  const rowsHtml = expiringLast.map((r) => `<tr>
+  const rows = expiringSortRows(expiringLast);
+  const rowsHtml = rows.map((r) => `<tr>
     <td class="xp-dom"><a href="/research/appraisal/${encodeURIComponent(r.domain)}" title="Appraise ${escapeHtml(r.domain)}">${escapeHtml(r.domain)}</a></td>
     <td>${xpPhaseChip(r)}</td>
     <td class="xp-demand muted" title="How many TLDs the word is registered in (same as the TLD Count tool) — proven demand">${r.tld_count == null ? '—' : `${r.tld_count} TLDs`}</td>
@@ -10723,11 +10773,21 @@ function expiringRender(rows) {
     <td class="xp-investor">${r.investor ? `<span class="xp-inv-yes" title="On a marketplace / for-sale nameserver — likely a domain investor">🏷 ${escapeHtml(r.marketplace || 'Listed for sale')}</span>` : '<span class="muted">—</span>'}</td>
     <td class="xp-act"><button type="button" class="xp-dismiss be-ghost" data-xp-dismiss="${escapeHtml(r.domain)}" title="Hide this name">✕</button></td>
   </tr>`).join('');
+  const headHtml = XP_COLS.map(([key, label]) => {
+    const active = expiringSort && expiringSort.key === key;
+    const caret = active ? (expiringSort.dir === 'desc' ? ' ▼' : ' ▲') : '';
+    return `<th class="xp-th${active ? ' xp-th-active' : ''}" data-xp-sort="${key}" role="button" tabindex="0" title="Sort by ${escapeHtml(label)}">${escapeHtml(label)}${caret}</th>`;
+  }).join('') + '<th></th>';
   els.expiringResult.innerHTML = `<table class="xp-table">
-    <thead><tr><th>Domain</th><th>Phase</th><th>Demand</th><th>Expires</th><th>In redemption since</th><th>Registrar</th><th>Nameservers</th><th>Likely investor</th><th></th></tr></thead>
+    <thead><tr>${headHtml}</tr></thead>
     <tbody>${rowsHtml}</tbody></table>`;
   els.expiringResult.querySelectorAll('[data-xp-dismiss]').forEach((btn) => {
     btn.addEventListener('click', () => expiringDismiss(btn.getAttribute('data-xp-dismiss')));
+  });
+  els.expiringResult.querySelectorAll('[data-xp-sort]').forEach((th) => {
+    const go = () => xpToggleSort(th.getAttribute('data-xp-sort'));
+    th.addEventListener('click', go);
+    th.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(); } });
   });
 }
 async function expiringLoad() {
@@ -10760,7 +10820,7 @@ async function expiringDismiss(domain) {
 function expiringCsv() {
   if (!expiringLast.length) return;
   const head = ['domain', 'phase', 'tld_count', 'expiration', 'days_to_expiry', 'redemption_since', 'registrar', 'nameservers', 'likely_investor', 'marketplace'];
-  const lines = [head.join(',')].concat(expiringLast.map((r) => [
+  const lines = [head.join(',')].concat(expiringSortRows(expiringLast).map((r) => [
     r.domain, r.phase, r.tld_count == null ? '' : r.tld_count, r.expiration || '', r.days_to_expiry == null ? '' : r.days_to_expiry,
     r.redemption_since || '', `"${(r.registrar || '').replace(/"/g, '')}"`, `"${(r.nameservers || []).join('; ')}"`, r.investor ? 'yes' : 'no', r.marketplace || '',
   ].join(',')));

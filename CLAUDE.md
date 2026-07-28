@@ -1089,7 +1089,11 @@ investors. Reuses Beeper's RDAP + adaptive cadence; **no new vendor/env key**.
   group; `.xp-*` styles): stats header, phase chip (REDEMPTION), Demand (full TLD count), expiry +
   in-redemption-since, **Registrar** (from RDAP), **first-2 nameservers**, **Likely investor** chip
   (marketplace name), hide-investor toggle, per-row dismiss, CSV, domain → Appraisal deep-link.
-  Cache-bust `?v=20260727expiring8`.
+  **Sortable columns (2026-07-28):** every column header is click-to-sort (`XP_COLS` +
+  `expiringSortRows`/`xpToggleSort`/`xpSortVal`; blanks always sort last, numeric cols default desc,
+  string cols asc, active header shows ▲/▼ + coral highlight). Client-side over the loaded rows
+  (`expiringPaint` re-sorts without a refetch); the CSV export respects the active sort.
+  Cache-bust `?v=20260728expiringsort`.
 - **Registrar column (2026-07-27).** `rdapStatus` (`lib/beeper/rdap.js`) now also returns `registrar`
   (the role=`registrar` entity's vCard `fn` — "NameCheap, Inc." / "Dynadot Inc" — else its IANA id);
   additive, Beeper unaffected. Stored on the candidate (`registrar` column), shown as a report column
