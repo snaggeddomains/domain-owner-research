@@ -30,15 +30,16 @@ const MIN_TLDS = Number(process.env.EXPIRING_AI_MIN_TLDS || 6);
 // stuck: 96% of checks were being throttled, not answered. So the scan is paced:
 // low concurrency + a per-call delay + a single-endpoint fast path (skip the
 // rdap.org fallback that proxies to the SAME backend). All env-tunable.
-const SCAN_CONCURRENCY = Math.max(1, Number(process.env.EXPIRING_AI_SCAN_CONCURRENCY || 2));
+const SCAN_CONCURRENCY = Math.max(1, Number(process.env.EXPIRING_AI_SCAN_CONCURRENCY || 3));
 const SCAN_DELAY_MS = Math.max(0, Number(process.env.EXPIRING_AI_SCAN_DELAY_MS || 300));
-// Per-tick row cap. Paced (2 workers × ~300ms + RDAP latency ≈ a few names/sec), and
+// Per-tick row cap. Paced (workers × ~300ms + RDAP latency ≈ a few names/sec), and
 // curate shares the same invocation, so a tick must stay under the 60s function budget.
-// ~90 names leaves headroom. The cron fires every 5 min → steady-state coverage is
-// limit × 288/day (~26k/day), so the 52k first-scan backlog clears in ~2 days.
+// At concurrency 3 a tick of ~130 names runs ~35s (+curate) with headroom. The cron
+// fires every 5 min → steady-state coverage is limit × 288/day (~37k/day).
 // A tick that times out mid-scan is harmless: each name is stamped as it's checked
-// (stalest-first, idempotent), so the rest just retry next tick.
-const SCAN_LIMIT = Math.max(1, Number(process.env.EXPIRING_AI_SCAN_LIMIT || 90));
+// (stalest-first, idempotent), so the rest just retry next tick. If nic.ai starts
+// throttling again (last_http nulls climb), dial these back via the env vars.
+const SCAN_LIMIT = Math.max(1, Number(process.env.EXPIRING_AI_SCAN_LIMIT || 130));
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // When is a candidate due? Unregistered (available) dictionary .ai names are the
