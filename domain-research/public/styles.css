@@ -2421,13 +2421,37 @@ a.sr-ag-co-link:hover { border-color: var(--coral); color: var(--coral-deep); ba
 .xp-dom a:hover { text-decoration: underline; }
 .xp-chip { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 700; letter-spacing: .02em; }
 .xp-exp { white-space: nowrap; }
+.xp-demand { white-space: nowrap; }
 .xp-expd, .xp-since { font-size: 12px; }
 .xp-ns { max-width: 220px; }
 .xp-dismiss { padding: 2px 8px; font-size: 12px; }
 .xp-empty, .xp-err { padding: 24px 0; font-size: 14px; }
 .xp-seed { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 0 0 14px; }
-.xp-seed input { flex: 1; min-width: 280px; padding: 8px 12px; border: 1px solid #d9e0e4; border-radius: 8px; font-size: 13px; }
+.xp-seed input { flex: 1; min-width: 220px; padding: 8px 12px; border: 1px solid #d9e0e4; border-radius: 8px; font-size: 13px; }
 .xp-seed #xp-seed-status { font-size: 12.5px; }
+
+/* The base <button> is a big coral pill (13/22 padding, 1rem, 2px border) — far too heavy
+   for these secondary controls, especially on mobile. Make the Expiring control buttons
+   compact & tidy: white/outline for Refresh/CSV/Sync, coral only for the primary Watch-now. */
+.xp-controls .be-ghost, .xp-seed .be-ghost {
+  padding: 7px 13px; font-size: 13px; font-weight: 600; border-radius: 8px;
+  border: 1.5px solid #d9e0e4; background: #fff; color: #33475a;
+}
+.xp-controls .be-ghost:hover, .xp-seed .be-ghost:hover { background: #fbf6ee; border-color: var(--coral, #e48069); }
+.xp-seed #xp-seed-go { background: var(--coral, #e48069); border-color: var(--coral, #e48069); color: #fff; }
+.xp-seed #xp-seed-go:hover { background: var(--coral-deep, #c75f45); }
+
+@media (max-width: 640px) {
+  .xp-stats { gap: 8px 16px; }
+  .xp-stat { font-size: 13px; }
+  .xp-stat b { font-size: 16px; }
+  .xp-controls { gap: 8px; }
+  .xp-controls .xp-toggle { flex: 1 1 100%; }               /* hide-investor on its own line */
+  .xp-controls .be-ghost { flex: 1 1 auto; justify-content: center; }  /* Refresh/CSV/Sync share the row */
+  .xp-tabs .xp-tab { flex: 1; }                             /* tabs fill the width evenly */
+  .xp-seed input { flex: 1 1 100%; min-width: 0; }          /* full-width input, Watch-now below */
+  .xp-seed #xp-seed-go { flex: 1 1 auto; justify-content: center; }
+}
 .xp-ns { font-size: 12px; line-height: 1.5; white-space: nowrap; }
 .xp-investor { white-space: nowrap; }
 .xp-inv-yes { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 11.5px; font-weight: 700; color: #9a3412; background: #ffedd5; }
