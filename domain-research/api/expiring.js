@@ -9,8 +9,8 @@
 //   POST { action:'dismiss'|'undismiss', domain }
 //   POST { action:'seed', domains:'rica.ai dealt.ai …' }  → add + scan specific names NOW
 import { isAuthed, requireUser, userCan } from '../lib/auth.js';
-import { redemptionList, stats, setDismissed, isConfigured, insertCandidate, updateCandidate } from '../lib/db/expiringAi.js';
-import { phaseLabel, inRedemptionWindow } from '../lib/expiring/redemption.js';
+import { redemptionList, pendingDeleteList, lifecycleMetrics, stats, setDismissed, isConfigured, insertCandidate, updateCandidate } from '../lib/db/expiringAi.js';
+import { phaseLabel, phaseOf } from '../lib/expiring/redemption.js';
 import { investorSignal } from '../lib/expiring/investor.js';
 import { fullTldDemand } from '../lib/expiring/demand.js';
 import { rdapStatus } from '../lib/beeper/rdap.js';
@@ -32,20 +32,25 @@ async function seedDomains(raw) {
     await insertCandidate({ domain: d, sld, nameservers: [], parked: false });
     const s = await rdapStatus(d).catch(() => null);
     if (!s || !s.ok) { out.push({ domain: d, phase: 'unknown' }); continue; }
-    const inWin = !s.available && inRedemptionWindow(s.statuses);
+    const phase = s.available ? null : phaseOf(s.statuses);
+    const inRed = phase === 'redemption';
+    const inPd = phase === 'pending_delete';
+    const inWin = inRed || inPd;
     const ns = Array.isArray(s.nameservers) ? s.nameservers : [];
     const nowIso = new Date().toISOString();
-    // For a seeded name that's in redemption, compute the full TLD demand (matches the
+    // For a seeded name in a surfaced window, compute the full TLD demand (matches the
     // TLD Count tool) so it shows a real number — a manual add skips the curation gate.
     const full = inWin ? await fullTldDemand(sld, process.env) : null;
     await updateCandidate(d, {
       last_status: s.available ? [] : s.statuses, last_http: s.code, last_checked: nowIso,
-      available: Boolean(s.available), in_redemption: inWin, nameservers: ns, registrar: s.registrar || null, parked: investorSignal(ns).investor,
+      available: Boolean(s.available), in_redemption: inRed, in_pending_delete: inPd, demand_ok: inWin ? true : null,
+      nameservers: ns, registrar: s.registrar || null, parked: investorSignal(ns).investor,
       ...(s.expiration ? { expiration: s.expiration } : {}),
-      ...(inWin ? { redemption_since: nowIso } : {}),
+      ...(inRed ? { redemption_since: nowIso } : {}),
+      ...(inPd ? { pending_delete_since: nowIso } : {}),
       ...(full != null ? { tld_count: full } : {}),
     });
-    out.push({ domain: d, phase: phaseLabel(s), in_redemption: inWin, available: Boolean(s.available), expiration: s.expiration || null });
+    out.push({ domain: d, phase: phaseLabel(s), in_redemption: inRed, in_pending_delete: inPd, available: Boolean(s.available), expiration: s.expiration || null });
   }
   return out;
 }
@@ -67,11 +72,13 @@ function shape(r) {
     tld_count: r.tld_count == null ? null : r.tld_count,
     phase: r.available ? 'dropped' : phaseLabel(s),
     in_redemption: r.in_redemption,
+    in_pending_delete: r.in_pending_delete,
     available: r.available,
     statuses: r.last_status || [],
     expiration: r.expiration || null,
     days_to_expiry: days,
     redemption_since: r.redemption_since || null,
+    pending_delete_since: r.pending_delete_since || null,
     last_checked: r.last_checked || null,
     registrar: r.registrar || null,
     nameservers: ns.slice(0, 2),      // show the actual first two NS
@@ -108,12 +115,21 @@ export default async function handler(req, res) {
   if (!isConfigured()) { res.status(200).json({ configured: false, stats: null, rows: [] }); return; }
   const hideParked = req.query.hideParked === '1';
   const includeDismissed = req.query.dismissed === '1';
+  const phase = String(req.query.phase || 'redemption');
   try {
+    // Metrics tab: lifecycle DURATION aggregates by registrar (how long names sit in
+    // each phase) — separate from the row lists.
+    if (req.query.metrics === '1') {
+      const [metrics, st] = await Promise.all([lifecycleMetrics(), stats()]);
+      res.status(200).json({ configured: true, stats: st, metrics });
+      return;
+    }
+    const list = phase === 'pending' ? pendingDeleteList : redemptionList;
     const [rows, st] = await Promise.all([
-      redemptionList({ hideParked, includeDismissed }),
+      list({ hideParked, includeDismissed }),
       stats(),
     ]);
-    res.status(200).json({ configured: true, stats: st, rows: rows.map(shape) });
+    res.status(200).json({ configured: true, stats: st, phase: phase === 'pending' ? 'pending' : 'redemption', rows: rows.map(shape) });
   } catch (e) {
     res.status(500).json({ error: String((e && e.message) || e) });
   }

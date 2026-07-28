@@ -2406,6 +2406,14 @@ a.sr-ag-co-link:hover { border-color: var(--coral); color: var(--coral-deep); ba
 .xp-th { cursor: pointer; user-select: none; white-space: nowrap; }
 .xp-th:hover { color: #47555f; }
 .xp-th-active { color: #b45309; }
+.xp-tabs { display: flex; gap: 6px; margin: 4px 0 12px; }
+.xp-tab { appearance: none; border: 1px solid #dbe3e7; background: #fff; color: #5a6b75; font-size: 13px; font-weight: 600; padding: 6px 14px; border-radius: 999px; cursor: pointer; }
+.xp-tab:hover { border-color: #c3ced4; color: #384650; }
+.xp-tab.is-active { background: #b45309; border-color: #b45309; color: #fff; }
+.xp-metric-note { font-size: 12.5px; max-width: 780px; margin: 0 0 12px; line-height: 1.5; }
+.xp-metric-table td { font-variant-numeric: tabular-nums; }
+.xp-metric { white-space: nowrap; }
+.xp-metric-all td { background: #fbf6ee; border-bottom: 2px solid #e6ecef; }
 .xp-table td { padding: 9px 10px; border-bottom: 1px solid #f0f4f6; vertical-align: top; }
 .xp-dom a { font-weight: 700; color: #1f6b52; text-decoration: none; }
 .xp-dom a:hover { text-decoration: underline; }

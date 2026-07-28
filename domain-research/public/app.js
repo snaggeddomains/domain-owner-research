@@ -306,6 +306,7 @@ const els = {
   renewalForm: $('renewal-form'), renewalQ: $('renewal-q'), renewalGo: $('renewal-go'), renewalStatus: $('renewal-status'), renewalResult: $('renewal-result'),
   navExpiring: $('nav-expiring'),
   expiringHead: $('expiring-head'), expiringResult: $('expiring-result'), expiringStatus: $('expiring-status'),
+  expiringMetrics: $('expiring-metrics'), xpControls: $('xp-controls'), xpSeed: $('xp-seed'),
   xpParked: $('xp-parked'), xpRefresh: $('xp-refresh'), xpCsv: $('xp-csv'),
   xpSeedInput: $('xp-seed-input'), xpSeedGo: $('xp-seed-go'), xpSeedStatus: $('xp-seed-status'),
   nsModeToggle: $('ns-modetoggle'), nsMatchToggle: $('ns-matchtoggle'),
@@ -984,7 +985,7 @@ function route() {
   }
   if (tr && tr.tool === 'expiring') {
     showView('expiring');
-    expiringLoad();
+    expiringEnter();
     return;
   }
   if (tr && tr.tool === 'admin') {
@@ -10679,6 +10680,8 @@ els.renewalForm?.addEventListener('submit', (e) => {
 // ── Expiring .ai — SNAP report of good one-word .ai names in the redemption window ─
 let expiringLast = [];
 let expiringSort = null;   // { key, dir } — null = server order
+let xpMode = 'redemption'; // 'redemption' | 'pending' | 'metrics'
+function xpSinceVal(r) { return (xpMode === 'pending' ? r.pending_delete_since : r.redemption_since) || ''; }
 // [key, label, defaultDir] — the action column is appended separately (not sortable).
 const XP_COLS = [
   ['domain', 'Domain', 'asc'],
@@ -10696,7 +10699,7 @@ function xpSortVal(r, key) {
     case 'phase': return r.phase || (r.available ? 'dropped' : 'registered');
     case 'demand': return r.tld_count == null ? null : Number(r.tld_count);
     case 'expires': return r.days_to_expiry == null ? null : Number(r.days_to_expiry);
-    case 'since': return r.redemption_since || '';
+    case 'since': return xpSinceVal(r);
     case 'registrar': return r.registrar || '';
     case 'ns': return (r.nameservers && r.nameservers[0]) || '';
     case 'investor': return r.investor ? 1 : 0;
@@ -10746,6 +10749,7 @@ function expiringRenderHead(stats) {
   if (!stats) { els.expiringHead.innerHTML = ''; return; }
   els.expiringHead.innerHTML = `<div class="xp-stats">
     <span class="xp-stat"><b>${(stats.in_redemption || 0).toLocaleString()}</b> in redemption</span>
+    <span class="xp-stat"><b>${(stats.in_pending_delete || 0).toLocaleString()}</b> pending delete</span>
     <span class="xp-stat"><b>${(stats.total || 0).toLocaleString()}</b> names watched</span>
     <span class="xp-stat muted">${(stats.unscanned || 0).toLocaleString()} awaiting first scan</span>
   </div>`;
@@ -10758,25 +10762,30 @@ function expiringPaint() {
   if (els.xpCsv) els.xpCsv.hidden = !expiringLast.length;
   if (!els.expiringResult) return;
   if (!expiringLast.length) {
-    els.expiringResult.innerHTML = `<div class="xp-empty muted">No .ai names are in the redemption period right now. This fills in as the scanner learns each name's expiration and watches the ones getting close — check back, or you'll get a bell + email the moment good names enter redemption.</div>`;
+    const msg = xpMode === 'pending'
+      ? 'No .ai names are in the pending-delete window right now — this is the final ~4–6 days before a name drops. Names appear here as they move out of redemption; check back.'
+      : 'No .ai names are in the redemption period right now. This fills in as the scanner learns each name\'s expiration and watches the ones getting close — check back, or you\'ll get a bell + email the moment good names enter redemption.';
+    els.expiringResult.innerHTML = `<div class="xp-empty muted">${msg}</div>`;
     return;
   }
+  const sinceLabel = xpMode === 'pending' ? 'In pending delete since' : 'In redemption since';
   const rows = expiringSortRows(expiringLast);
   const rowsHtml = rows.map((r) => `<tr>
     <td class="xp-dom"><a href="/research/appraisal/${encodeURIComponent(r.domain)}" title="Appraise ${escapeHtml(r.domain)}">${escapeHtml(r.domain)}</a></td>
     <td>${xpPhaseChip(r)}</td>
     <td class="xp-demand muted" title="How many TLDs the word is registered in (same as the TLD Count tool) — proven demand">${r.tld_count == null ? '—' : `${r.tld_count} TLDs`}</td>
     <td class="xp-exp">${xpDays(r)}${r.expiration ? `<div class="muted xp-expd">${escapeHtml(String(r.expiration).slice(0, 10))}</div>` : ''}</td>
-    <td class="xp-since muted">${r.redemption_since ? escapeHtml(String(r.redemption_since).slice(0, 10)) : '—'}</td>
+    <td class="xp-since muted">${xpSinceVal(r) ? escapeHtml(String(xpSinceVal(r)).slice(0, 10)) : '—'}</td>
     <td class="xp-reg muted">${r.registrar ? escapeHtml(r.registrar) : '—'}</td>
     <td class="xp-ns muted">${(r.nameservers && r.nameservers.length) ? r.nameservers.map((n) => escapeHtml(n)).join('<br>') : '<span class="muted">— none</span>'}</td>
     <td class="xp-investor">${r.investor ? `<span class="xp-inv-yes" title="On a marketplace / for-sale nameserver — likely a domain investor">🏷 ${escapeHtml(r.marketplace || 'Listed for sale')}</span>` : '<span class="muted">—</span>'}</td>
     <td class="xp-act"><button type="button" class="xp-dismiss be-ghost" data-xp-dismiss="${escapeHtml(r.domain)}" title="Hide this name">✕</button></td>
   </tr>`).join('');
   const headHtml = XP_COLS.map(([key, label]) => {
+    const lbl = key === 'since' ? sinceLabel : label;
     const active = expiringSort && expiringSort.key === key;
     const caret = active ? (expiringSort.dir === 'desc' ? ' ▼' : ' ▲') : '';
-    return `<th class="xp-th${active ? ' xp-th-active' : ''}" data-xp-sort="${key}" role="button" tabindex="0" title="Sort by ${escapeHtml(label)}">${escapeHtml(label)}${caret}</th>`;
+    return `<th class="xp-th${active ? ' xp-th-active' : ''}" data-xp-sort="${key}" role="button" tabindex="0" title="Sort by ${escapeHtml(lbl)}">${escapeHtml(lbl)}${caret}</th>`;
   }).join('') + '<th></th>';
   els.expiringResult.innerHTML = `<table class="xp-table">
     <thead><tr>${headHtml}</tr></thead>
@@ -10790,12 +10799,37 @@ function expiringPaint() {
     th.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(); } });
   });
 }
+function expiringEnter() {
+  // Always land on the Redemption tab when the view is (re)opened.
+  xpMode = 'redemption';
+  expiringSort = null;
+  document.querySelectorAll('[data-xp-mode]').forEach((b) => b.classList.toggle('is-active', b.getAttribute('data-xp-mode') === 'redemption'));
+  if (els.expiringMetrics) els.expiringMetrics.hidden = true;
+  if (els.expiringResult) els.expiringResult.hidden = false;
+  if (els.xpControls) els.xpControls.hidden = false;
+  if (els.xpSeed) els.xpSeed.hidden = false;
+  expiringLoad();
+}
+function xpSetMode(mode) {
+  if (mode === xpMode) return;
+  xpMode = mode;
+  expiringSort = null;   // reset sort when switching views
+  document.querySelectorAll('[data-xp-mode]').forEach((b) => b.classList.toggle('is-active', b.getAttribute('data-xp-mode') === mode));
+  const metricsView = mode === 'metrics';
+  if (els.expiringMetrics) els.expiringMetrics.hidden = !metricsView;
+  if (els.expiringResult) els.expiringResult.hidden = metricsView;
+  if (els.xpControls) els.xpControls.hidden = metricsView;   // hide-investor / refresh / csv are list-only
+  if (els.xpSeed) els.xpSeed.hidden = metricsView;
+  if (metricsView) expiringLoadMetrics();
+  else expiringLoad();
+}
 async function expiringLoad() {
   if (!els.expiringResult) return;
   const parked = els.xpParked && els.xpParked.checked ? '&hideParked=1' : '';
+  const phase = xpMode === 'pending' ? '&phase=pending' : '';
   els.expiringResult.innerHTML = `<div class="tc-loading muted"><span class="ev-spinner"></span> Loading…</div>`;
   try {
-    const res = await fetch(`/research/api/expiring?_=${Date.now()}${parked}`);
+    const res = await fetch(`/research/api/expiring?_=${Date.now()}${parked}${phase}`);
     if (res.status === 403) { els.expiringResult.innerHTML = `<div class="tc-err muted">You don't have access to this tool.</div>`; return; }
     const d = await res.json();
     if (d && d.configured === false) {
@@ -10809,6 +10843,50 @@ async function expiringLoad() {
     els.expiringResult.innerHTML = `<div class="tc-err muted">Couldn't load: ${escapeHtml(String(e.message || e))}</div>`;
   }
 }
+function xpDur(d) {
+  if (d == null) return '<span class="muted">—</span>';
+  const v = Number(d);
+  if (v < 1) return `${Math.round(v * 24)}h`;
+  return `${v.toFixed(1)}d`;
+}
+async function expiringLoadMetrics() {
+  if (!els.expiringMetrics) return;
+  els.expiringMetrics.innerHTML = `<div class="tc-loading muted"><span class="ev-spinner"></span> Loading…</div>`;
+  try {
+    const res = await fetch(`/research/api/expiring?metrics=1&_=${Date.now()}`);
+    if (res.status === 403) { els.expiringMetrics.innerHTML = `<div class="tc-err muted">You don't have access to this tool.</div>`; return; }
+    const d = await res.json();
+    if (d && d.configured === false) { els.expiringMetrics.innerHTML = `<div class="xp-empty muted">Not set up yet.</div>`; return; }
+    expiringRenderHead(d.stats);
+    expiringRenderMetrics(d.metrics || { rows: [], overall: null });
+  } catch (e) {
+    els.expiringMetrics.innerHTML = `<div class="tc-err muted">Couldn't load: ${escapeHtml(String(e.message || e))}</div>`;
+  }
+}
+function expiringRenderMetrics(m) {
+  const rows = (m && m.rows) || [];
+  const overall = m && m.overall;
+  if (!rows.length) {
+    els.expiringMetrics.innerHTML = `<div class="xp-empty muted">No lifecycle data yet. As names move redemption → pending delete → dropped, we time each phase and aggregate it here by registrar. This fills in over the coming days as the watchlist observes full drop cycles.</div>`;
+    return;
+  }
+  const body = rows.map((r) => `<tr>
+    <td class="xp-reg"><b>${escapeHtml(r.registrar || 'Unknown')}</b></td>
+    <td class="xp-metric">${xpDur(r.avg_red_to_pending)}${r.n_red_to_pending ? ` <span class="muted">(n=${r.n_red_to_pending})</span>` : ''}</td>
+    <td class="xp-metric">${xpDur(r.avg_pending_to_drop)}${r.n_pending_to_drop ? ` <span class="muted">(n=${r.n_pending_to_drop})</span>` : ''}</td>
+    <td class="xp-metric muted">${(r.in_redemption || 0)} / ${(r.in_pending_delete || 0)}</td>
+  </tr>`).join('');
+  const overallRow = overall ? `<tr class="xp-metric-all">
+    <td><b>All registrars</b></td>
+    <td class="xp-metric"><b>${xpDur(overall.avg_red_to_pending)}</b>${overall.n_red_to_pending ? ` <span class="muted">(n=${overall.n_red_to_pending})</span>` : ''}</td>
+    <td class="xp-metric"><b>${xpDur(overall.avg_pending_to_drop)}</b>${overall.n_pending_to_drop ? ` <span class="muted">(n=${overall.n_pending_to_drop})</span>` : ''}</td>
+    <td></td>
+  </tr>` : '';
+  els.expiringMetrics.innerHTML = `<p class="xp-metric-note muted">Average observed time a name sits in each phase, by registrar. Measured from our scans, so figures are approximate and sharpen as more full cycles are seen. <b>Redemption → Pending delete</b> then <b>Pending delete → Dropped</b> tells you how much runway remains once a name surfaces.</p>
+    <table class="xp-table xp-metric-table">
+      <thead><tr><th>Registrar</th><th>Redemption → Pending</th><th>Pending → Dropped</th><th title="Names currently in each phase">In redemption / pending now</th></tr></thead>
+      <tbody>${overallRow}${body}</tbody></table>`;
+}
 async function expiringDismiss(domain) {
   if (!domain) return;
   try {
@@ -10819,10 +10897,10 @@ async function expiringDismiss(domain) {
 }
 function expiringCsv() {
   if (!expiringLast.length) return;
-  const head = ['domain', 'phase', 'tld_count', 'expiration', 'days_to_expiry', 'redemption_since', 'registrar', 'nameservers', 'likely_investor', 'marketplace'];
+  const head = ['domain', 'phase', 'tld_count', 'expiration', 'days_to_expiry', 'redemption_since', 'pending_delete_since', 'registrar', 'nameservers', 'likely_investor', 'marketplace'];
   const lines = [head.join(',')].concat(expiringSortRows(expiringLast).map((r) => [
     r.domain, r.phase, r.tld_count == null ? '' : r.tld_count, r.expiration || '', r.days_to_expiry == null ? '' : r.days_to_expiry,
-    r.redemption_since || '', `"${(r.registrar || '').replace(/"/g, '')}"`, `"${(r.nameservers || []).join('; ')}"`, r.investor ? 'yes' : 'no', r.marketplace || '',
+    r.redemption_since || '', r.pending_delete_since || '', `"${(r.registrar || '').replace(/"/g, '')}"`, `"${(r.nameservers || []).join('; ')}"`, r.investor ? 'yes' : 'no', r.marketplace || '',
   ].join(',')));
   const blob = new Blob([lines.join('\n')], { type: 'text/csv' });
   const a = document.createElement('a');
@@ -10832,8 +10910,9 @@ function expiringCsv() {
   URL.revokeObjectURL(a.href);
 }
 els.xpParked?.addEventListener('change', expiringLoad);
-els.xpRefresh?.addEventListener('click', expiringLoad);
+els.xpRefresh?.addEventListener('click', () => (xpMode === 'metrics' ? expiringLoadMetrics() : expiringLoad()));
 els.xpCsv?.addEventListener('click', expiringCsv);
+document.querySelectorAll('[data-xp-mode]').forEach((b) => b.addEventListener('click', () => xpSetMode(b.getAttribute('data-xp-mode'))));
 async function expiringSeed() {
   const v = (els.xpSeedInput && els.xpSeedInput.value || '').trim();
   if (!v) return;

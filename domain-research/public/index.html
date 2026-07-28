@@ -915,21 +915,27 @@
         <section id="view-expiring" hidden>
           <div class="hero tool-hero">
             <h1 class="hero-title">Expiring <span class="accent">.ai</span></h1>
-            <p class="hero-sub">Good one-word <strong>.ai</strong> names that just entered the <strong>redemption period</strong> — the owner let them lapse, so they're heading toward a drop and are cheap to grab (a restore is deliberately expensive). We watch every good one-word dictionary <strong>.ai</strong> for the moment its status flips to redemption. Optionally hide the ones sitting on investor-parking nameservers.</p>
+            <p class="hero-sub">Good one-word <strong>.ai</strong> names heading toward a drop — the owner let them lapse (a restore is deliberately expensive), so they're cheap to grab. <strong>Redemption</strong> = just lapsed (owner could still restore); <strong>Pending delete</strong> = the final ~4–6-day countdown before it drops (what's most imminent — pitch clients now). <strong>Metrics</strong> tracks, by registrar, how long names sit in each phase so you know how much runway you have.</p>
           </div>
           <div id="expiring-head" class="xp-head"></div>
-          <div class="xp-controls">
+          <div class="xp-tabs" role="tablist">
+            <button id="xp-tab-redemption" type="button" class="xp-tab is-active" data-xp-mode="redemption">Redemption</button>
+            <button id="xp-tab-pending" type="button" class="xp-tab" data-xp-mode="pending">Pending delete</button>
+            <button id="xp-tab-metrics" type="button" class="xp-tab" data-xp-mode="metrics">Metrics</button>
+          </div>
+          <div class="xp-controls" id="xp-controls">
             <label class="xp-toggle"><input id="xp-parked" type="checkbox" /> Hide likely-investor names</label>
             <button id="xp-refresh" type="button" class="be-ghost">↻ Refresh</button>
             <button id="xp-csv" type="button" class="be-ghost" hidden>⬇ CSV</button>
           </div>
-          <div class="xp-seed">
+          <div class="xp-seed" id="xp-seed">
             <input id="xp-seed-input" type="text" placeholder="Watch specific names now (comma/space separated, e.g. rica.ai dealt.ai) — scans immediately" autocapitalize="off" autocorrect="off" spellcheck="false" />
             <button id="xp-seed-go" type="button" class="be-ghost">＋ Watch now</button>
             <span id="xp-seed-status" class="muted"></span>
           </div>
           <div id="expiring-status" class="sr-status" hidden></div>
           <div id="expiring-result"></div>
+          <div id="expiring-metrics" hidden></div>
         </section>
 
         <section id="view-bulk-eval" hidden>
@@ -1305,6 +1311,6 @@ The model parses it into structured filters (TLDs, length, budget, tone, etc.) a
     </div>
 
     <!-- Bump ?v= on any public/app.js or styles.css change to bust caches. -->
-    <script src="app.js?v=20260728expiringsort"></script>
+    <script src="app.js?v=20260728expiringphases"></script>
   </body>
 </html>

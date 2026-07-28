@@ -22,6 +22,15 @@ export function inRedemptionWindow(statuses) {
   return isRedemption(statuses);
 }
 
+// Which SURFACED window a name sits in — the two the report tracks. Pending delete
+// takes precedence (it's the later, more urgent phase: ~4–6 days from drop). Returns
+// null for anything else (registered/restored/auto-renew) — not surfaced.
+export function phaseOf(statuses) {
+  if (isPendingDelete(statuses)) return 'pending_delete';
+  if (isRedemption(statuses)) return 'redemption';
+  return null;
+}
+
 // A one-line phase label for the report/alerts.
 export function phaseLabel(s) {
   if (!s || !s.ok) return 'unknown';

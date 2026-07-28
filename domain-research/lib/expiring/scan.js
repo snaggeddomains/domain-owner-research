@@ -14,7 +14,7 @@
 import { rdapStatus } from '../beeper/rdap.js';
 import { isDue } from '../beeper/cadence.js';
 import { staleCandidates, updateCandidate } from '../db/expiringAi.js';
-import { inRedemptionWindow, phaseLabel } from './redemption.js';
+import { phaseOf, phaseLabel } from './redemption.js';
 import { investorSignal } from './investor.js';
 import { fullTldDemand } from './demand.js';
 import { popularTldCount } from '../evaluate/tldcount.js';
@@ -80,9 +80,14 @@ export async function scanDue({ limit = SCAN_LIMIT, concurrency = SCAN_CONCURREN
       // retries it; never treat an unreadable check as a status change.
       if (!s || !s.ok) { await updateCandidate(c.domain, { last_checked: nowIso }); continue; }
 
-      const wasInWindow = Boolean(c.in_redemption);
+      const wasRed = Boolean(c.in_redemption);
+      const wasPd = Boolean(c.in_pending_delete);
+      const wasSurfaced = wasRed || wasPd;
       const wasAvailable = Boolean(c.available);
-      const isRed = !s.available && inRedemptionWindow(s.statuses);
+      // Where the name sits now: redemption, pending_delete, or neither (registered/
+      // restored). Pending delete is the later, more urgent phase (≈4–6 days to drop).
+      const phase = s.available ? null : phaseOf(s.statuses);
+      const inLifecycle = phase === 'redemption' || phase === 'pending_delete';
       // "Likely investor" = the live nameservers are a marketplace/for-sale host
       // (Afternic/Sedo/Dan/…). Narrow by design — registrar-default DNS is NOT flagged.
       const ns = Array.isArray(s.nameservers) ? s.nameservers : [];
@@ -99,35 +104,59 @@ export async function scanDue({ limit = SCAN_LIMIT, concurrency = SCAN_CONCURREN
       };
       if (s.expiration) patch.expiration = s.expiration;
 
-      // The TLD lookup runs ONLY here — on names actually in the redemption period —
-      // never on the whole watchlist (Rob: "cut way down"). On the FIRST redemption
-      // sighting we run the demand check once: the bounded ~26-TLD probe decides quality
-      // (≥ MIN_TLDS), and the full count is stored for display (matches the TLD Count
-      // tool). The result is cached in tld_count so re-sightings don't re-probe.
-      let nowInWindow = false;
-      if (isRed) {
-        if (c.tld_count != null) {
-          nowInWindow = wasInWindow;                 // already demand-checked → keep the decision
-        } else {
+      // The TLD demand lookup runs ONLY on names in a surfaced window (redemption /
+      // pending delete) — never on the whole watchlist (Rob: "cut way down"). We gate
+      // ONCE per lapse: the bounded ~26-TLD probe decides quality (≥ MIN_TLDS), remembered
+      // in demand_ok, and the full count is stored for display (matches the TLD Count tool).
+      // demand_ok carries across the redemption→pending-delete transition so we don't
+      // re-probe (or re-decide) as the name advances through the pipeline.
+      let demandOk = c.demand_ok;
+      if (inLifecycle) {
+        if (demandOk == null && c.tld_count == null) {
           const [bounded, full] = await Promise.all([
             popularTldCount(c.sld, { env: process.env }).catch(() => ({ count: 0 })),
             fullTldDemand(c.sld, process.env),
           ]);
           patch.tld_count = full != null ? full : (bounded.count || 0);
-          nowInWindow = (bounded.count || 0) >= MIN_TLDS;   // surface only in-demand names
+          demandOk = (bounded.count || 0) >= MIN_TLDS;
+          patch.demand_ok = demandOk;
+        } else if (demandOk == null && c.tld_count != null) {
+          // Legacy row (gated before demand_ok existed): infer the pass decision from the
+          // prior in_redemption flag so the existing surfaced set is preserved.
+          demandOk = wasRed;
+          patch.demand_ok = demandOk;
         }
-      } else if (c.tld_count != null) {
-        patch.tld_count = null;                      // left redemption → reset so a re-entry re-checks
+        const nowRed = phase === 'redemption' && !!demandOk;
+        const nowPd = phase === 'pending_delete' && !!demandOk;
+        patch.in_redemption = nowRed;
+        patch.in_pending_delete = nowPd;
+        if (nowRed && !wasRed) patch.redemption_since = nowIso;
+        if (nowPd && !wasPd) patch.pending_delete_since = nowIso;
+      } else {
+        patch.in_redemption = false;
+        patch.in_pending_delete = false;
+        if (s.available) {
+          // Terminal drop — stamp dropped_at once and KEEP the lifecycle timestamps
+          // (redemption_since/pending_delete_since/tld_count) so the metrics tab can
+          // measure how long it sat in each phase.
+          if (wasSurfaced && !c.dropped_at) patch.dropped_at = nowIso;
+        } else if (wasSurfaced || c.tld_count != null || c.demand_ok != null) {
+          // Restored / renewed (out of the pipeline without dropping) — reset the cycle
+          // so a FUTURE lapse re-gates and re-tracks from scratch.
+          patch.redemption_since = null;
+          patch.pending_delete_since = null;
+          patch.dropped_at = null;
+          patch.tld_count = null;
+          patch.demand_ok = null;
+        }
       }
-      patch.in_redemption = nowInWindow;
-      if (nowInWindow && !wasInWindow) patch.redemption_since = nowIso;
-      if (!nowInWindow && wasInWindow) patch.redemption_since = null;
 
       await updateCandidate(c.domain, patch);
 
-      // Alert transitions: freshly in redemption, or a fresh drop. (We surface all —
-      // a lapsing name is being abandoned regardless of the NS it sits on.)
-      if (nowInWindow && !wasInWindow) {
+      // Alert transitions: freshly surfaced (entered redemption OR pending delete), or a
+      // fresh drop. A redemption→pending-delete move is NOT a new entry (already surfaced).
+      const nowSurfaced = Boolean(patch.in_redemption) || Boolean(patch.in_pending_delete);
+      if (nowSurfaced && !wasSurfaced) {
         entered.push({ domain: c.domain, sld: c.sld, phase: phaseLabel(s), expiration: s.expiration || c.expiration || null });
       }
       if (s.available && !wasAvailable) {

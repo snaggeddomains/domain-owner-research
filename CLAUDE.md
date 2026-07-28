@@ -1049,6 +1049,29 @@ investors. Reuses Beeper's RDAP + adaptive cadence; **no new vendor/env key**.
   names by default; the "Hide likely-investor names" checkbox (`?hideParked=1`) is optional — an
   investor name near renewal may sell cheap, so it's a toggle, not an auto-hide. (Registrar-lander
   for-sale listings on spaceship/porkbun can't be told from NS alone — the shown NS lets a human judge.)
+- **Pending-delete window + Metrics tab (2026-07-28).** The report is now a 3-tab view
+  (`.xp-tabs`, `xpMode` in app.js): **Redemption** (default) · **Pending delete** · **Metrics**.
+  - **Pending delete** = names that moved OUT of redemption into the final ~4–6-day countdown to
+    the drop (most imminent — pitch clients now). `redemption.js` `phaseOf(statuses)` →
+    `redemption`|`pending_delete`|null (pending takes precedence). `scan.js` now tracks BOTH phases:
+    a name is gated ONCE per lapse (`demand_ok` remembers the ≥MIN_TLDS pass so it carries across the
+    redemption→pending transition without re-probing), sets `in_redemption`/`in_pending_delete`,
+    stamps `redemption_since`/`pending_delete_since` on first entry, and `dropped_at` on the terminal
+    drop (keeping the lifecycle timestamps for metrics). A restore/renew resets the cycle.
+    `pendingDeleteList` mirrors `redemptionList` (`in_pending_delete=true`, order by
+    `pending_delete_since`). API `?phase=pending`; the alert/`entered` set fires on newly-surfaced in
+    EITHER window. The digest email is STILL redemption-only (a first-seen-in-pending name isn't
+    emailed — a possible follow-up).
+  - **Metrics tab** = lifecycle DURATIONS aggregated by registrar (`lifecycleMetrics` in
+    `expiringAi.js`, JS aggregation over the small tracked set, fail-open): **Redemption → Pending**
+    and **Pending → Dropped** average observed days (+ n) per registrar + an all-registrars weighted
+    row + current in-redemption/pending counts. API `?metrics=1` → `{metrics:{rows,overall}}`.
+    Approximate (measured from our scan cadence), sharpens as full cycles are observed.
+  - **Migration:** `supabase/migrations/0014_expiring_ai_pending_delete.sql` (adds `in_pending_delete`,
+    `pending_delete_since`, `dropped_at`, `demand_ok` + partial index + backfills `demand_ok=true` for
+    current redemption rows). App degrades gracefully pre-migration (staleCandidates/windowList/
+    updateCandidate strip-and-retry the new columns; pending tab just shows empty until 0014 runs).
+    Cache-bust `?v=20260728expiringphases`.
 - **⚠️ nic.ai RATE-LIMIT — the scan MUST be paced (2026-07-28).** nic.ai (Identity Digital, the .ai
   RDAP registry) throttles hard: an unpaced scan (500/tick, concurrency 4, + the rdap.org fallback
   that proxies to the SAME backend) got **~96% failed reads** (`last_http` null) — which is why the
@@ -1056,11 +1079,12 @@ investors. Reuses Beeper's RDAP + adaptive cadence; **no new vendor/env key**.
   `scan.js` + `rdap.js`: (1) `rdapStatus(domain, {single:true})` skips the rdap.org fallback for the
   bulk scan (registry-only — the fallback just double-loads nic.ai for zero new info; Beeper + the
   manual "Watch now" seed still pass no opts → keep the fallback); (2) low concurrency + a per-call
-  delay + a budget-safe per-tick cap, ALL env-tunable: `EXPIRING_AI_SCAN_CONCURRENCY` (2),
-  `EXPIRING_AI_SCAN_DELAY_MS` (300), `EXPIRING_AI_SCAN_LIMIT` (90). A tick that times out mid-scan is
+  delay + a budget-safe per-tick cap, ALL env-tunable: `EXPIRING_AI_SCAN_CONCURRENCY` (default 3),
+  `EXPIRING_AI_SCAN_DELAY_MS` (300), `EXPIRING_AI_SCAN_LIMIT` (130). A tick that times out mid-scan is
   harmless (each name is stamped as checked, stalest-first, idempotent → the rest retry next tick).
-  At ~90/tick × 288 ticks/day the 52k first-scan backlog clears in ~2 days, with reads actually
-  SUCCEEDING now so redemption names surface as they're reached.
+  Started at concurrency 2 / 90; bumped to 3 / 130 (2026-07-28) after reads held at 100% success
+  (~130/tick × 288 ticks/day ≈ 37k/day, first-scan backlog clears in ~2 days). If the `last_http`
+  null-rate climbs again, dial these back. Redemption names surface as they're reached, not in a lump.
 - **Scan/curate cron** `api/cron/expiring-ai.js` (vercel.json `*/5 * * * *`, CRON_SECRET): curate a
   slice (`pageSize` 1500) + scan due (`scanDue` — paced, see above) + fire an in-app **bell**
   (only) to `expiring`/admin users when good names enter redemption. Query knobs
