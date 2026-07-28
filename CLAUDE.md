@@ -1082,9 +1082,10 @@ investors. Reuses Beeper's RDAP + adaptive cadence; **no new vendor/env key**.
   delay + a budget-safe per-tick cap, ALL env-tunable: `EXPIRING_AI_SCAN_CONCURRENCY` (default 3),
   `EXPIRING_AI_SCAN_DELAY_MS` (300), `EXPIRING_AI_SCAN_LIMIT` (130). A tick that times out mid-scan is
   harmless (each name is stamped as checked, stalest-first, idempotent → the rest retry next tick).
-  Started at concurrency 2 / 90; bumped to 3 / 130 (2026-07-28) after reads held at 100% success
-  (~130/tick × 288 ticks/day ≈ 37k/day, first-scan backlog clears in ~2 days). If the `last_http`
-  null-rate climbs again, dial these back. Redemption names surface as they're reached, not in a lump.
+  **2 / 90 (~1,080/hr) is the ceiling that holds.** Tried 3 / 130 (2026-07-28): held for ~10 min
+  then nic.ai's rolling rate limit tripped and reads collapsed to 100% failure (0 ok / 130 fail),
+  so it was reverted. Don't push past 2 / 90 without expecting throttling. First-scan backlog
+  (~86k) clears in ~3 days at this rate; redemption names surface as they're reached, not in a lump.
 - **Scan/curate cron** `api/cron/expiring-ai.js` (vercel.json `*/5 * * * *`, CRON_SECRET): curate a
   slice (`pageSize` 1500) + scan due (`scanDue` — paced, see above) + fire an in-app **bell**
   (only) to `expiring`/admin users when good names enter redemption. Query knobs
