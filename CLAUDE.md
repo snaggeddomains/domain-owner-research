@@ -1099,15 +1099,22 @@ investors. Reuses Beeper's RDAP + adaptive cadence; **no new vendor/env key**.
   STREAMS the file (never loads it whole — web-stream reader + line split + a cheap `\.ai` prefilter
   + minimal CSV parser), returns `{domain,sld,price,end,url}` per `.ai` (~7s, fail-open). Daily cron
   `api/cron/expiring-namecheap.js` (vercel.json `45 8 * * *`, separate from the 5-min scan since the
-  fetch would blow that tick's budget; `?dry=1` to preview) → `syncNamecheap` (expiringAi.js): upserts
-  price/end/url + **seeds new `.ai` auctions as priority-2 candidates** (a strong expansion source —
-  concrete, priced, about-to-sell names), then stamps `namecheap_listed_at` FIRST-seen only where null.
-  **A name can hit a Namecheap auction BEFORE it formally drops** (Namecheap auctions its own expiring
-  inventory during the grace window), so `namecheap_listed_at` is a PARALLEL signal, not strictly after
-  `dropped_at`. Surfaced: a **🔨 $price ↗** column on the row tables (links to the NC listing, sortable),
-  an "on Namecheap" stat, and Metrics-tab columns **On Namecheap** (count) + **Pending → Namecheap**
-  (avg days, positive-only). **Migration 0016** (`namecheap_listed_at/price/end/url` + index); degrades
-  gracefully pre-migration (list/metrics/stats/sync strip-and-retry). No new env/key (public CSV).
+  fetch would blow that tick's budget; `?dry=1` to preview) → `syncNamecheap` (expiringAi.js):
+  **ANNOTATE-ONLY** (Rob 2026-07-28) — it cross-references the feed ONLY against the names we're
+  already tracking as about-to-drop (`in_redemption` OR `in_pending_delete`, ~dozens) and stamps their
+  `namecheap_price/end/url` + `namecheap_listed_at` (first-seen). It does NOT seed new candidates — the
+  watchlist stays dictionary/tech-driven; NC is just a signal ON the surfaced set. (An earlier cut
+  seeded all ~5.6k .ai auctions as candidates → bloated "names watched" by ~5.6k and stole scan budget;
+  reverted. Cleanup for that run: `delete from domain_research_expiring_ai where namecheap_listed_at
+  is not null and last_checked is null and coalesce(in_redemption,false)=false and
+  coalesce(in_pending_delete,false)=false;`) **A name can hit a Namecheap auction BEFORE it formally
+  drops** (Namecheap auctions its own expiring inventory during the grace window), so
+  `namecheap_listed_at` is a PARALLEL signal, not strictly after `dropped_at`. Surfaced: a **🔨 $price ↗**
+  column on the row tables (links to the NC listing, sortable), an "on Namecheap" stat (surfaced-only),
+  and Metrics-tab columns **On Namecheap** (count) + **Pending → Namecheap** (avg days, positive-only).
+  A session-authed **🔨 Sync Namecheap** button on the report runs it on demand (no CRON_SECRET);
+  `api/expiring.js` `action:'sync-namecheap'`. **Migration 0016** (`namecheap_listed_at/price/end/url`
+  + index); degrades gracefully pre-migration. No new env/key (public CSV).
 - **Tech-aware demand gate (2026-07-28).** `.ai` is a tech TLD, so a clearly tech-relevant word doesn't
   need to prove demand across as many extensions — the redemption demand gate is **≥4 popular TLDs for
   tech words vs ≥6 otherwise** (`MIN_TLDS_TECH`/`EXPIRING_AI_MIN_TLDS_TECH` default 4 in scan.js). Tech =

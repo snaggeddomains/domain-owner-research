@@ -52,41 +52,38 @@ export async function upsertTechCandidates(rows) {
   return written;
 }
 
-// Cross-reference the Namecheap auction feed: refresh price/end/url for every matching .ai
-// (seeding new ones as priority-2 candidates), then stamp namecheap_listed_at FIRST-seen
-// only where still null. Doesn't touch scan/lifecycle state. Fail-open + strip-retry.
+// Cross-reference the Namecheap auction feed against the names WE'RE ALREADY TRACKING as
+// about-to-drop (redemption / pending delete) — annotate the matches with the auction
+// price/end/url, stamp namecheap_listed_at first-seen. Does NOT seed new candidates (the
+// watchlist stays dictionary/tech-driven; NC is just a signal on the surfaced set).
+// The surfaced set is small (~dozens), so per-row updates are fine. Fail-open + strip-retry.
 export async function syncNamecheap(entries) {
-  if (!isDbConfigured() || !entries || !entries.length) return { upserted: 0, newlyListed: 0 };
-  const CHUNK = 500;
-  let upserted = 0;
-  for (let i = 0; i < entries.length; i += CHUNK) {
-    let chunk = entries.slice(i, i + CHUNK).map((e) => ({
-      domain: e.domain, sld: e.sld, priority: 2,
-      namecheap_price: e.price != null ? e.price : null,
-      namecheap_end: e.end || null,
-      namecheap_url: e.url || null,
-    }));
-    for (let t = 0; t < 5; t++) {
-      const { error } = await getDb().from(T).upsert(chunk, { onConflict: 'domain' });
-      if (!error) { upserted += chunk.length; break; }
-      const m = /column "?([a-z_]+)"?|Could not find the '([a-z_]+)' column/i.exec(error.message || '');
+  if (!isDbConfigured() || !entries || !entries.length) return { surfaced: 0, matched: 0, newlyListed: 0 };
+  const map = new Map(entries.map((e) => [e.domain, e]));
+  const { data, error } = await getDb().from(T)
+    .select('domain,namecheap_listed_at')
+    .or('in_redemption.eq.true,in_pending_delete.eq.true');
+  if (error) return { surfaced: 0, matched: 0, newlyListed: 0, error: error.message };
+  const surfaced = data || [];
+  const nowIso = new Date().toISOString();
+  let matched = 0, newlyListed = 0;
+  for (const r of surfaced) {
+    const nc = map.get(r.domain);
+    if (!nc) continue;
+    matched++;
+    let payload = { namecheap_price: nc.price != null ? nc.price : null, namecheap_end: nc.end || null, namecheap_url: nc.url || null };
+    if (!r.namecheap_listed_at) { payload.namecheap_listed_at = nowIso; newlyListed++; }
+    for (let i = 0; i < 4; i++) {
+      const { error: uerr } = await getDb().from(T).update(payload).eq('domain', r.domain);
+      if (!uerr) break;
+      const m = /column "?([a-z_]+)"?|Could not find the '([a-z_]+)' column/i.exec(uerr.message || '');
       const col = m && (m[1] || m[2]);
-      if (col && chunk[0] && (col in chunk[0])) { chunk = chunk.map(({ [col]: _d, ...x }) => x); continue; }
-      break;
+      if (!col || !(col in payload)) break;
+      const { [col]: _d, ...rest } = payload; payload = rest;
+      if (!Object.keys(payload).length) break;
     }
   }
-  // First-seen stamp: set namecheap_listed_at only where it's still null.
-  const nowIso = new Date().toISOString();
-  let newlyListed = 0;
-  const domains = entries.map((e) => e.domain);
-  for (let i = 0; i < domains.length; i += 200) {
-    const chunk = domains.slice(i, i + 200);
-    const { data, error } = await getDb().from(T)
-      .update({ namecheap_listed_at: nowIso })
-      .in('domain', chunk).is('namecheap_listed_at', null).select('domain');
-    if (!error && data) newlyListed += data.length;   // column missing (pre-0016) → error → skip
-  }
-  return { upserted, newlyListed };
+  return { surfaced: surfaced.length, matched, newlyListed };
 }
 
 // The stalest candidates first (never-checked → nulls first), so the scan's
@@ -190,8 +187,10 @@ async function windowList(which, { hideParked = false, includeDismissed = false,
 export async function lifecycleMetrics({ limit = 5000 } = {}) {
   if (!isDbConfigured()) return { rows: [], overall: null };
   function build(cols) {
+    // Only true lifecycle rows (names we've actually seen in redemption/pending) — not
+    // every row that merely carries a Namecheap annotation.
     return getDb().from(T).select(cols)
-      .or('redemption_since.not.is.null,pending_delete_since.not.is.null,namecheap_listed_at.not.is.null')
+      .or('redemption_since.not.is.null,pending_delete_since.not.is.null')
       .limit(limit);
   }
   let { data, error } = await build('registrar,redemption_since,pending_delete_since,dropped_at,in_redemption,in_pending_delete,namecheap_listed_at');
@@ -295,7 +294,7 @@ export async function stats() {
     db.from(T).select('domain', { count: 'exact', head: true }),
     db.from(T).select('domain', { count: 'exact', head: true }).eq('in_redemption', true),
     safeCount(db.from(T).select('domain', { count: 'exact', head: true }).eq('in_pending_delete', true)),
-    safeCount(db.from(T).select('domain', { count: 'exact', head: true }).not('namecheap_listed_at', 'is', null)),
+    safeCount(db.from(T).select('domain', { count: 'exact', head: true }).not('namecheap_listed_at', 'is', null).or('in_redemption.eq.true,in_pending_delete.eq.true')),
     db.from(T).select('domain', { count: 'exact', head: true }).is('last_checked', null),
   ]);
   return { total: tot.count || 0, in_redemption: red.count || 0, in_pending_delete: pd, on_namecheap: nc, unscanned: uns.count || 0 };

@@ -10930,7 +10930,7 @@ async function expiringSyncNamecheap() {
     const res = await fetch('/research/api/expiring', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ action: 'sync-namecheap' }) });
     const d = await res.json();
     if (d && d.ok) {
-      if (els.xpNcStatus) els.xpNcStatus.textContent = `✓ ${(d.ai_auctions || 0).toLocaleString()} .ai auctions · ${(d.newlyListed || 0).toLocaleString()} newly listed`;
+      if (els.xpNcStatus) els.xpNcStatus.textContent = `✓ ${(d.matched || 0)} of ${(d.surfaced || 0)} redemption/pending names on Namecheap${d.newlyListed ? ` · ${d.newlyListed} new` : ''}`;
       (xpMode === 'metrics' ? expiringLoadMetrics() : expiringLoad());
     } else if (els.xpNcStatus) {
       els.xpNcStatus.textContent = `Error: ${(d && d.error) || 'failed'}`;
