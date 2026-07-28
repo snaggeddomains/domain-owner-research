@@ -1049,8 +1049,20 @@ investors. Reuses Beeper's RDAP + adaptive cadence; **no new vendor/env key**.
   names by default; the "Hide likely-investor names" checkbox (`?hideParked=1`) is optional — an
   investor name near renewal may sell cheap, so it's a toggle, not an auto-hide. (Registrar-lander
   for-sale listings on spaceship/porkbun can't be told from NS alone — the shown NS lets a human judge.)
+- **⚠️ nic.ai RATE-LIMIT — the scan MUST be paced (2026-07-28).** nic.ai (Identity Digital, the .ai
+  RDAP registry) throttles hard: an unpaced scan (500/tick, concurrency 4, + the rdap.org fallback
+  that proxies to the SAME backend) got **~96% failed reads** (`last_http` null) — which is why the
+  redemption count stayed stuck at 7 (only the ~0.9% that answered could be classified). Fix in
+  `scan.js` + `rdap.js`: (1) `rdapStatus(domain, {single:true})` skips the rdap.org fallback for the
+  bulk scan (registry-only — the fallback just double-loads nic.ai for zero new info; Beeper + the
+  manual "Watch now" seed still pass no opts → keep the fallback); (2) low concurrency + a per-call
+  delay + a budget-safe per-tick cap, ALL env-tunable: `EXPIRING_AI_SCAN_CONCURRENCY` (2),
+  `EXPIRING_AI_SCAN_DELAY_MS` (300), `EXPIRING_AI_SCAN_LIMIT` (90). A tick that times out mid-scan is
+  harmless (each name is stamped as checked, stalest-first, idempotent → the rest retry next tick).
+  At ~90/tick × 288 ticks/day the 52k first-scan backlog clears in ~2 days, with reads actually
+  SUCCEEDING now so redemption names surface as they're reached.
 - **Scan/curate cron** `api/cron/expiring-ai.js` (vercel.json `*/5 * * * *`, CRON_SECRET): curate a
-  slice (`pageSize` 1500) + scan due (`scanDue` limit 500, concurrency 4) + fire an in-app **bell**
+  slice (`pageSize` 1500) + scan due (`scanDue` — paced, see above) + fire an in-app **bell**
   (only) to `expiring`/admin users when good names enter redemption. Query knobs
   `?curate=N&scan=N&nocurate&noscan` for backfill/tuning.
 - **Digest email cron** `api/cron/expiring-ai-digest.js` (vercel.json `0 6,10,13,16,19,22 * * *` = ~6×/day,

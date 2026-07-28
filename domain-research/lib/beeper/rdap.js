@@ -70,15 +70,19 @@ function registrarName(data) {
 //   available=true  → the domain DROPPED (404 / not found) — go grab it.
 //   statuses        → lowercased EPP statuses (e.g. ['pending delete','redemption period']).
 //   ok=false        → every endpoint failed (network/rate-limit) — don't treat as a change.
-export async function rdapStatus(domain) {
+export async function rdapStatus(domain, { single = false } = {}) {
   const d = String(domain || '').trim().toLowerCase().replace(/^www\./, '');
-  if (!d || !d.includes('.')) return { ok: false, code: null, available: null, statuses: [], expiration: null, source: null };
+  if (!d || !d.includes('.')) return { ok: false, code: null, available: null, statuses: [], expiration: null, nameservers: [], registrar: null, source: null };
   const tld = d.slice(d.lastIndexOf('.') + 1);
   const base = await rdapBaseForTld(tld);
 
+  // `single` = query ONLY the authoritative registry endpoint (skip the rdap.org
+  // fallback, which proxies to the SAME registry backend — hitting it doubles the
+  // request load on a rate-limited registry like nic.ai for zero new information).
+  // We keep the fallback when there's no bootstrap base to hit.
   const urls = [];
   if (base) urls.push(`${base}/domain/${encodeURIComponent(d)}`);
-  urls.push(`https://rdap.org/domain/${encodeURIComponent(d)}`);
+  if (!single || !base) urls.push(`https://rdap.org/domain/${encodeURIComponent(d)}`);
 
   for (const url of urls) {
     const r = await fetchRdap(url);

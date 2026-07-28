@@ -25,6 +25,22 @@ const DAY = 86_400_000;
 // dealt 17 · rica 16 · interlaced 12 pass; ferlie 4 · oxeyes 1 don't.
 const MIN_TLDS = Number(process.env.EXPIRING_AI_MIN_TLDS || 6);
 
+// nic.ai (Identity Digital) rate-limits RDAP hard — hammering it just returns a
+// wall of failed reads (last_http=null), which is why the redemption count stayed
+// stuck: 96% of checks were being throttled, not answered. So the scan is paced:
+// low concurrency + a per-call delay + a single-endpoint fast path (skip the
+// rdap.org fallback that proxies to the SAME backend). All env-tunable.
+const SCAN_CONCURRENCY = Math.max(1, Number(process.env.EXPIRING_AI_SCAN_CONCURRENCY || 2));
+const SCAN_DELAY_MS = Math.max(0, Number(process.env.EXPIRING_AI_SCAN_DELAY_MS || 300));
+// Per-tick row cap. Paced (2 workers × ~300ms + RDAP latency ≈ a few names/sec), and
+// curate shares the same invocation, so a tick must stay under the 60s function budget.
+// ~90 names leaves headroom. The cron fires every 5 min → steady-state coverage is
+// limit × 288/day (~26k/day), so the 52k first-scan backlog clears in ~2 days.
+// A tick that times out mid-scan is harmless: each name is stamped as it's checked
+// (stalest-first, idempotent), so the rest just retry next tick.
+const SCAN_LIMIT = Math.max(1, Number(process.env.EXPIRING_AI_SCAN_LIMIT || 90));
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
 // When is a candidate due? Unregistered (available) dictionary .ai names are the
 // bulk of the set and almost never change — re-check them weekly, not hourly (the
 // cadence default for an unknown-expiry name), so we don't hammer the .ai RDAP
@@ -41,7 +57,7 @@ function dueForCandidate(c, now) {
 
 // One scan pass over the due slice. concurrency workers; bounded by `limit` rows
 // pulled (stalest first). Fail-open per name.
-export async function scanDue({ limit = 500, concurrency = 4 } = {}) {
+export async function scanDue({ limit = SCAN_LIMIT, concurrency = SCAN_CONCURRENCY } = {}) {
   const now = Date.now();
   const batch = await staleCandidates(limit);
   const due = batch.filter((c) => dueForCandidate(c, now));
@@ -53,8 +69,11 @@ export async function scanDue({ limit = 500, concurrency = 4 } = {}) {
   async function worker() {
     while (queue.length) {
       const c = queue.shift();
-      const s = await rdapStatus(c.domain).catch(() => null);
+      // Registry-only read (single:true) so we don't double-load nic.ai; paced by
+      // a per-call delay so the registry keeps answering instead of throttling.
+      const s = await rdapStatus(c.domain, { single: true }).catch(() => null);
       checked++;
+      if (SCAN_DELAY_MS) await sleep(SCAN_DELAY_MS);
       const nowIso = new Date().toISOString();
       // RDAP flaked (rate-limit / network) → just stamp last_checked so cadence
       // retries it; never treat an unreadable check as a status change.
