@@ -14,21 +14,42 @@ export function isConfigured() {
 // Insert a freshly-curated candidate. ON CONFLICT DO NOTHING so a re-curation
 // never wipes the expiration/status/redemption we've already learned — it only
 // adds names we don't have yet. Returns true if it was newly inserted.
-export async function insertCandidate({ domain, sld, nameservers = [], parked = false, tldCount = null }) {
+export async function insertCandidate({ domain, sld, nameservers = [], parked = false, tldCount = null, priority = 0 }) {
   if (!isDbConfigured() || !domain) return false;
-  const row = { domain, sld, nameservers, parked };
+  let row = { domain, sld, nameservers, parked };
+  if (priority) row.priority = priority;
   if (tldCount != null) row.tld_count = tldCount;
-  async function ins(r) {
-    return getDb().from(T).upsert(r, { onConflict: 'domain', ignoreDuplicates: true }).select('domain');
+  // Strip-and-retry any not-yet-migrated column (tld_count / priority) so curation still
+  // works before the migration lands.
+  for (let i = 0; i < 4; i++) {
+    const { data, error } = await getDb().from(T).upsert(row, { onConflict: 'domain', ignoreDuplicates: true }).select('domain');
+    if (!error) return Boolean(data && data.length);
+    const m = /column "?([a-z_]+)"?|Could not find the '([a-z_]+)' column/i.exec(error.message || '');
+    const col = m && (m[1] || m[2]);
+    if (!col || !(col in row)) return false;
+    const { [col]: _drop, ...rest } = row; row = rest;
   }
-  let { data, error } = await ins(row);
-  // tld_count column not migrated yet → strip it and retry so curation still works.
-  if (error && /tld_count|column/i.test(error.message) && 'tld_count' in row) {
-    const { tld_count, ...rest } = row;
-    ({ data, error } = await ins(rest));
+  return false;
+}
+
+// Upsert tech candidates WITH a scan priority — seeds tech terms not in the dictionary
+// AND lifts an existing dictionary row's priority (so a tech-relevant word jumps the scan
+// queue) WITHOUT touching its scan state (only domain/sld/priority are written). Batched,
+// fail-open, strips priority if not migrated yet. Returns the number written.
+export async function upsertTechCandidates(rows) {
+  if (!isDbConfigured() || !rows || !rows.length) return 0;
+  const CHUNK = 500;
+  let written = 0;
+  for (let i = 0; i < rows.length; i += CHUNK) {
+    let chunk = rows.slice(i, i + CHUNK).map((r) => ({ domain: r.domain, sld: r.sld, priority: r.priority || 2 }));
+    for (let t = 0; t < 3; t++) {
+      const { error } = await getDb().from(T).upsert(chunk, { onConflict: 'domain' });
+      if (!error) { written += chunk.length; break; }
+      if (/priority|column/i.test(error.message)) { chunk = chunk.map(({ priority, ...x }) => x); continue; }
+      break;   // unknown error → skip this chunk (best-effort)
+    }
   }
-  if (error) return false;
-  return Boolean(data && data.length);
+  return written;
 }
 
 // The stalest candidates first (never-checked → nulls first), so the scan's
@@ -38,16 +59,20 @@ export async function staleCandidates(limit = 300) {
   if (!isDbConfigured()) return [];
   const base = 'domain,sld,nameservers,parked,expiration,last_status,in_redemption,redemption_since,available,last_http,last_checked';
   const extra = ',in_pending_delete,pending_delete_since,dropped_at,demand_ok,tld_count';
-  function build(cols) {
-    return getDb().from(T).select(cols)
-      .order('last_checked', { ascending: true, nullsFirst: true })
-      .limit(Math.min(limit, 1000));
+  // Never-scanned first (nulls), and within those the higher-priority (tech-relevant)
+  // names first, so they get RDAP-checked ahead of plain dictionary words.
+  function build(cols, withPriority) {
+    let q = getDb().from(T).select(cols + (withPriority ? ',priority' : ''))
+      .order('last_checked', { ascending: true, nullsFirst: true });
+    if (withPriority) q = q.order('priority', { ascending: false });
+    return q.limit(Math.min(limit, 1000));
   }
-  let { data, error } = await build(base + extra);
-  // New lifecycle columns not migrated yet → fall back to the base set so the scan
-  // still runs (pending-delete tracking just no-ops until the migration lands).
+  let { data, error } = await build(base + extra, true);
+  // priority column (0015) not migrated → drop the priority select+order.
+  if (error && /priority/i.test(error.message)) ({ data, error } = await build(base + extra, false));
+  // lifecycle columns (0014) not migrated → fall back to the base set too.
   if (error && /column|in_pending_delete|pending_delete_since|dropped_at|demand_ok|tld_count/i.test(error.message)) {
-    ({ data, error } = await build(base));
+    ({ data, error } = await build(base, false));
   }
   if (error) return [];
   return data || [];

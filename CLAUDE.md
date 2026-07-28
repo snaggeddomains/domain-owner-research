@@ -1072,6 +1072,27 @@ investors. Reuses Beeper's RDAP + adaptive cadence; **no new vendor/env key**.
     current redemption rows). App degrades gracefully pre-migration (staleCandidates/windowList/
     updateCandidate strip-and-retry the new columns; pending tab just shows empty until 0014 runs).
     Cache-bust `?v=20260728expiringphases`.
+- **Tech/AI scan prioritization + expansion (2026-07-28).** .ai is a tech/AI TLD but the
+  watchlist is seeded from a general dictionary, so `neural.ai` waited behind thousands of obscure
+  words. Fix = a `priority smallint` (2 = tech-relevant, 0 = plain dict) that reorders the scan:
+  `staleCandidates` now pulls `last_checked asc nulls first, priority desc` — among never-scanned
+  names the tech ones go FIRST (no dict words dropped, they just wait — Rob's call). Two expansion
+  sources feed priority 2:
+  - **Curated lexicon** `lib/expiring/techTerms.js` (~345 AI/ML/data/infra/security/science terms,
+    `TECH_VERSION`-gated). `techScore(sld)` boosts a matching dict word at curation; `seedTechLexicon`
+    (cron, version-gated upsert via `upsertTechCandidates`) SEEDS the non-dict terms as new `<term>.ai`
+    AND lifts existing dict rows to priority 2 without touching scan state. This is the reliable source.
+  - **name_universe tech pull** `curateTechUniverse` — keyset-pages single-word SLDs in the tech
+    CATEGORIES (`Technology & Software`/`Internet & Web`/`AI & Data`/`Crypto & Web3`/`Science & Research`)
+    from name_universe (same naming project as english_words) → priority-2 candidates. **BEST-EFFORT /
+    fail-open: name_universe has NO (category,sld) index, so this query times out and no-ops today.**
+    Unlock the broader expansion with `create index on name_universe (category, sld);` on the NAMING
+    project — then it lights up with no redeploy (it's already wired into the cron).
+  - **Migration 0015** (`priority` col + `idx_expiring_ai_scan_order` on `(last_checked asc nulls first,
+    priority desc)`). Degrades gracefully pre-migration (insert/stale/upsert strip-and-retry priority).
+  - Cron `expiring-ai.js` runs `seedTechLexicon` + `curateTechUniverse` after curate, before scan
+    (`?notech=1` to skip). The **demand gate is unchanged** (≥6 popular TLDs) — a tech-NATIVE coinage
+    registered on few TLDs can still fail it; a tech-aware gate is the deferred Phase 3 (Rob chose 1+2).
 - **⚠️ nic.ai RATE-LIMIT — the scan MUST be paced (2026-07-28).** nic.ai (Identity Digital, the .ai
   RDAP registry) throttles hard: an unpaced scan (500/tick, concurrency 4, + the rdap.org fallback
   that proxies to the SAME backend) got **~96% failed reads** (`last_http` null) — which is why the

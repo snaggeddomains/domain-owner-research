@@ -6,7 +6,7 @@
 //
 // Query knobs (for backfill/tuning): ?curate=N (zone rows to curate this tick),
 // ?scan=N (candidates to consider), ?nocurate=1 / ?noscan=1.
-import { curateSlice } from '../../lib/expiring/candidates.js';
+import { curateSlice, seedTechLexicon, curateTechUniverse } from '../../lib/expiring/candidates.js';
 import { scanDue } from '../../lib/expiring/scan.js';
 import { listUsers } from '../../lib/db/users.js';
 import { userCan } from '../../lib/auth.js';
@@ -54,6 +54,13 @@ export default async function handler(req, res) {
       const pageSize = q.curate ? Math.min(Math.max(Number(q.curate) || 0, 1), 10000) : undefined;
       out.curate = await curateSlice({ pageSize });
     } catch (e) { out.curate = { error: String((e && e.message) || e) }; }
+    // Tech expansion: seed the curated AI/tech lexicon (version-gated) + pull tech-category
+    // SLDs from name_universe. Both best-effort — they give the .ai TLD-matching names scan
+    // priority so they surface first. (?notech=1 to skip.)
+    if (!q.notech) {
+      try { out.techSeed = await seedTechLexicon(); } catch (e) { out.techSeed = { error: String((e && e.message) || e) }; }
+      try { out.techUniverse = await curateTechUniverse(); } catch (e) { out.techUniverse = { error: String((e && e.message) || e) }; }
+    }
   }
   if (!q.noscan) {
     try {

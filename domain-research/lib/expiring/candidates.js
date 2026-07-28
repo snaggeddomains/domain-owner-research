@@ -15,11 +15,16 @@
 // cron tick inserts a bounded slice; wraps at the end.
 import { getNamingDb, isNamingDbConfigured } from '../db/supabase-naming.js';
 import { classifyPair } from '../nameserver/context.js';
-import { insertCandidate, getCursor, setCursor } from '../db/expiringAi.js';
+import { insertCandidate, upsertTechCandidates, getCursor, setCursor } from '../db/expiringAi.js';
+import { techScore, techLexiconRows, TECH_VERSION } from './techTerms.js';
 
 const MIN_LEN = Number(process.env.EXPIRING_AI_MIN_LEN || 3);
 const MAX_LEN = Number(process.env.EXPIRING_AI_MAX_LEN || 12);
 const ONE_WORD = /^[a-z]+$/;
+
+// name_universe categories that read as tech/AI/science — the demand profile that
+// actually matches the .ai TLD (mirrors the controlled CATEGORIES list in the pipeline).
+const TECH_CATEGORIES = ['Technology & Software', 'Internet & Web', 'AI & Data', 'Crypto & Web3', 'Science & Research'];
 
 // A dictionary word → its clean one-word SLD if it qualifies, else null.
 export function candidateSld(word) {
@@ -63,10 +68,59 @@ export async function curateSlice({ pageSize = 1500 } = {}) {
   for (const r of rows) {
     const sld = candidateSld(r.word);
     if (!sld) continue;
-    const inserted = await insertCandidate({ domain: `${sld}.ai`, sld, nameservers: [], parked: false });
+    // Tech-relevant dictionary words get scan priority (2) so they surface first.
+    const inserted = await insertCandidate({ domain: `${sld}.ai`, sld, nameservers: [], parked: false, priority: techScore(sld) });
     if (inserted) kept++;
   }
 
   await setCursor(rows[rows.length - 1].word);
   return { scanned: rows.length, kept, cursor: rows[rows.length - 1].word, wrapped: false, configured: true };
+}
+
+// Seed the curated AI/tech lexicon: adds terms not in the dictionary as new `<term>.ai`
+// candidates AND lifts existing dictionary rows to priority 2 (so tech names scan first).
+// Version-gated (only runs when the committed lexicon changes) so the cron isn't
+// re-upserting ~300 rows every tick. Fail-open.
+export async function seedTechLexicon() {
+  const stored = await getCursor('ai_tech_lexicon_v');   // no-ops → '' if the research DB is unconfigured
+  if (String(stored) === String(TECH_VERSION)) return { seeded: 0, skipped: true };
+  const rows = techLexiconRows();
+  const written = await upsertTechCandidates(rows);
+  if (written) await setCursor(String(TECH_VERSION), 'ai_tech_lexicon_v');
+  return { seeded: written, version: TECH_VERSION };
+}
+
+// EXPAND toward the TLD: pull single-word tech/AI-category SLDs from name_universe (same
+// project as english_words) and seed them as priority-2 `<sld>.ai` candidates — tech
+// names people actually value that a general dictionary misses. Keyset-paged over its own
+// cursor; BEST-EFFORT + fail-open. NB name_universe has no (category, sld) index today, so
+// this query can hit the statement timeout on that huge table → it simply no-ops until an
+// index exists: `create index on name_universe (category, sld);` on the naming project.
+export async function curateTechUniverse({ pageSize = 300 } = {}) {
+  if (!isNamingDbConfigured()) return { scanned: 0, kept: 0, configured: false };
+  const cursor = await getCursor('ai_tech_cursor');
+  let q = getNamingDb()
+    .from('name_universe')
+    .select('sld,category')
+    .in('category', TECH_CATEGORIES)
+    .order('sld', { ascending: true })
+    .limit(pageSize);
+  if (cursor) q = q.gt('sld', cursor);
+  let data, error;
+  try { ({ data, error } = await q); } catch (e) { error = e; }
+  if (error) return { scanned: 0, kept: 0, configured: true, error: String((error && error.message) || error) };
+  const rows = data || [];
+  if (!rows.length) { await setCursor('', 'ai_tech_cursor'); return { scanned: 0, kept: 0, wrapped: true, configured: true }; }
+  // Clean one-word SLDs only, deduped → priority-2 candidates.
+  const seen = new Set();
+  const cand = [];
+  for (const r of rows) {
+    const sld = candidateSld(r.sld);
+    if (!sld || seen.has(sld)) continue;
+    seen.add(sld);
+    cand.push({ domain: `${sld}.ai`, sld, priority: 2 });
+  }
+  const kept = cand.length ? await upsertTechCandidates(cand) : 0;
+  await setCursor(rows[rows.length - 1].sld, 'ai_tech_cursor');
+  return { scanned: rows.length, kept, cursor: rows[rows.length - 1].sld, configured: true };
 }
