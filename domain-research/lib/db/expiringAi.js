@@ -52,6 +52,43 @@ export async function upsertTechCandidates(rows) {
   return written;
 }
 
+// Cross-reference the Namecheap auction feed: refresh price/end/url for every matching .ai
+// (seeding new ones as priority-2 candidates), then stamp namecheap_listed_at FIRST-seen
+// only where still null. Doesn't touch scan/lifecycle state. Fail-open + strip-retry.
+export async function syncNamecheap(entries) {
+  if (!isDbConfigured() || !entries || !entries.length) return { upserted: 0, newlyListed: 0 };
+  const CHUNK = 500;
+  let upserted = 0;
+  for (let i = 0; i < entries.length; i += CHUNK) {
+    let chunk = entries.slice(i, i + CHUNK).map((e) => ({
+      domain: e.domain, sld: e.sld, priority: 2,
+      namecheap_price: e.price != null ? e.price : null,
+      namecheap_end: e.end || null,
+      namecheap_url: e.url || null,
+    }));
+    for (let t = 0; t < 5; t++) {
+      const { error } = await getDb().from(T).upsert(chunk, { onConflict: 'domain' });
+      if (!error) { upserted += chunk.length; break; }
+      const m = /column "?([a-z_]+)"?|Could not find the '([a-z_]+)' column/i.exec(error.message || '');
+      const col = m && (m[1] || m[2]);
+      if (col && chunk[0] && (col in chunk[0])) { chunk = chunk.map(({ [col]: _d, ...x }) => x); continue; }
+      break;
+    }
+  }
+  // First-seen stamp: set namecheap_listed_at only where it's still null.
+  const nowIso = new Date().toISOString();
+  let newlyListed = 0;
+  const domains = entries.map((e) => e.domain);
+  for (let i = 0; i < domains.length; i += 200) {
+    const chunk = domains.slice(i, i + 200);
+    const { data, error } = await getDb().from(T)
+      .update({ namecheap_listed_at: nowIso })
+      .in('domain', chunk).is('namecheap_listed_at', null).select('domain');
+    if (!error && data) newlyListed += data.length;   // column missing (pre-0016) → error → skip
+  }
+  return { upserted, newlyListed };
+}
+
 // The stalest candidates first (never-checked → nulls first), so the scan's
 // adaptive cadence gets to learn each name's expiration and then taper. The
 // caller isDue-filters the returned slice.
@@ -124,18 +161,24 @@ async function windowList(which, { hideParked = false, includeDismissed = false,
     if (hideParked) q = q.eq('parked', false);
     return q;
   }
-  const full = 'domain,sld,tld_count,registrar,nameservers,parked,expiration,last_status,in_redemption,in_pending_delete,redemption_since,pending_delete_since,available,last_checked';
+  const full = 'domain,sld,tld_count,registrar,nameservers,parked,expiration,last_status,in_redemption,in_pending_delete,redemption_since,pending_delete_since,available,last_checked,namecheap_listed_at,namecheap_price,namecheap_url';
   let { data, error } = await build(full);
+  // Migration 0016 (namecheap columns) not run yet → drop those.
+  if (error && /namecheap/i.test(error.message)) {
+    ({ data, error } = await build(full.replace('namecheap_listed_at,', '').replace('namecheap_price,', '').replace(',namecheap_url', '')));
+  }
   // Migration 0014 (pending-delete columns) not run yet → drop ONLY those, keeping the
   // already-migrated tld_count/registrar so the redemption view doesn't regress.
   if (error && /in_pending_delete|pending_delete_since/i.test(error.message)) {
-    ({ data, error } = await build(full.replace('in_pending_delete,', '').replace('pending_delete_since,', '')));
+    ({ data, error } = await build(full.replace('in_pending_delete,', '').replace('pending_delete_since,', '')
+      .replace('namecheap_listed_at,', '').replace('namecheap_price,', '').replace(',namecheap_url', '')));
   }
   // Very old schema (no tld_count/registrar either) → drop those too.
   if (error && /tld_count|registrar|column/i.test(error.message)) {
     ({ data, error } = await build(full
       .replace('tld_count,', '').replace('registrar,', '')
-      .replace('in_pending_delete,', '').replace('pending_delete_since,', '')));
+      .replace('in_pending_delete,', '').replace('pending_delete_since,', '')
+      .replace('namecheap_listed_at,', '').replace('namecheap_price,', '').replace(',namecheap_url', '')));
   }
   if (error) return [];
   return data || [];
@@ -148,10 +191,14 @@ export async function lifecycleMetrics({ limit = 5000 } = {}) {
   if (!isDbConfigured()) return { rows: [], overall: null };
   function build(cols) {
     return getDb().from(T).select(cols)
-      .or('redemption_since.not.is.null,pending_delete_since.not.is.null')
+      .or('redemption_since.not.is.null,pending_delete_since.not.is.null,namecheap_listed_at.not.is.null')
       .limit(limit);
   }
-  let { data, error } = await build('registrar,redemption_since,pending_delete_since,dropped_at,in_redemption,in_pending_delete');
+  let { data, error } = await build('registrar,redemption_since,pending_delete_since,dropped_at,in_redemption,in_pending_delete,namecheap_listed_at');
+  // namecheap columns (0016) not migrated yet → retry without them.
+  if (error && /namecheap/i.test(error.message)) {
+    ({ data, error } = await build('registrar,redemption_since,pending_delete_since,dropped_at,in_redemption,in_pending_delete'));
+  }
   if (error) return { rows: [], overall: null };
   const DAY = 86_400_000;
   const days = (a, b) => {
@@ -162,31 +209,41 @@ export async function lifecycleMetrics({ limit = 5000 } = {}) {
   };
   const byReg = new Map();
   const bucket = (key) => {
-    if (!byReg.has(key)) byReg.set(key, { registrar: key, r2p: [], p2d: [], in_redemption: 0, in_pending_delete: 0 });
+    if (!byReg.has(key)) byReg.set(key, { registrar: key, r2p: [], p2d: [], p2nc: [], on_nc: 0, in_redemption: 0, in_pending_delete: 0 });
     return byReg.get(key);
   };
   for (const r of data || []) {
     const g = bucket(r.registrar || 'Unknown');
     if (r.in_redemption) g.in_redemption++;
     if (r.in_pending_delete) g.in_pending_delete++;
+    if (r.namecheap_listed_at) g.on_nc++;
     if (r.redemption_since && r.pending_delete_since) { const d = days(r.redemption_since, r.pending_delete_since); if (d != null) g.r2p.push(d); }
     if (r.pending_delete_since && r.dropped_at) { const d = days(r.pending_delete_since, r.dropped_at); if (d != null) g.p2d.push(d); }
+    // Pending → Namecheap: only positive (a name can hit NC BEFORE pending — those don't
+    // count toward the "how long after pending does it reach NC" average).
+    if (r.pending_delete_since && r.namecheap_listed_at) { const d = days(r.pending_delete_since, r.namecheap_listed_at); if (d != null) g.p2nc.push(d); }
   }
   const avg = (a) => (a.length ? a.reduce((s, x) => s + x, 0) / a.length : null);
   const rows = [...byReg.values()].map((g) => ({
     registrar: g.registrar,
     in_redemption: g.in_redemption,
     in_pending_delete: g.in_pending_delete,
+    on_namecheap: g.on_nc,
     n_red_to_pending: g.r2p.length,
     avg_red_to_pending: avg(g.r2p),
     n_pending_to_drop: g.p2d.length,
     avg_pending_to_drop: avg(g.p2d),
-  })).sort((a, b) => (b.n_red_to_pending + b.n_pending_to_drop) - (a.n_red_to_pending + a.n_pending_to_drop) || String(a.registrar).localeCompare(String(b.registrar)));
+    n_pending_to_namecheap: g.p2nc.length,
+    avg_pending_to_namecheap: avg(g.p2nc),
+  })).sort((a, b) => (b.n_red_to_pending + b.n_pending_to_drop + b.on_namecheap) - (a.n_red_to_pending + a.n_pending_to_drop + a.on_namecheap) || String(a.registrar).localeCompare(String(b.registrar)));
   const overall = {
+    on_namecheap: rows.reduce((s, r) => s + r.on_namecheap, 0),
     n_red_to_pending: rows.reduce((s, r) => s + r.n_red_to_pending, 0),
     avg_red_to_pending: avgWeighted(rows, 'avg_red_to_pending', 'n_red_to_pending'),
     n_pending_to_drop: rows.reduce((s, r) => s + r.n_pending_to_drop, 0),
     avg_pending_to_drop: avgWeighted(rows, 'avg_pending_to_drop', 'n_pending_to_drop'),
+    n_pending_to_namecheap: rows.reduce((s, r) => s + r.n_pending_to_namecheap, 0),
+    avg_pending_to_namecheap: avgWeighted(rows, 'avg_pending_to_namecheap', 'n_pending_to_namecheap'),
   };
   return { rows, overall };
 }
@@ -233,17 +290,15 @@ export async function markEmailed(domains) {
 export async function stats() {
   if (!isDbConfigured()) return { total: 0, in_redemption: 0, in_pending_delete: 0, unscanned: 0 };
   const db = getDb();
-  const countPd = async () => {
-    const r = await db.from(T).select('domain', { count: 'exact', head: true }).eq('in_pending_delete', true);
-    return r.error ? 0 : (r.count || 0);   // column not migrated → 0
-  };
-  const [tot, red, pd, uns] = await Promise.all([
+  const safeCount = async (q) => { const r = await q; return r.error ? 0 : (r.count || 0); };   // missing column → 0
+  const [tot, red, pd, nc, uns] = await Promise.all([
     db.from(T).select('domain', { count: 'exact', head: true }),
     db.from(T).select('domain', { count: 'exact', head: true }).eq('in_redemption', true),
-    countPd(),
+    safeCount(db.from(T).select('domain', { count: 'exact', head: true }).eq('in_pending_delete', true)),
+    safeCount(db.from(T).select('domain', { count: 'exact', head: true }).not('namecheap_listed_at', 'is', null)),
     db.from(T).select('domain', { count: 'exact', head: true }).is('last_checked', null),
   ]);
-  return { total: tot.count || 0, in_redemption: red.count || 0, in_pending_delete: pd, unscanned: uns.count || 0 };
+  return { total: tot.count || 0, in_redemption: red.count || 0, in_pending_delete: pd, on_namecheap: nc, unscanned: uns.count || 0 };
 }
 
 // ── Curation cursor (keyset over the .ai zone) ──────────────────────────────

@@ -18,12 +18,17 @@ import { phaseOf, phaseLabel } from './redemption.js';
 import { investorSignal } from './investor.js';
 import { fullTldDemand } from './demand.js';
 import { popularTldCount } from '../evaluate/tldcount.js';
+import { techScore } from './techTerms.js';
 
 const DAY = 86_400_000;
 // Quality gate applied ONLY to names in the redemption period (Rob): a real,
 // in-demand word is registered in ≥ this many of the ~26 most liquid TLDs. Validated:
 // dealt 17 · rica 16 · interlaced 12 pass; ferlie 4 · oxeyes 1 don't.
 const MIN_TLDS = Number(process.env.EXPIRING_AI_MIN_TLDS || 6);
+// .ai IS a tech/AI TLD, so a clearly tech-relevant word doesn't need to prove demand
+// across as many extensions — an AI-native name may live on just .ai/.com + a few TLDs.
+// So the gate is LOWER for tech words (Rob 2026-07-28): ≥4 instead of ≥6.
+const MIN_TLDS_TECH = Number(process.env.EXPIRING_AI_MIN_TLDS_TECH || 4);
 
 // nic.ai (Identity Digital) rate-limits RDAP hard — hammering it just returns a
 // wall of failed reads (last_http=null), which is why the redemption count stayed
@@ -118,7 +123,9 @@ export async function scanDue({ limit = SCAN_LIMIT, concurrency = SCAN_CONCURREN
             fullTldDemand(c.sld, process.env),
           ]);
           patch.tld_count = full != null ? full : (bounded.count || 0);
-          demandOk = (bounded.count || 0) >= MIN_TLDS;
+          // Tech-relevant words (lexicon match or a priority-2 candidate) clear a LOWER bar.
+          const isTech = techScore(c.sld) === 2 || Number(c.priority) >= 2;
+          demandOk = (bounded.count || 0) >= (isTech ? MIN_TLDS_TECH : MIN_TLDS);
           patch.demand_ok = demandOk;
         } else if (demandOk == null && c.tld_count != null) {
           // Legacy row (gated before demand_ok existed): infer the pass decision from the

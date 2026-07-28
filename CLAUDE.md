@@ -1093,6 +1093,26 @@ investors. Reuses Beeper's RDAP + adaptive cadence; **no new vendor/env key**.
   - Cron `expiring-ai.js` runs `seedTechLexicon` + `curateTechUniverse` after curate, before scan
     (`?notech=1` to skip). The **demand gate is unchanged** (≥6 popular TLDs) — a tech-NATIVE coinage
     registered on few TLDs can still fail it; a tech-aware gate is the deferred Phase 3 (Rob chose 1+2).
+- **Namecheap Market auction cross-reference (2026-07-28).** The last lifecycle stage — "listed
+  on Namecheap." A public daily CSV (`Namecheap_Market_Sales.csv`, ~180MB / 1M rows, ~5.6k of them
+  `.ai`) lists every Namecheap Market auction. `lib/expiring/namecheap.js` `fetchNamecheapAiAuctions`
+  STREAMS the file (never loads it whole — web-stream reader + line split + a cheap `\.ai` prefilter
+  + minimal CSV parser), returns `{domain,sld,price,end,url}` per `.ai` (~7s, fail-open). Daily cron
+  `api/cron/expiring-namecheap.js` (vercel.json `45 8 * * *`, separate from the 5-min scan since the
+  fetch would blow that tick's budget; `?dry=1` to preview) → `syncNamecheap` (expiringAi.js): upserts
+  price/end/url + **seeds new `.ai` auctions as priority-2 candidates** (a strong expansion source —
+  concrete, priced, about-to-sell names), then stamps `namecheap_listed_at` FIRST-seen only where null.
+  **A name can hit a Namecheap auction BEFORE it formally drops** (Namecheap auctions its own expiring
+  inventory during the grace window), so `namecheap_listed_at` is a PARALLEL signal, not strictly after
+  `dropped_at`. Surfaced: a **🔨 $price ↗** column on the row tables (links to the NC listing, sortable),
+  an "on Namecheap" stat, and Metrics-tab columns **On Namecheap** (count) + **Pending → Namecheap**
+  (avg days, positive-only). **Migration 0016** (`namecheap_listed_at/price/end/url` + index); degrades
+  gracefully pre-migration (list/metrics/stats/sync strip-and-retry). No new env/key (public CSV).
+- **Tech-aware demand gate (2026-07-28).** `.ai` is a tech TLD, so a clearly tech-relevant word doesn't
+  need to prove demand across as many extensions — the redemption demand gate is **≥4 popular TLDs for
+  tech words vs ≥6 otherwise** (`MIN_TLDS_TECH`/`EXPIRING_AI_MIN_TLDS_TECH` default 4 in scan.js). Tech =
+  `techScore(sld)===2` (lexicon) OR the candidate's `priority>=2`. Only the fresh gate uses it (legacy
+  demand_ok-inferred rows unchanged).
 - **⚠️ nic.ai RATE-LIMIT — the scan MUST be paced (2026-07-28).** nic.ai (Identity Digital, the .ai
   RDAP registry) throttles hard: an unpaced scan (500/tick, concurrency 4, + the rdap.org fallback
   that proxies to the SAME backend) got **~96% failed reads** (`last_http` null) — which is why the

@@ -10692,6 +10692,7 @@ const XP_COLS = [
   ['registrar', 'Registrar', 'asc'],
   ['ns', 'Nameservers', 'asc'],
   ['investor', 'Likely investor', 'desc'],
+  ['namecheap', 'Namecheap', 'desc'],
 ];
 function xpSortVal(r, key) {
   switch (key) {
@@ -10703,6 +10704,7 @@ function xpSortVal(r, key) {
     case 'registrar': return r.registrar || '';
     case 'ns': return (r.nameservers && r.nameservers[0]) || '';
     case 'investor': return r.investor ? 1 : 0;
+    case 'namecheap': return r.namecheap_listed_at ? (r.namecheap_price != null ? Number(r.namecheap_price) : 0) : null;
     default: return '';
   }
 }
@@ -10750,6 +10752,7 @@ function expiringRenderHead(stats) {
   els.expiringHead.innerHTML = `<div class="xp-stats">
     <span class="xp-stat"><b>${(stats.in_redemption || 0).toLocaleString()}</b> in redemption</span>
     <span class="xp-stat"><b>${(stats.in_pending_delete || 0).toLocaleString()}</b> pending delete</span>
+    <span class="xp-stat"><b>${(stats.on_namecheap || 0).toLocaleString()}</b> on Namecheap</span>
     <span class="xp-stat"><b>${(stats.total || 0).toLocaleString()}</b> names watched</span>
     <span class="xp-stat muted">${(stats.unscanned || 0).toLocaleString()} awaiting first scan</span>
   </div>`;
@@ -10779,6 +10782,7 @@ function expiringPaint() {
     <td class="xp-reg muted">${r.registrar ? escapeHtml(r.registrar) : '—'}</td>
     <td class="xp-ns muted">${(r.nameservers && r.nameservers.length) ? r.nameservers.map((n) => escapeHtml(n)).join('<br>') : '<span class="muted">— none</span>'}</td>
     <td class="xp-investor">${r.investor ? `<span class="xp-inv-yes" title="On a marketplace / for-sale nameserver — likely a domain investor">🏷 ${escapeHtml(r.marketplace || 'Listed for sale')}</span>` : '<span class="muted">—</span>'}</td>
+    <td class="xp-nc">${r.namecheap_listed_at ? `<a class="xp-nc-yes" href="${escapeHtml(r.namecheap_url || 'https://www.namecheap.com/market/')}" target="_blank" rel="noopener" title="On a Namecheap Market auction${r.namecheap_price != null ? '' : ' (make offer)'}">🔨 ${r.namecheap_price != null ? '$' + Number(r.namecheap_price).toLocaleString() : 'listed'}</a>` : '<span class="muted">—</span>'}</td>
     <td class="xp-act"><button type="button" class="xp-dismiss be-ghost" data-xp-dismiss="${escapeHtml(r.domain)}" title="Hide this name">✕</button></td>
   </tr>`).join('');
   const headHtml = XP_COLS.map(([key, label]) => {
@@ -10874,17 +10878,21 @@ function expiringRenderMetrics(m) {
     <td class="xp-reg"><b>${escapeHtml(r.registrar || 'Unknown')}</b></td>
     <td class="xp-metric">${xpDur(r.avg_red_to_pending)}${r.n_red_to_pending ? ` <span class="muted">(n=${r.n_red_to_pending})</span>` : ''}</td>
     <td class="xp-metric">${xpDur(r.avg_pending_to_drop)}${r.n_pending_to_drop ? ` <span class="muted">(n=${r.n_pending_to_drop})</span>` : ''}</td>
+    <td class="xp-metric">${xpDur(r.avg_pending_to_namecheap)}${r.n_pending_to_namecheap ? ` <span class="muted">(n=${r.n_pending_to_namecheap})</span>` : ''}</td>
+    <td class="xp-metric"><b>${(r.on_namecheap || 0)}</b></td>
     <td class="xp-metric muted">${(r.in_redemption || 0)} / ${(r.in_pending_delete || 0)}</td>
   </tr>`).join('');
   const overallRow = overall ? `<tr class="xp-metric-all">
     <td><b>All registrars</b></td>
     <td class="xp-metric"><b>${xpDur(overall.avg_red_to_pending)}</b>${overall.n_red_to_pending ? ` <span class="muted">(n=${overall.n_red_to_pending})</span>` : ''}</td>
     <td class="xp-metric"><b>${xpDur(overall.avg_pending_to_drop)}</b>${overall.n_pending_to_drop ? ` <span class="muted">(n=${overall.n_pending_to_drop})</span>` : ''}</td>
+    <td class="xp-metric"><b>${xpDur(overall.avg_pending_to_namecheap)}</b>${overall.n_pending_to_namecheap ? ` <span class="muted">(n=${overall.n_pending_to_namecheap})</span>` : ''}</td>
+    <td class="xp-metric"><b>${(overall.on_namecheap || 0)}</b></td>
     <td></td>
   </tr>` : '';
-  els.expiringMetrics.innerHTML = `<p class="xp-metric-note muted">Average observed time a name sits in each phase, by registrar. Measured from our scans, so figures are approximate and sharpen as more full cycles are seen. <b>Redemption → Pending delete</b> then <b>Pending delete → Dropped</b> tells you how much runway remains once a name surfaces.</p>
+  els.expiringMetrics.innerHTML = `<p class="xp-metric-note muted">Average observed time a name sits in each phase, by registrar. Measured from our scans, so figures are approximate and sharpen as more full cycles are seen. <b>Redemption → Pending delete</b> → <b>Pending delete → Dropped</b> → <b>Pending → Namecheap auction</b> tells you how much runway remains and when a name hits a Namecheap auction (which can even precede the formal drop).</p>
     <table class="xp-table xp-metric-table">
-      <thead><tr><th>Registrar</th><th>Redemption → Pending</th><th>Pending → Dropped</th><th title="Names currently in each phase">In redemption / pending now</th></tr></thead>
+      <thead><tr><th>Registrar</th><th>Redemption → Pending</th><th>Pending → Dropped</th><th title="Days from entering pending-delete to appearing on a Namecheap auction">Pending → Namecheap</th><th title="Names seen on a Namecheap Market auction">On Namecheap</th><th title="Names currently in each phase">In redemption / pending now</th></tr></thead>
       <tbody>${overallRow}${body}</tbody></table>`;
 }
 async function expiringDismiss(domain) {
@@ -10897,10 +10905,11 @@ async function expiringDismiss(domain) {
 }
 function expiringCsv() {
   if (!expiringLast.length) return;
-  const head = ['domain', 'phase', 'tld_count', 'expiration', 'days_to_expiry', 'redemption_since', 'pending_delete_since', 'registrar', 'nameservers', 'likely_investor', 'marketplace'];
+  const head = ['domain', 'phase', 'tld_count', 'expiration', 'days_to_expiry', 'redemption_since', 'pending_delete_since', 'registrar', 'nameservers', 'likely_investor', 'marketplace', 'namecheap_listed_at', 'namecheap_price', 'namecheap_url'];
   const lines = [head.join(',')].concat(expiringSortRows(expiringLast).map((r) => [
     r.domain, r.phase, r.tld_count == null ? '' : r.tld_count, r.expiration || '', r.days_to_expiry == null ? '' : r.days_to_expiry,
     r.redemption_since || '', r.pending_delete_since || '', `"${(r.registrar || '').replace(/"/g, '')}"`, `"${(r.nameservers || []).join('; ')}"`, r.investor ? 'yes' : 'no', r.marketplace || '',
+    r.namecheap_listed_at || '', r.namecheap_price != null ? r.namecheap_price : '', r.namecheap_url || '',
   ].join(',')));
   const blob = new Blob([lines.join('\n')], { type: 'text/csv' });
   const a = document.createElement('a');

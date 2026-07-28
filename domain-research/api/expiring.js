@@ -85,6 +85,9 @@ function shape(r) {
     investor: sig.investor,           // likely owned by an investor (on a for-sale/marketplace NS)
     marketplace: sig.marketplace,     // which marketplace, when known
     parked: r.parked,
+    namecheap_listed_at: r.namecheap_listed_at || null,   // on a Namecheap Market auction
+    namecheap_price: r.namecheap_price != null ? r.namecheap_price : null,
+    namecheap_url: r.namecheap_url || null,
   };
 }
 

@@ -2414,6 +2414,8 @@ a.sr-ag-co-link:hover { border-color: var(--coral); color: var(--coral-deep); ba
 .xp-metric-table td { font-variant-numeric: tabular-nums; }
 .xp-metric { white-space: nowrap; }
 .xp-metric-all td { background: #fbf6ee; border-bottom: 2px solid #e6ecef; }
+.xp-nc-yes { color: #b45309; font-weight: 700; text-decoration: none; white-space: nowrap; }
+.xp-nc-yes:hover { text-decoration: underline; }
 .xp-table td { padding: 9px 10px; border-bottom: 1px solid #f0f4f6; vertical-align: top; }
 .xp-dom a { font-weight: 700; color: #1f6b52; text-decoration: none; }
 .xp-dom a:hover { text-decoration: underline; }
