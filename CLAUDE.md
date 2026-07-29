@@ -1174,6 +1174,10 @@ investors. Reuses Beeper's RDAP + adaptive cadence; **no new vendor/env key**.
   was removed 2026-07-29 since each tab is single-phase), expiry +
   in-redemption-since, **Registrar** (from RDAP), **first-2 nameservers**, **Likely investor** chip
   (marketplace name), hide-investor toggle, per-row dismiss, CSV, domain → Appraisal deep-link.
+  **Wide breakout (2026-07-29):** `#view-expiring` breaks out of the 860px `.wrap` to a centered
+  `min(1400px,95vw)` on ≥1080px screens (via a negative margin-left) so the 9-column table has room
+  and the registrant email/phone don't wrap mid-address (`.xp-regt` is `nowrap`, each on its own
+  line); results/metrics containers are `overflow-x:auto` so mobile scrolls instead of wrapping.
   **Sortable columns (2026-07-28):** every column header is click-to-sort (`XP_COLS` +
   `expiringSortRows`/`xpToggleSort`/`xpSortVal`; blanks always sort last, numeric cols default desc,
   string cols asc, active header shows ▲/▼ + coral highlight). Client-side over the loaded rows
