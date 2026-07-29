@@ -66,13 +66,61 @@ function registrarName(data) {
   return null;
 }
 
+// Known WHOIS-privacy / proxy email domains — an email here is NOT the real owner
+// (it's a masked forwarder or a hashed alias), so we treat the registrant as private.
+const PRIVACY_EMAIL_DOMAINS = new Set([
+  'domainsbyproxy.com', 'withheldforprivacy.com', 'whoisguard.com', 'whoisprivacyprotect.com',
+  'privacyprotect.org', 'privacyprotect.com', 'contactprivacy.com', 'contactprivacy.email',
+  'privacyguardian.org', 'identity-protect.org', 'identityprotect.org', 'whoisprivacycorp.com',
+  'privatebydesign.com', 'private-whois.com', 'privateregistration.org', 'data-protect.eu',
+  'tieredaccess.com', 'anonymize.com', 'njal.la', 'gname.com', 'domaindiscreet.com',
+  'protecteddomainservices.com', '1and1-private-registration.com', 'porkbun.com',
+]);
+// A localpart that's a long hex/opaque hash (e.g. 2f7addfd…@…) is a generated proxy alias.
+const HASH_LOCALPART = /^[a-f0-9]{16,}$/i;
+// vCard `fn` placeholders that mean "redacted", not a real person/company name.
+const PRIVACY_FN = /(registration private|redacted|privacy|withheld|not disclosed|whois|data protected|statutory masking|domain admin(istrator)?|proxy|perfect privacy|contact privacy)/i;
+
+function emailIsPrivate(email) {
+  const at = email.indexOf('@');
+  if (at < 1) return true;
+  const local = email.slice(0, at).toLowerCase();
+  const dom = email.slice(at + 1).toLowerCase();
+  if (PRIVACY_EMAIL_DOMAINS.has(dom)) return true;
+  if (HASH_LOCALPART.test(local) && !/gmail|outlook|hotmail|yahoo|icloud|proton/.test(dom)) return true;
+  return false;
+}
+
+// Pull the registrant contact from an RDAP domain object. Prefers the `registrant`
+// entity, falling back to administrative/technical (often identical). Decides PUBLIC vs
+// PRIVATE by the EMAIL, not the org string — a name behind a "privacy service" org whose
+// email is a real mailbox (e.g. a plain gmail) is a reachable, real contact worth listing.
+// → { name, email, phone, private }. `private` true = masked/redacted (nothing to list).
+function parseRegistrant(data) {
+  const ents = (data && data.entities) || [];
+  const byRole = (role) => ents.find((e) => e && Array.isArray(e.roles) && e.roles.includes(role));
+  const e = byRole('registrant') || byRole('administrative') || byRole('technical');
+  if (!e) return { name: null, email: null, phone: null, private: true };
+  const vc = (e.vcardArray && e.vcardArray[1]) || [];
+  const val = (key) => { const p = Array.isArray(vc) ? vc.find((x) => Array.isArray(x) && x[0] === key) : null; return p && p[3] != null ? String(p[3]).trim() : ''; };
+  const fnRaw = val('fn');
+  const email = val('email').toLowerCase();
+  const phone = val('tel').replace(/^tel:/i, '').trim();
+  const priv = !email || emailIsPrivate(email);
+  // Only surface a name that isn't itself a privacy placeholder.
+  const name = fnRaw && !PRIVACY_FN.test(fnRaw) ? fnRaw : null;
+  if (priv) return { name: null, email: null, phone: null, private: true };
+  return { name: name || null, email: email || null, phone: phone || null, private: false };
+}
+
 // → { ok, code, available, statuses[], expiration, nameservers, registrar, source }
 //   available=true  → the domain DROPPED (404 / not found) — go grab it.
 //   statuses        → lowercased EPP statuses (e.g. ['pending delete','redemption period']).
 //   ok=false        → every endpoint failed (network/rate-limit) — don't treat as a change.
 export async function rdapStatus(domain, { single = false } = {}) {
   const d = String(domain || '').trim().toLowerCase().replace(/^www\./, '');
-  if (!d || !d.includes('.')) return { ok: false, code: null, available: null, statuses: [], expiration: null, nameservers: [], registrar: null, source: null };
+  const NO_REG = { registrantName: null, registrantEmail: null, registrantPhone: null, registrantPrivate: null };
+  if (!d || !d.includes('.')) return { ok: false, code: null, available: null, statuses: [], expiration: null, nameservers: [], registrar: null, source: null, ...NO_REG };
   const tld = d.slice(d.lastIndexOf('.') + 1);
   const base = await rdapBaseForTld(tld);
 
@@ -92,13 +140,14 @@ export async function rdapStatus(domain, { single = false } = {}) {
       const nameservers = [...new Set((r.data.nameservers || [])
         .map((n) => String((n && (n.ldhName || n.name)) || '').toLowerCase().replace(/\.+$/, '').trim())
         .filter(Boolean))];
-      return { ok: true, code: 200, available: false, statuses, expiration: (exp && exp.eventDate) || null, nameservers, registrar: registrarName(r.data), source: url };
+      const reg = parseRegistrant(r.data);
+      return { ok: true, code: 200, available: false, statuses, expiration: (exp && exp.eventDate) || null, nameservers, registrar: registrarName(r.data), source: url, registrantName: reg.name, registrantEmail: reg.email, registrantPhone: reg.phone, registrantPrivate: reg.private };
     }
     // 404 (and some registries' 200-with-notfound) → not registered → available.
-    if (r.code === 404) return { ok: true, code: 404, available: true, statuses: [], expiration: null, nameservers: [], registrar: null, source: url };
+    if (r.code === 404) return { ok: true, code: 404, available: true, statuses: [], expiration: null, nameservers: [], registrar: null, source: url, ...NO_REG };
     // 429 / 5xx / network → try the next endpoint.
   }
-  return { ok: false, code: null, available: null, statuses: [], expiration: null, nameservers: [], registrar: null, source: null };
+  return { ok: false, code: null, available: null, statuses: [], expiration: null, nameservers: [], registrar: null, source: null, ...NO_REG };
 }
 
 // Is the domain IN the deletion/expiry pipeline (heading toward a possible drop)?

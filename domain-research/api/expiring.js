@@ -47,6 +47,9 @@ async function seedDomains(raw) {
       last_status: s.available ? [] : s.statuses, last_http: s.code, last_checked: nowIso,
       available: Boolean(s.available), in_redemption: inRed, in_pending_delete: inPd, demand_ok: inWin ? true : null,
       nameservers: ns, registrar: s.registrar || null, parked: investorSignal(ns).investor,
+      registrant_email: s.registrantEmail || null, registrant_phone: s.registrantPhone || null,
+      registrant_name: s.registrantName || null,
+      registrant_private: s.registrantPrivate == null ? null : Boolean(s.registrantPrivate),
       ...(s.expiration ? { expiration: s.expiration } : {}),
       ...(inRed ? { redemption_since: nowIso } : {}),
       ...(inPd ? { pending_delete_since: nowIso } : {}),
@@ -90,6 +93,12 @@ function shape(r) {
     namecheap_listed_at: r.namecheap_listed_at || null,   // on a Namecheap Market auction
     namecheap_price: r.namecheap_price != null ? r.namecheap_price : null,
     namecheap_url: r.namecheap_url || null,
+    // Registrant contact from RDAP: null = not scanned yet; private = masked; else the
+    // real public email/phone/name that showed through.
+    registrant_private: r.registrant_private == null ? null : Boolean(r.registrant_private),
+    registrant_email: r.registrant_email || null,
+    registrant_phone: r.registrant_phone || null,
+    registrant_name: r.registrant_name || null,
   };
 }
 

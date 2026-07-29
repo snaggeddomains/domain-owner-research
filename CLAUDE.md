@@ -1181,6 +1181,22 @@ investors. Reuses Beeper's RDAP + adaptive cadence; **no new vendor/env key**.
   additive, Beeper unaffected. Stored on the candidate (`registrar` column), shown as a report column
   + CSV. `updateCandidate` gained a strip-and-retry so a not-yet-migrated `registrar` column doesn't
   stall the scan. **Migration:** `alter table domain_research_expiring_ai add column if not exists registrar text;`
+- **Registrant contact column (2026-07-29).** We already do an individual RDAP read per `.ai`, so
+  the scan now ALSO pulls the **registrant contact** off the SAME response (`parseRegistrant` in
+  `lib/beeper/rdap.js` → `registrantName/Email/Phone/Private`). PUBLIC vs PRIVATE is decided by the
+  **EMAIL domain, not the org string** — a proxy/redacted mailbox (`domainsbyproxy.com`,
+  `withheldforprivacy.com`, a 16+-hex-hash localpart, …) → `private:true`; a real mailbox that showed
+  through → surface it. KEY CASE: nihil.ai's org is "Withheld for Privacy ehf" (Namecheap privacy) but
+  its email is a plain `…@gmail.com` + a real UK mobile → we list it (the privacy org string lies; the
+  email is real). ombu.ai (Domains By Proxy) → 🔒 Private. `parseRegistrant` prefers the `registrant`
+  entity, falls back to administrative/technical; `PRIVACY_FN` drops placeholder `fn`s ("Registration
+  Private"/"Redacted"/…). Stored on the candidate (`registrant_email/phone/name/private`), captured in
+  BOTH `scan.js` (bulk) and the `api/expiring.js` seed path; surfaced as a **Registrant** report column
+  (real email = mailto link + tel link, sortable public>private>unscanned) + CSV
+  (`registrant`/`_email`/`_phone`/`_name`). `windowList` selects them with a strip-retry (degrades pre-
+  migration). Cache-bust `?v=20260729expiringregt`. **Migration:** `supabase/migrations/0017_expiring_ai_registrant.sql`
+  (4 columns, `add column if not exists`) on the research project — until it runs, the scan strip-retries
+  the columns and the report just omits the Registrant column.
 - **Permission:** `research.expiring` in snagged-admin `dashboard/lib/permissions.ts` (MODULES +
   SNAP_TABS + CATALOG group SNAP; stored flat as `expiring`). Grant per-user; admins auto-pass.
 - **One-time setup:** run `supabase/migrations/0013_expiring_ai.sql` on the research project.

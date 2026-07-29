@@ -158,21 +158,26 @@ async function windowList(which, { hideParked = false, includeDismissed = false,
     if (hideParked) q = q.eq('parked', false);
     return q;
   }
-  const full = 'domain,sld,tld_count,registrar,nameservers,parked,expiration,last_status,in_redemption,in_pending_delete,redemption_since,pending_delete_since,available,last_checked,namecheap_listed_at,namecheap_price,namecheap_url';
+  const full = 'domain,sld,tld_count,registrar,nameservers,parked,expiration,last_status,in_redemption,in_pending_delete,redemption_since,pending_delete_since,available,last_checked,namecheap_listed_at,namecheap_price,namecheap_url,registrant_email,registrant_phone,registrant_name,registrant_private';
+  const stripReg = (c) => c.replace(',registrant_email', '').replace(',registrant_phone', '').replace(',registrant_name', '').replace(',registrant_private', '');
   let { data, error } = await build(full);
+  // Migration 0017 (registrant columns) not run yet → drop those.
+  if (error && /registrant/i.test(error.message)) {
+    ({ data, error } = await build(stripReg(full)));
+  }
   // Migration 0016 (namecheap columns) not run yet → drop those.
   if (error && /namecheap/i.test(error.message)) {
-    ({ data, error } = await build(full.replace('namecheap_listed_at,', '').replace('namecheap_price,', '').replace(',namecheap_url', '')));
+    ({ data, error } = await build(stripReg(full).replace('namecheap_listed_at,', '').replace('namecheap_price,', '').replace(',namecheap_url', '')));
   }
   // Migration 0014 (pending-delete columns) not run yet → drop ONLY those, keeping the
   // already-migrated tld_count/registrar so the redemption view doesn't regress.
   if (error && /in_pending_delete|pending_delete_since/i.test(error.message)) {
-    ({ data, error } = await build(full.replace('in_pending_delete,', '').replace('pending_delete_since,', '')
+    ({ data, error } = await build(stripReg(full).replace('in_pending_delete,', '').replace('pending_delete_since,', '')
       .replace('namecheap_listed_at,', '').replace('namecheap_price,', '').replace(',namecheap_url', '')));
   }
   // Very old schema (no tld_count/registrar either) → drop those too.
   if (error && /tld_count|registrar|column/i.test(error.message)) {
-    ({ data, error } = await build(full
+    ({ data, error } = await build(stripReg(full)
       .replace('tld_count,', '').replace('registrar,', '')
       .replace('in_pending_delete,', '').replace('pending_delete_since,', '')
       .replace('namecheap_listed_at,', '').replace('namecheap_price,', '').replace(',namecheap_url', '')));

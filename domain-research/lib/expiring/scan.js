@@ -106,6 +106,12 @@ export async function scanDue({ limit = SCAN_LIMIT, concurrency = SCAN_CONCURREN
         nameservers: ns,
         registrar: s.registrar || null,
         parked,
+        // Registrant contact off the SAME RDAP read — public (real mailbox) vs privacy-masked.
+        // We already pay for the lookup, so grab it; the report lists a real email/phone.
+        registrant_email: s.registrantEmail || null,
+        registrant_phone: s.registrantPhone || null,
+        registrant_name: s.registrantName || null,
+        registrant_private: s.registrantPrivate == null ? null : Boolean(s.registrantPrivate),
       };
       if (s.expiration) patch.expiration = s.expiration;
 

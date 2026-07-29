@@ -10693,8 +10693,21 @@ const XP_COLS = [
   ['registrar', 'Registrar', 'asc'],
   ['ns', 'Nameservers', 'asc'],
   ['investor', 'Likely investor', 'desc'],
+  ['registrant', 'Registrant', 'desc'],
   ['namecheap', 'Namecheap', 'desc'],
 ];
+// Registrant cell — a real public email/phone (list it, as click-to-contact links) when the
+// RDAP record exposed one, "🔒 Private" when behind WHOIS privacy, "—" until first scanned.
+function xpRegtCell(r) {
+  if (r.registrant_private === true) return '<span class="muted xp-regt-priv" title="Registrant is behind WHOIS privacy">🔒 Private</span>';
+  if (r.registrant_email || r.registrant_phone) {
+    const parts = [];
+    if (r.registrant_email) parts.push(`<a href="mailto:${encodeURIComponent(r.registrant_email)}"${r.registrant_name ? ` title="${escapeHtml(r.registrant_name)}"` : ''}>${escapeHtml(r.registrant_email)}</a>`);
+    if (r.registrant_phone) parts.push(`<a class="muted xp-regt-tel" href="tel:${escapeHtml(r.registrant_phone.replace(/[^+0-9]/g, ''))}">${escapeHtml(r.registrant_phone)}</a>`);
+    return `<span class="xp-regt-pub">${parts.join('<br>')}</span>`;
+  }
+  return '<span class="muted">—</span>';
+}
 function xpSortVal(r, key) {
   switch (key) {
     case 'domain': return r.domain || '';
@@ -10705,6 +10718,7 @@ function xpSortVal(r, key) {
     case 'registrar': return r.registrar || '';
     case 'ns': return (r.nameservers && r.nameservers[0]) || '';
     case 'investor': return r.investor ? 1 : 0;
+    case 'registrant': return r.registrant_private === false ? 2 : (r.registrant_private === true ? 1 : null);
     case 'namecheap': return r.namecheap_listed_at ? (r.namecheap_price != null ? Number(r.namecheap_price) : 0) : null;
     default: return '';
   }
@@ -10783,6 +10797,7 @@ function expiringPaint() {
     <td class="xp-reg muted">${r.registrar ? escapeHtml(r.registrar) : '—'}</td>
     <td class="xp-ns muted">${(r.nameservers && r.nameservers.length) ? r.nameservers.map((n) => escapeHtml(n)).join('<br>') : '<span class="muted">— none</span>'}</td>
     <td class="xp-investor">${r.investor ? `<span class="xp-inv-yes" title="On a marketplace / for-sale nameserver — likely a domain investor">🏷 ${escapeHtml(r.marketplace || 'Listed for sale')}</span>` : '<span class="muted">—</span>'}</td>
+    <td class="xp-regt">${xpRegtCell(r)}</td>
     <td class="xp-nc">${r.namecheap_listed_at ? `<a class="xp-nc-yes" href="${escapeHtml(r.namecheap_url || 'https://www.namecheap.com/market/')}" target="_blank" rel="noopener" title="On a Namecheap Market auction${r.namecheap_price != null ? '' : ' (make offer)'}">🔨 ${r.namecheap_price != null ? '$' + Number(r.namecheap_price).toLocaleString() : 'listed'}</a>` : '<span class="muted">—</span>'}</td>
     <td class="xp-act"><button type="button" class="xp-dismiss be-ghost" data-xp-dismiss="${escapeHtml(r.domain)}" title="Hide this name">✕</button></td>
   </tr>`).join('');
@@ -10906,10 +10921,12 @@ async function expiringDismiss(domain) {
 }
 function expiringCsv() {
   if (!expiringLast.length) return;
-  const head = ['domain', 'phase', 'tld_count', 'expiration', 'days_to_expiry', 'redemption_since', 'pending_delete_since', 'registrar', 'nameservers', 'likely_investor', 'marketplace', 'namecheap_listed_at', 'namecheap_price', 'namecheap_url'];
+  const head = ['domain', 'phase', 'tld_count', 'expiration', 'days_to_expiry', 'redemption_since', 'pending_delete_since', 'registrar', 'nameservers', 'likely_investor', 'marketplace', 'registrant', 'registrant_email', 'registrant_phone', 'registrant_name', 'namecheap_listed_at', 'namecheap_price', 'namecheap_url'];
+  const regtStatus = (r) => r.registrant_private === false ? 'public' : (r.registrant_private === true ? 'private' : '');
   const lines = [head.join(',')].concat(expiringSortRows(expiringLast).map((r) => [
     r.domain, r.phase, r.tld_count == null ? '' : r.tld_count, r.expiration || '', r.days_to_expiry == null ? '' : r.days_to_expiry,
     r.redemption_since || '', r.pending_delete_since || '', `"${(r.registrar || '').replace(/"/g, '')}"`, `"${(r.nameservers || []).join('; ')}"`, r.investor ? 'yes' : 'no', r.marketplace || '',
+    regtStatus(r), r.registrant_email || '', `"${(r.registrant_phone || '').replace(/"/g, '')}"`, `"${(r.registrant_name || '').replace(/"/g, '')}"`,
     r.namecheap_listed_at || '', r.namecheap_price != null ? r.namecheap_price : '', r.namecheap_url || '',
   ].join(',')));
   const blob = new Blob([lines.join('\n')], { type: 'text/csv' });
