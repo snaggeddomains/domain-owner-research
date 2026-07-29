@@ -47,6 +47,17 @@ const SCAN_DELAY_MS = Math.max(0, Number(process.env.EXPIRING_AI_SCAN_DELAY_MS |
 const SCAN_LIMIT = Math.max(1, Number(process.env.EXPIRING_AI_SCAN_LIMIT || 90));
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+// Prioritize re-scanning ALREADY-SURFACED names (redemption / pending delete) ahead of the
+// first-scan backlog, so they advance redemption→pending→dropped on time. OFF by default:
+// while the ~54k first-scan backlog is being drained we want every credit on NEW names;
+// flip `EXPIRING_AI_PRIORITIZE_SURFACED=1` once the backlog is worked down to turn the
+// move-to-pending tracking on (no redeploy — env only).
+const PRIORITIZE_SURFACED = /^(1|true|yes|on)$/i.test(process.env.EXPIRING_AI_PRIORITIZE_SURFACED || '');
+// How often a surfaced name is re-checked — a few times a day is plenty to catch the move
+// to pending delete / the drop (nic.ai doesn't need per-minute polling). Default ~8h (≈3×/day),
+// NOT Beeper's 1-min pending-delete cadence (that's for a single actively-watched drop).
+const SURFACED_INTERVAL_MS = Math.max(60_000, Number(process.env.EXPIRING_AI_SURFACED_INTERVAL_MS || 8 * 60 * 60 * 1000));
+
 // When is a candidate due? Unregistered (available) dictionary .ai names are the
 // bulk of the set and almost never change — re-check them weekly, not hourly (the
 // cadence default for an unknown-expiry name), so we don't hammer the .ai RDAP
@@ -58,6 +69,14 @@ function dueForCandidate(c, now) {
     const last = Date.parse(c.last_checked);
     return Number.isNaN(last) || now - last >= 7 * DAY;
   }
+  // Surfaced names (redemption / pending delete) re-check a few times a day — enough to catch
+  // the phase move / drop without per-minute polling. (Overrides Beeper's aggressive cadence,
+  // which is meant for one hand-watched drop, not the whole surfaced set.)
+  if (c.in_redemption || c.in_pending_delete) {
+    if (!c.last_checked) return true;
+    const last = Date.parse(c.last_checked);
+    return Number.isNaN(last) || now - last >= SURFACED_INTERVAL_MS;
+  }
   return isDue(c, now);
 }
 
@@ -65,12 +84,14 @@ function dueForCandidate(c, now) {
 // pulled (stalest first). Fail-open per name.
 export async function scanDue({ limit = SCAN_LIMIT, concurrency = SCAN_CONCURRENCY } = {}) {
   const now = Date.now();
-  // Already-surfaced names (redemption / pending delete) get scanned FIRST, on their own
-  // cadence (pending delete = every minute) — otherwise the ~54k first-scan backlog
-  // (staleCandidates is nulls-first) starves them and they never advance to the next phase.
-  // They take priority within the per-tick rate-limit budget; the backlog fills the rest.
-  const surfacedDue = (await dueSurfacedCandidates().catch(() => []))
-    .filter((c) => dueForCandidate(c, now));
+  // When ON, already-surfaced names (redemption / pending delete) get scanned FIRST — otherwise
+  // the ~54k first-scan backlog (staleCandidates is nulls-first) starves them and they don't
+  // advance to the next phase. OFF by default: spend every credit draining the backlog, then
+  // flip EXPIRING_AI_PRIORITIZE_SURFACED=1 to turn move-to-pending tracking on. Once the backlog
+  // (nulls) is gone, surfaced names become the stalest and get re-checked regardless.
+  const surfacedDue = PRIORITIZE_SURFACED
+    ? (await dueSurfacedCandidates().catch(() => [])).filter((c) => dueForCandidate(c, now))
+    : [];
   const seen = new Set(surfacedDue.map((c) => c.domain));
   const backlogNeed = Math.max(0, limit - surfacedDue.length);
   const batch = backlogNeed ? await staleCandidates(backlogNeed) : [];

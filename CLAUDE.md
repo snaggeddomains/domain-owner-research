@@ -1039,16 +1039,19 @@ investors. Reuses Beeper's RDAP + adaptive cadence; **no new vendor/env key**.
   status + **captures `expiration`** so far-out names re-scan rarely (only the ones getting close).
   **Unregistered (404/available) names re-check only WEEKLY** (`dueForCandidate`). `inRedemptionWindow`
   = **redemption period ONLY** (NOT pending-delete/restore/auto-renew).
-  - **Surfaced names are scanned FIRST each tick (2026-07-29).** A pure `last_checked nulls-first`
-    order let the ~54k first-scan backlog STARVE the ~140 already-surfaced names — pending-delete
-    names (1-min cadence) were going ~18h between checks, so redemption→pending→dropped transitions
-    lagged ~a day (the transition logic itself always worked: on a re-check `phaseOf` flips
-    `in_redemption`→`in_pending_delete`, stamps `pending_delete_since`, `demand_ok` carries so no
-    re-gate). Fix: `scanDue` now pulls `dueSurfacedCandidates()` (rows with `in_redemption` OR
-    `in_pending_delete`, `isDue`-filtered) and scans them BEFORE the backlog, within the SAME per-tick
-    rate-limit budget (`limit`=90); `staleCandidates(limit - surfacedDue.length)` fills the rest. So
-    surfaced names advance on cadence (pending delete ≈ every tick) while the backlog just drains a bit
-    slower (~35/tick instead of 90). Total nic.ai load unchanged (still ≤90/tick).
+  - **Surfaced-name re-scan is a SWITCH, OFF by default (2026-07-29).** The transition logic always
+    works: on a re-check `phaseOf` flips `in_redemption`→`in_pending_delete`, stamps
+    `pending_delete_since`, `demand_ok` carries so no re-gate. The issue is ORDER — a pure
+    `last_checked nulls-first` scan lets the ~54k first-scan backlog starve the ~140 surfaced names.
+    Rob's call (2026-07-29): **spend every credit draining the 54k backlog FIRST**, then flip the
+    switch on. So `scanDue` only pulls `dueSurfacedCandidates()` (rows with `in_redemption` OR
+    `in_pending_delete`, `isDue`-filtered) ahead of the backlog when **`EXPIRING_AI_PRIORITIZE_SURFACED=1`**
+    (env, no redeploy); off → 100% of the per-tick budget goes to the nulls backlog. Either way, once
+    the backlog clears the surfaced names become the stalest and re-check on their own. **Surfaced
+    cadence is ~3×/day** (`dueForCandidate` uses `EXPIRING_AI_SURFACED_INTERVAL_MS`, default 8h) — NOT
+    Beeper's 1-min pending-delete cadence (that's for one hand-watched drop); a few checks a day catches
+    the move to pending / the drop without per-minute nic.ai polling. `dueSurfacedCandidates` (db) is
+    the surfaced-first query. Total nic.ai load unchanged (still ≤`limit`/tick).
 - **TLD lookup runs ONLY on names in the redemption period** (Rob: "cut way down"). On a name's FIRST
   redemption sighting the scan runs the demand check ONCE: the **bounded ~26-TLD probe** (`popularTldCount`,
   `lib/evaluate/tldcount.js`, cache `xt`) decides QUALITY — surface only if **≥ `EXPIRING_AI_MIN_TLDS`
