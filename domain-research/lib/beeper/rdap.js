@@ -75,9 +75,18 @@ const PRIVACY_EMAIL_DOMAINS = new Set([
   'privatebydesign.com', 'private-whois.com', 'privateregistration.org', 'data-protect.eu',
   'tieredaccess.com', 'anonymize.com', 'njal.la', 'gname.com', 'domaindiscreet.com',
   'protecteddomainservices.com', '1and1-private-registration.com', 'porkbun.com',
+  'gandi.net', 'dynadot.com', 'namecheap.com', 'godaddy.com', 'nc.privacyguard.org',
 ]);
-// A localpart that's a long hex/opaque hash (e.g. 2f7addfd…@…) is a generated proxy alias.
-const HASH_LOCALPART = /^[a-f0-9]{16,}$/i;
+// Generic role/privacy mailbox localparts (privacy@dynadot.com, whois@…, abuse@…) — never a
+// real reachable owner, whatever the domain.
+const GENERIC_LOCALPARTS = new Set([
+  'privacy', 'proxy', 'whois', 'whoisguard', 'redacted', 'redact', 'abuse', 'hostmaster',
+  'postmaster', 'webmaster', 'noreply', 'no-reply', 'donotreply', 'do-not-reply',
+  'domainprivacy', 'privateregistration', 'privacyprotect', 'dataprotection',
+]);
+// A localpart that's a long hex/opaque hash (e.g. 2f7addfd… or 3fbcbb…-47512530) is a
+// generated proxy alias — an optional -id / .suffix after the hash still counts.
+const HASH_LOCALPART = /^[a-f0-9]{16,}([._-][a-z0-9]+)*$/i;
 // vCard `fn` placeholders that mean "redacted", not a real person/company name.
 const PRIVACY_FN = /(registration private|redacted|privacy|withheld|not disclosed|whois|data protected|statutory masking|domain admin(istrator)?|proxy|perfect privacy|contact privacy)/i;
 
@@ -86,7 +95,9 @@ function emailIsPrivate(email) {
   if (at < 1) return true;
   const local = email.slice(0, at).toLowerCase();
   const dom = email.slice(at + 1).toLowerCase();
-  if (PRIVACY_EMAIL_DOMAINS.has(dom)) return true;
+  if (GENERIC_LOCALPARTS.has(local)) return true;                 // privacy@ / whois@ / abuse@ …
+  // A known privacy/proxy provider OR any subdomain of one (e.g. contact.gandi.net → gandi.net).
+  for (const pd of PRIVACY_EMAIL_DOMAINS) { if (dom === pd || dom.endsWith('.' + pd)) return true; }
   if (HASH_LOCALPART.test(local) && !/gmail|outlook|hotmail|yahoo|icloud|proton/.test(dom)) return true;
   return false;
 }

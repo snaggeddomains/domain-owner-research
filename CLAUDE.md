@@ -1204,9 +1204,13 @@ investors. Reuses Beeper's RDAP + adaptive cadence; **no new vendor/env key**.
 - **Registrant contact column (2026-07-29).** We already do an individual RDAP read per `.ai`, so
   the scan now ALSO pulls the **registrant contact** off the SAME response (`parseRegistrant` in
   `lib/beeper/rdap.js` → `registrantName/Email/Phone/Private`). PUBLIC vs PRIVATE is decided by the
-  **EMAIL domain, not the org string** — a proxy/redacted mailbox (`domainsbyproxy.com`,
-  `withheldforprivacy.com`, a 16+-hex-hash localpart, …) → `private:true`; a real mailbox that showed
-  through → surface it. KEY CASE: nihil.ai's org is "Withheld for Privacy ehf" (Namecheap privacy) but
+  **EMAIL domain, not the org string** — private if: a **generic role localpart** (`GENERIC_LOCALPARTS`:
+  `privacy@`/`whois@`/`abuse@`/… → catches `privacy@dynadot.com`), a **proxy/registrar domain OR any
+  subdomain** of one (`PRIVACY_EMAIL_DOMAINS` incl. `gandi.net`/`dynadot.com`/`namecheap.com`/`godaddy.com`,
+  matched with `endsWith` so `…@contact.gandi.net` → private), or a **hash-alias localpart**
+  (`HASH_LOCALPART` = 16+ hex, optionally `-id`/`.suffix` — catches Gandi's `3fbcbb…-47512530@contact.gandi.net`).
+  A real mailbox that showed through → surface it. When private, name/email/phone are ALL nulled (so a
+  registrar's generic shared phone never shows either). KEY CASE: nihil.ai's org is "Withheld for Privacy ehf" (Namecheap privacy) but
   its email is a plain `…@gmail.com` + a real UK mobile → we list it (the privacy org string lies; the
   email is real). ombu.ai (Domains By Proxy) → 🔒 Private. `parseRegistrant` prefers the `registrant`
   entity, falls back to administrative/technical; `PRIVACY_FN` drops placeholder `fn`s ("Registration
