@@ -86,6 +86,27 @@ export async function syncNamecheap(entries) {
   return { surfaced: surfaced.length, matched, newlyListed };
 }
 
+// Already-SURFACED names (in redemption / pending delete), stalest-checked first. These
+// must be re-scanned on their adaptive cadence (pending delete → every minute) so a name
+// advances redemption→pending→dropped on time — otherwise the huge first-scan backlog
+// (nulls-first ordering below) starves them for days. The caller isDue-filters + scans
+// these BEFORE the backlog. Small set (~the surfaced count), fail-open.
+export async function dueSurfacedCandidates(limit = 400) {
+  if (!isDbConfigured()) return [];
+  const base = 'domain,sld,nameservers,parked,expiration,last_status,in_redemption,redemption_since,available,last_http,last_checked';
+  const extra = ',in_pending_delete,pending_delete_since,dropped_at,demand_ok,tld_count';
+  function build(cols) {
+    return getDb().from(T).select(cols)
+      .or('in_redemption.eq.true,in_pending_delete.eq.true')
+      .order('last_checked', { ascending: true, nullsFirst: true })
+      .limit(Math.min(limit, 1000));
+  }
+  let { data, error } = await build(base + extra);
+  // lifecycle columns (0014) not migrated → the flags don't exist yet; nothing to prioritize.
+  if (error) return [];
+  return data || [];
+}
+
 // The stalest candidates first (never-checked → nulls first), so the scan's
 // adaptive cadence gets to learn each name's expiration and then taper. The
 // caller isDue-filters the returned slice.

@@ -13,7 +13,7 @@
 // redemption names so the cron can alert on them.
 import { rdapStatus } from '../beeper/rdap.js';
 import { isDue } from '../beeper/cadence.js';
-import { staleCandidates, updateCandidate } from '../db/expiringAi.js';
+import { staleCandidates, dueSurfacedCandidates, updateCandidate } from '../db/expiringAi.js';
 import { phaseOf, phaseLabel } from './redemption.js';
 import { investorSignal } from './investor.js';
 import { fullTldDemand } from './demand.js';
@@ -65,9 +65,17 @@ function dueForCandidate(c, now) {
 // pulled (stalest first). Fail-open per name.
 export async function scanDue({ limit = SCAN_LIMIT, concurrency = SCAN_CONCURRENCY } = {}) {
   const now = Date.now();
-  const batch = await staleCandidates(limit);
-  const due = batch.filter((c) => dueForCandidate(c, now));
-  const queue = [...due];
+  // Already-surfaced names (redemption / pending delete) get scanned FIRST, on their own
+  // cadence (pending delete = every minute) — otherwise the ~54k first-scan backlog
+  // (staleCandidates is nulls-first) starves them and they never advance to the next phase.
+  // They take priority within the per-tick rate-limit budget; the backlog fills the rest.
+  const surfacedDue = (await dueSurfacedCandidates().catch(() => []))
+    .filter((c) => dueForCandidate(c, now));
+  const seen = new Set(surfacedDue.map((c) => c.domain));
+  const backlogNeed = Math.max(0, limit - surfacedDue.length);
+  const batch = backlogNeed ? await staleCandidates(backlogNeed) : [];
+  const due = batch.filter((c) => !seen.has(c.domain) && dueForCandidate(c, now));
+  const queue = [...surfacedDue, ...due].slice(0, limit);
   const entered = [];   // names that JUST entered redemption/pending-delete this pass
   const dropped = [];   // names that JUST went available
   let checked = 0;
