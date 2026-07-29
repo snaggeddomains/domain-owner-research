@@ -45,8 +45,21 @@ export default async function handler(req, res) {
   if (req.method !== 'POST') { res.status(405).json({ error: 'Method not allowed' }); return; }
 
   const body = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body || {});
-  const domain = cleanDomainInput(body.domain || '');
-  if (!domain || !domain.includes('.')) { res.status(400).json({ error: 'Provide a full domain' }); return; }
+  // The target may be a real domain OR a "TBD" placeholder — a buy-side inquiry from a client
+  // who wants us to FIND a name (no domain chosen yet). A real name is cleaned/validated (in a
+  // try so an invalid entry returns a clear 400, never an opaque 500 from cleanDomainInput
+  // throwing); blank or "TBD" passes through as the literal placeholder "TBD".
+  const rawDomain = String(body.domain || '').trim();
+  let domain;
+  if (!rawDomain || /^tbd$/i.test(rawDomain)) {
+    domain = 'TBD';
+  } else {
+    try { domain = cleanDomainInput(rawDomain); } catch { domain = ''; }
+    if (!domain || !domain.includes('.')) {
+      res.status(400).json({ error: 'Enter a full domain (e.g. example.com), or “TBD” if there’s no name yet.' });
+      return;
+    }
+  }
   const source = String(body.source || '').trim();
   if (!source) { res.status(400).json({ error: 'Pick a source / channel' }); return; }
 

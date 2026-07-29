@@ -53,6 +53,15 @@ deal. The deal record + board live in snagged-admin; this app is a thin, gated p
   Notable→Brian) with source defaulted to "Website form". This is the buy-side triage convert from
   the research side; the admin **Deals → Buy-Side Inquiries** queue is the dedicated list version
   (snagged-admin `lib/inquiries.ts` + `app/deals/inquiries/`).
+- **"TBD" placeholder domain + no more 500 (2026-07-29).** A buy-side inquiry can be added as a deal
+  with NO chosen name yet — the drawer's Target domain accepts **"TBD"** (or blank), which passes
+  through as the literal placeholder `TBD` (admin `createDeal` stores it lowercased; edit the target
+  domain later to re-link research/appraisal). Root-cause fix in `api/pipedrive.js` POST:
+  `cleanDomainInput(body.domain)` ran OUTSIDE the try/catch, so a dotless/invalid value (e.g. "TBD")
+  made `cleanDomainInput` THROW → the whole function 500'd → the UI showed an opaque **"create 500"**.
+  Now: blank/`TBD` → `domain='TBD'`; otherwise `cleanDomainInput` is wrapped and an invalid entry
+  returns a clean 400 ("Enter a full domain … or 'TBD' …"), never a 500. Idempotency stays domain+buyer,
+  so two TBD inquiries from the same buyer merge into one deal.
 - **Lead dossier polish (2026-07-22).** (1) The dossier prose (overview / standing / highlights /
   the buyer's quoted message) is run through `linkifyLead` in `renderLead` — auto-links URLs,
   emails, bare domains (curated TLD set), and **@social-handles** (e.g. an Instagram
