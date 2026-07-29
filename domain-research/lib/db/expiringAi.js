@@ -198,10 +198,10 @@ export async function lifecycleMetrics({ limit = 5000 } = {}) {
       .or('redemption_since.not.is.null,pending_delete_since.not.is.null')
       .limit(limit);
   }
-  let { data, error } = await build('registrar,redemption_since,pending_delete_since,dropped_at,in_redemption,in_pending_delete,namecheap_listed_at');
+  let { data, error } = await build('registrar,expiration,redemption_since,pending_delete_since,dropped_at,in_redemption,in_pending_delete,namecheap_listed_at');
   // namecheap columns (0016) not migrated yet → retry without them.
   if (error && /namecheap/i.test(error.message)) {
-    ({ data, error } = await build('registrar,redemption_since,pending_delete_since,dropped_at,in_redemption,in_pending_delete'));
+    ({ data, error } = await build('registrar,expiration,redemption_since,pending_delete_since,dropped_at,in_redemption,in_pending_delete'));
   }
   if (error) return { rows: [], overall: null };
   const DAY = 86_400_000;
@@ -213,7 +213,7 @@ export async function lifecycleMetrics({ limit = 5000 } = {}) {
   };
   const byReg = new Map();
   const bucket = (key) => {
-    if (!byReg.has(key)) byReg.set(key, { registrar: key, r2p: [], p2d: [], p2nc: [], on_nc: 0, in_redemption: 0, in_pending_delete: 0 });
+    if (!byReg.has(key)) byReg.set(key, { registrar: key, e2r: [], r2p: [], p2d: [], p2nc: [], on_nc: 0, in_redemption: 0, in_pending_delete: 0 });
     return byReg.get(key);
   };
   for (const r of data || []) {
@@ -221,6 +221,9 @@ export async function lifecycleMetrics({ limit = 5000 } = {}) {
     if (r.in_redemption) g.in_redemption++;
     if (r.in_pending_delete) g.in_pending_delete++;
     if (r.namecheap_listed_at) g.on_nc++;
+    // Expiration → Redemption: the registered expiry date to first-seen in redemption (the
+    // auto-renew grace before it lapses into redemption). Positive-only via the days() guard.
+    if (r.expiration && r.redemption_since) { const d = days(r.expiration, r.redemption_since); if (d != null) g.e2r.push(d); }
     if (r.redemption_since && r.pending_delete_since) { const d = days(r.redemption_since, r.pending_delete_since); if (d != null) g.r2p.push(d); }
     if (r.pending_delete_since && r.dropped_at) { const d = days(r.pending_delete_since, r.dropped_at); if (d != null) g.p2d.push(d); }
     // Pending → Namecheap: only positive (a name can hit NC BEFORE pending — those don't
@@ -233,6 +236,8 @@ export async function lifecycleMetrics({ limit = 5000 } = {}) {
     in_redemption: g.in_redemption,
     in_pending_delete: g.in_pending_delete,
     on_namecheap: g.on_nc,
+    n_exp_to_redemption: g.e2r.length,
+    avg_exp_to_redemption: avg(g.e2r),
     n_red_to_pending: g.r2p.length,
     avg_red_to_pending: avg(g.r2p),
     n_pending_to_drop: g.p2d.length,
@@ -242,6 +247,8 @@ export async function lifecycleMetrics({ limit = 5000 } = {}) {
   })).sort((a, b) => (b.n_red_to_pending + b.n_pending_to_drop + b.on_namecheap) - (a.n_red_to_pending + a.n_pending_to_drop + a.on_namecheap) || String(a.registrar).localeCompare(String(b.registrar)));
   const overall = {
     on_namecheap: rows.reduce((s, r) => s + r.on_namecheap, 0),
+    n_exp_to_redemption: rows.reduce((s, r) => s + r.n_exp_to_redemption, 0),
+    avg_exp_to_redemption: avgWeighted(rows, 'avg_exp_to_redemption', 'n_exp_to_redemption'),
     n_red_to_pending: rows.reduce((s, r) => s + r.n_red_to_pending, 0),
     avg_red_to_pending: avgWeighted(rows, 'avg_red_to_pending', 'n_red_to_pending'),
     n_pending_to_drop: rows.reduce((s, r) => s + r.n_pending_to_drop, 0),

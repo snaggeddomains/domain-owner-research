@@ -10686,8 +10686,7 @@ function xpSinceVal(r) { return (xpMode === 'pending' ? r.pending_delete_since :
 // [key, label, defaultDir] — the action column is appended separately (not sortable).
 const XP_COLS = [
   ['domain', 'Domain', 'asc'],
-  ['phase', 'Phase', 'asc'],
-  ['demand', 'Demand', 'desc'],
+  ['demand', 'TLDs', 'desc'],
   ['expires', 'Expires', 'asc'],
   ['since', 'In redemption since', 'desc'],
   ['registrar', 'Registrar', 'asc'],
@@ -10790,8 +10789,7 @@ function expiringPaint() {
   const rows = expiringSortRows(expiringLast);
   const rowsHtml = rows.map((r) => `<tr>
     <td class="xp-dom"><a href="/research/appraisal/${encodeURIComponent(r.domain)}" title="Appraise ${escapeHtml(r.domain)}">${escapeHtml(r.domain)}</a></td>
-    <td>${xpPhaseChip(r)}</td>
-    <td class="xp-demand muted" title="How many TLDs the word is registered in (same as the TLD Count tool) — proven demand">${r.tld_count == null ? '—' : `${r.tld_count} TLDs`}</td>
+    <td class="xp-demand muted" title="How many TLDs the word is registered in (same as the TLD Count tool) — proven demand">${r.tld_count == null ? '—' : r.tld_count}</td>
     <td class="xp-exp">${xpDays(r)}${r.expiration ? `<div class="muted xp-expd">${escapeHtml(String(r.expiration).slice(0, 10))}</div>` : ''}</td>
     <td class="xp-since muted">${xpSinceVal(r) ? escapeHtml(String(xpSinceVal(r)).slice(0, 10)) : '—'}</td>
     <td class="xp-reg muted">${r.registrar ? escapeHtml(r.registrar) : '—'}</td>
@@ -10892,6 +10890,7 @@ function expiringRenderMetrics(m) {
   }
   const body = rows.map((r) => `<tr>
     <td class="xp-reg"><b>${escapeHtml(r.registrar || 'Unknown')}</b></td>
+    <td class="xp-metric">${xpDur(r.avg_exp_to_redemption)}${r.n_exp_to_redemption ? ` <span class="muted">(n=${r.n_exp_to_redemption})</span>` : ''}</td>
     <td class="xp-metric">${xpDur(r.avg_red_to_pending)}${r.n_red_to_pending ? ` <span class="muted">(n=${r.n_red_to_pending})</span>` : ''}</td>
     <td class="xp-metric">${xpDur(r.avg_pending_to_drop)}${r.n_pending_to_drop ? ` <span class="muted">(n=${r.n_pending_to_drop})</span>` : ''}</td>
     <td class="xp-metric">${xpDur(r.avg_pending_to_namecheap)}${r.n_pending_to_namecheap ? ` <span class="muted">(n=${r.n_pending_to_namecheap})</span>` : ''}</td>
@@ -10900,15 +10899,16 @@ function expiringRenderMetrics(m) {
   </tr>`).join('');
   const overallRow = overall ? `<tr class="xp-metric-all">
     <td><b>All registrars</b></td>
+    <td class="xp-metric"><b>${xpDur(overall.avg_exp_to_redemption)}</b>${overall.n_exp_to_redemption ? ` <span class="muted">(n=${overall.n_exp_to_redemption})</span>` : ''}</td>
     <td class="xp-metric"><b>${xpDur(overall.avg_red_to_pending)}</b>${overall.n_red_to_pending ? ` <span class="muted">(n=${overall.n_red_to_pending})</span>` : ''}</td>
     <td class="xp-metric"><b>${xpDur(overall.avg_pending_to_drop)}</b>${overall.n_pending_to_drop ? ` <span class="muted">(n=${overall.n_pending_to_drop})</span>` : ''}</td>
     <td class="xp-metric"><b>${xpDur(overall.avg_pending_to_namecheap)}</b>${overall.n_pending_to_namecheap ? ` <span class="muted">(n=${overall.n_pending_to_namecheap})</span>` : ''}</td>
     <td class="xp-metric"><b>${(overall.on_namecheap || 0)}</b></td>
     <td></td>
   </tr>` : '';
-  els.expiringMetrics.innerHTML = `<p class="xp-metric-note muted">Average observed time a name sits in each phase, by registrar. Measured from our scans, so figures are approximate and sharpen as more full cycles are seen. <b>Redemption → Pending delete</b> → <b>Pending delete → Dropped</b> → <b>Pending → Namecheap auction</b> tells you how much runway remains and when a name hits a Namecheap auction (which can even precede the formal drop).</p>
+  els.expiringMetrics.innerHTML = `<p class="xp-metric-note muted">Average observed time a name sits in each phase, by registrar. Measured from our scans, so figures are approximate and sharpen as more full cycles are seen. <b>Expired → Redemption</b> → <b>Redemption → Pending delete</b> → <b>Pending delete → Dropped</b> → <b>Pending → Namecheap auction</b> tells you how long after the registry expiry a name lapses into redemption, how much runway remains, and when a name hits a Namecheap auction (which can even precede the formal drop).</p>
     <table class="xp-table xp-metric-table">
-      <thead><tr><th>Registrar</th><th>Redemption → Pending</th><th>Pending → Dropped</th><th title="Days from entering pending-delete to appearing on a Namecheap auction">Pending → Namecheap</th><th title="Names seen on a Namecheap Market auction">On Namecheap</th><th title="Names currently in each phase">In redemption / pending now</th></tr></thead>
+      <thead><tr><th>Registrar</th><th title="Days from the registry expiration date to entering the redemption period (the auto-renew grace)">Expired → Redemption</th><th>Redemption → Pending</th><th>Pending → Dropped</th><th title="Days from entering pending-delete to appearing on a Namecheap auction">Pending → Namecheap</th><th title="Names seen on a Namecheap Market auction">On Namecheap</th><th title="Names currently in each phase">In redemption / pending now</th></tr></thead>
       <tbody>${overallRow}${body}</tbody></table>`;
 }
 async function expiringDismiss(domain) {

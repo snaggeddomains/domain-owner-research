@@ -1072,9 +1072,11 @@ investors. Reuses Beeper's RDAP + adaptive cadence; **no new vendor/env key**.
     EITHER window. The digest email is STILL redemption-only (a first-seen-in-pending name isn't
     emailed — a possible follow-up).
   - **Metrics tab** = lifecycle DURATIONS aggregated by registrar (`lifecycleMetrics` in
-    `expiringAi.js`, JS aggregation over the small tracked set, fail-open): **Redemption → Pending**
-    and **Pending → Dropped** average observed days (+ n) per registrar + an all-registrars weighted
-    row + current in-redemption/pending counts. API `?metrics=1` → `{metrics:{rows,overall}}`.
+    `expiringAi.js`, JS aggregation over the small tracked set, fail-open): **Expired → Redemption**
+    (2026-07-29 — `redemption_since - expiration`, the auto-renew grace before a lapse, ~52–61d
+    across registrars; populates immediately since both fields are already stored), **Redemption →
+    Pending** and **Pending → Dropped** average observed days (+ n) per registrar + an all-registrars
+    weighted row + current in-redemption/pending counts. API `?metrics=1` → `{metrics:{rows,overall}}`.
     Approximate (measured from our scan cadence), sharpens as full cycles are observed.
   - **Migration:** `supabase/migrations/0014_expiring_ai_pending_delete.sql` (adds `in_pending_delete`,
     `pending_delete_since`, `dropped_at`, `demand_ok` + partial index + backfills `demand_ok=true` for
@@ -1168,7 +1170,8 @@ investors. Reuses Beeper's RDAP + adaptive cadence; **no new vendor/env key**.
   (admin `lib/permissions.ts`) points at `/research/expiring`, so it renders in BOTH the admin SNAP
   sub-nav (cross-app link) and the research SPA SNAP nav — the report itself is the research SPA page.
 - **UI** (`public/app.js` `expiring*` helpers; `#view-expiring` + `#nav-expiring` in the SNAP
-  group; `.xp-*` styles): stats header, phase chip (REDEMPTION), Demand (full TLD count), expiry +
+  group; `.xp-*` styles): stats header, **TLDs** (full TLD count, number only — the Phase column
+  was removed 2026-07-29 since each tab is single-phase), expiry +
   in-redemption-since, **Registrar** (from RDAP), **first-2 nameservers**, **Likely investor** chip
   (marketplace name), hide-investor toggle, per-row dismiss, CSV, domain → Appraisal deep-link.
   **Sortable columns (2026-07-28):** every column header is click-to-sort (`XP_COLS` +
