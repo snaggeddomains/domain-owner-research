@@ -2467,3 +2467,8 @@ a.sr-ag-co-link:hover { border-color: var(--coral); color: var(--coral-deep); ba
 .xp-regt-pub a { color: #166534; font-weight: 600; text-decoration: none; display: inline-block; }
 .xp-regt-pub a:hover { text-decoration: underline; }
 .xp-regt-tel { font-weight: 500 !important; }
+.xp-rr { margin-top: 5px; padding-top: 5px; border-top: 1px dashed #e0d9c8; }
+.xp-rr-tag { display: inline-block; font-size: 10.5px; font-weight: 700; color: #6b4a8a; background: #efe8f6; padding: 1px 6px; border-radius: 999px; margin-bottom: 2px; }
+.xp-rr-who { font-size: 11.5px; }
+.xp-rr-none { font-size: 11.5px; }
+.xp-rr-btn { margin-top: 4px; font-size: 11.5px; padding: 2px 8px; color: #6b4a8a; }

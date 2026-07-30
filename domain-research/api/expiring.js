@@ -9,13 +9,55 @@
 //   POST { action:'dismiss'|'undismiss', domain }
 //   POST { action:'seed', domains:'rica.ai dealt.ai …' }  → add + scan specific names NOW
 import { isAuthed, requireUser, userCan } from '../lib/auth.js';
-import { redemptionList, pendingDeleteList, lifecycleMetrics, stats, setDismissed, isConfigured, insertCandidate, updateCandidate } from '../lib/db/expiringAi.js';
+import { redemptionList, pendingDeleteList, lifecycleMetrics, stats, setDismissed, isConfigured, insertCandidate, updateCandidate, getCandidate } from '../lib/db/expiringAi.js';
 import { phaseLabel, phaseOf } from '../lib/expiring/redemption.js';
 import { investorSignal } from '../lib/expiring/investor.js';
 import { fullTldDemand } from '../lib/expiring/demand.js';
 import { rdapStatus } from '../lib/beeper/rdap.js';
 import { fetchNamecheapAiAuctions } from '../lib/expiring/namecheap.js';
 import { syncNamecheap } from '../lib/db/expiringAi.js';
+import { runTool } from '../lib/sources/index.js';
+
+// On-demand RocketReach enrichment of a PUBLIC registrant contact: reverse-look-up the real
+// email (and phone, if present) → ADDITIONAL emails/phones + name/title/employer/LinkedIn.
+// Cached in the row's `rr` so a re-view never re-spends a credit. Skips private/empty rows.
+async function enrichRegistrant(domain, env) {
+  if (!env.ROCKETREACH_API_KEY) return { error: 'RocketReach is not configured on this server.' };
+  const row = await getCandidate(domain);
+  if (!row) return { error: 'Name not found.' };
+  if (row.registrant_private || (!row.registrant_email && !row.registrant_phone)) {
+    return { error: 'No public registrant contact to enrich.' };
+  }
+  const email = row.registrant_email || '';
+  const phone = row.registrant_phone || '';
+  // Look up by email AND by phone (each is a separate reverse lookup) — different hits merge.
+  const calls = [];
+  if (email) calls.push(runTool('rocketreach_lookup', { email }, env).catch(() => null));
+  if (phone) calls.push(runTool('rocketreach_lookup', { phone }, env).catch(() => null));
+  // runTool wraps the source result as { ok, data } → unwrap.
+  const results = (await Promise.all(calls)).map((w) => (w && w.ok ? w.data : null)).filter(Boolean);
+  const emails = new Set(), phones = new Set();
+  let prof = {};
+  for (const r of results) {
+    for (const e of r.emails || []) { const v = String(e).trim().toLowerCase(); if (v) emails.add(v); }
+    for (const p of r.phones || []) { const v = String(p).trim(); if (v) phones.add(v); }
+    if (r.name && !prof.name) prof = { name: r.name, title: r.current_title || null, employer: r.current_employer || null, linkedin: r.linkedin_url || null, location: r.location || null };
+  }
+  // Drop the contacts we already had on file (only show what's NEW).
+  if (email) emails.delete(email.toLowerCase());
+  const norm = (s) => String(s).replace(/[^0-9]/g, '');
+  const havePhone = phone ? norm(phone) : '';
+  const rr = {
+    ...prof,
+    emails: [...emails],
+    phones: [...phones].filter((p) => !havePhone || norm(p) !== havePhone),
+    found: false,
+    enriched_at: new Date().toISOString(),
+  };
+  rr.found = rr.emails.length > 0 || rr.phones.length > 0 || Boolean(rr.name);
+  await updateCandidate(domain, { rr });
+  return { rr };
+}
 
 export const config = { maxDuration: 60 };
 
@@ -99,6 +141,7 @@ function shape(r) {
     registrant_email: r.registrant_email || null,
     registrant_phone: r.registrant_phone || null,
     registrant_name: r.registrant_name || null,
+    rr: r.rr || null,   // RocketReach enrichment (on-demand): extra emails/phones + profile
   };
 }
 
@@ -124,6 +167,17 @@ export default async function handler(req, res) {
         const result = entries.length ? await syncNamecheap(entries) : { upserted: 0, newlyListed: 0 };
         res.status(200).json({ ok: true, ai_auctions: entries.length, ...result });
       } catch (e) { res.status(500).json({ error: String((e && e.message) || e) }); }
+      return;
+    }
+    // On-demand RocketReach enrichment of a public registrant contact (uses a lookup credit).
+    if (b.action === 'enrich') {
+      const domain = String(b.domain || '').toLowerCase().trim();
+      if (!domain) { res.status(400).json({ error: 'domain required' }); return; }
+      try {
+        const out = await enrichRegistrant(domain, process.env);
+        if (out.error) { res.status(out.error.includes('not configured') ? 503 : 400).json(out); return; }
+        res.status(200).json({ ok: true, ...out });
+      } catch (e) { res.status(502).json({ error: String((e && e.message) || e) }); }
       return;
     }
     const domain = String(b.domain || '').toLowerCase().trim();

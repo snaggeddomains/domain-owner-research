@@ -10699,13 +10699,26 @@ const XP_COLS = [
 // RDAP record exposed one, "🔒 Private" when behind WHOIS privacy, "—" until first scanned.
 function xpRegtCell(r) {
   if (r.registrant_private === true) return '<span class="muted xp-regt-priv" title="Registrant is behind WHOIS privacy">🔒 Private</span>';
-  if (r.registrant_email || r.registrant_phone) {
-    const parts = [];
-    if (r.registrant_email) parts.push(`<a href="mailto:${encodeURIComponent(r.registrant_email)}"${r.registrant_name ? ` title="${escapeHtml(r.registrant_name)}"` : ''}>${escapeHtml(r.registrant_email)}</a>`);
-    if (r.registrant_phone) parts.push(`<a class="muted xp-regt-tel" href="tel:${escapeHtml(r.registrant_phone.replace(/[^+0-9]/g, ''))}">${escapeHtml(r.registrant_phone)}</a>`);
-    return `<span class="xp-regt-pub">${parts.join('<br>')}</span>`;
+  if (!(r.registrant_email || r.registrant_phone)) return '<span class="muted">—</span>';
+  const telHref = (p) => escapeHtml(String(p).replace(/[^+0-9]/g, ''));
+  const parts = [];
+  if (r.registrant_email) parts.push(`<a href="mailto:${encodeURIComponent(r.registrant_email)}"${r.registrant_name ? ` title="${escapeHtml(r.registrant_name)}"` : ''}>${escapeHtml(r.registrant_email)}</a>`);
+  if (r.registrant_phone) parts.push(`<a class="muted xp-regt-tel" href="tel:${telHref(r.registrant_phone)}">${escapeHtml(r.registrant_phone)}</a>`);
+  let html = `<span class="xp-regt-pub">${parts.join('<br>')}</span>`;
+  // RocketReach enrichment: extra emails/phones + profile (on-demand, cached in r.rr).
+  const rr = r.rr;
+  if (rr && (Array.isArray(rr.emails) || Array.isArray(rr.phones))) {
+    const ex = [];
+    for (const e of rr.emails || []) ex.push(`<a href="mailto:${encodeURIComponent(e)}">${escapeHtml(e)}</a>`);
+    for (const p of rr.phones || []) ex.push(`<a class="muted xp-regt-tel" href="tel:${telHref(p)}">${escapeHtml(p)}</a>`);
+    const who = rr.name ? `<div class="muted xp-rr-who">${escapeHtml(rr.name)}${rr.employer ? ` · ${escapeHtml(rr.employer)}` : ''}</div>` : '';
+    html += ex.length || who
+      ? `<div class="xp-rr"><span class="xp-rr-tag">＋ RocketReach</span>${who}${ex.length ? `<div>${ex.join('<br>')}</div>` : ''}</div>`
+      : `<div class="xp-rr muted xp-rr-none">＋ RocketReach: no new hits</div>`;
+  } else {
+    html += `<div><button type="button" class="xp-rr-btn be-ghost" data-xp-rr="${escapeHtml(r.domain)}" title="Reverse-look-up this email + phone via RocketReach for more contacts (uses a credit)">🔍 RocketReach</button></div>`;
   }
-  return '<span class="muted">—</span>';
+  return html;
 }
 function xpSortVal(r, key) {
   switch (key) {
@@ -10811,6 +10824,9 @@ function expiringPaint() {
   els.expiringResult.querySelectorAll('[data-xp-dismiss]').forEach((btn) => {
     btn.addEventListener('click', () => expiringDismiss(btn.getAttribute('data-xp-dismiss')));
   });
+  els.expiringResult.querySelectorAll('[data-xp-rr]').forEach((btn) => {
+    btn.addEventListener('click', () => expiringEnrich(btn.getAttribute('data-xp-rr'), btn));
+  });
   els.expiringResult.querySelectorAll('[data-xp-sort]').forEach((th) => {
     const go = () => xpToggleSort(th.getAttribute('data-xp-sort'));
     th.addEventListener('click', go);
@@ -10911,6 +10927,23 @@ function expiringRenderMetrics(m) {
       <thead><tr><th>Registrar</th><th title="Days from the registry expiration date to entering the redemption period (the auto-renew grace)">Expired → Redemption</th><th>Redemption → Pending</th><th>Pending → Dropped</th><th title="Days from entering pending-delete to appearing on a Namecheap auction">Pending → Namecheap</th><th title="Names seen on a Namecheap Market auction">On Namecheap</th><th title="Names currently in each phase">In redemption / pending now</th></tr></thead>
       <tbody>${overallRow}${body}</tbody></table>`;
 }
+// On-demand: reverse-look-up a PUBLIC registrant's email + phone via RocketReach for more
+// contacts. Spends a lookup credit; the result is cached on the row (r.rr) so it's one-shot.
+async function expiringEnrich(domain, btn) {
+  if (!domain) return;
+  if (btn) { btn.disabled = true; btn.textContent = '… searching'; }
+  try {
+    const res = await fetch('/research/api/expiring', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ action: 'enrich', domain }) });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || data.ok === false) throw new Error(data.error || `enrich ${res.status}`);
+    const row = expiringLast.find((r) => r.domain === domain);
+    if (row) row.rr = data.rr || { emails: [], phones: [], found: false };
+    expiringPaint();
+  } catch (e) {
+    if (btn) { btn.disabled = false; btn.textContent = '🔍 RocketReach'; }
+    alert(`RocketReach lookup failed: ${String((e && e.message) || e)}`);
+  }
+}
 async function expiringDismiss(domain) {
   if (!domain) return;
   try {
@@ -10921,12 +10954,13 @@ async function expiringDismiss(domain) {
 }
 function expiringCsv() {
   if (!expiringLast.length) return;
-  const head = ['domain', 'phase', 'tld_count', 'expiration', 'days_to_expiry', 'redemption_since', 'pending_delete_since', 'registrar', 'nameservers', 'likely_investor', 'marketplace', 'registrant', 'registrant_email', 'registrant_phone', 'registrant_name', 'namecheap_listed_at', 'namecheap_price', 'namecheap_url'];
+  const head = ['domain', 'phase', 'tld_count', 'expiration', 'days_to_expiry', 'redemption_since', 'pending_delete_since', 'registrar', 'nameservers', 'likely_investor', 'marketplace', 'registrant', 'registrant_email', 'registrant_phone', 'registrant_name', 'rr_emails', 'rr_phones', 'rr_name', 'namecheap_listed_at', 'namecheap_price', 'namecheap_url'];
   const regtStatus = (r) => r.registrant_private === false ? 'public' : (r.registrant_private === true ? 'private' : '');
   const lines = [head.join(',')].concat(expiringSortRows(expiringLast).map((r) => [
     r.domain, r.phase, r.tld_count == null ? '' : r.tld_count, r.expiration || '', r.days_to_expiry == null ? '' : r.days_to_expiry,
     r.redemption_since || '', r.pending_delete_since || '', `"${(r.registrar || '').replace(/"/g, '')}"`, `"${(r.nameservers || []).join('; ')}"`, r.investor ? 'yes' : 'no', r.marketplace || '',
     regtStatus(r), r.registrant_email || '', `"${(r.registrant_phone || '').replace(/"/g, '')}"`, `"${(r.registrant_name || '').replace(/"/g, '')}"`,
+    `"${((r.rr && r.rr.emails) || []).join('; ')}"`, `"${((r.rr && r.rr.phones) || []).join('; ').replace(/"/g, '')}"`, `"${((r.rr && r.rr.name) || '').replace(/"/g, '')}"`,
     r.namecheap_listed_at || '', r.namecheap_price != null ? r.namecheap_price : '', r.namecheap_url || '',
   ].join(',')));
   const blob = new Blob([lines.join('\n')], { type: 'text/csv' });

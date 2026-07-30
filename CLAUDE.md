@@ -1221,6 +1221,16 @@ investors. Reuses Beeper's RDAP + adaptive cadence; **no new vendor/env key**.
   migration). Cache-bust `?v=20260729expiringregt`. **Migration:** `supabase/migrations/0017_expiring_ai_registrant.sql`
   (4 columns, `add column if not exists`) on the research project — until it runs, the scan strip-retries
   the columns and the report just omits the Registrant column.
+- **RocketReach enrichment of a public registrant (2026-07-29).** For a row with a PUBLIC registrant
+  contact, a **🔍 RocketReach** button (in the Registrant cell) reverse-looks-up the real email AND the
+  phone (two separate lookups — `rocketreach_lookup` now accepts a `phone` param, E.164) → ADDITIONAL
+  emails/phones + name/employer/LinkedIn, merged + deduped (drops the contacts we already had). On-demand
+  (spends a lookup credit; `runTool` records usage), cached in the row's **`rr` jsonb** so a re-view never
+  re-spends. `api/expiring.js` POST `{action:'enrich', domain}` → `enrichRegistrant` (503 if
+  ROCKETREACH_API_KEY unset, 400 for a private/empty row). Results render under the base contact with a
+  "＋ RocketReach" tag; CSV gains `rr_emails/rr_phones/rr_name`. `getCandidate` (db) reads the row; `windowList`
+  selects `rr` with a strip-retry. Cache-bust `?v=20260729expiringrr`. **Migration:**
+  `supabase/migrations/0018_expiring_ai_rr.sql` (`rr jsonb`, `add column if not exists`) on the research project.
 - **Permission:** `research.expiring` in snagged-admin `dashboard/lib/permissions.ts` (MODULES +
   SNAP_TABS + CATALOG group SNAP; stored flat as `expiring`). Grant per-user; admins auto-pass.
 - **One-time setup:** run `supabase/migrations/0013_expiring_ai.sql` on the research project.

@@ -179,11 +179,15 @@ async function windowList(which, { hideParked = false, includeDismissed = false,
     if (hideParked) q = q.eq('parked', false);
     return q;
   }
-  const full = 'domain,sld,tld_count,registrar,nameservers,parked,expiration,last_status,in_redemption,in_pending_delete,redemption_since,pending_delete_since,available,last_checked,namecheap_listed_at,namecheap_price,namecheap_url,registrant_email,registrant_phone,registrant_name,registrant_private';
-  const stripReg = (c) => c.replace(',registrant_email', '').replace(',registrant_phone', '').replace(',registrant_name', '').replace(',registrant_private', '');
+  const full = 'domain,sld,tld_count,registrar,nameservers,parked,expiration,last_status,in_redemption,in_pending_delete,redemption_since,pending_delete_since,available,last_checked,namecheap_listed_at,namecheap_price,namecheap_url,registrant_email,registrant_phone,registrant_name,registrant_private,rr';
+  const stripReg = (c) => c.replace(',registrant_email', '').replace(',registrant_phone', '').replace(',registrant_name', '').replace(',registrant_private', '').replace(',rr', '');
   let { data, error } = await build(full);
-  // Migration 0017 (registrant columns) not run yet → drop those.
-  if (error && /registrant/i.test(error.message)) {
+  // Migration 0018 (rr column) not run yet → drop it, keep registrant columns.
+  if (error && /'rr'|\brr\b/i.test(error.message) && !/registrant/i.test(error.message)) {
+    ({ data, error } = await build(full.replace(',rr', '')));
+  }
+  // Migration 0017 (registrant columns) not run yet → drop those (stripReg also drops rr).
+  if (error && /registrant|'rr'/i.test(error.message)) {
     ({ data, error } = await build(stripReg(full)));
   }
   // Migration 0016 (namecheap columns) not run yet → drop those.
@@ -283,6 +287,18 @@ function avgWeighted(rows, valKey, nKey) {
   let num = 0, den = 0;
   for (const r of rows) { if (r[valKey] != null && r[nKey]) { num += r[valKey] * r[nKey]; den += r[nKey]; } }
   return den ? num / den : null;
+}
+
+// A single candidate row by domain (for the on-demand RocketReach enrich action).
+export async function getCandidate(domain) {
+  if (!isDbConfigured() || !domain) return null;
+  const cols = 'domain,sld,registrant_email,registrant_phone,registrant_name,registrant_private,rr';
+  let { data, error } = await getDb().from(T).select(cols).eq('domain', domain).maybeSingle();
+  if (error && /'rr'|\brr\b/i.test(error.message)) {
+    ({ data, error } = await getDb().from(T).select(cols.replace(',rr', '')).eq('domain', domain).maybeSingle());
+  }
+  if (error) return null;
+  return data || null;
 }
 
 export async function setDismissed(domain, dismissed = true) {
