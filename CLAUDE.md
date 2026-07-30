@@ -1210,7 +1210,11 @@ investors. Reuses Beeper's RDAP + adaptive cadence; **no new vendor/env key**.
   matched with `endsWith` so `…@contact.gandi.net` → private), or a **hash-alias localpart**
   (`HASH_LOCALPART` = 16+ hex, optionally `-id`/`.suffix` — catches Gandi's `3fbcbb…-47512530@contact.gandi.net`).
   A real mailbox that showed through → surface it. When private, name/email/phone are ALL nulled (so a
-  registrar's generic shared phone never shows either). KEY CASE: nihil.ai's org is "Withheld for Privacy ehf" (Namecheap privacy) but
+  registrar's generic shared phone never shows either). **Display-time re-check (2026-07-30):** `emailIsPrivate`
+  is exported + re-applied in `api/expiring.js` `registrantFields(shape)` — a row scanned BEFORE the privacy
+  rules tightened (e.g. `privacy@dynadot.com` stored as public) reads 🔒 Private immediately without waiting
+  for a re-scan (surfaced re-scans are off while the backlog drains); the enrich action re-checks it too so a
+  stale privacy row can't spend a RocketReach credit. KEY CASE: nihil.ai's org is "Withheld for Privacy ehf" (Namecheap privacy) but
   its email is a plain `…@gmail.com` + a real UK mobile → we list it (the privacy org string lies; the
   email is real). ombu.ai (Domains By Proxy) → 🔒 Private. `parseRegistrant` prefers the `registrant`
   entity, falls back to administrative/technical; `PRIVACY_FN` drops placeholder `fn`s ("Registration

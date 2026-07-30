@@ -13,7 +13,7 @@ import { redemptionList, pendingDeleteList, lifecycleMetrics, stats, setDismisse
 import { phaseLabel, phaseOf } from '../lib/expiring/redemption.js';
 import { investorSignal } from '../lib/expiring/investor.js';
 import { fullTldDemand } from '../lib/expiring/demand.js';
-import { rdapStatus } from '../lib/beeper/rdap.js';
+import { rdapStatus, emailIsPrivate } from '../lib/beeper/rdap.js';
 import { fetchNamecheapAiAuctions } from '../lib/expiring/namecheap.js';
 import { syncNamecheap } from '../lib/db/expiringAi.js';
 import { runTool } from '../lib/sources/index.js';
@@ -25,7 +25,10 @@ async function enrichRegistrant(domain, env) {
   if (!env.ROCKETREACH_API_KEY) return { error: 'RocketReach is not configured on this server.' };
   const row = await getCandidate(domain);
   if (!row) return { error: 'Name not found.' };
-  if (row.registrant_private || (!row.registrant_email && !row.registrant_phone)) {
+  // Re-check the stored email against the privacy detector too (a row scanned before the rules
+  // tightened may hold a known-privacy address) so we never spend a credit on privacy@dynadot.com.
+  const emailPriv = row.registrant_email ? emailIsPrivate(row.registrant_email) : false;
+  if (row.registrant_private || emailPriv || (!row.registrant_email && !row.registrant_phone)) {
     return { error: 'No public registrant contact to enrich.' };
   }
   const email = row.registrant_email || '';
@@ -137,11 +140,25 @@ function shape(r) {
     namecheap_url: r.namecheap_url || null,
     // Registrant contact from RDAP: null = not scanned yet; private = masked; else the
     // real public email/phone/name that showed through.
+    ...registrantFields(r),
+    rr: r.rr || null,   // RocketReach enrichment (on-demand): extra emails/phones + profile
+  };
+}
+
+// Defensive re-classification at DISPLAY time: a row scanned BEFORE the privacy rules tightened
+// may have a known-privacy address (e.g. privacy@dynadot.com) stored as "public". Re-check the
+// stored email against the SAME detector the scan uses, so it reads 🔒 Private immediately —
+// without waiting for a re-scan (surfaced re-scans are off while the backlog drains).
+function registrantFields(r) {
+  const email = r.registrant_email || null;
+  if (email && emailIsPrivate(email)) {
+    return { registrant_private: true, registrant_email: null, registrant_phone: null, registrant_name: null };
+  }
+  return {
     registrant_private: r.registrant_private == null ? null : Boolean(r.registrant_private),
-    registrant_email: r.registrant_email || null,
+    registrant_email: email,
     registrant_phone: r.registrant_phone || null,
     registrant_name: r.registrant_name || null,
-    rr: r.rr || null,   // RocketReach enrichment (on-demand): extra emails/phones + profile
   };
 }
 

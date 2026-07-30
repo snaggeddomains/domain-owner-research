@@ -90,7 +90,7 @@ const HASH_LOCALPART = /^[a-f0-9]{16,}([._-][a-z0-9]+)*$/i;
 // vCard `fn` placeholders that mean "redacted", not a real person/company name.
 const PRIVACY_FN = /(registration private|redacted|privacy|withheld|not disclosed|whois|data protected|statutory masking|domain admin(istrator)?|proxy|perfect privacy|contact privacy)/i;
 
-function emailIsPrivate(email) {
+export function emailIsPrivate(email) {
   const at = email.indexOf('@');
   if (at < 1) return true;
   const local = email.slice(0, at).toLowerCase();
