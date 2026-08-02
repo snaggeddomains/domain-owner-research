@@ -72,6 +72,7 @@ function readForm(b) {
     domain_of_interest: pick('domain_of_interest', 'domain', 'Domain Name S Of Interest', 'domains', 'Domains'),
     intent: pick('intent', 'i_want_to', 'I Want To', 'Acquire or Sell'),
     budget: pick('budget', 'Budget'),
+    heard_about: pick('heard_about', 'how_did_you_hear_about_us', 'How Did You Hear About Us', 'How Did You Hear About Us?', 'source', 'How Did You Hear'),
     message: pick('message', 'Message'),
     owner_outreach: pick('owner_outreach', 'Owner Outreach', 'Owner Contact'),
   };
