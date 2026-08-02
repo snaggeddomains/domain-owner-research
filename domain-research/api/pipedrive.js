@@ -74,6 +74,7 @@ export default async function handler(req, res) {
     orgName: str(body.orgName),
     assigneeEmail: str(body.assigneeEmail),
     budgetRange: str(body.budgetRange),
+    heardAbout: str(body.heardAbout),
     appraisalValue: num(body.appraisalValue),
     askingPrice: num(body.askingPrice),
     priority: str(body.priority),

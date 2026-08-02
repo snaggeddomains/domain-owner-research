@@ -77,6 +77,12 @@ deal. The deal record + board live in snagged-admin; this app is a thin, gated p
   **new** leads only (`getLeadByKey` before upsert — a re-submission/enrichment re-run never
   re-pings) AND buy-side intent only (`looksBuySide`, mirrors the admin queue). No new env/table
   (reuses `domain_research_notifications` + `sendEmail`).
+- **"How did you hear about us?" auto-carried (2026-08-02).** `pipedriveCtxFromLead` reads the lead's
+  `form.heard_about` (fallback `form.source`) and `submitPipedrive` passes it as `heardAbout` in the
+  POST; `api/pipedrive.js` forwards it to the admin internal endpoint → `deals.heard_about`. Silent —
+  NO visible drawer field (report-surface converts send `''`→null). `lead-enrich.js` `readForm` now
+  captures `heard_about` into the lead `form` jsonb so future inquiries have it. Cache-bust
+  `?v=20260802hdyhau`. (Admin side + backfill: snagged-admin CLAUDE.md "How did you hear about us?".)
 - **Permission:** `research.pipedrive` (module) added in snagged-admin `dashboard/lib/permissions.ts`
   (MODULES + CATALOG, group Research; stored flat as `pipedrive`). Grant per-user; admins auto-pass.
 - **One-time setup:** none new — reuses `RESEARCH_INTERNAL_SECRET` + `ADMIN_INTERNAL_BASE`

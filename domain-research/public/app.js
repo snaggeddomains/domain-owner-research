@@ -6959,6 +6959,8 @@ function pipedriveCtxFromLead(lead, reportRuns) {
     additionalDomains: domains.slice(1).join(', '),
     reportLink,
     assigneeEmail,
+    // "How did you hear about us?" off the form — auto-carried onto the deal (no visible field).
+    heardAbout: (lead.form && (lead.form.heard_about || lead.form.source)) || lead.heard_about || '',
     defaultSource: 'Website form', // it arrived via the contact form
   };
 }
@@ -7090,6 +7092,7 @@ async function submitPipedrive() {
     buyerName: els.pdBuyerName ? els.pdBuyerName.value.trim() : '',
     buyerEmail: els.pdBuyerEmail ? els.pdBuyerEmail.value.trim() : '',
     budgetRange: els.pdBudget ? els.pdBudget.value.trim() : '',
+    heardAbout: pipedriveCtx.heardAbout || '',   // auto-carried from the lead form; '' for non-lead surfaces
     reportLink: pipedriveCtx.reportLink || '',
     appraisalValue: pipedriveCtx.appraisalValue || '',
     additionalDomains: pipedriveCtx.additionalDomains || '',
