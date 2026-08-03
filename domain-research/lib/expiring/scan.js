@@ -219,6 +219,6 @@ export async function scanDue({ limit = SCAN_LIMIT, concurrency = SCAN_CONCURREN
       }
     }
   }
-  await Promise.all(Array.from({ length: Math.min(concurrency, due.length) || 1 }, worker));
-  return { batch: batch.length, due: due.length, checked, entered, dropped };
+  await Promise.all(Array.from({ length: Math.min(concurrency, queue.length) || 1 }, worker));
+  return { batch: batch.length, due: queue.length, checked, entered, dropped };
 }
