@@ -95,19 +95,21 @@ export async function syncNamecheap(entries) {
 // (available not true), not already surfaced, with an expiration inside a near window (or
 // null). Ordered by staleness so the ones due for a re-check surface. Queried on its OWN so
 // the huge weekly-cadence `available` pool can't crowd it out of the general staleness scan.
-export async function dueRegisteredCandidates(limit = 500, windowDays = 90) {
+export async function dueRegisteredCandidates(limit = 500) {
   if (!isDbConfigured()) return [];
   const base = 'domain,sld,nameservers,parked,expiration,last_status,in_redemption,redemption_since,available,last_http,last_checked';
   const extra = ',in_pending_delete,pending_delete_since,dropped_at,demand_ok,tld_count';
-  const cutoff = new Date(Date.now() + windowDays * 86400000).toISOString();
+  // Registered (available not true), not already surfaced, ordered by EXPIRATION ascending
+  // (nulls first = unknown expiry, then past-expiry, then soonest-to-expire) — i.e. by URGENCY,
+  // so the names actually about to enter / already crossing into redemption lead. Ordering by
+  // last_checked instead buried the past-expiry pipeline source behind far-out weekly names that
+  // were merely scanned earlier. dueForCandidate then keeps the ones actually due per cadence.
   function build(cols, withPending) {
     let q = getDb().from(T).select(cols)
       .not('available', 'is', true)
       .not('in_redemption', 'is', true);
     if (withPending) q = q.not('in_pending_delete', 'is', true);
-    return q.or(`expiration.lt.${cutoff},expiration.is.null`)
-      .order('last_checked', { ascending: true, nullsFirst: true })
-      .limit(Math.min(limit, 1000));
+    return q.order('expiration', { ascending: true, nullsFirst: true }).limit(Math.min(limit, 1000));
   }
   let { data, error } = await build(base + extra, true);
   // lifecycle columns (0014) not migrated → drop them (and the in_pending_delete filter).
