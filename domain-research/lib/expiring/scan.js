@@ -13,7 +13,7 @@
 // redemption names so the cron can alert on them.
 import { rdapStatus } from '../beeper/rdap.js';
 import { isDue } from '../beeper/cadence.js';
-import { staleCandidates, dueSurfacedCandidates, updateCandidate } from '../db/expiringAi.js';
+import { staleCandidates, dueSurfacedCandidates, dueRegisteredCandidates, updateCandidate } from '../db/expiringAi.js';
 import { phaseOf, phaseLabel } from './redemption.js';
 import { investorSignal } from './investor.js';
 import { fullTldDemand } from './demand.js';
@@ -47,12 +47,8 @@ const SCAN_DELAY_MS = Math.max(0, Number(process.env.EXPIRING_AI_SCAN_DELAY_MS |
 const SCAN_LIMIT = Math.max(1, Number(process.env.EXPIRING_AI_SCAN_LIMIT || 90));
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-// Prioritize re-scanning ALREADY-SURFACED names (redemption / pending delete) ahead of the
-// first-scan backlog, so they advance redemption→pending→dropped on time. OFF by default:
-// while the ~54k first-scan backlog is being drained we want every credit on NEW names;
-// flip `EXPIRING_AI_PRIORITIZE_SURFACED=1` once the backlog is worked down to turn the
-// move-to-pending tracking on (no redeploy — env only).
-const PRIORITIZE_SURFACED = /^(1|true|yes|on)$/i.test(process.env.EXPIRING_AI_PRIORITIZE_SURFACED || '');
+// (Deprecated 2026-08-03: surfaced names are now ALWAYS re-scanned — see scanDue. The old
+// EXPIRING_AI_PRIORITIZE_SURFACED switch is no longer read; leaving it set is harmless.)
 // How often a surfaced name is re-checked — a few times a day is plenty to catch the move
 // to pending delete / the drop (nic.ai doesn't need per-minute polling). Default ~8h (≈3×/day),
 // NOT Beeper's 1-min pending-delete cadence (that's for a single actively-watched drop).
@@ -89,14 +85,31 @@ export async function scanDue({ limit = SCAN_LIMIT, concurrency = SCAN_CONCURREN
   // advance to the next phase. OFF by default: spend every credit draining the backlog, then
   // flip EXPIRING_AI_PRIORITIZE_SURFACED=1 to turn move-to-pending tracking on. Once the backlog
   // (nulls) is gone, surfaced names become the stalest and get re-checked regardless.
-  const surfacedDue = PRIORITIZE_SURFACED
-    ? (await dueSurfacedCandidates().catch(() => [])).filter((c) => dueForCandidate(c, now))
-    : [];
+  // Three due-targeted slices, filled in priority order up to `limit`. Splitting the query this
+  // way is what keeps the huge weekly-cadence `available` pool (~50k names, never due for days)
+  // from clogging a single stalest-first scan and starving the names that actually move:
+  //   1. SURFACED (redemption / pending delete) — always re-scanned so they advance to the next
+  //      phase / drop. (Was gated behind PRIORITIZE_SURFACED, which froze the whole pipeline once
+  //      the first-scan backlog drained — the stalest names were then all not-yet-due `available`
+  //      words, so the scan filtered to zero and wrote nothing.)
+  //   2. NEAR-EXPIRY REGISTERED — the SOURCE of new redemptions. Queried directly (registered,
+  //      not surfaced, expiry within the window) so it can't be crowded out by `available`.
+  //   3. GENERAL STALE — remaining budget for far-out registered + `available` weekly re-checks;
+  //      oversampled + due-filtered so a not-yet-due stalest slice can't block it.
+  const surfacedDue = (await dueSurfacedCandidates().catch(() => [])).filter((c) => dueForCandidate(c, now));
   const seen = new Set(surfacedDue.map((c) => c.domain));
-  const backlogNeed = Math.max(0, limit - surfacedDue.length);
-  const batch = backlogNeed ? await staleCandidates(backlogNeed) : [];
-  const due = batch.filter((c) => !seen.has(c.domain) && dueForCandidate(c, now));
-  const queue = [...surfacedDue, ...due].slice(0, limit);
+  let need = Math.max(0, limit - surfacedDue.length);
+
+  const nearExpiry = need
+    ? (await dueRegisteredCandidates().catch(() => []))
+        .filter((c) => !seen.has(c.domain) && dueForCandidate(c, now)).slice(0, need)
+    : [];
+  nearExpiry.forEach((c) => seen.add(c.domain));
+  need = Math.max(0, need - nearExpiry.length);
+
+  const batch = need ? await staleCandidates(Math.max(need * 6, 300)) : [];
+  const rest = batch.filter((c) => !seen.has(c.domain) && dueForCandidate(c, now)).slice(0, need);
+  const queue = [...surfacedDue, ...nearExpiry, ...rest].slice(0, limit);
   const entered = [];   // names that JUST entered redemption/pending-delete this pass
   const dropped = [];   // names that JUST went available
   let checked = 0;

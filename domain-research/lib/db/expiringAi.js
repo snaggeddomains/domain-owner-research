@@ -91,6 +91,31 @@ export async function syncNamecheap(entries) {
 // advances redemption→pending→dropped on time — otherwise the huge first-scan backlog
 // (nulls-first ordering below) starves them for days. The caller isDue-filters + scans
 // these BEFORE the backlog. Small set (~the surfaced count), fail-open.
+// Registered names APPROACHING expiry (the source of new redemptions) — registered
+// (available not true), not already surfaced, with an expiration inside a near window (or
+// null). Ordered by staleness so the ones due for a re-check surface. Queried on its OWN so
+// the huge weekly-cadence `available` pool can't crowd it out of the general staleness scan.
+export async function dueRegisteredCandidates(limit = 500, windowDays = 90) {
+  if (!isDbConfigured()) return [];
+  const base = 'domain,sld,nameservers,parked,expiration,last_status,in_redemption,redemption_since,available,last_http,last_checked';
+  const extra = ',in_pending_delete,pending_delete_since,dropped_at,demand_ok,tld_count';
+  const cutoff = new Date(Date.now() + windowDays * 86400000).toISOString();
+  function build(cols, withPending) {
+    let q = getDb().from(T).select(cols)
+      .not('available', 'is', true)
+      .not('in_redemption', 'is', true);
+    if (withPending) q = q.not('in_pending_delete', 'is', true);
+    return q.or(`expiration.lt.${cutoff},expiration.is.null`)
+      .order('last_checked', { ascending: true, nullsFirst: true })
+      .limit(Math.min(limit, 1000));
+  }
+  let { data, error } = await build(base + extra, true);
+  // lifecycle columns (0014) not migrated → drop them (and the in_pending_delete filter).
+  if (error) ({ data, error } = await build(base, false));
+  if (error) return [];
+  return data || [];
+}
+
 export async function dueSurfacedCandidates(limit = 400) {
   if (!isDbConfigured()) return [];
   const base = 'domain,sld,nameservers,parked,expiration,last_status,in_redemption,redemption_since,available,last_http,last_checked';

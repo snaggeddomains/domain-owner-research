@@ -1058,6 +1058,23 @@ investors. Reuses Beeper's RDAP + adaptive cadence; **no new vendor/env key**.
     Beeper's 1-min pending-delete cadence (that's for one hand-watched drop); a few checks a day catches
     the move to pending / the drop without per-minute nic.ai polling. `dueSurfacedCandidates` (db) is
     the surfaced-first query. Total nic.ai load unchanged (still ≤`limit`/tick).
+  - **⚠️ The switch FROZE the pipeline once the backlog drained — fixed 2026-08-03.** The 2026-07-29
+    assumption ("once the backlog clears the surfaced names become the stalest and re-check on their
+    own") was WRONG. With `never_scanned=0`, `staleCandidates` (still ordered stalest-first, NOT filtered
+    to due) returned the ~90 absolute-stalest names — all weekly-cadence `available` words NOT yet due —
+    so `dueForCandidate` filtered them to zero, the scan wrote nothing, their `last_checked` never
+    advanced, and they permanently CLOGGED the top. The due names (266 surfaced + ~2.7k near-expiry
+    registered) sat below the clog and were never reached. Symptom: `last_checked` frozen (stuck at the
+    last drain write), no new redemptions, nothing moving to pending/dropping — for days, even though the
+    cron kept firing (curate cursor advanced). **Fix (`scan.js` scanDue + `expiringAi.js`):** three
+    due-targeted slices filled in priority order, so the ~50k `available` pool can't clog: (1) SURFACED —
+    `dueSurfacedCandidates`, ALWAYS re-scanned (switch ungated; `EXPIRING_AI_PRIORITIZE_SURFACED` now
+    unread); (2) NEAR-EXPIRY REGISTERED — new **`dueRegisteredCandidates`** (available≠true, not surfaced,
+    `expiration < now+90d OR null`, stalest-first) = the source of NEW redemptions, queried on its own so
+    it's immune to the `available` clog; (3) GENERAL STALE — remaining budget from `staleCandidates`
+    (oversampled `need*6`, due-filtered) for far registered + weekly `available` re-checks. Budget
+    self-balances: surfaced drain first (~3 ticks), then near-expiry, then the rest; once surfaced are
+    fresh (<8h) they drop out and free budget. nic.ai load unchanged (still ≤`limit`/tick, paced).
 - **TLD lookup runs ONLY on names in the redemption period** (Rob: "cut way down"). On a name's FIRST
   redemption sighting the scan runs the demand check ONCE: the **bounded ~26-TLD probe** (`popularTldCount`,
   `lib/evaluate/tldcount.js`, cache `xt`) decides QUALITY — surface only if **≥ `EXPIRING_AI_MIN_TLDS`
