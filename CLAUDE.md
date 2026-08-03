@@ -1075,6 +1075,21 @@ investors. Reuses Beeper's RDAP + adaptive cadence; **no new vendor/env key**.
     (oversampled `need*6`, due-filtered) for far registered + weekly `available` re-checks. Budget
     self-balances: surfaced drain first (~3 ticks), then near-expiry, then the rest; once surfaced are
     fresh (<8h) they drop out and free budget. nic.ai load unchanged (still ≤`limit`/tick, paced).
+    - **Two follow-up bugs in the above fix (both 2026-08-03, now resolved):** (a) the rewrite renamed
+      the backlog `due` array to `rest` but left two references to `due` (worker-concurrency `Math.min`
+      + the return) → scanDue threw `ReferenceError` every tick, swallowed by the cron's try/catch → no
+      writes; fixed to `queue`. (b) `dueRegisteredCandidates` was ordered by `last_checked asc`, which
+      buried the past-expiry pipeline source behind far-from-expiry names merely scanned earlier → once
+      surfaced drained, the near-expiry slice delivered nothing and the scan stalled again; reordered to
+      **`expiration asc nulls first`** (by URGENCY) so past-expiry / lapsing names lead. Verified live:
+      past-expiry overdue 115→0, scan steady at 90/tick, redemption→pending + drops flowing.
+    - **NOT a bug — the demand gate rejecting high-`tld_count` names is correct.** After the fix, ~50
+      names in redemption status showed `demand_ok=false` despite `tld_count` 10-22, which looked like a
+      gate failure — but the gate keys off the **bounded ~26-POPULAR-TLD probe** (`popularTldCount`), not
+      the full IANA count. DoH-verified: biomolecule = 3 popular TLDs, mesozoic = 5 (both <6) — their high
+      full counts are inflated by obscure/cheap TLDs. So niche words (paleocene/oligocene/biomolecule/…)
+      correctly fail the ≥6 gate. **0 NEW surfaced in a given window is supply + gate, not a fault:** most
+      names lapsing into redemption are low-demand words; good ones surface as they cross and pass ≥6.
 - **TLD lookup runs ONLY on names in the redemption period** (Rob: "cut way down"). On a name's FIRST
   redemption sighting the scan runs the demand check ONCE: the **bounded ~26-TLD probe** (`popularTldCount`,
   `lib/evaluate/tldcount.js`, cache `xt`) decides QUALITY — surface only if **≥ `EXPIRING_AI_MIN_TLDS`
