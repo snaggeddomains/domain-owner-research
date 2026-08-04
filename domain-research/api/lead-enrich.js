@@ -62,6 +62,16 @@ function readForm(b) {
     }
     return null;
   };
+  // Fuzzy fallback: match a field by a loose pattern on its KEY NAME — for form fields whose
+  // exact webhook key we don't know (the contact form uses custom keys, e.g. "Acquire or Sell?"
+  // → i_want_to). Case-insensitive over every key; skips a key already claimed by an exact pick.
+  const pickFuzzy = (re, exclude = []) => {
+    for (const k of Object.keys(b || {})) {
+      if (exclude.includes(k) || !re.test(k)) continue;
+      if (b[k] != null && String(b[k]).trim() !== '') return String(b[k]).trim();
+    }
+    return null;
+  };
   return {
     first_name: pick('first_name', 'First Name', 'firstName'),
     last_name: pick('last_name', 'Last Name', 'lastName'),
@@ -72,9 +82,13 @@ function readForm(b) {
     domain_of_interest: pick('domain_of_interest', 'domain', 'Domain Name S Of Interest', 'domains', 'Domains'),
     intent: pick('intent', 'i_want_to', 'I Want To', 'Acquire or Sell'),
     budget: pick('budget', 'Budget'),
-    heard_about: pick('heard_about', 'how_did_you_hear_about_us', 'How Did You Hear About Us', 'How Did You Hear About Us?', 'source', 'How Did You Hear'),
+    heard_about: pick('heard_about', 'how_did_you_hear_about_us', 'How Did You Hear About Us', 'How Did You Hear About Us?', 'source', 'How Did You Hear')
+      || pickFuzzy(/hear|referr|how.?did.?you|attribut|find.?us|channel/i),
     message: pick('message', 'Message'),
     owner_outreach: pick('owner_outreach', 'Owner Outreach', 'Owner Contact'),
+    // Diagnostic (2026-08-04): the exact webhook key for "How did you hear about us?" is unknown —
+    // stash the raw key names so the next inquiry reveals it and the fuzzy match can be tightened.
+    _form_keys: Object.keys(b || {}),
   };
 }
 
