@@ -70,13 +70,18 @@ deal. The deal record + board live in snagged-admin; this app is a thin, gated p
   Deal"** when a deal already exists for the inquired domain — `updateLeadDealButton(el, domain)`
   checks `GET api/pipedrive?domain=` (same `data.deal.url` the report header uses); the
   `[data-pd-lead]` click opens the deal instead of the drawer. Cache-bust `?v=20260722leadlinks`.
-- **New buy-side inquiry → triage notification (2026-07-22).** `api/lead-enrich.js` POST (the
-  Zapier "New Submission" hook) now pings the triage team the moment a NEW buy-side inquiry lands:
-  `notifyTriageOfInquiry` bells (`createNotification`, kind `inquiry`, link `/research/#/lead/<key>`)
-  + emails every user who can triage (`userCan(u,'pipedrive')` OR admin), best-effort. Gated to
-  **new** leads only (`getLeadByKey` before upsert — a re-submission/enrichment re-run never
-  re-pings) AND buy-side intent only (`looksBuySide`, mirrors the admin queue). No new env/table
-  (reuses `domain_research_notifications` + `sendEmail`).
+- **New buy-side inquiry → triage notification (2026-07-22; email dropped 2026-08-04).**
+  `api/lead-enrich.js` POST (the Zapier "New Submission" hook) pings the triage team the moment a
+  NEW buy-side inquiry lands: `notifyTriageOfInquiry` drops an in-app **bell** (`createNotification`,
+  kind `inquiry`, link `/research/#/lead/<key>`) for every user who can triage (`userCan(u,'pipedrive')`
+  OR admin), best-effort. Gated to **new** leads only (`getLeadByKey` before upsert — a
+  re-submission/enrichment re-run never re-pings) AND buy-side intent only (`looksBuySide`, mirrors
+  the admin queue). **No EMAIL (Rob 2026-08-04):** the inbound inquiry email already lands in the
+  inbox, so a second "new inquiry" email was redundant — `notifyTriageOfInquiry` now bells only
+  (dropped the `sendEmail` job + the unused `esc`/`email.js` import). The ONLY follow-up email is the
+  deal-**assignment** notification (snagged-admin `lib/deals/notify.ts` `notifyAssignment`, from
+  `deals@snagged.com`) once someone picks the deal up. No new env/table (reuses
+  `domain_research_notifications`).
 - **"How did you hear about us?" auto-carried (2026-08-02).** `pipedriveCtxFromLead` reads the lead's
   `form.heard_about` (fallback `form.source`) and `submitPipedrive` passes it as `heardAbout` in the
   POST; `api/pipedrive.js` forwards it to the admin internal endpoint → `deals.heard_about`. Silent —

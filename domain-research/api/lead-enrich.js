@@ -20,7 +20,6 @@ import { upsertLead, getLeadByKey, listLeads } from '../lib/db/leads.js';
 import { listRuns, createRun } from '../lib/db/runs.js';
 import { listUsers } from '../lib/db/users.js';
 import { createNotification } from '../lib/db/notifications.js';
-import { sendEmail, isEmailConfigured } from '../lib/email.js';
 import { cleanDomainInput } from '../lib/util.js';
 import { trackDomain } from '../lib/domainscout.js';
 import { emailDomain, isFreeEmail } from '../lib/leads/triage.js';
@@ -141,13 +140,12 @@ function looksBuySide(intent) {
   return true;
 }
 
-function esc(s) {
-  return String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-}
-
-// A new buy-side inquiry landed → ping everyone who can triage it (the `pipedrive`
-// module permission that gates Deals → Buy-Side Inquiries, plus admins). Bell + email,
-// best-effort, deep-linked to the dossier. Fires only for NEW leads (see handlePost).
+// A new buy-side inquiry landed → drop an in-app BELL for everyone who can triage it (the
+// `pipedrive` module permission that gates Deals → Buy-Side Inquiries, plus admins),
+// deep-linked to the dossier. Best-effort; fires only for NEW leads (see handlePost).
+// NB no EMAIL here (Rob 2026-08-04): the inbound inquiry email already lands in the inbox,
+// so a second "new inquiry" email was redundant. The only follow-up email we send is the
+// deal-ASSIGNMENT notification (snagged-admin lib/deals/notify.ts) once someone picks it up.
 async function notifyTriageOfInquiry({ key, name, email, domainRaw, intent, budget }) {
   try {
     const users = await listUsers();
@@ -159,23 +157,8 @@ async function notifyTriageOfInquiry({ key, name, email, domainRaw, intent, budg
     const title = `New buy-side inquiry — ${who}`;
     const bits = [domainLabel && `Domain: ${domainLabel}`, budget && `Budget: ${budget}`, intent && `Intent: ${intent}`].filter(Boolean).join(' · ');
     const link = `/research/#/lead/${key}`;
-    const emailOn = isEmailConfigured();
-    const dossier = leadUrl(key);
     await Promise.allSettled(
-      triagers.flatMap((u) => {
-        const jobs = [createNotification({ user_id: u.id, kind: 'inquiry', title, body: bits || 'Review in Buy-Side Inquiries.', link })];
-        if (emailOn) {
-          jobs.push(sendEmail({
-            to: u.email,
-            subject: `🟢 ${title}`,
-            text: `${who} submitted a buy-side inquiry.\n\n${bits}\n\nReview it: ${dossier}`,
-            html: `<p><strong>${esc(who)}</strong> submitted a buy-side inquiry.</p>`
-              + (bits ? `<p style="color:#4a5b66">${esc(bits)}</p>` : '')
-              + `<p><a href="${esc(dossier)}" style="display:inline-block;padding:10px 16px;background:#e48069;color:#fff;text-decoration:none;border-radius:8px;font-weight:700">Review inquiry</a></p>`,
-          }));
-        }
-        return jobs;
-      }),
+      triagers.map((u) => createNotification({ user_id: u.id, kind: 'inquiry', title, body: bits || 'Review in Buy-Side Inquiries.', link })),
     );
   } catch (e) {
     console.error('notifyTriageOfInquiry failed:', e && e.message);
