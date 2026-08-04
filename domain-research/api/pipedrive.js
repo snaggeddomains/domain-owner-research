@@ -75,6 +75,7 @@ export default async function handler(req, res) {
     assigneeEmail: str(body.assigneeEmail),
     budgetRange: str(body.budgetRange),
     heardAbout: str(body.heardAbout),
+    notes: str(body.notes),
     appraisalValue: num(body.appraisalValue),
     askingPrice: num(body.askingPrice),
     priority: str(body.priority),

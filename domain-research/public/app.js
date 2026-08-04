@@ -6961,6 +6961,9 @@ function pipedriveCtxFromLead(lead, reportRuns) {
     assigneeEmail,
     // "How did you hear about us?" off the form — auto-carried onto the deal (no visible field).
     heardAbout: (lead.form && (lead.form.heard_about || lead.form.source)) || lead.heard_about || '',
+    // The buyer's own inquiry message + location → the deal Notes, so the assignee has full context.
+    message: lead.message || (lead.form && lead.form.message) || '',
+    location: lead.location || (lead.form && lead.form.location) || '',
     defaultSource: 'Website form', // it arrived via the contact form
   };
 }
@@ -7093,6 +7096,11 @@ async function submitPipedrive() {
     buyerEmail: els.pdBuyerEmail ? els.pdBuyerEmail.value.trim() : '',
     budgetRange: els.pdBudget ? els.pdBudget.value.trim() : '',
     heardAbout: pipedriveCtx.heardAbout || '',   // auto-carried from the lead form; '' for non-lead surfaces
+    // Buyer's inquiry message + location → the deal Notes (lead surfaces only; empty for a report convert).
+    notes: [
+      pipedriveCtx.message ? `📩 Buyer's inquiry:\n${pipedriveCtx.message}` : '',
+      pipedriveCtx.location ? `Location: ${pipedriveCtx.location}` : '',
+    ].filter(Boolean).join('\n\n'),
     reportLink: pipedriveCtx.reportLink || '',
     appraisalValue: pipedriveCtx.appraisalValue || '',
     additionalDomains: pipedriveCtx.additionalDomains || '',

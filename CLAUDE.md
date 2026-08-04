@@ -83,6 +83,11 @@ deal. The deal record + board live in snagged-admin; this app is a thin, gated p
   NO visible drawer field (report-surface converts send `''`→null). `lead-enrich.js` `readForm` now
   captures `heard_about` into the lead `form` jsonb so future inquiries have it. Cache-bust
   `?v=20260802hdyhau`. (Admin side + backfill: snagged-admin CLAUDE.md "How did you hear about us?".)
+- **Buyer's inquiry message → deal Notes (2026-08-04).** `pipedriveCtxFromLead` carries the lead's
+  `message` + `location`; `submitPipedrive` assembles them into `📩 Buyer's inquiry:\n<message>` and sends
+  it as `notes`; `api/pipedrive.js` forwards `notes` to the admin internal endpoint → `deals.notes`. So a
+  dossier-converted deal shows the buyer's own words (why they want it) in Details, not just buried in the
+  ingested email. Report-surface converts (no lead) send empty. Cache-bust `?v=20260804inqnotes`.
 - **Permission:** `research.pipedrive` (module) added in snagged-admin `dashboard/lib/permissions.ts`
   (MODULES + CATALOG, group Research; stored flat as `pipedrive`). Grant per-user; admins auto-pass.
 - **One-time setup:** none new — reuses `RESEARCH_INTERNAL_SECRET` + `ADMIN_INTERNAL_BASE`
