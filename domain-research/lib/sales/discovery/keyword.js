@@ -14,39 +14,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { pathToFileURL } from 'node:url';
 import { seedParts, tldGuidance } from './upgrade.js';
 import { classifyDomain } from '../classify.js';
-import { fetchJson } from '../../util.js';
-
-// VERIFY a "company X has a product named <seed>" claim against reality — the LLM
-// asserts these and frequently hallucinates them (e.g. it claimed tractorventures.com
-// / helixa.ai have a "Carrot" product; a site: search finds nothing). Confirm the
-// seed word actually appears on the company's OWN site — the same check a human does.
-//   returns { link } when the word is genuinely used on their domain,
-//           false     when we checked and it is NOT (→ drop the candidate),
-//           null      when we couldn't check (no SERPER key / API error → fail-open,
-//                     keep but don't claim an EXACT match).
-async function verifyProductNamed(domain, word, env) {
-  if (!env.SERPER_API_KEY || !domain || !word) return null;
-  const w = String(word).toLowerCase();
-  const re = new RegExp(`\\b${w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i');
-  try {
-    const data = await fetchJson('https://google.serper.dev/search', {
-      method: 'POST',
-      headers: { 'X-API-KEY': env.SERPER_API_KEY, 'content-type': 'application/json' },
-      body: JSON.stringify({ q: `${w} site:${domain}`, num: 10 }),
-    });
-    const organic = Array.isArray(data && data.organic) ? data.organic : [];
-    // Require a result ON the company's own domain whose title/snippet actually
-    // uses the word (a bare site: hit for a common word isn't proof of a product).
-    const hit = organic.find((r) => {
-      const link = String(r.link || '').toLowerCase();
-      const onSite = link.includes(String(domain).toLowerCase());
-      return onSite && re.test(`${r.title || ''} ${r.snippet || ''}`);
-    });
-    return hit ? { link: hit.link } : false;
-  } catch {
-    return null;   // couldn't verify (free-plan 400 / rate-limit / network) → fail-open
-  }
-}
+import { verifyProductNames } from './verifyproduct.js';
 
 function parseJsonLoose(text) {
   const s = String(text || '');
@@ -154,13 +122,16 @@ export async function discoverAngles(seedDomain, angles, env = process.env, { li
   const productIdx = [];
   for (let i = 0; i < raw.length; i++) if (raw[i].angle === 'product_named' || raw[i].angle === 'product_named_exact') productIdx.push(i);
   if (productIdx.length) {
-    const verdicts = await mapPool(productIdx, 8, (i) => verifyProductNamed(raw[i].domain, sld, env));
+    // Adjudicate each "has a product named <seed>" claim against real web evidence
+    // (an LLM that distinguishes a genuine product name from a store selling the
+    // item / a blog / a metaphor). Refuted → drop; unknown → keep but not "exact".
+    const verdicts = await verifyProductNames(productIdx.map((i) => ({ company: raw[i].name, domain: raw[i].domain, word: sld })), env);
     const drop = new Set();
     productIdx.forEach((i, k) => {
-      const v = verdicts[k];
-      if (v === false) { drop.add(i); return; }                        // checked → word NOT on their site → drop
-      if (v === null) { raw[i].angle = 'product_named'; raw[i].exact = false; raw[i].unverified = true; }  // couldn't verify → soft
-      else { raw[i].verified = true; raw[i].evidence = v.link || ''; }  // confirmed on-site
+      const v = verdicts[k] || { verified: null };
+      if (v.verified === false) { drop.add(i); return; }               // refuted → drop the fabricated claim
+      if (v.verified === null) { raw[i].angle = 'product_named'; raw[i].exact = false; raw[i].unverified = true; }  // couldn't confirm → soft, not "exact"
+      else { raw[i].verified = true; raw[i].verify_reason = v.reason || ''; }  // confirmed by evidence
     });
     if (drop.size) { for (let i = raw.length - 1; i >= 0; i--) if (drop.has(i)) raw.splice(i, 1); }
   }

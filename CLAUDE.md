@@ -1443,6 +1443,16 @@ Find companies that would BUY a domain we're selling. UI at **research.snagged.c
     meaningful); **unverifiable** (no `SERPER_API_KEY` / API error) → fail-open, downgraded from
     `product_named_exact` to `product_named` (soft "similar name", never a false "exact"). Needs
     `SERPER_API_KEY` (already set).
+    - **Site-presence check was too weak for a COMMON noun → LLM adjudication (2026-08-05).** `<word>
+      site:<domain>` false-passed instacart.com ("carrot" the vegetable is all over a grocery site) +
+      snowflake.com, so fabricated product claims still showed "exact". Replaced with
+      `lib/sales/discovery/verifyproduct.js` `verifyProductNames(candidates, env)`: a broad Serper search
+      per candidate (`"<Company>" "<word>"` + knowledge-graph) → ONE batched Haiku call (`SALES_VERIFY_MODEL`,
+      default `claude-haiku-4-5-20251001`) that must tell a REAL product name from the word merely appearing
+      (store SELLING the item / blog / metaphor / person's name). Per-candidate `verified` true (keep) /
+      false (**drop** — fabricated) / null (keep, not "exact"). `discoverAngles` batches all product
+      candidates through it; fail-open (no ANTHROPIC/SERPER key → all null → soft). Replaced the old
+      site-presence `verifyProductNamed`.
   - **Keyword angles ignored the TLD.** A `.ai`/`.io`/… name reads as an AI/tech brand, so a non-tech
     company tied only by a metaphor (an HR rewards program for carrot.ai) is not a real buyer. New
     `tldGuidance(tld, word)` in `lib/sales/discovery/upgrade.js` (TECH_TLDS = ai/io/dev/app/tech/ml/
