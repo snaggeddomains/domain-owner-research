@@ -1564,6 +1564,16 @@ design in `domain-research/SALES_HUB_SPEC.md`. Additive to the existing module �
 - **One-time setup:** run `0019_sales_targets.sql` on the research project. No new
   permission/env. **Out of scope (v1):** public no-login share (a token'd Top-5 view is a
   later add), CRM push, auto-outreach, cross-name rollups, per-company threaded comment log.
+- **Canonical per-name hub — the master target list (2026-08-05).** The target list is now a
+  DURABLE PER-NAME asset, independent of research runs. `createSalesProject` (`lib/db/sales.js`) is
+  **find-or-create by normalized `seed_domain`** — re-running research REUSES the same project (hub)
+  instead of forking a fresh empty list; it resets run status but keeps the row + its candidates/
+  targets. Legacy duplicate projects for a name consolidate onto the one holding the most `is_target`
+  rows (never orphans a curated list), else newest. `insertSalesCandidates` now **dedupes by
+  domain (then company) against existing candidates on the project**, so a re-run appends only
+  genuinely-new companies and never touches existing targets/notes/shortlist. No migration/schema
+  change (reuses the unique-ish name lookup). Recent-runs effectively becomes one row per name.
+  (Deferred #2/#3 from the design: a pipeline STAGE per target + a cross-name pipeline board.)
 
 ---
 

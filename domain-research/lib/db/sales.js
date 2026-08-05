@@ -7,11 +7,38 @@ const PROJECTS = 'domain_research_sales_projects';
 const CANDIDATES = 'domain_research_sales_candidates';
 const CONTACTS = 'domain_research_sales_contacts';
 
+const normCo = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+
+// FIND-OR-CREATE by NAME (normalized seed domain). The target list is a durable
+// per-name asset, so re-running research REUSES the same hub instead of forking a
+// fresh empty list (see SALES_HUB_SPEC.md "master list"). When legacy duplicate
+// projects exist for a name, we consolidate onto the one that already holds the
+// most targets (so we never orphan a curated list), else the newest.
 export async function createSalesProject({ seed_domain, seed_sld, filters = null, created_by = null }) {
-  const row = { seed_domain, seed_sld, status: 'pending' };
+  const db = getDb();
+  const norm = String(seed_domain || '').trim().toLowerCase();
+  if (norm) {
+    const { data: projs } = await db.from(PROJECTS).select('id').ilike('seed_domain', norm).order('created_at', { ascending: false });
+    if (projs && projs.length) {
+      let chosen = projs[0].id;                         // default: newest
+      if (projs.length > 1) {
+        const ids = projs.map((p) => p.id);
+        const { data: tg } = await db.from(CANDIDATES).select('project_id').in('project_id', ids).eq('is_target', true);
+        if (tg && tg.length) {
+          const counts = {};
+          for (const r of tg) counts[r.project_id] = (counts[r.project_id] || 0) + 1;
+          chosen = Object.entries(counts).sort((a, b) => b[1] - a[1])[0][0];
+        }
+      }
+      // Reset run status for the new pass; the row + its candidates/targets are kept.
+      await db.from(PROJECTS).update({ status: 'pending', stage: null, error: null }).eq('id', chosen);
+      return chosen;
+    }
+  }
+  const row = { seed_domain: norm || seed_domain, seed_sld, status: 'pending' };
   if (filters) row.filters = filters;
   if (created_by) row.created_by = created_by;
-  const { data, error } = await getDb().from(PROJECTS).insert(row).select('id').single();
+  const { data, error } = await db.from(PROJECTS).insert(row).select('id').single();
   if (error) throw new Error(`createSalesProject: ${error.message}`);
   return data.id;
 }
@@ -42,8 +69,20 @@ export async function setSalesProjectStatus(id, status, stage = null, error = nu
   if (err) throw new Error(`setSalesProjectStatus: ${err.message}`);
 }
 
-// Bulk-insert resolved candidates for a project.
+// Bulk-insert resolved candidates for a project. DEDUPES against candidates already
+// on this (now canonical, per-name) project — a re-run appends only genuinely-new
+// companies and never touches existing rows, so targets / notes / stage persist.
 export async function insertSalesCandidates(projectId, candidates) {
+  if (!candidates.length) return [];
+  const { data: existing } = await getDb().from(CANDIDATES).select('domain,company').eq('project_id', projectId);
+  const haveDomain = new Set((existing || []).map((r) => String(r.domain || '').toLowerCase()).filter(Boolean));
+  const haveCompany = new Set((existing || []).map((r) => normCo(r.company)).filter(Boolean));
+  candidates = candidates.filter((c) => {
+    const d = String(c.domain || '').toLowerCase();
+    if (d) return !haveDomain.has(d);                   // dedupe by domain (the strong key)
+    const co = normCo(c.company);                        // no domain → dedupe by company name
+    return !(co && haveCompany.has(co));
+  });
   if (!candidates.length) return [];
   const rows = candidates.map((c) => ({
     project_id: projectId,
