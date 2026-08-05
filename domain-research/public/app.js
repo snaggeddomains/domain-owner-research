@@ -3715,6 +3715,8 @@ let dsPollTimer = null;
 const DS_POLL_EVERY_MS = 4000;
 const DS_POLL_MAX = 20;       // ~80s of polling
 const DS_STABLE_HITS = 2;     // count unchanged across this many polls ⇒ done
+const DS_PENDING_MAX = 3;     // pending (404 — DomainScout hasn't scanned it) this many
+                              // times ⇒ stop waiting, fall back to the live page-scraper
 function stopDsPoll() {
   if (dsPollTimer) { clearTimeout(dsPollTimer); dsPollTimer = null; }
 }
@@ -3727,13 +3729,16 @@ async function dsFetchOnce(domain, track = true) {
   return {
     marketplaces: Array.isArray(data.data.marketplaces) ? data.data.marketplaces : [],
     tracked: data.data.tracked !== false,
+    // pending = DomainScout 404'd (it hasn't scanned this domain yet) → distinct from
+    // a real "scanned, nothing listed" empty. The poller falls back to the live scraper.
+    pending: data.data.pending === true,
   };
 }
 function dsFinalize(domain, mk, tracked) {
   serverSaveTool('mk', domain, { v: MARKET_V, domain, source: 'domainscout', any_listed: mk.some((m) => m.listed), marketplaces: mk });
   renderMarketStripDS(domain, mk, Date.now(), { tracked });
 }
-function scheduleDsPoll(domain, attempt, prevCount, stableHits) {
+function scheduleDsPoll(domain, attempt, prevCount, stableHits, pendingHits = 0) {
   stopDsPoll();
   if (attempt > DS_POLL_MAX) {
     // Stop waiting — finalize with whatever we have (one last read).
@@ -3744,6 +3749,7 @@ function scheduleDsPoll(domain, attempt, prevCount, stableHits) {
       if (els.marketStrip.hidden || els.marketStrip.dataset.domain !== domain) return;
       const mk = (r && r.marketplaces) || [];
       if (mk.length) dsFinalize(domain, mk, true);
+      else if (r && r.pending) streamMarketStrip(domain); // never scanned → live scraper
       else renderMarketStripDS(domain, [], Date.now(), { tracked: true, settled: true });
     }, 0);
     return;
@@ -3763,7 +3769,15 @@ function scheduleDsPoll(domain, attempt, prevCount, stableHits) {
       dsFinalize(domain, mk, true);
       return;
     }
-    scheduleDsPoll(domain, attempt + 1, cur, stable);
+    // DomainScout keeps 404ing (pending — it hasn't scanned this domain). Don't spin the
+    // full poll window; after a few pending reads fall back to the live page-scraper, which
+    // checks each marketplace directly and returns a real for-sale answer now.
+    const pend = (cur === 0 && r && r.pending) ? pendingHits + 1 : 0;
+    if (pend >= DS_PENDING_MAX) {
+      streamMarketStrip(domain);
+      return;
+    }
+    scheduleDsPoll(domain, attempt + 1, cur, stable, pend);
   }, DS_POLL_EVERY_MS);
 }
 

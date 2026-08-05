@@ -483,6 +483,18 @@ because the server had no session there):
   fast (~0.7s/call) — the stall was purely the redundant re-track loop. A truly never-scanned
   fresh domain still settles to "✗ No marketplace listings found" at the poll cap (the Open:
   GoDaddy/Dynadot/Spaceship/Live-site links are the manual fallback). Cache-bust `?v=20260805dsstrip`.
+- **For-sale strip — fall back to the live scraper when DomainScout hasn't scanned it (2026-08-05).**
+  DomainScout's by-domain GET **404s until DomainScout has run its OWN async marketplace scan** of a
+  domain; our client surfaces that as `pending:true` + empty `marketplaces`. A brand-new domain
+  (parkinglots.com/final.com/avec.net) stays `pending` for a long time, so the strip spun "Scanning
+  marketplaces on DomainScout…" the full ~80s poll window with no result. (A domain DomainScout HAS
+  scanned — e.g. donkey.com — returns the full 12-marketplace result in ~300ms; auth + parsing are
+  fine, it's purely scan coverage.) Fix: `dsFetchOnce` now surfaces the `pending` flag (was dropped,
+  so the poller couldn't tell "not scanned yet / 404" from "scanned, nothing listed"); `scheduleDsPoll`
+  counts pending reads and after **`DS_PENDING_MAX` (3)** falls back to the legacy live page-scraper
+  (`streamMarketStrip`) which checks each marketplace directly → a real for-sale answer in ~12s instead
+  of an 80s spinner. Diagnose a domain with `/research/api/diag?source=domainscout_lookup&domain=<d>`
+  (`pending:true` = DomainScout hasn't scanned it). Cache-bust `?v=20260805dsfallback`.
 - **TODO (this session):** historical backfill — POST every domain ever researched
   (distinct `domain` in `domain_research_runs`) into DomainScout so the existing
   corpus is tracked too.
