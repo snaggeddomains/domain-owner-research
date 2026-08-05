@@ -93,6 +93,13 @@ deal. The deal record + board live in snagged-admin; this app is a thin, gated p
   it as `notes`; `api/pipedrive.js` forwards `notes` to the admin internal endpoint → `deals.notes`. So a
   dossier-converted deal shows the buyer's own words (why they want it) in Details, not just buried in the
   ingested email. Report-surface converts (no lead) send empty. Cache-bust `?v=20260804inqnotes`.
+- **Free-text Comment field on the drawer (2026-08-05).** The Add-to-Deal drawer (`#pipedrive-drawer`)
+  now has a **Comment (optional)** textarea (`#pd-comment`, cleared per open). `submitPipedrive` sends
+  it as `comment`; `api/pipedrive.js` forwards it + `actorEmail` (the research user) to the admin
+  internal endpoint, which posts it as the deal's **first COMMENT** on the timeline (`addActivity`
+  kind=comment) — separate from the auto-filled Notes (buyer's inquiry), so pretext reaches whoever
+  picks the deal up. The admin board New-deal modal + the inquiry triage convert modal have the same
+  field. Cache-bust `?v=20260805dealcomment`. (Admin side: snagged-admin CLAUDE.md.)
 - **Permission:** `research.pipedrive` (module) added in snagged-admin `dashboard/lib/permissions.ts`
   (MODULES + CATALOG, group Research; stored flat as `pipedrive`). Grant per-user; admins auto-pass.
 - **One-time setup:** none new — reuses `RESEARCH_INTERNAL_SECRET` + `ADMIN_INTERNAL_BASE`

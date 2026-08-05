@@ -94,6 +94,7 @@ const els = {
   pdBuyerName: $('pd-buyer-name'),
   pdBuyerEmail: $('pd-buyer-email'),
   pdBudget: $('pd-budget'),
+  pdComment: $('pd-comment'),
   pdContext: $('pd-context'),
   pdStatus: $('pd-status'),
   pdCancel: $('pd-cancel'),
@@ -7096,6 +7097,7 @@ async function openPipedrive(ctx) {
   if (els.pdBuyerEmail) els.pdBuyerEmail.value = ctx.buyerEmail || '';
   if (els.pdBudget) els.pdBudget.value = pdBudgetBand(ctx.budgetRange);
   if (els.pdPriority) els.pdPriority.value = ctx.priority || '';
+  if (els.pdComment) els.pdComment.value = ''; // free-text pretext, blank per open
   if (els.pdSubmit) els.pdSubmit.disabled = false;
   pipedriveStatus('');
   // Context summary (what will be attached to the deal automatically).
@@ -7167,6 +7169,9 @@ async function submitPipedrive() {
     additionalDomains: pipedriveCtx.additionalDomains || '',
     likelyOwner: pipedriveCtx.likelyOwner || '',
     ownerContact: pipedriveCtx.ownerContact || '',
+    // Free-text pretext → posted as the deal's first COMMENT (timeline), separate from the
+    // auto-filled Notes (the buyer's inquiry), so context reaches whoever picks it up.
+    comment: els.pdComment ? els.pdComment.value.trim() : '',
   };
   try {
     const res = await fetch('/research/api/pipedrive', {

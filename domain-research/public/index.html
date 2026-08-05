@@ -35,7 +35,7 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="apple-mobile-web-app-title" content="Snagged Research" />
     <meta name="theme-color" content="#254254" />
-    <link rel="stylesheet" href="styles.css?v=20260805intowner" />
+    <link rel="stylesheet" href="styles.css?v=20260805dealcomment" />
     <!-- Layout: horizontal tab nav (Admin-style), no sidebar. -->
   </head>
   <body>
@@ -1274,6 +1274,10 @@ The model parses it into structured filters (TLDs, length, budget, tone, etc.) a
               <option value="$100k+">$100k+</option>
             </select>
           </div>
+          <div class="od-field">
+            <label class="od-label" for="pd-comment">Comment <span class="od-optional">(optional — posted to the deal)</span></label>
+            <textarea id="pd-comment" class="od-input pd-comment" rows="3" placeholder="Add context for whoever picks this up…"></textarea>
+          </div>
           <div id="pd-context" class="pd-context" hidden></div>
           <div id="pd-status" class="od-status" hidden></div>
         </div>
@@ -1314,6 +1318,6 @@ The model parses it into structured filters (TLDs, length, budget, tone, etc.) a
     </div>
 
     <!-- Bump ?v= on any public/app.js or styles.css change to bust caches. -->
-    <script src="app.js?v=20260805dsfallback"></script>
+    <script src="app.js?v=20260805dealcomment"></script>
   </body>
 </html>

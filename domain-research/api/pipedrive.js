@@ -76,6 +76,8 @@ export default async function handler(req, res) {
     budgetRange: str(body.budgetRange),
     heardAbout: str(body.heardAbout),
     notes: str(body.notes),
+    comment: str(body.comment), // free-text pretext → posted as the deal's first comment
+    actorEmail: str(user.email), // who is creating the deal → attributed as the comment author
     appraisalValue: num(body.appraisalValue),
     askingPrice: num(body.askingPrice),
     priority: str(body.priority),
