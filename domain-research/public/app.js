@@ -9315,6 +9315,24 @@ function parseMoney(v) {
 function tFunding(c) { const f = c.firmographics || {}; return parseMoney(f.fundingAmount != null ? f.fundingAmount : (f.funding || c.funding)); }
 function tRevenue(c) { const f = c.firmographics || {}; return parseMoney(f.revenueAmount != null ? f.revenueAmount : f.revenue); }
 function tOpr(c) { return (c.opr == null || c.opr === '') ? null : Number(c.opr); }
+function srMoney(v) { const s = String(v ?? '').trim(); return s ? (/^\$/.test(s) ? s : '$' + s) : ''; }
+
+// Firmographic values shown on a target card (fills after Qualify). Type-of-match
+// is the category pill on the name line; this is the size/funding/revenue data.
+function targetMetricsHtml(c) {
+  const f = c.firmographics || {};
+  const emp = tEmployees(c);
+  const cells = [];
+  if (emp != null) cells.push(['Employees', emp.toLocaleString()]);
+  const raised = f.funding || c.funding; if (raised) cells.push(['Raised', srMoney(raised)]);
+  if (f.fundingStage) cells.push(['Stage', f.fundingStage]);
+  if (f.revenue) cells.push(['Revenue', srMoney(f.revenue)]);
+  if (f.foundedYear) cells.push(['Founded', String(f.foundedYear)]);
+  if (!cells.length) {
+    return '<div class="sr-t-unq muted">Not qualified — tick + “Qualify selected” to pull size / funding / revenue.</div>';
+  }
+  return `<div class="sr-t-metrics">${cells.map(([k, v]) => `<div class="sr-t-m"><span class="sr-t-m-k">${k}</span><span class="sr-t-m-v">${escapeHtml(v)}</span></div>`).join('')}</div>`;
+}
 
 // Merge cached Open PageRank (prominence) onto the loaded targets for display/sort.
 function applyOpr() {
@@ -9374,6 +9392,7 @@ function targetCardHtml(c) {
       </div>
       <div class="sr-card-badges">${c.opr != null ? `<span class="sr-opr" title="Open PageRank — domain authority 0–10 (a free traffic/prominence proxy)${c.opr_rank ? ` · global rank #${Number(c.opr_rank).toLocaleString()}` : ''}">OPR ${Number(c.opr).toFixed(1)}</span>` : ''}${statusBadge}${tierBadge}${added ? `<span class="sr-t-added" title="Date added to the list">added ${escapeHtml(added)}</span>` : ''}<button type="button" class="sr-t-remove" data-remove data-id="${escapeHtml(c.id)}" title="Remove from the target list" aria-label="Remove">✕</button></div>
     </div>
+    ${targetMetricsHtml(c)}
     ${contacts}
     ${notes}
   </div>`;
