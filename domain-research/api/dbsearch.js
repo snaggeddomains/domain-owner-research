@@ -70,6 +70,14 @@ let isPluralMissing = false;
 function missingIsPlural(err) {
   return Boolean(err && err.code === '42703' && /is_plural/i.test(`${err.message || ''} ${err.details || ''}`));
 }
+// Master's `part_of_speech` is a later add (backfilled by pipeline backfill-structural
+// --target master --pos). Until the column exists, Master CAN'T be POS-matched — so when
+// a POS filter is active we return Master empty rather than unfiltered wrong-POS rows.
+// Once the column lands, Master is POS-filtered + included like the Universe.
+let masterPosMissing = false;
+function missingMasterPos(err) {
+  return Boolean(err && err.code === '42703' && /part_of_speech/i.test(`${err.message || ''} ${err.details || ''}`));
+}
 const FORM_DOMAIN = { plural: '[^suaio]s\\.[a-z]+$', past: 'ed\\.[a-z]+$', ing: 'ing\\.[a-z]+$', ly: 'ly\\.[a-z]+$' };
 function hasActiveFilters(p) {
   return FILTER_KEYS.some((k) => str(p[k]));
@@ -212,6 +220,10 @@ function buildMaster(p, ascending, countMode) {
   const emo = csv(p.emotion); if (emo) q = q.overlaps('emotions', emo.map(titleCase));
   const con = csv(p.connotation); if (con) q = q.in('connotation', con);
   const ind = csv(p.industry); if (ind) q = q.overlaps('industries', ind);
+  // Part-of-speech: Master now carries the same WordNet tags as the Universe (for its
+  // single-word rows). Skip the predicate if the column isn't migrated yet — runMaster
+  // returns Master empty in that case so a POS filter never leaks unfiltered rows.
+  const pos = csv(p.part_of_speech); if (pos && !masterPosMissing) q = q.overlaps('part_of_speech', pos);
   const owner = str(p.owner); if (owner) q = q.ilike('owner', '%' + owner + '%');
   const forms = csv(p.exclude_forms); if (forms) for (const f of forms) if (FORM_DOMAIN[f]) q = q.not('domain', 'match', FORM_DOMAIN[f]);
   return q.order(MASTER_SORT[p.sort] || 'domain', { ascending, nullsFirst: false });
@@ -264,16 +276,32 @@ async function fetchAllUniverse(p, ascending) {
   catch (e) { if (missingIsPlural(e)) { isPluralMissing = true; return fetchAll(() => buildUniverse(p, ascending, undefined)); } throw e; }
 }
 
+// Run a paged Master query. When a POS filter is active but Master lacks the
+// `part_of_speech` column, Master can't be POS-matched → return empty (never unfiltered
+// rows). On a missing-column error, flip the flag and return empty for this query.
+async function runMaster(p, ascending, countMode, start, end) {
+  const posActive = !!csv(p.part_of_speech);
+  if (posActive && masterPosMissing) return { data: [], count: 0 };
+  const res = await buildMaster(p, ascending, countMode).range(start, end);
+  if (missingMasterPos(res.error)) { masterPosMissing = true; return { data: [], count: 0 }; }
+  return res;
+}
+// Master CSV export with the same POS-column resilience.
+async function fetchAllMaster(p, ascending) {
+  if (!!csv(p.part_of_speech) && masterPosMissing) return [];
+  try { return await fetchAll(() => buildMaster(p, ascending, undefined)); }
+  catch (e) { if (missingMasterPos(e)) { masterPosMissing = true; return []; } throw e; }
+}
+
 // Collect the FULL normalized result set for a CSV export (same db/filter/sort
 // semantics as the paged search, just uncapped to EXPORT_MAX).
 async function collectExport(p, db, ascending, ownerFilter) {
-  const posActive = !!csv(p.part_of_speech);
   const wantU = (db === 'both' || db === 'universe') && isNamingDbConfigured();
-  const wantM = (db === 'both' || db === 'master') && isMasterlistDbConfigured() && !(posActive && db === 'both');
+  const wantM = (db === 'both' || db === 'master') && isMasterlistDbConfigured();
   let rows = [];
   if (wantU) rows = rows.concat((await fetchAllUniverse(p, ascending)).map(normUniverse));
   if (wantM) {
-    const masterRows = (await fetchAll(() => buildMaster(p, ascending, undefined))).map(normMaster);
+    const masterRows = (await fetchAllMaster(p, ascending)).map(normMaster);
     if (db === 'both') {
       const md = new Set(masterRows.map((r) => (r.domain || '').toLowerCase()));
       rows = rows.filter((r) => !md.has((r.domain || '').toLowerCase()));
@@ -343,7 +371,7 @@ export default async function handler(req, res) {
         if (error) throw error;
         rows = (data || []).map(normUniverse); count = c ?? null;
       } else {
-        const { data, error, count: c } = await buildMaster(p, ascending, countMode).range(start, endIdx);
+        const { data, error, count: c } = await runMaster(p, ascending, countMode, start, endIdx);
         if (error) throw error;
         rows = (data || []).map(normMaster); count = c ?? null;
       }
@@ -355,15 +383,12 @@ export default async function handler(req, res) {
     // ── Both: fetch a capped window from EACH source (not just the current
     // page's worth — otherwise dedupe of owned domains present in both DBs can
     // collapse a page and stop pagination), merge, dedupe, sort, then slice. ──
-    // Part-of-speech is a universe-only attribute; when it's filtered, Master
-    // can't be classified, so a "both" query restricts to Universe rather than
-    // padding the page with unfilterable Master rows.
-    const posActive = !!csv(p.part_of_speech);
+    // Part-of-speech is now on BOTH corpora (Master backfilled for its single-word
+    // rows); runMaster POS-filters Master and only returns empty when the column
+    // isn't migrated yet, so a POS query no longer drops Master wholesale.
     const [uRes, mRes] = await Promise.all([
       runUniverse(p, ascending, countMode, 0, MERGE_CAP - 1).then((r) => r).catch((e) => ({ error: e })),
-      posActive
-        ? Promise.resolve({ data: [], count: 0 })
-        : buildMaster(p, ascending, countMode).range(0, MERGE_CAP - 1).then((r) => r).catch((e) => ({ error: e })),
+      runMaster(p, ascending, countMode, 0, MERGE_CAP - 1).then((r) => r).catch((e) => ({ error: e })),
     ]);
     const errors = {};
     let merged = [];

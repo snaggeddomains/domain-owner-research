@@ -907,6 +907,25 @@ Two domain corpora in **separate Supabase projects**; the search reads both.
 **Boundary rule:** automated/SNAP + marketplace → `name_universe`; manual/curated
 owner attributions → Master. BrandBucket → `name_universe`.
 
+**Part-of-Speech on BOTH corpora now (2026-08-05).** Master already carried the LLM-enrich
+fields (`category`/`connotation`/`emotions[]`/`keywords[]`/`industries[]`) and `api/dbsearch.js`
+`buildMaster` already filters on them — the ONLY gap was `part_of_speech` (Master had no such
+column, and the old code SKIPPED Master entirely when a POS filter was active, so a Master-only
+dictionary name — e.g. carrot.ai from `manual-image-import` — could never be POS-filtered). Fixed:
+(1) `buildMaster` now applies `.overlaps('part_of_speech', pos)`; the 3 "posActive skips Master"
+gates are removed and Master routes through a **`runMaster`** wrapper (mirrors `runUniverse`): when a
+POS filter is active but the column isn't migrated yet, it returns Master **empty** (never unfiltered
+wrong-POS rows) via a `masterPosMissing` flag + `missingMasterPos(42703)`; once the column lands, Master
+is POS-filtered + included. `fetchAllMaster` gives the CSV export the same resilience. (2) **Column +
+backfill:** `part_of_speech text[]` on the masterlist project + a WordNet backfill —
+`backfill_structural.py` `_run_master_pos` (single-word rows only, `pos_for_sld(sld,1)`; sld derived by
+stripping the TLD via `_master_sld`; empty `[]` marks non-dict/function words processed). Run via
+`pipeline backfill-structural --target master --pos --commit` or the **backfill-quality-master.yml**
+workflow's new **`pos`** input. **STILL TO DO (ops):** run the column SQL on the masterlist project +
+dispatch the POS backfill (see snagged-admin CLAUDE.md). Until then search degrades gracefully (POS
+just excludes Master, as before). NB a Master row is POS-tagged only for its single-word rows; a
+multi-word Master SLD stays untagged (same as universe).
+
 **Naming exercise enrichment (2026-06):** `lib/naming/query.js` matches a brief's
 `semantic_keywords` against each candidate's enriched `keywords[]` / `industries[]`
 arrays FIRST (true semantic match), then falls back to SLD-substring for
