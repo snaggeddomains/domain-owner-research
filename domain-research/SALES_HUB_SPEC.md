@@ -2,9 +2,9 @@
 
 **Goal:** turn Sales Research from a *run-and-export-a-CSV* tool into a persistent
 **per-name workspace** where the target list lives, accumulates, and stays curated.
-This is the efficiency change that came out of the July 17 Judy sales meeting: Judy
-should open a name and see a focused, saved worklist — not re-run discovery and juggle
-CSVs.
+This is the efficiency change that came out of the July 17 Judy sales meeting: whoever's
+working a name (Judy, Brian, …) should open it and see the target list they've built up —
+with the best-fit companies marked — not re-run discovery and juggle CSVs.
 
 Scope is deliberately **additive** to the existing `/research/sales` module. No new
 project, no CRM/HubSpot mapping, no new permission — reuses `research.sales` and the
@@ -41,7 +41,8 @@ Each Sales Research run is a dead-end:
 4. Re-opening the name = re-running discovery from scratch.
 5. **No manual adds** — a company you already know wants the name can't enter the
    list unless discovery happens to surface it.
-6. **No shortlist** — Judy gets 20 rows, not "the 5 to work first."
+6. **No way to mark the best fits** — you get 20 rows with no place to record "these are
+   the top fits for this name" as you work through them.
 
 ## The Sales Hub (per name)
 
@@ -63,12 +64,16 @@ One screen per name (`/research/sales/:id`), organized around a **saved target l
   prerequisite — a target can live indefinitely with zero contacts and get enriched
   later, or never.
 
-### 3. Top 5 shortlist
-- A **⭐ shortlist** toggle on each target sets `shortlist_rank` (1-5). Max 5 per name;
-  toggling a 6th is rejected client-side with a nudge to unstar one first.
-- The hub pins a **Top 5** section up top — the focused worklist. Everything else is the
-  full target list below it.
-- Shortlist order is user-set (drag or up/down), stored in `shortlist_rank`.
+### 3. Top 5 best fits
+- As the person working the name (Judy, Brian, …) goes through candidates and targets,
+  they mark the ones they judge to be the **best fits for this name** — a **⭐ Top-fit**
+  toggle sets `shortlist_rank` (1-5). Max 5 per name; toggling a 6th is rejected
+  client-side with a nudge to unstar one first.
+- The hub pins a **Top 5** section up top — the best-fit companies for the name (a
+  human judgment made while working it, not an auto-ranking). Everything else is the full
+  target list below it.
+- The 5 are order-able (drag or up/down), stored in `shortlist_rank` — the ⭐ is a
+  human "this is a top fit" mark, not a queue/assignment.
 
 ### 4. Everything in one place
 Research candidates, promoted + manual targets, per-target contacts, per-target status —
@@ -92,7 +97,7 @@ teammate (e.g. Judy) with one link instead of a CSV.
 - **Optional (not v1): public read-only view.** If you later want to share a shortlist
   *outside* the team, add a per-hub `public` flag + a token'd public route (like `api/r.js`)
   that renders the Top 5 read-only, no contacts. Flagged out of scope below; the gated share
-  covers the Judy workflow.
+  covers the internal share workflow.
 
 ---
 
@@ -158,7 +163,7 @@ DB helpers (`lib/db/sales.js`): add `addManualTarget`, `setTargetFlag(ids, v)`,
 The seed → poll → ranked-table flow is unchanged for discovery. The results view gains
 three regions:
 
-1. **⭐ Top 5** (pinned) — the shortlisted targets, each a compact card: company · domain ·
+1. **⭐ Top 5** (pinned) — the best-fit targets marked for this name, each a compact card: company · domain ·
    tier · best contact (or "no contact — Enrich") · notes. Reorderable.
 2. **🎯 Targets** — every `is_target` row, with per-row: demote, ⭐ shortlist toggle,
    Enrich (on-demand), edit notes, contacts inline.
