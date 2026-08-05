@@ -27,6 +27,11 @@ export default {
     const env = ctx.env || process.env || {};
     const d = normalizeDomain(domain);
     if (!isValidDomain(d)) throw new Error(`Invalid domain: ${domain}`);
-    return lookupDomain(d, env, { track: track !== false });
+    // Coerce a string/query falsy ('0'/'false'/'no') to false — the HTTP layer
+    // passes query params as strings, so `track !== false` alone would never turn
+    // tracking off. The strip's poll loop passes track=0 (the domain is already
+    // tracked) so a still-scanning domain doesn't get re-POSTed on every poll.
+    const doTrack = !(track === false || track === 'false' || track === '0' || track === 0 || track === 'no');
+    return lookupDomain(d, env, { track: doTrack });
   },
 };

@@ -448,6 +448,19 @@ because the server had no session there):
 - **Test:** `/research/api/diag?source=domainscout_lookup&domain=<d>` (auth-gated)
   exercises the GET + auto-track in isolation. Research has **no preview builds**,
   so this only runs live once on `main`.
+- **For-sale strip stall — stop re-tracking on every poll (2026-08-05).** A brand-new
+  domain (never before in DomainScout) 404s on GET until DomainScout finishes its OWN async
+  marketplace scan, so `lookupDomain` did GET(404)→POST-track→GET(404) — three round-trips +
+  a redundant re-POST — on EVERY one of the ~20 client polls (DS_POLL_MAX 20 × 4s). The
+  domain is already auto-tracked at run start (`api/research.js`), so the strip never needs to
+  keep re-tracking. Fix: the poll loop now fetches with **`track=0`** (`dsFetchOnce(domain,false)`
+  in `scheduleDsPoll`; the FIRST `loadDomainScoutStrip` read still tracks defensively) → each
+  poll is a single fast GET, no re-POST. `lib/sources/domainscout.js` `run` now COERCES a
+  string/query falsy (`'0'`/`'false'`/`'no'`) to `track:false` (the HTTP layer passes params as
+  strings, so the old `track !== false` never turned tracking off). DomainScout's API itself is
+  fast (~0.7s/call) — the stall was purely the redundant re-track loop. A truly never-scanned
+  fresh domain still settles to "✗ No marketplace listings found" at the poll cap (the Open:
+  GoDaddy/Dynadot/Spaceship/Live-site links are the manual fallback). Cache-bust `?v=20260805dsstrip`.
 - **TODO (this session):** historical backfill — POST every domain ever researched
   (distinct `domain` in `domain_research_runs`) into DomainScout so the existing
   corpus is tracked too.

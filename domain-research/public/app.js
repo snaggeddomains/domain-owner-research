@@ -3675,8 +3675,10 @@ const DS_STABLE_HITS = 2;     // count unchanged across this many polls ⇒ done
 function stopDsPoll() {
   if (dsPollTimer) { clearTimeout(dsPollTimer); dsPollTimer = null; }
 }
-async function dsFetchOnce(domain) {
-  const res = await fetch(`/research/api/lookup?source=domainscout_lookup&domain=${encodeURIComponent(domain)}`);
+async function dsFetchOnce(domain, track = true) {
+  // Polls pass track=false — the domain is tracked once (on the run's auto-track
+  // and the first strip read), so a still-scanning domain isn't re-POSTed every poll.
+  const res = await fetch(`/research/api/lookup?source=domainscout_lookup&domain=${encodeURIComponent(domain)}${track ? '' : '&track=0'}`);
   const data = await res.json().catch(() => ({}));
   if (!res.ok || !data.ok || !data.data) return null;
   return {
@@ -3695,7 +3697,7 @@ function scheduleDsPoll(domain, attempt, prevCount, stableHits) {
     dsPollTimer = setTimeout(async () => {
       if (els.marketStrip.hidden || els.marketStrip.dataset.domain !== domain) return;
       let r = null;
-      try { r = await dsFetchOnce(domain); } catch { /* ignore */ }
+      try { r = await dsFetchOnce(domain, false); } catch { /* ignore */ }
       if (els.marketStrip.hidden || els.marketStrip.dataset.domain !== domain) return;
       const mk = (r && r.marketplaces) || [];
       if (mk.length) dsFinalize(domain, mk, true);
@@ -3706,7 +3708,7 @@ function scheduleDsPoll(domain, attempt, prevCount, stableHits) {
   dsPollTimer = setTimeout(async () => {
     if (els.marketStrip.hidden || els.marketStrip.dataset.domain !== domain) return;
     let r = null;
-    try { r = await dsFetchOnce(domain); } catch { /* keep polling */ }
+    try { r = await dsFetchOnce(domain, false); } catch { /* keep polling */ }
     if (els.marketStrip.hidden || els.marketStrip.dataset.domain !== domain) return;
     const mk = (r && r.marketplaces) || [];
     const cur = mk.length;
