@@ -60,6 +60,16 @@ const FILTER_KEYS = ['q', 'price_min', 'price_max', 'tld', 'len_exact', 'len_min
 // "no numbers" filter so counts stay exact. Universe matches on `sld`; Master has
 // no sld column, so it matches the SLD right before the final .tld on `domain`.
 const FORM_SLD = { plural: '[^suaio]s$', past: 'ed$', ing: 'ing$', ly: 'ly$' };
+// `is_plural` is a later enrichment column (supabase/naming_is_plural.sql). If that
+// migration hasn't run on the naming project, referencing the column errors the ENTIRE
+// universe query (Postgres 42703) — which silently zeroed results whenever "Plurals" was
+// excluded (and, via the POS-active Master-skip, made the POS filter look broken). So we
+// strip-and-retry: on a missing-column error we set this flag and skip the predicate for
+// the rest of the instance's life (a redeploy after the migration re-enables it).
+let isPluralMissing = false;
+function missingIsPlural(err) {
+  return Boolean(err && err.code === '42703' && /is_plural/i.test(`${err.message || ''} ${err.details || ''}`));
+}
 const FORM_DOMAIN = { plural: '[^suaio]s\\.[a-z]+$', past: 'ed\\.[a-z]+$', ing: 'ing\\.[a-z]+$', ly: 'ly\\.[a-z]+$' };
 function hasActiveFilters(p) {
   return FILTER_KEYS.some((k) => str(p[k]));
@@ -141,7 +151,7 @@ function buildUniverse(p, ascending, countMode) {
   const forms = csv(p.exclude_forms);
   if (forms) for (const f of forms) {
     if (FORM_SLD[f]) q = q.not('sld', 'match', FORM_SLD[f]);
-    if (f === 'plural') q = q.not('is_plural', 'is', true);
+    if (f === 'plural' && !isPluralMissing) q = q.not('is_plural', 'is', true);
   }
   const kw = str(p.keyword); if (kw) q = q.or(`keywords.cs.{${kw.toLowerCase()}},sld.ilike.%${kw.toLowerCase()}%`);
   return q.order(UNIVERSE_SORT[p.sort] || 'domain', { ascending, nullsFirst: false });
@@ -241,6 +251,19 @@ async function fetchAll(makeQuery) {
   return out;
 }
 
+// Run a paged universe query, transparently retrying without the `is_plural` predicate
+// if that column doesn't exist yet (so a not-yet-migrated naming project still searches).
+async function runUniverse(p, ascending, countMode, start, end) {
+  let res = await buildUniverse(p, ascending, countMode).range(start, end);
+  if (missingIsPlural(res.error)) { isPluralMissing = true; res = await buildUniverse(p, ascending, countMode).range(start, end); }
+  return res;
+}
+// Same resilience for the uncapped CSV export path.
+async function fetchAllUniverse(p, ascending) {
+  try { return await fetchAll(() => buildUniverse(p, ascending, undefined)); }
+  catch (e) { if (missingIsPlural(e)) { isPluralMissing = true; return fetchAll(() => buildUniverse(p, ascending, undefined)); } throw e; }
+}
+
 // Collect the FULL normalized result set for a CSV export (same db/filter/sort
 // semantics as the paged search, just uncapped to EXPORT_MAX).
 async function collectExport(p, db, ascending, ownerFilter) {
@@ -248,7 +271,7 @@ async function collectExport(p, db, ascending, ownerFilter) {
   const wantU = (db === 'both' || db === 'universe') && isNamingDbConfigured();
   const wantM = (db === 'both' || db === 'master') && isMasterlistDbConfigured() && !(posActive && db === 'both');
   let rows = [];
-  if (wantU) rows = rows.concat((await fetchAll(() => buildUniverse(p, ascending, undefined))).map(normUniverse));
+  if (wantU) rows = rows.concat((await fetchAllUniverse(p, ascending)).map(normUniverse));
   if (wantM) {
     const masterRows = (await fetchAll(() => buildMaster(p, ascending, undefined))).map(normMaster);
     if (db === 'both') {
@@ -316,7 +339,7 @@ export default async function handler(req, res) {
       let rows;
       let count = null;
       if (db === 'universe') {
-        const { data, error, count: c } = await buildUniverse(p, ascending, countMode).range(start, endIdx);
+        const { data, error, count: c } = await runUniverse(p, ascending, countMode, start, endIdx);
         if (error) throw error;
         rows = (data || []).map(normUniverse); count = c ?? null;
       } else {
@@ -337,7 +360,7 @@ export default async function handler(req, res) {
     // padding the page with unfilterable Master rows.
     const posActive = !!csv(p.part_of_speech);
     const [uRes, mRes] = await Promise.all([
-      buildUniverse(p, ascending, countMode).range(0, MERGE_CAP - 1).then((r) => r).catch((e) => ({ error: e })),
+      runUniverse(p, ascending, countMode, 0, MERGE_CAP - 1).then((r) => r).catch((e) => ({ error: e })),
       posActive
         ? Promise.resolve({ data: [], count: 0 })
         : buildMaster(p, ascending, countMode).range(0, MERGE_CAP - 1).then((r) => r).catch((e) => ({ error: e })),

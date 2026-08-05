@@ -222,6 +222,21 @@ anorexias←anorexia). The NameClub import surfaced ~30% such plurals.
 - **Scope:** Universe only. Master uses the same regex (`FORM_DOMAIN`) but has no `sld`
   column and english_words is a different project (no cross-project join), so its `is_plural`
   is a later follow-up.
+- **⚠️ Missing-column resilience + the migration was never run (2026-08-05).** The `is_plural`
+  column was NEVER created on the naming project, so `.not('is_plural','is',true)` (added when
+  "Plurals" is excluded — a common default) errored the WHOLE universe query (Postgres **42703
+  column does not exist**). Symptom: **excluding Plurals silently zeroed the Universe results**, and
+  because a POS filter makes "Both DBs" SKIP Master (POS is universe-only), the **Part-of-Speech
+  filter returned 0 results** for any single POS (all-4-POS = no constraint, so Master still ran and
+  masked it). Fix in `api/dbsearch.js`: a module `isPluralMissing` flag + `missingIsPlural(err)`;
+  `buildUniverse` skips the predicate when set; `runUniverse`/`fetchAllUniverse` wrappers strip-and-
+  retry on a 42703/is_plural error (all 3 call sites — both/universe/export). So search works with or
+  without the column; once the migration + a redeploy land, is_plural filtering (vowel+s plurals)
+  resumes. **STILL RUN `supabase/naming_is_plural.sql` on the NAMING project** — until then the vowel+s
+  plural exclusion (croatias/aleppos) is silently off. Validated: POS=noun on `.ai` dict now returns
+  ~4,195 rows (was 0). (Names like bare.ai/bean.ai are in BOTH corpora — the universe row carries the
+  POS tag, so they POS-filter fine once this works; a truly Master-ONLY dictionary name still can't be
+  POS-filtered, since POS is a universe enrichment.)
 
 ---
 
