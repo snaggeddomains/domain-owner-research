@@ -123,6 +123,7 @@ export function extractSignals(report, domain = '') {
   // ── live site / redirect / parked ─────────────────────────────────────────
   let redirectsToParent = false;
   let parentHost = '';
+  let redirectHttpOnly = false;
   let siteActive = false;
   let parked = false;
   for (const d of traceData(trace, 'livesite_inspect')) {
@@ -134,6 +135,11 @@ export function extractSignals(report, domain = '') {
     if (finalHost && domainRoot && rootOf(finalHost) !== domainRoot) {
       redirectsToParent = true;
       parentHost = finalHost;
+      // The redirect is only observable over HTTP because HTTPS is broken — a browser
+      // (HTTPS-first) never follows it. Ownership-wise it still ties the domain to the
+      // target, but it is NOT a live/"open" redirect the owner or a recipient would see.
+      if (d.redirect && d.redirect.http_only) redirectHttpOnly = true;
+      else if (d.https_ok === false && d.scheme === 'http') redirectHttpOnly = true;
     }
     const clues = d.clues || d;
     const parking = (clues && clues.parking) || d.parking;
@@ -205,6 +211,9 @@ export function extractSignals(report, domain = '') {
     prices,
     redirectsToParent,
     parentHost,
+    // HTTP-only redirect (HTTPS broken) → real for ownership, but NOT browser-visible;
+    // the drafter must not pitch it as "your domain forwards to X".
+    redirectHttpOnly,
     siteActive,
     parked,
     acquisition,

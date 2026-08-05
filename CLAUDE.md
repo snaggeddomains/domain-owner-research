@@ -398,6 +398,22 @@ real opening emails ("Domain Owner Initial Outreach" playbook).
   → `listed:false, verifiedNotListed:true`; a genuine one-sentence "listed for sale on Afternic" still
   → `listed:true`. **NB the drafter DOES use the report context** (acquisition, redirect, etc. were all
   real) — this only stops the fabricated for-sale hook.
+- **HTTP-only redirect on a broken-HTTPS site is NOT an "open" redirect (2026-08-05).** translucent.com's
+  report narrative said it "openly 301-redirects to translucent.ca," which poisoned the outreach draft —
+  but `https://translucent.com` fails the TLS handshake entirely (curl exit 35, even with `-k`); the
+  redirect exists ONLY over plain HTTP (`http://translucent.com`→`http://www.translucent.ca`). Browsers
+  are HTTPS-first, so a human sees a security error, NOT a redirect. Root cause: `livesite_inspect`
+  fetches https then falls back to http; it recorded `scheme:'http'` (= https failed) but only that subtle
+  flag reached downstream, so the agent rendered it as a live "open" redirect. Fixes: (1) **`lib/sources/livesite.js`**
+  now returns explicit `https_ok`, `https_error`, and a `redirect{offsite,target,target_url,http_only}`
+  object + a plain `note` when the redirect is http-only (https broken) — additive, agent-readable. (2)
+  **`lib/agent.js` SYSTEM_PROMPT** gained a REDIRECT PRECISION rule: an http-only redirect where HTTPS
+  fails is an ownership tie, NOT an "open/active/browser-visible" redirect — describe precisely. (3)
+  **`lib/outreach/signals.js`** exposes `redirectHttpOnly` (set from `redirect.http_only` or
+  `https_ok===false && scheme==='http'`). (4) **`lib/outreach/generate.js`** tags the `redirects-to-parent`
+  indicator `[HTTP-ONLY …]` + a HARD RULE forbidding pitching it as "your domain forwards to X." Verified
+  live: `http://translucent.com`→`http://www.translucent.ca/` 200; `https://translucent.com` exit 35. No
+  client asset change (backend + prompt only) — re-run the report / re-draft to pick it up.
 
 ---
 

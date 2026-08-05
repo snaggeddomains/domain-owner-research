@@ -31,6 +31,7 @@ HARD RULES:
 - BE SPECIFIC — not a mail-merge. The body MUST include at least one concrete, verifiable detail about THIS owner or THIS domain drawn from the report — e.g. how long they've held it, their known tie to the name, a former company/role, its current parked/redirected/listed state. Something only real research would surface. A generic opener that would read identically for any domain (e.g. "I saw it's listed, are you open to selling?") is a FAILURE — earn the reply with a real, specific hook. This applies EVEN when a template is selected.
 - Use ONLY facts present in the provided context. NEVER invent a name, company, acquisition, platform, price, or relationship. If you need a value you don't have, leave a clearly bracketed placeholder like [COMPANY] for Rob to fill — do not guess.
 - The "For-sale status" line is the AUTHORITATIVE, real-time marketplace check. If it says NOT listed, do NOT claim or imply the domain is listed/for sale on any marketplace, and do NOT name marketplaces — even if the narrative loosely says "listed for sale". Trust the verified status over the narrative.
+- If a redirect indicator is tagged HTTP-ONLY, the domain has broken HTTPS and a browser never follows the redirect — do NOT use it as a hook or tell the owner "your domain forwards to X". It is an internal ownership clue only, not something the recipient experiences. (You may note the site "currently doesn't load over https" if useful, but never claim a visible redirect.)
 - Address the email ONLY to the name(s) on the "Address as" line — those are the people we actually have a way to reach. Do NOT add other stakeholders, co-founders, or names from the narrative to the greeting, even if the report mentions them. If "Address as" has one name, greet only that person.
 - SHORT: roughly 4-9 sentences. Cut anything that isn't earning its place. No corporate filler.
 - Match Rob's warmth and directness. No pricing or commitments beyond the templates' spirit.
@@ -56,7 +57,7 @@ function indicatorList(sig) {
   const on = [];
   if (sig.listed) on.push(`listed-for-sale${sig.platform ? ` on ${sig.platform}` : ''}`);
   else if (sig.verifiedNotListed) on.push('verified-NOT-listed-for-sale');
-  if (sig.redirectsToParent) on.push(`redirects-to-parent${sig.parentHost ? ` (${sig.parentHost})` : ''}`);
+  if (sig.redirectsToParent) on.push(`redirects-to-parent${sig.parentHost ? ` (${sig.parentHost})` : ''}${sig.redirectHttpOnly ? ' [HTTP-ONLY — HTTPS is broken, so a browser does NOT see this redirect; do NOT pitch it as "your domain forwards to X"]' : ''}`);
   if (sig.acquisition) on.push('acquisition/inheritance');
   if (sig.formerOperator) on.push('former-operator');
   if (sig.mayStillOwn) on.push('may-still-own');
