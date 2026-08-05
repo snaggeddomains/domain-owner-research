@@ -12,8 +12,41 @@
 
 import Anthropic from '@anthropic-ai/sdk';
 import { pathToFileURL } from 'node:url';
-import { seedParts } from './upgrade.js';
+import { seedParts, tldGuidance } from './upgrade.js';
 import { classifyDomain } from '../classify.js';
+import { fetchJson } from '../../util.js';
+
+// VERIFY a "company X has a product named <seed>" claim against reality — the LLM
+// asserts these and frequently hallucinates them (e.g. it claimed tractorventures.com
+// / helixa.ai have a "Carrot" product; a site: search finds nothing). Confirm the
+// seed word actually appears on the company's OWN site — the same check a human does.
+//   returns { link } when the word is genuinely used on their domain,
+//           false     when we checked and it is NOT (→ drop the candidate),
+//           null      when we couldn't check (no SERPER key / API error → fail-open,
+//                     keep but don't claim an EXACT match).
+async function verifyProductNamed(domain, word, env) {
+  if (!env.SERPER_API_KEY || !domain || !word) return null;
+  const w = String(word).toLowerCase();
+  const re = new RegExp(`\\b${w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i');
+  try {
+    const data = await fetchJson('https://google.serper.dev/search', {
+      method: 'POST',
+      headers: { 'X-API-KEY': env.SERPER_API_KEY, 'content-type': 'application/json' },
+      body: JSON.stringify({ q: `${w} site:${domain}`, num: 10 }),
+    });
+    const organic = Array.isArray(data && data.organic) ? data.organic : [];
+    // Require a result ON the company's own domain whose title/snippet actually
+    // uses the word (a bare site: hit for a common word isn't proof of a product).
+    const hit = organic.find((r) => {
+      const link = String(r.link || '').toLowerCase();
+      const onSite = link.includes(String(domain).toLowerCase());
+      return onSite && re.test(`${r.title || ''} ${r.snippet || ''}`);
+    });
+    return hit ? { link: hit.link } : false;
+  } catch {
+    return null;   // couldn't verify (free-plan 400 / rate-limit / network) → fail-open
+  }
+}
 
 function parseJsonLoose(text) {
   const s = String(text || '');
@@ -31,6 +64,11 @@ async function expandAngle(seed, angle, env, limit) {
   const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY, timeout: 60000, maxRetries: 2 });
   const model = env.SALES_ANGLE_MODEL || env.OUTREACH_MODEL || 'claude-sonnet-4-6';
   const word = String(seed).split('.')[0];
+  const { tld } = seedParts(seed);
+  // For a tech/AI TLD (.ai/.io/…) the buyer must be tech-oriented for the name to
+  // make sense — a non-tech company tied only by a metaphor is excluded (keyword
+  // angles only; the product branch is grounded by on-site verification instead).
+  const tldRule = tldGuidance(tld, word);
   // The exact-match "product named X" angle hunts by PRODUCT, not industry — find
   // companies whose product/app/service is literally named the seed word, even when
   // the company itself is named something else entirely (the highest-intent buyers).
@@ -56,7 +94,7 @@ FIT = how strong a buyer they'd be for "${seed}", weighing (a) how much the name
 
 Return JSON only:
 {"companies":[{"name":"Company","domain":"company.com","fit":"high|medium|low","why":"one line: why THIS company would want the name"}]}
-Real companies + real domains only. Order best fit first. No placeholders.`;
+Real companies + real domains only. Order best fit first. No placeholders.${tldRule ? `\n\n${tldRule}` : ''}`;
   const resp = await client.messages.create({ model, max_tokens: 3000, messages: [{ role: 'user', content: prompt }] });
   const text = (resp.content || []).filter((b) => b.type === 'text').map((b) => b.text).join('\n');
   const parsed = parseJsonLoose(text);
@@ -105,6 +143,26 @@ export async function discoverAngles(seedDomain, angles, env = process.env, { li
       if (++perAngle >= lim || raw.length >= cap) break;
     }
     if (raw.length >= cap) break;
+  }
+  if (!raw.length) return [];
+
+  // GROUND the product-named claims before we present them as fact. The LLM
+  // asserts "company X has a product named <seed>" and hallucinates freely, so we
+  // confirm the seed word is actually on the company's own site (a site:<domain>
+  // <seed> search). DROP the ones that fail; downgrade the ones we can't check
+  // (no SERPER key / API error) from an EXACT match to a soft "similar name".
+  const productIdx = [];
+  for (let i = 0; i < raw.length; i++) if (raw[i].angle === 'product_named' || raw[i].angle === 'product_named_exact') productIdx.push(i);
+  if (productIdx.length) {
+    const verdicts = await mapPool(productIdx, 8, (i) => verifyProductNamed(raw[i].domain, sld, env));
+    const drop = new Set();
+    productIdx.forEach((i, k) => {
+      const v = verdicts[k];
+      if (v === false) { drop.add(i); return; }                        // checked → word NOT on their site → drop
+      if (v === null) { raw[i].angle = 'product_named'; raw[i].exact = false; raw[i].unverified = true; }  // couldn't verify → soft
+      else { raw[i].verified = true; raw[i].evidence = v.link || ''; }  // confirmed on-site
+    });
+    if (drop.size) { for (let i = raw.length - 1; i >= 0; i--) if (drop.has(i)) raw.splice(i, 1); }
   }
   if (!raw.length) return [];
 

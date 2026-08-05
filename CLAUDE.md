@@ -1429,6 +1429,28 @@ Find companies that would BUY a domain we're selling. UI at **research.snagged.c
   on `angle.product` to hunt by product name, not industry. These ride the angle-research
   path (`api/sales.js` `handleResearchAngles`), which does NOT run `gateRelevance` — so a
   product holder with an unrelated company name isn't wrongly demoted.
+- **Grounding the discovery — product-name VERIFICATION + TLD-aware buyers (2026-08-05).** Two
+  accuracy fixes after the LLM was confabulating buyers (carrot.ai surfaced tractorventures.com /
+  helixa.ai as having a "Carrot" product — a `site:` search finds nothing; and non-tech rewards
+  companies via a carrot-and-stick metaphor).
+  - **Product angle was self-certifying.** The "✓ exact product-name match" badge was set by
+    `norm(c.product) === norm(sld)` — comparing the LLM's OWN claimed product string to the seed
+    (circular); the only real check was `classifyDomain` (liveness, not product existence). Fix in
+    `lib/sales/discovery/keyword.js` `verifyProductNamed(domain, word, env)`: a Serper
+    `<word> site:<domain>` search that requires a result ON the company's own domain whose
+    title/snippet actually uses the word. In `discoverAngles`, product candidates are verified with
+    bounded concurrency (8): **checked-and-absent → DROPPED**; **verified → kept** (exact badge now
+    meaningful); **unverifiable** (no `SERPER_API_KEY` / API error) → fail-open, downgraded from
+    `product_named_exact` to `product_named` (soft "similar name", never a false "exact"). Needs
+    `SERPER_API_KEY` (already set).
+  - **Keyword angles ignored the TLD.** A `.ai`/`.io`/… name reads as an AI/tech brand, so a non-tech
+    company tied only by a metaphor (an HR rewards program for carrot.ai) is not a real buyer. New
+    `tldGuidance(tld, word)` in `lib/sales/discovery/upgrade.js` (TECH_TLDS = ai/io/dev/app/tech/ml/
+    cloud/sh/gg/so) returns a directive threaded into BOTH the angle enumeration (`angles.js`
+    `enumerateAngles`→`userPrompt`) and the per-angle company expansion (`keyword.js` `expandAngle`,
+    keyword branch only) — for a tech TLD, EXCLUDE non-tech companies whose only tie is a theme/metaphor
+    (a metaphor is fine only when the company is itself tech/AI). Neutral TLDs (.com) → no constraint,
+    word meaning drives fit. Product branch is grounded by on-site verification instead, not the TLD gate.
 - **Permission:** `research.sales` in snagged-admin `dashboard/lib/permissions.ts`
   (MODULES + CATALOG; stored flat as `sales`). Grant per-user in the Users editor.
 

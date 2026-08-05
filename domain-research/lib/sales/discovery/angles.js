@@ -16,7 +16,7 @@
 
 import Anthropic from '@anthropic-ai/sdk';
 import { pathToFileURL } from 'node:url';
-import { seedParts } from './upgrade.js';
+import { seedParts, tldGuidance } from './upgrade.js';
 import { firmographics, abilityToPay } from '../enrich/firmographics.js';
 
 // Pull the first {...} JSON object out of a model reply (tolerates prose/fences).
@@ -32,8 +32,8 @@ const SYSTEM = `You map a single SEED word/domain to the distinct BUYER ANGLES f
 
 ALSO always include one special angle with key "product_named": companies that have a real PRODUCT, app, service, or feature literally NAMED the seed word — even when the company's own name is completely different (e.g. a company whose flagship product is called the seed word). These exact-match holders are among the highest-intent buyers for the domain. Output STRICT JSON only.`;
 
-function userPrompt(seed) {
-  return `SEED: ${seed}
+function userPrompt(seed, guidance = '') {
+  return `SEED: ${seed}${guidance ? `\n\n${guidance}` : ''}
 
 Return JSON:
 {
@@ -63,14 +63,16 @@ Rules:
 // Tier 0 — enumerate angles + notable players (free; one LLM call).
 export async function enumerateAngles(seedDomain, env = process.env) {
   if (!env.ANTHROPIC_API_KEY) throw new Error('ANTHROPIC_API_KEY not set');
-  const { domain, sld } = seedParts(seedDomain);
+  const { domain, sld, tld } = seedParts(seedDomain);
   const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY, timeout: 60000, maxRetries: 2 });
   const model = env.SALES_ANGLE_MODEL || env.OUTREACH_MODEL || 'claude-sonnet-4-6';
   const resp = await client.messages.create({
     model,
     max_tokens: 1800,
     system: SYSTEM,
-    messages: [{ role: 'user', content: userPrompt(sld || domain) }],
+    // The TLD constrains realizable buyers (a .ai name only fits a tech/AI company),
+    // so the angle set for carrot.ai excludes non-tech metaphor angles.
+    messages: [{ role: 'user', content: userPrompt(sld || domain, tldGuidance(tld, sld || domain)) }],
   });
   const text = (resp.content || []).filter((b) => b.type === 'text').map((b) => b.text).join('\n');
   const parsed = parseJsonLoose(text);

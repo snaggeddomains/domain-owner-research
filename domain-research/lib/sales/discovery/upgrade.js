@@ -48,6 +48,23 @@ export function seedParts(domain) {
   return { domain: d, sld: dot > 0 ? d.slice(0, dot) : d, tld: dot > 0 ? d.slice(dot + 1) : '' };
 }
 
+// TLD connotation → a buyer-fit constraint. A domain's TLD positions the brand,
+// so the realizable buyers depend on it, not just the word. A .ai/.io/.dev/… name
+// reads as an AI/tech brand — a company whose only tie to the word is a theme or
+// metaphor but that ISN'T tech-oriented (a rewards program, a food brand) is not a
+// real buyer for it, however well the word fits their story. Returns a directive to
+// splice into the discovery prompts (empty for neutral TLDs like .com, where the
+// word's meaning drives fit and the TLD adds no sector constraint).
+const TECH_TLDS = new Set(['ai', 'io', 'dev', 'app', 'tech', 'ml', 'cloud', 'sh', 'gg', 'so']);
+export function tldGuidance(tld, word) {
+  const t = String(tld || '').toLowerCase();
+  const w = String(word || 'the seed');
+  if (TECH_TLDS.has(t)) {
+    return `TLD CONSTRAINT — this domain is on ".${t}", a TLD strongly read as AN AI / TECHNOLOGY / SOFTWARE brand. Only include a company if an AI/tech-branded name genuinely makes sense for THEM — i.e. they are in AI, software, data, developer tools, or are clearly tech-forward. A company whose only connection to "${w}" is a theme or metaphor but that is NOT tech-oriented (e.g. an HR rewards program, a food/agriculture brand) is NOT a fit for a ".${t}" name and must be EXCLUDED, no matter how well the word fits their story. A metaphor is fine ONLY when the company is itself tech/AI.`;
+  }
+  return '';
+}
+
 // Affix variation strings for the SLD (sub-type 2 seeds for autocomplete).
 export function affixVariations(sld) {
   return [...PREFIXES.map((p) => p + sld), ...SUFFIXES.map((s) => sld + s)];
