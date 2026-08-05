@@ -12,6 +12,8 @@
 
 import rocketreachSearch from '../../sources/rocketreach.js';
 import rocketreachLookup from '../../sources/rocketreachlookup.js';
+import fullenrichLookup from '../../sources/fullenrich.js';
+import { apolloPeopleByDomain, apolloRevealEmail } from './apollopeople.js';
 
 const SMB_ROLES = ['Founder', 'CEO', 'CMO', 'CTO'];
 const ENTERPRISE_ROLES = ['General Counsel', 'CFO', 'VP Marketing', 'Head of Brand'];
@@ -70,47 +72,94 @@ function pickProfile(searchResult, company, domain) {
   return profs.find((p) => employerMatches(p.current_employer, company)) || null;
 }
 
-// Enrich one company → up to one decision-maker per targeted role (deduped by name).
-// `lookup` gates the paid email/phone step (default on — caller already chose to spend).
-export async function enrichCompany(candidate, { env = process.env, lookup = true, maxRoles = 4 } = {}) {
+// Enrich one company's decision-makers via a VENDOR WATERFALL, so coverage isn't
+// gated on any single provider (RocketReach alone missed / over-filtered smaller +
+// international companies like Carrot Insurance). Order:
+//   1) Apollo people-search BY DOMAIN — domain-authoritative discovery (best
+//      coverage, no fuzzy employer-name matching), reveal emails via people/match.
+//   2) RocketReach — fills more decision-makers when we're still thin (its strict
+//      same-company filter stays, to avoid wrong-company contacts).
+//   3) FullEnrich — a name+domain email/phone waterfall to FILL any contact we
+//      found but couldn't get an email for.
+// Every vendor is wrapped + fail-open; `lookup` gates the paid email/phone steps.
+export async function enrichCompany(candidate, { env = process.env, lookup = true, maxRoles = 4, maxContacts = 6 } = {}) {
   const company = candidate.company;
-  if (!company || !env.ROCKETREACH_API_KEY) return [];
+  const domain = candidate.domain;
+  if (!company && !domain) return [];
   const roles = rolesFor(candidate.employee_count).slice(0, maxRoles);
-  const contacts = [];
-  const seen = new Set();
+  const t0 = Date.now();                                 // time budget — FullEnrich polls up to 40s
+  const byName = new Map();                              // normalized name → contact (deduped across vendors)
+  const add = (name, title, linkedin, source) => {
+    const key = norm(name);
+    if (!name || !key) return null;
+    let c = byName.get(key);
+    if (!c) { c = { name, title: title || null, email: null, phone: null, linkedin: linkedin || null, sources: [source] }; byName.set(key, c); }
+    else { if (!c.title && title) c.title = title; if (!c.linkedin && linkedin) c.linkedin = linkedin; if (!c.sources.includes(source)) c.sources.push(source); }
+    return c;
+  };
 
-  for (const title of roles) {
-    let profile;
+  // 1) APOLLO — discover people at the DOMAIN, then reveal emails.
+  if (domain && env.APOLLO_ENRICH_API_KEY) {
     try {
-      const res = await rocketreachSearch.run({ company, title }, { env });
-      profile = pickProfile(res, company, candidate.domain);
-    } catch { profile = null; }
-    if (!profile || !profile.name) continue;
-    const key = profile.name.toLowerCase();
-    if (seen.has(key)) continue;
-    seen.add(key);
-
-    const contact = {
-      name: profile.name,
-      title: profile.current_title || title,
-      linkedin: profile.linkedin_url || null,
-      email: null,
-      phone: null,
-      source: 'rocketreach',
-    };
-    if (lookup) {
-      try {
-        const det = await rocketreachLookup.run(
-          { id: profile.id, linkedin_url: profile.linkedin_url, name: profile.name, company },
-          { env },
-        );
-        if (det && det.found) {
-          contact.email = (det.emails || [])[0] || null;
-          contact.phone = (det.phones || [])[0] || null;
+      const people = await apolloPeopleByDomain(domain, roles, env, { perPage: 6 });
+      for (const p of people.slice(0, maxContacts)) {
+        const c = add(p.name, p.title, p.linkedin, 'apollo');
+        if (c) { if (p.email && !c.email) c.email = p.email; if (p.phone && !c.phone) c.phone = p.phone; c._apolloId = p.id; c._orgDomain = p.org_domain; }
+      }
+      if (lookup) {
+        let revealed = 0;
+        for (const c of byName.values()) {
+          if (c.email || revealed >= maxContacts) continue;
+          if (!c._apolloId && !c._orgDomain) continue;
+          const parts = c.name.split(/\s+/);
+          try {
+            const r = await apolloRevealEmail({ id: c._apolloId, first_name: parts[0], last_name: parts.slice(1).join(' '), org_domain: c._orgDomain || domain }, env);
+            if (r) { if (r.email) c.email = r.email; if (r.phone && !c.phone) c.phone = r.phone; revealed++; }
+          } catch { /* reveal miss */ }
         }
-      } catch { /* lookup miss — keep the profile without contact details */ }
-    }
-    contacts.push(contact);
+      }
+    } catch { /* apollo down — fall through to RocketReach */ }
   }
-  return contacts;
+
+  // 2) ROCKETREACH — add more decision-makers if we're still thin.
+  if (company && env.ROCKETREACH_API_KEY && byName.size < maxContacts) {
+    for (const title of roles) {
+      let profile;
+      try { const res = await rocketreachSearch.run({ company, title }, { env }); profile = pickProfile(res, company, domain); }
+      catch { profile = null; }
+      if (!profile || !profile.name) continue;
+      const c = add(profile.name, profile.current_title || title, profile.linkedin_url, 'rocketreach');
+      if (c && lookup && !c.email) {
+        try {
+          const det = await rocketreachLookup.run({ id: profile.id, linkedin_url: profile.linkedin_url, name: profile.name, company }, { env });
+          if (det && det.found) { if ((det.emails || [])[0]) c.email = det.emails[0]; if ((det.phones || [])[0] && !c.phone) c.phone = det.phones[0]; }
+        } catch { /* lookup miss */ }
+      }
+    }
+  }
+
+  // 3) FULLENRICH — fill an email for the top person we found but couldn't reach.
+  // Capped to ONE lookup (it polls up to 40s) and only with time budget left, so a
+  // single company enrich stays under the 60s API cap.
+  if (lookup && (domain || company) && env.FULL_ENRICH_API_KEY && (Date.now() - t0) < 15000) {
+    for (const c of byName.values()) {
+      if (c.email) continue;
+      const parts = c.name.split(/\s+/); const fn = parts[0]; const ln = parts.slice(1).join(' ');
+      if (!fn || !ln) continue;
+      try {
+        const r = await fullenrichLookup.run({ first_name: fn, last_name: ln, domain, company, include_phone: true }, { env });
+        if (r && r.found) {
+          if (!c.email) c.email = (r.emails || [])[0] || r.work_email || r.personal_email || null;
+          if (!c.phone) c.phone = (r.phones || [])[0] || r.phone || null;
+          if (c.email || c.phone) c.sources.push('fullenrich');
+        }
+      } catch { /* fill miss */ }
+      break;   // one FullEnrich fill per company (the 40s poll dominates the budget)
+    }
+  }
+
+  // Emit — contacts with a reachable email/phone first; strip internals.
+  const out = [...byName.values()].map((c) => ({ name: c.name, title: c.title, email: c.email, phone: c.phone, linkedin: c.linkedin, source: c.sources.join('+') }));
+  out.sort((a, b) => (Boolean(b.email || b.phone) - Boolean(a.email || a.phone)));
+  return out.slice(0, maxContacts);
 }

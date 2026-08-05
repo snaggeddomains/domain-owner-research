@@ -1475,6 +1475,19 @@ Find companies that would BUY a domain we're selling. UI at **research.snagged.c
   (Backend-only — re-run a Sales Research report to pick it up.)
 - **Permission:** `research.sales` in snagged-admin `dashboard/lib/permissions.ts`
   (MODULES + CATALOG; stored flat as `sales`). Grant per-user in the Users editor.
+- **Contact enrichment = a VENDOR WATERFALL (2026-08-05).** RocketReach-only enrichment missed /
+  over-filtered smaller + international companies (Carrot Insurance UK, Carrot General Insurance KR —
+  only Instacart resolved). `lib/sales/enrich/contacts.js` `enrichCompany` is now a waterfall: (1)
+  **Apollo people-search BY DOMAIN** (`lib/sales/enrich/apollopeople.js` `apolloPeopleByDomain` +
+  `apolloRevealEmail`, reuses `APOLLO_ENRICH_API_KEY`) — domain-authoritative discovery (no fuzzy
+  employer-name matching), reveals emails via `people/match`; (2) **RocketReach** fills more
+  decision-makers when still thin (its strict same-company `pickProfile` stays, to avoid wrong-company
+  contacts); (3) **FullEnrich** (`FULL_ENRICH_API_KEY`) fills an email for a found-but-unreachable
+  person — capped to ONE time-budgeted lookup (it polls up to 40s; keeps a single enrich under the 60s
+  API cap). Deduped across vendors by name; contacts with an email/phone sort first; `source` records
+  the chain (e.g. `apollo+fullenrich`). Every vendor fail-open. **Apollo people-search req/resp shapes
+  are live-verify on first real run** (no Apollo key in the sandbox). Optional `SALES_VERIFY_MODEL` for
+  the product check is separate.
 
 ## Sales Hub — per-name persistent target list (2026-08-05)
 
