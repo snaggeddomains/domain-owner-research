@@ -1485,9 +1485,19 @@ Find companies that would BUY a domain we're selling. UI at **research.snagged.c
   contacts); (3) **FullEnrich** (`FULL_ENRICH_API_KEY`) fills an email for a found-but-unreachable
   person — capped to ONE time-budgeted lookup (it polls up to 40s; keeps a single enrich under the 60s
   API cap). Deduped across vendors by name; contacts with an email/phone sort first; `source` records
-  the chain (e.g. `apollo+fullenrich`). Every vendor fail-open. **Apollo people-search req/resp shapes
-  are live-verify on first real run** (no Apollo key in the sandbox). Optional `SALES_VERIFY_MODEL` for
-  the product check is separate.
+  the chain (e.g. `apollo+fullenrich`). Every vendor fail-open. Optional `SALES_VERIFY_MODEL` for the
+  product check is separate.
+  - **Apollo people API — the two-step shapes (verified live 2026-08-05).** `mixed_people/search` is
+    DEPRECATED (HTTP 422) → use **`mixed_people/api_search`** (`x-api-key`, `q_organization_domains_list:[domain]`
+    array — NOT `organization_domains`, which is ignored + returns the whole DB; `person_titles`; `per_page`).
+    api_search returns LIGHTWEIGHT rows — `{id, first_name, last_name_obfuscated, title, organization.name,
+    has_email, has_direct_phone}` — NOT the full name/email. The full name + VERIFIED email come from the
+    REVEAL: **`people/match {id, reveal_personal_emails:true}`** → `person.{name,email,linkedin_url,phone_numbers}`
+    (1 credit; phone often async-empty). So `apolloPeopleByDomain` returns id+title+has_email rows and
+    `apolloReveal(id)` unlocks each — the waterfall reveals only `has_email`/`has_phone` rows (cap
+    `maxContacts`), reachable-first. A `person_titles` filter can SHRINK coverage at a small company, so
+    the leg adds a title-less pass when thin. Verified: carrotinsurance.com → 4 contacts (Katie Thorley
+    katie.thorley@…), carrotins.com → 6; carrotsearch.com → 0 (no Apollo coverage → RR/FullEnrich fallback).
 
 ## Sales Hub — per-name persistent target list (2026-08-05)
 
@@ -1544,8 +1554,10 @@ design in `domain-research/SALES_HUB_SPEC.md`. Additive to the existing module �
   toggle Explore / 🌐 Extensions / 🎯 Target list) that sweeps the EXACT seed SLD across every TLD and
   shows taken / for-sale (+ asking price + marketplace) / available / active-site — reusing the naming
   exercise engine (`lib/variations/sweep.js` `sweepVariations` with `prefixes:[], suffixes:[]` →
-  extensions only). API action `extensions {domain}` in `api/sales.js` (gated `research.sales`, filters
-  `kind==='extension'`). UI (`public/app.js` `loadExtensions`/`renderExtensions`, cached per session;
+  extensions only). API action `extensions {domain}` in `api/sales.js` (gated `research.sales`; reads
+  `swept.results` — sweepVariations returns `{seed,count,criteria,results}`, NOT a bare array — and
+  filters `kind==='tld'`, the label enumerate.js tags exact-SLD-on-a-TLD rows). UI (`public/app.js`
+  `loadExtensions`/`renderExtensions`, cached per session;
   `.sx-*` table styles) — status pills, price, marketplace link, register link, refresh, CSV.
   Complements Upgrades (which resolves TLD siblings to COMPANIES): Extensions shows each domain's
   DISPOSITION (buyable / parked / active / price). Cache-bust `?v=20260805ext`.

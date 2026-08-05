@@ -247,8 +247,9 @@ async function handleExtensions(body, res) {
   const { sld, domain } = seedParts(raw);
   if (!sld) { res.status(400).json({ error: 'Provide a domain, e.g. carrot.ai' }); return; }
   try {
-    const all = await sweepVariations(domain, { env: process.env, prefixes: [], suffixes: [] });
-    const results = (all || []).filter((r) => r.kind === 'extension');
+    const swept = await sweepVariations(domain, { env: process.env, prefixes: [], suffixes: [] });
+    const rows = (swept && Array.isArray(swept.results)) ? swept.results : [];
+    const results = rows.filter((r) => r.kind === 'tld');   // exact SLD on each TLD (enumerate tags these 'tld')
     res.status(200).json({ ok: true, seed: sld, count: results.length, results });
   } catch (e) {
     res.status(500).json({ error: String(e.message || e) });

@@ -13,10 +13,10 @@
 import rocketreachSearch from '../../sources/rocketreach.js';
 import rocketreachLookup from '../../sources/rocketreachlookup.js';
 import fullenrichLookup from '../../sources/fullenrich.js';
-import { apolloPeopleByDomain, apolloRevealEmail } from './apollopeople.js';
+import { apolloPeopleByDomain, apolloReveal } from './apollopeople.js';
 
-const SMB_ROLES = ['Founder', 'CEO', 'CMO', 'CTO'];
-const ENTERPRISE_ROLES = ['General Counsel', 'CFO', 'VP Marketing', 'Head of Brand'];
+const SMB_ROLES = ['Founder', 'Co-Founder', 'CEO', 'President', 'Owner', 'CMO', 'CTO', 'Head of Marketing', 'VP Marketing', 'Head of Product'];
+const ENTERPRISE_ROLES = ['CMO', 'VP Marketing', 'Head of Brand', 'Head of Digital', 'Chief Digital Officer', 'General Counsel', 'CFO', 'Head of Product', 'VP Product'];
 
 function rolesFor(employeeCount) {
   return (employeeCount && employeeCount >= 250) ? ENTERPRISE_ROLES : SMB_ROLES;
@@ -86,7 +86,8 @@ export async function enrichCompany(candidate, { env = process.env, lookup = tru
   const company = candidate.company;
   const domain = candidate.domain;
   if (!company && !domain) return [];
-  const roles = rolesFor(candidate.employee_count).slice(0, maxRoles);
+  const allRoles = rolesFor(candidate.employee_count);   // full title set → Apollo (it title-filters)
+  const roles = allRoles.slice(0, maxRoles);             // lean set → RocketReach (one search per title)
   const t0 = Date.now();                                 // time budget — FullEnrich polls up to 40s
   const byName = new Map();                              // normalized name → contact (deduped across vendors)
   const add = (name, title, linkedin, source) => {
@@ -98,24 +99,28 @@ export async function enrichCompany(candidate, { env = process.env, lookup = tru
     return c;
   };
 
-  // 1) APOLLO — discover people at the DOMAIN, then reveal emails.
-  if (domain && env.APOLLO_ENRICH_API_KEY) {
+  // 1) APOLLO — discover people at the DOMAIN (api_search), then REVEAL each for the
+  // full name + verified email (search returns only id/first-name/title/has_email).
+  if (lookup && domain && env.APOLLO_ENRICH_API_KEY) {
     try {
-      const people = await apolloPeopleByDomain(domain, roles, env, { perPage: 6 });
-      for (const p of people.slice(0, maxContacts)) {
-        const c = add(p.name, p.title, p.linkedin, 'apollo');
-        if (c) { if (p.email && !c.email) c.email = p.email; if (p.phone && !c.phone) c.phone = p.phone; c._apolloId = p.id; c._orgDomain = p.org_domain; }
+      const people = await apolloPeopleByDomain(domain, allRoles, env, { perPage: 10 });
+      // The title filter can shrink coverage at a SMALL company — if we're thin on
+      // reachable people, add a title-less pass (Apollo ranks senior people first).
+      if (people.filter((p) => p.has_email).length < 2) {
+        const seen = new Set(people.map((p) => p.id));
+        for (const p of await apolloPeopleByDomain(domain, [], env, { perPage: 10 })) if (!seen.has(p.id)) people.push(p);
       }
-      if (lookup) {
-        let revealed = 0;
-        for (const c of byName.values()) {
-          if (c.email || revealed >= maxContacts) continue;
-          if (!c._apolloId && !c._orgDomain) continue;
-          const parts = c.name.split(/\s+/);
-          try {
-            const r = await apolloRevealEmail({ id: c._apolloId, first_name: parts[0], last_name: parts.slice(1).join(' '), org_domain: c._orgDomain || domain }, env);
-            if (r) { if (r.email) c.email = r.email; if (r.phone && !c.phone) c.phone = r.phone; revealed++; }
-          } catch { /* reveal miss */ }
+      people.sort((a, b) => (Number(b.has_email) - Number(a.has_email)));   // reveal the reachable ones first
+      let revealed = 0;
+      for (const p of people) {
+        if (revealed >= maxContacts) break;
+        if (!p.has_email && !p.has_phone) continue;                          // nothing to unlock → skip the credit
+        let r = null;
+        try { r = await apolloReveal(p.id, env); } catch { r = null; }
+        revealed++;
+        if (r && r.name) {
+          const c = add(r.name, r.title || p.title, r.linkedin, 'apollo');
+          if (c) { if (r.email && !c.email) c.email = r.email; if (r.phone && !c.phone) c.phone = r.phone; }
         }
       }
     } catch { /* apollo down — fall through to RocketReach */ }

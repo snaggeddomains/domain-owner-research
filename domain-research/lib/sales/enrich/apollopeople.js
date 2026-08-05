@@ -3,11 +3,15 @@
 // The contact waterfall's high-coverage discovery source. Unlike RocketReach's
 // fuzzy current_employer name filter (which over-rejects brand/legal-name variance —
 // a "Carrot" employee at "Carrot Insurance"), Apollo is queried BY DOMAIN, so the
-// people it returns are domain-authoritative (they actually work at that domain).
-// Reuses APOLLO_ENRICH_API_KEY (already set for firmographics). Fully fail-open.
+// people it returns actually work at that domain. Reuses APOLLO_ENRICH_API_KEY.
 //
-// Live-verify on first real key: the people-search + match request/response shapes
-// are best-effort (couldn't exercise Apollo from the sandbox).
+// Two steps (verified live 2026-08-05):
+//  1) mixed_people/api_search  → LIGHTWEIGHT rows: {id, first_name, obfuscated last
+//     name, title, organization.name, has_email}. It does NOT return the full name
+//     or email — those come from the reveal.
+//  2) people/match {id, reveal_personal_emails:true} → full name + VERIFIED email
+//     (+ linkedin, sometimes phone). 1 credit each.
+// (The older mixed_people/search endpoint is deprecated → HTTP 422.) Fail-open.
 
 const BASE = 'https://api.apollo.io/api/v1';
 
@@ -27,51 +31,53 @@ async function apolloPost(path, key, body) {
   finally { clearTimeout(timer); }
 }
 
+const clean = (d) => String(d || '').toLowerCase().replace(/^https?:\/\//, '').replace(/^www\./, '').replace(/\/.*$/, '');
 const LOCKED = /email_not_unlocked|not_unlocked|notunlocked/i;
 const cleanEmail = (e) => (e && !LOCKED.test(String(e)) && /@/.test(String(e))) ? String(e).trim() : null;
-const firstPhone = (p) => {
-  const arr = Array.isArray(p) ? p : [];
-  const n = arr.map((x) => (x && (x.raw_number || x.sanitized_number || x.number)) || '').find(Boolean);
-  return n || null;
-};
+const firstPhone = (arr) => (Array.isArray(arr) ? arr : []).map((x) => (x && (x.raw_number || x.sanitized_number || x.number)) || '').find(Boolean) || null;
 
-// Search people at a domain, targeted by titles. Returns normalized people (no
-// reveal yet — email may be locked). Fail-open → [].
-export async function apolloPeopleByDomain(domain, titles, env = process.env, { perPage = 6 } = {}) {
+// Search people at a domain, targeted by titles. Returns lightweight rows (no full
+// name/email yet — reveal each id to get those). `has_email`/`has_phone` flag which
+// are worth a reveal credit. Fail-open → [].
+export async function apolloPeopleByDomain(domain, titles, env = process.env, { perPage = 10 } = {}) {
   const key = env.APOLLO_ENRICH_API_KEY;
-  const d = String(domain || '').toLowerCase().replace(/^https?:\/\//, '').replace(/^www\./, '').replace(/\/.*$/, '');
+  const d = clean(domain);
   if (!key || !d) return [];
   const body = {
     q_organization_domains_list: [d],
-    q_organization_domains: d,                          // older param name, harmless if ignored
-    person_titles: (titles || []).slice(0, 8),
+    person_titles: (titles || []).slice(0, 10),
     page: 1,
-    per_page: Math.min(perPage, 10),
+    per_page: Math.min(perPage, 25),
   };
-  const data = await apolloPost('mixed_people/search', key, body);
-  const people = (data && (Array.isArray(data.people) ? data.people : data.contacts)) || [];
-  return people.map((p) => ({
-    id: p.id || null,
-    first_name: p.first_name || (p.name || '').split(/\s+/)[0] || '',
-    last_name: p.last_name || (p.name || '').split(/\s+/).slice(1).join(' ') || '',
-    name: p.name || `${p.first_name || ''} ${p.last_name || ''}`.trim(),
+  const data = await apolloPost('mixed_people/api_search', key, body);
+  const people = (data && Array.isArray(data.people)) ? data.people : [];
+  return people.filter((p) => p && p.id).map((p) => ({
+    id: p.id,
+    first_name: p.first_name || '',
     title: p.title || null,
-    linkedin: p.linkedin_url || null,
-    email: cleanEmail(p.email),
-    phone: firstPhone(p.phone_numbers),
-    org_domain: (p.organization && (p.organization.primary_domain || p.organization.domain)) || d,
-  })).filter((p) => p.name);
+    org_name: (p.organization && p.organization.name) || null,
+    org_domain: d,
+    has_email: p.has_email === true,
+    has_phone: p.has_direct_phone === 'Yes' || p.has_direct_phone === true,
+  }));
 }
 
-// Reveal a person's email (+ any phone) via people/match. 1 credit. Fail-open → null.
-export async function apolloRevealEmail(person, env = process.env) {
+// Reveal a person by Apollo id → full name + verified email (+ linkedin/phone).
+// 1 credit. Fail-open → null.
+export async function apolloReveal(id, env = process.env) {
   const key = env.APOLLO_ENRICH_API_KEY;
-  if (!key || (!person.id && !(person.first_name && person.last_name))) return null;
-  const body = person.id
-    ? { id: person.id, reveal_personal_emails: true }
-    : { first_name: person.first_name, last_name: person.last_name, domain: person.org_domain, reveal_personal_emails: true };
-  const data = await apolloPost('people/match', key, body);
-  const m = data && data.person;
-  if (!m) return null;
-  return { email: cleanEmail(m.email), phone: firstPhone(m.phone_numbers) };
+  if (!key || !id) return null;
+  const data = await apolloPost('people/match', key, { id, reveal_personal_emails: true });
+  const p = data && data.person;
+  if (!p) return null;
+  const name = p.name || `${p.first_name || ''} ${p.last_name || ''}`.trim();
+  if (!name) return null;
+  return {
+    name,
+    title: p.title || null,
+    email: cleanEmail(p.email),
+    phone: firstPhone(p.phone_numbers),
+    linkedin: p.linkedin_url || null,
+    org_domain: (p.organization && (p.organization.primary_domain || p.organization.domain)) || null,
+  };
 }
