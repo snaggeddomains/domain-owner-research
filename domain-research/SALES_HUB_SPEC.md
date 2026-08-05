@@ -75,6 +75,25 @@ Research candidates, promoted + manual targets, per-target contacts, per-target 
 all on the name. The loop collapses to: discover → promote/add → shortlist 5 → enrich on
 demand. No CSV round-trip.
 
+### 5. Link-shareable
+The hub has a **🔗 Share** button that copies a clean, stable URL to *this name's hub*
+(`https://app.snagged.com/research/sales/<id>`) — so a target list can be handed to a
+teammate (e.g. Judy) with one link instead of a CSV.
+
+- **Access model — internal, gated (default).** The link opens the hub for any teammate
+  with `research.sales` (the same gate the tool already uses); it is **not** a public
+  no-login page. A sales target list is internal competitive intel, so unlike the Domain
+  Owner *report* share (which is public with an OG preview), this share stays behind auth.
+  A logged-out visitor hits the normal login wall, then lands on the hub.
+- **Stable slug.** Reuse the existing `buildSlug`-style shape so the URL is readable:
+  `/research/sales/<seed_domain>-<id>` (the id is regex-extracted on open, mirroring the
+  report slug so a bare `/research/sales/<id>` also works). Deep-link + recent-runs already
+  resolve by id — the share URL is just that route made copyable.
+- **Optional (not v1): public read-only view.** If you later want to share a shortlist
+  *outside* the team, add a per-hub `public` flag + a token'd public route (like `api/r.js`)
+  that renders the Top 5 read-only, no contacts. Flagged out of scope below; the gated share
+  covers the Judy workflow.
+
 ---
 
 ## Data changes (additive, all `add column if not exists`)
@@ -160,10 +179,12 @@ opened run. Cache-bust `app.js`/`styles.css` on ship.
 - Cross-name rollups (a "all my names" board) — each name is its own hub for now.
 - Buy-side Deals CRM integration — this is the **sell-side** target list; keep them
   separate (the Deals CRM in snagged-admin is buy-side).
+- **Public (no-login) read-only share** — the v1 share link is internal/gated
+  (`research.sales`). A token'd public Top-5 view can come later (see §5).
 
 ## Build order
 1. Migration SQL (the 4 columns + 2 indexes) — run on the research project.
 2. `lib/db/sales.js` helpers (+ strip-and-retry) and `api/sales.js` actions.
 3. UI: Top 5 / Targets / Suggestions regions + manual-add form + promote/shortlist wiring.
-4. CSV → targets-only. Cache-bust.
+4. 🔗 Share button (copyable gated deep-link) + CSV → targets-only. Cache-bust.
 5. CLAUDE.md memory note in the same commit as the code.
