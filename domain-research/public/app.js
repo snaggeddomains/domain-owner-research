@@ -1088,7 +1088,7 @@ async function runDbScreen(domain) {
 const DS_LIMIT = 50;
 const dsState = {
   page: 0, sort: 'domain', dir: 'asc', activeTlds: new Set(), db: 'both',
-  category: new Set(), connotation: new Set(), industry: new Set(), emotion: new Set(), pos: new Set(), forms: new Set(),
+  category: new Set(), connotation: new Set(), emotion: new Set(), pos: new Set(), forms: new Set(),
 };
 
 // Controlled option lists (mirror tools/enrich.py). Industries/emotions are
@@ -1153,7 +1153,7 @@ async function dsEnsureFilters() {
   dsMulti._init = true;
   dsMulti.category = dsMultiSelect('category', 'category', false);
   dsMulti.connotation = dsMultiSelect('connotation', 'connotation', false);
-  dsMulti.industry = dsMultiSelect('industry', 'industry', true);
+  // Industries filter removed 2026-08-05 — we don't enrich or use industries in search.
   dsMulti.emotion = dsMultiSelect('emotion', 'emotion', true);
   dsMulti.pos = dsMultiSelect('pos', 'pos', false);
   dsMulti.forms = dsMultiSelect('forms', 'forms', false, 'None');
@@ -1165,7 +1165,6 @@ async function dsEnsureFilters() {
     const res = await fetch('/research/api/dbsearch-facets');
     if (res.ok) {
       const d = await res.json();
-      if (Array.isArray(d.industries)) dsMulti.industry.setOptions(d.industries);
       if (Array.isArray(d.emotions)) dsMulti.emotion.setOptions(d.emotions);
     }
   } catch { /* leave industries/emotions empty if facets unavailable */ }
@@ -1190,7 +1189,6 @@ function dsBuildParams() {
   if (els.dsFuzzy && els.dsFuzzy.checked) p.set('fuzzy', '1');
   if (v(els.dsSource)) p.set('source', v(els.dsSource));
   if (dsState.category.size) p.set('category', [...dsState.category].join(','));
-  if (dsState.industry.size) p.set('industry', [...dsState.industry].join(','));
   if (dsState.emotion.size) p.set('emotion', [...dsState.emotion].join(','));
   if (dsState.connotation.size) p.set('connotation', [...dsState.connotation].join(','));
   // All POS selected = "Any" (no constraint), like the Naming Exercise.
@@ -9832,7 +9830,7 @@ els.dsReset?.addEventListener('click', () => {
   if (els.dsDict) els.dsDict.value = '';
   if (els.dsNonum) els.dsNonum.checked = false;
   if (els.dsFuzzy) els.dsFuzzy.checked = false;
-  ['category', 'connotation', 'industry', 'emotion', 'pos', 'forms'].forEach((k) => dsMulti[k] && dsMulti[k].clear());
+  ['category', 'connotation', 'emotion', 'pos', 'forms'].forEach((k) => dsMulti[k] && dsMulti[k].clear());
   dsState.activeTlds.clear();
   if (els.dsTlds) els.dsTlds.querySelectorAll('button').forEach((b) => b.classList.remove('active'));
   dsState.db = 'both';
