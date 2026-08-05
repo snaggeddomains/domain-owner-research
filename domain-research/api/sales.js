@@ -16,6 +16,7 @@ import { seedParts } from '../lib/sales/discovery/upgrade.js';
 import { anglesForSeed } from '../lib/sales/discovery/angles.js';
 import { enrichCompany } from '../lib/sales/enrich/contacts.js';
 import { firmographics, abilityToPay } from '../lib/sales/enrich/firmographics.js';
+import { openPageRank } from '../lib/openpagerank.js';
 import {
   createSalesProject, getSalesProject, listSalesProjects, listSalesCandidates, getSalesCandidate,
   setSalesSelection, setCandidateEnrichStatus, replaceCandidateContacts, listContactsForCandidates,
@@ -237,6 +238,17 @@ async function handleShortlist(body, res) {
   res.status(200).json({ ok: true, id, rank });
 }
 
+// Prominence — a FREE Open PageRank (0–10 authority + global rank) per target
+// domain, a traffic proxy for the target list. Batched, fail-open (no key → {}).
+async function handleProminence(body, res) {
+  const projectId = String(body.project_id || '').trim();
+  if (!projectId) { res.status(400).json({ error: 'project_id required' }); return; }
+  const cands = await listSalesCandidates(projectId);
+  const domains = cands.filter((c) => c.is_target && c.domain).map((c) => c.domain);
+  const prominence = await openPageRank(domains, process.env);
+  res.status(200).json({ ok: true, prominence, configured: !!(process.env.OPENPAGERANK_API_KEY || process.env.OPEN_PAGE_RANK_API_KEY) });
+}
+
 // Edit a target's inline fields (notes/comments + basic identity).
 async function handleUpdateTarget(body, res) {
   const id = String(body.id || '').trim();
@@ -262,6 +274,7 @@ async function route(req, res) {
     if (action === 'remove_target') return handleRemoveTarget(body, res);
     if (action === 'shortlist') return handleShortlist(body, res);
     if (action === 'update_target') return handleUpdateTarget(body, res);
+    if (action === 'prominence') return handleProminence(body, res);
     res.status(400).json({ error: `Unknown action: ${action}` });
     return;
   }

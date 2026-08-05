@@ -8481,6 +8481,7 @@ let salesSurface = 'explore';      // which surface is showing: 'explore' | 'tar
 const salesTargetSel = new Set();  // checked target ids (Surface B selection)
 let salesTargetFilter = 'all';     // target-list category filter
 let salesTargetSort = 'added';     // target-list sort key
+const salesOprCache = new Map();   // domain → {opr, rank} (Open PageRank prominence, session cache)
 const sEl = (id) => document.getElementById(id);   // scoped helper for the new Sales-Hub nodes
 
 // Pull a human string out of an API error payload. Vercel's function-timeout
@@ -8914,7 +8915,7 @@ function renderSalesTable() {
       <div class="sr-card-head">
         <label class="sr-card-check"><input type="checkbox" class="sr-cb" data-id="${escapeHtml(c.id)}"${salesSelected.has(c.id) ? ' checked' : ''}></label>
         <div class="sr-card-id">
-          <div class="sr-card-name">${escapeHtml(c.company || '—')}${onList}${recommend}${angleBadge}${lowConfBadge}${offBadge}</div>
+          <div class="sr-card-name">${onList}${escapeHtml(c.company || '—')}${recommend}${angleBadge}${lowConfBadge}${offBadge}</div>
           <div class="sr-card-links">
             <a class="sr-card-domain" href="https://${escapeHtml(c.domain)}" target="_blank" rel="noopener">${escapeHtml(c.domain)}</a>
             ${coLi ? `<a class="sr-card-li" href="${escapeHtml(coLi)}" target="_blank" rel="noopener" title="Company LinkedIn" aria-label="Company LinkedIn">in</a>` : ''}
@@ -9271,7 +9272,11 @@ function updateSalesSurfaceUI() {
   if (els.srResults) els.srResults.hidden = onTargets || !hasRun;
   if (targetsSec) targetsSec.hidden = !onTargets || !hasRun;
 }
-function setSalesSurface(s) { salesSurface = (s === 'targets') ? 'targets' : 'explore'; updateSalesSurfaceUI(); }
+function setSalesSurface(s) {
+  salesSurface = (s === 'targets') ? 'targets' : 'explore';
+  updateSalesSurfaceUI();
+  if (salesSurface === 'targets') renderTargetList();   // triggers the free OPR prominence fetch
+}
 sEl('sr-surface')?.addEventListener('click', (e) => {
   const b = e.target.closest('.sr-surf-btn'); if (b) setSalesSurface(b.dataset.surface);
 });
@@ -9309,6 +9314,32 @@ function parseMoney(v) {
 }
 function tFunding(c) { const f = c.firmographics || {}; return parseMoney(f.fundingAmount != null ? f.fundingAmount : (f.funding || c.funding)); }
 function tRevenue(c) { const f = c.firmographics || {}; return parseMoney(f.revenueAmount != null ? f.revenueAmount : f.revenue); }
+function tOpr(c) { return (c.opr == null || c.opr === '') ? null : Number(c.opr); }
+
+// Merge cached Open PageRank (prominence) onto the loaded targets for display/sort.
+function applyOpr() {
+  for (const t of salesTargets) {
+    const v = salesOprCache.get(String(t.domain || '').toLowerCase().replace(/^www\./, ''));
+    if (v) { t.opr = v.opr; t.opr_rank = v.rank; }
+  }
+}
+// Fetch Open PageRank for any target domains we haven't looked up yet (one free,
+// batched call), cache per session, then repaint. Fail-open (no key → nulls).
+let salesProminenceBusy = false;
+async function loadProminence() {
+  if (salesProminenceBusy || !salesProjectId || !salesTargets.length) return;
+  const need = [...new Set(salesTargets.map((t) => String(t.domain || '').toLowerCase().replace(/^www\./, '')).filter((d) => d && !salesOprCache.has(d)))];
+  if (!need.length) return;
+  salesProminenceBusy = true;
+  try {
+    const data = await salesPost({ action: 'prominence', project_id: salesProjectId });
+    const p = data.prominence || {};
+    for (const d of need) salesOprCache.set(d, p[d] || { opr: null, rank: null });   // mark fetched (even null) to avoid re-loops
+    applyOpr();
+    renderTargetList();
+  } catch { for (const d of need) salesOprCache.set(d, { opr: null, rank: null }); }
+  finally { salesProminenceBusy = false; }
+}
 
 // A target card (Surface B): checkbox · ⭐ top-fit · name/domain/meta · badges +
 // added-date + remove · contacts (or Enrich) · inline notes. Contact info is
@@ -9341,7 +9372,7 @@ function targetCardHtml(c) {
         <div class="sr-card-links">${domHtml}${li ? ` <a class="sr-card-li" href="${escapeHtml(li)}" target="_blank" rel="noopener" title="Company LinkedIn">in</a>` : ''}</div>
         ${meta ? `<div class="sr-card-meta">${escapeHtml(meta)}</div>` : ''}
       </div>
-      <div class="sr-card-badges">${statusBadge}${tierBadge}${added ? `<span class="sr-t-added" title="Date added to the list">added ${escapeHtml(added)}</span>` : ''}<button type="button" class="sr-t-remove" data-remove data-id="${escapeHtml(c.id)}" title="Remove from the target list" aria-label="Remove">✕</button></div>
+      <div class="sr-card-badges">${c.opr != null ? `<span class="sr-opr" title="Open PageRank — domain authority 0–10 (a free traffic/prominence proxy)${c.opr_rank ? ` · global rank #${Number(c.opr_rank).toLocaleString()}` : ''}">OPR ${Number(c.opr).toFixed(1)}</span>` : ''}${statusBadge}${tierBadge}${added ? `<span class="sr-t-added" title="Date added to the list">added ${escapeHtml(added)}</span>` : ''}<button type="button" class="sr-t-remove" data-remove data-id="${escapeHtml(c.id)}" title="Remove from the target list" aria-label="Remove">✕</button></div>
     </div>
     ${contacts}
     ${notes}
@@ -9355,6 +9386,7 @@ function targetSortCmp(key) {
   if (key === 'funding') return num(tFunding);
   if (key === 'revenue') return num(tRevenue);
   if (key === 'founded') return num(tFounded);
+  if (key === 'prominence') return num(tOpr);
   if (key === 'category') return (a, b) => (targetCat(a).localeCompare(targetCat(b))) || (String(b.added_at || '').localeCompare(String(a.added_at || '')));
   if (key === 'company') return (a, b) => String(a.company || '').localeCompare(String(b.company || ''));
   if (key === 'topfit') return (a, b) => ((a.shortlist_rank == null ? 99 : a.shortlist_rank) - (b.shortlist_rank == null ? 99 : b.shortlist_rank)) || String(b.added_at || '').localeCompare(String(a.added_at || ''));
@@ -9368,6 +9400,7 @@ function renderTargetList() {
   const filterbar = sEl('sr-t-filterbar');
   if (!listEl) return;
   for (const id of [...salesTargetSel]) if (!salesTargets.some((t) => t.id === id)) salesTargetSel.delete(id);
+  applyOpr();   // paint any cached prominence scores onto the fresh target objects
   // Category filter applies to the whole list (incl. the Top 5).
   const inFilter = (t) => salesTargetFilter === 'all' || targetCat(t) === salesTargetFilter;
   const visible = salesTargets.filter(inFilter);
@@ -9410,6 +9443,7 @@ function renderTargetList() {
   }
   updateTargetEnrichBtn();
   updateSalesSurfaceUI();
+  if (salesSurface === 'targets') loadProminence();   // free batched OPR fetch for any new domains
 }
 
 function selectedTargetIds() { return [...salesTargetSel].filter((id) => salesTargets.some((t) => t.id === id)); }
@@ -9558,11 +9592,11 @@ sEl('sr-t-addform')?.addEventListener('submit', async (e) => {
 sEl('sr-t-csv')?.addEventListener('click', () => {
   if (!salesTargets.length) return;
   const cell = (v) => { const s = v == null ? '' : String(v); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
-  const header = ['Top fit', 'Category', 'Company', 'Domain', 'Status', 'Ability to pay', 'Employees', 'Funding', 'Revenue', 'Founded', 'Location', 'Added', 'Notes', 'Contact name', 'Title', 'Email', 'Phone', 'LinkedIn'];
+  const header = ['Top fit', 'Category', 'Company', 'Domain', 'Status', 'Ability to pay', 'Employees', 'Funding', 'Revenue', 'Founded', 'OPR', 'OPR rank', 'Location', 'Added', 'Notes', 'Contact name', 'Title', 'Email', 'Phone', 'LinkedIn'];
   let csv = header.map(cell).join(',') + '\n';
   for (const c of salesTargets) {
     const f = c.firmographics || {};
-    const base = [c.shortlist_rank != null ? `#${c.shortlist_rank}` : '', TARGET_CAT_LABEL[targetCat(c)], c.company, c.domain, c.status, c.tier, tEmployees(c) ?? '', f.funding || c.funding || '', f.revenue || '', f.foundedYear || '', c.location, c.added_at ? salesFmtDate(c.added_at) : '', c.notes];
+    const base = [c.shortlist_rank != null ? `#${c.shortlist_rank}` : '', TARGET_CAT_LABEL[targetCat(c)], c.company, c.domain, c.status, c.tier, tEmployees(c) ?? '', f.funding || c.funding || '', f.revenue || '', f.foundedYear || '', c.opr != null ? Number(c.opr).toFixed(1) : '', c.opr_rank || '', c.location, c.added_at ? salesFmtDate(c.added_at) : '', c.notes];
     const contacts = (c.contacts && c.contacts.length) ? c.contacts : [null];
     for (const p of contacts) csv += [...base, p && p.name, p && p.title, p && p.email, p && p.phone, p && p.linkedin].map(cell).join(',') + '\n';
   }

@@ -1507,9 +1507,16 @@ design in `domain-research/SALES_HUB_SPEC.md`. Additive to the existing module �
   Category / Employees / Funding / Revenue / Founded / Company. Employees/funding/revenue/founded
   come from Apollo firmographics, so a **"Qualify selected"** button was added to the target list
   (mirrors Explore's — `qualify` API action, chunked) to fill them; blanks sort last. CSV gains
-  Category/Revenue/Founded columns. **Website traffic** is NOT collected yet (Apollo doesn't return
-  it) — a free popularity/authority proxy (Tranco rank / OpenPageRank) is a pending follow-up, not
-  true visits. Cache-bust `?v=20260805targetlist`.
+  Category/Revenue/Founded columns. Cache-bust `?v=20260805targetlist`.
+- **Prominence via Open PageRank + on-list chip relocation (2026-08-05).** Traffic proxy: `lib/openpagerank.js`
+  `openPageRank(domains, env)` — FREE DomCop API (header `API-OPR`, env `OPENPAGERANK_API_KEY`), batched
+  100/req, fail-open. NOT true visits — a 0–10 domain-authority + global rank that correlates with traffic
+  (Ahrefs org-traffic is the paid upgrade, pending a key). API action `prominence {project_id}` batch-looks-up
+  the target domains; the client (`salesOprCache`/`loadProminence`/`applyOpr`) fetches once per session when
+  the Target surface opens, caches per domain, shows an **OPR chip** + a **Prominence (OPR)** sort option +
+  CSV cols (OPR / OPR rank). **On-list chip** moved to the FRONT of the Explore card name line (green, by the
+  checkbox) so it's a scannable fixed-left column instead of trailing a variable-length name. Cache-bust
+  `?v=20260805opr`. **Live-verify OPR on deploy** (key is Vercel-only, not in the sandbox).
 - **One-time setup:** run `0019_sales_targets.sql` on the research project. No new
   permission/env. **Out of scope (v1):** public no-login share (a token'd Top-5 view is a
   later add), CRM push, auto-outreach, cross-name rollups, per-company threaded comment log.
