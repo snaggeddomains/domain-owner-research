@@ -31,7 +31,10 @@ export const PREFIXES = [
 export const SUFFIXES = [
   'app', 'labs', 'hub', 'hq', 'ly', 'fy', 'ify', 'now', 'pro', 'base', 'kit', 'flow',
 ];
-export const TLDS = ['com', 'ai', 'xyz', 'org', 'co', 'net', 'io'];
+// The exact SLD on each of these TLDs is enumerated as an upgrade prospect (the
+// owner has the same name on another extension — the highest-signal buyer). Covers
+// the big generics + the tech extensions a same-word company is likely to sit on.
+export const TLDS = ['com', 'ai', 'io', 'net', 'co', 'org', 'xyz', 'app', 'dev', 'tech'];
 
 // Final-redirect hosts that mean "parked / for sale" — a domainer, not an operating
 // business, so a bad outreach target. (Mirrors the Nameserver tool's generic list.)

@@ -1451,6 +1451,18 @@ Find companies that would BUY a domain we're selling. UI at **research.snagged.c
     keyword branch only) — for a tech TLD, EXCLUDE non-tech companies whose only tie is a theme/metaphor
     (a metaphor is fine only when the company is itself tech/AI). Neutral TLDs (.com) → no constraint,
     word meaning drives fit. Product branch is grounded by on-site verification instead, not the TLD gate.
+- **Exact-SLD TLD variants were collapsed by the dedupe (2026-08-05).** For carrot.ai the upgrade path
+  surfaced NONE of carrot.com / carrot.io / carrot.net — all real, live, same-SLD "Carrot" companies.
+  Root cause: `discoverUpgrade` DOES enumerate the exact SLD on every TLD (`tldVariants`) and classify
+  each, but `resolve.js` `resolveCandidates` then dedupes by **normalized company name** — and all
+  three resolve to the name "Carrot", so they merged into ONE row (losers buried in `alt_domains`). The
+  dedupe assumes same-name = same-company (right for `usepiston.com`+`piston.io`), but for a common-word
+  seed carrot.com/.io/.net are DIFFERENT companies that merely share the name — each owns the exact name
+  on another extension, so each is a first-class buyer. Fix: an exact-SLD `tld_variant` row is NEVER
+  deduped by name (keyed `null` → standalone); affix/name_match rows still merge. Also broadened `TLDS`
+  (`upgrade.js`) to `com/ai/io/net/co/org/xyz/app/dev/tech`. Verified with a dedup simulation: old =
+  `carrot.com` only; new = carrot.com/.io/.net all surface + the piston affix pair still merges to one.
+  (Backend-only — re-run a Sales Research report to pick it up.)
 - **Permission:** `research.sales` in snagged-admin `dashboard/lib/permissions.ts`
   (MODULES + CATALOG; stored flat as `sales`). Grant per-user in the Users editor.
 

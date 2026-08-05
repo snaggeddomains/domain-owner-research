@@ -156,10 +156,18 @@ export async function resolveCandidates(cands, opts = {}) {
   );
 
   // Dedupe by normalized company name (rows without a company stay distinct).
+  // EXCEPTION: an exact-SLD TLD variant (carrot.com / carrot.io / carrot.net for a
+  // carrot.* seed) is NEVER deduped by name. For a common-word seed these are
+  // DIFFERENT companies that merely share the name "Carrot" — each owns the exact
+  // name on another extension, so each is a first-class upgrade prospect and must
+  // surface on its own. (Same-name merges are only right for affix/name_match rows,
+  // e.g. usepiston.com + piston.io = one "Piston".)
   const byCompany = new Map();
   const standalone = [];
   for (const r of resolved) {
-    const key = r.company ? r.company.toLowerCase().replace(/[^a-z0-9]/g, '') : null;
+    const key = (r.subtype === 'tld_variant')
+      ? null
+      : (r.company ? r.company.toLowerCase().replace(/[^a-z0-9]/g, '') : null);
     if (!key) { standalone.push(r); continue; }
     const prev = byCompany.get(key);
     if (!prev) { byCompany.set(key, { ...r, alt_domains: [] }); continue; }
