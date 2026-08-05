@@ -98,6 +98,28 @@ deal. The deal record + board live in snagged-admin; this app is a thin, gated p
 - **One-time setup:** none new — reuses `RESEARCH_INTERNAL_SECRET` + `ADMIN_INTERNAL_BASE`
   (already set) and the admin-side Pipedrive setup (pipeline/stages/fields, applied 2026-07-20).
 
+## Internal-owner call-out on the Domain Owner report (2026-08-05)
+
+When OUR OWN database already attributes an owner to the domain, the report now LEADS with a
+prominent banner (`#internal-owner`, above the for-sale strip) instead of burying it in the DB
+Screen / narrative prose — an internal record (e.g. Master Domain List owner "Amanda Waltz",
+source=snagged, for final.com) is a first-class ownership signal Rob didn't want missed.
+- **Endpoint** `api/db-owner.js` — SLIM read of BOTH corpora, deliberately gated by **`domain_owner`**
+  (the report's own perm, NOT `dbsearch`) so every report viewer sees the call-out; the full field
+  dump stays on the DB Screen. `GET ?domain=` → `{owner, corpus, source, price, ownedByUs, master,
+  universe}`. Master: exact `.ilike` → `owner/source/price`. Universe: exact `.eq('domain')` (the
+  b-tree index — `.ilike` would seq-scan millions) → owner DERIVED from an owned-feed source
+  (`OWNER_BY_SOURCE`: snagged_snap/berserk→Snagged, rob_purchases→Rob Schutz, mirrors
+  `lib/sources/universe_ownership.js`). Headline owner = a named Master owner FIRST, else an
+  owned-feed universe owner. `ownedByUs` = Snagged/Rob or universe `source_tier===1`. Read-only,
+  fail-open (a corpus that errors → null; no banner).
+- **UI** (`public/app.js`): `loadInternalOwner(domain)` (kicked from `renderReport`, next to
+  `loadCompanyVitals`) → `renderInternalOwner` paints `#internal-owner` ONLY when our DB names an
+  owner. `.io-*` styles (coral banner; green `.io-owned` variant + "owned by us" tag when
+  `ownedByUs`); shows owner + corpus + source + our price + a "DB Screen ↗" link. Hidden in the
+  report-reset paths. Cache-bust `app.js`/`styles.css` `?v=20260805intowner`.
+- **No new table / permission / env** — reuses the Master + naming DB creds already set.
+
 ## Internal kick-research endpoint (2026-07-22)
 
 `api/internal/kick-research.js` — server-to-server, `x-internal-secret == RESEARCH_INTERNAL_SECRET`

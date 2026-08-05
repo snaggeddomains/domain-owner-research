@@ -66,6 +66,7 @@ const els = {
   batchStatus: $('batch-status'),
   runControls: $('run-controls'),
   cancelRun: $('cancel-run'),
+  internalOwner: $('internal-owner'),
   marketStrip: $('market-strip'),
   companyVitals: $('company-vitals'),
   registrarCard: $('registrar-card'),
@@ -2151,6 +2152,8 @@ function renderReport(report) {
   els.deepenTop.hidden = !(low && canDeep);
   els.deepenBar.hidden = !(shallow && !low && canDeep);
 
+  // Internal-owner call-out — lead with it when OUR DB already attributes an owner.
+  if (currentReportDomain) loadInternalOwner(currentReportDomain);
   // Company vitals — how alive is this company (aliveness free; firmographics on deep).
   if (currentReportDomain) loadCompanyVitals(currentReportDomain, report && report.phase);
   // Registrar — a standard, always-present WHOIS/RDAP block for the domain.
@@ -2398,6 +2401,46 @@ function renderRegistrarCard(w) {
 // (Apollo, ~1 credit) + aliveness (live site, last-updated, email) → a read on how
 // pry-able the name is. Aliveness is free; on the DEEP pass firmographics auto-load,
 // on a free report they're behind a one-click reveal. Cached per domain server-side.
+// Internal-owner call-out — leads the report when OUR OWN database already attributes
+// an owner to this domain (a curated Master Domain List entry like "Amanda Waltz", or an
+// owned-feed name in the Universe → Snagged / Rob). A prominent banner so it's never
+// missed, since an internal record is a first-class ownership signal. Report-gated
+// (domain_owner), fail-open — hidden when there's no internal record.
+async function loadInternalOwner(domain) {
+  const el = els.internalOwner;
+  if (!el || !domain) return;
+  el.hidden = true;
+  el.dataset.domain = domain;
+  try {
+    const res = await fetch(`/research/api/db-owner?domain=${encodeURIComponent(domain)}`);
+    if (!res.ok) return;
+    const data = await res.json();
+    if (el.dataset.domain !== domain) return; // a newer report took over
+    renderInternalOwner(data);
+  } catch { /* fail-open — no callout */ }
+}
+function renderInternalOwner(data) {
+  const el = els.internalOwner;
+  if (!el || !data || !data.owner) return; // only show when our DB actually names an owner
+  const corpusLabel = data.corpus === 'master' ? 'Master Domain List' : 'Name Universe';
+  const bits = [
+    data.source ? `source: ${escapeHtml(String(data.source))}` : '',
+    data.price ? `our price: $${Number(data.price).toLocaleString()}` : '',
+  ].filter(Boolean).join(' · ');
+  const dbLink = `/research/dbscreen/${encodeURIComponent(data.domain)}`;
+  el.className = 'io-callout' + (data.ownedByUs ? ' io-owned' : '');
+  el.innerHTML =
+    `<span class="io-badge">📇 In our records</span>` +
+    `<div class="io-body">` +
+      `<div class="io-owner">Owner: <strong>${escapeHtml(String(data.owner))}</strong>` +
+        (data.ownedByUs ? ` <span class="io-tag">owned by us</span>` : '') +
+      `</div>` +
+      `<div class="io-meta">${escapeHtml(corpusLabel)}${bits ? ` · ${bits}` : ''}</div>` +
+    `</div>` +
+    `<a class="io-link" href="${dbLink}">DB Screen ↗</a>`;
+  el.hidden = false;
+}
+
 const CV_VERDICT_COLOR = { very_hard: '#cf3030', hard: '#e07b2c', possible: '#0b8f3a', unclear: '#8a8a98' };
 async function loadCompanyVitals(domain, phase, reveal = false) {
   const el = els.companyVitals;
@@ -3908,6 +3951,7 @@ function enterResultMode(domain) {
   // Same for the Company vitals card — it's loaded per report domain, so a fresh
   // run must clear the previous company's block (else last report's vitals sit
   // stale through the whole "gathering" stage of the new run).
+  if (els.internalOwner) { els.internalOwner.hidden = true; els.internalOwner.innerHTML = ''; delete els.internalOwner.dataset.domain; }
   if (els.companyVitals) { els.companyVitals.hidden = true; els.companyVitals.innerHTML = ''; delete els.companyVitals.dataset.domain; }
   if (els.registrarCard) { els.registrarCard.hidden = true; els.registrarCard.innerHTML = ''; delete els.registrarCard.dataset.domain; }
   if (els.auctionOwner) { els.auctionOwner.hidden = true; els.auctionOwner.innerHTML = ''; delete els.auctionOwner.dataset.domain; }
@@ -5261,6 +5305,7 @@ function showEntry() {
   if (els.marketStrip) els.marketStrip.hidden = true;
   // Company vitals + Deeper dives render per report — clear them too, or they'd
   // sit stale under the Recent list when you come back to the entry hero.
+  if (els.internalOwner) { els.internalOwner.hidden = true; els.internalOwner.innerHTML = ''; delete els.internalOwner.dataset.domain; }
   if (els.companyVitals) { els.companyVitals.hidden = true; els.companyVitals.innerHTML = ''; delete els.companyVitals.dataset.domain; }
   if (els.registrarCard) { els.registrarCard.hidden = true; els.registrarCard.innerHTML = ''; delete els.registrarCard.dataset.domain; }
   if (els.auctionOwner) { els.auctionOwner.hidden = true; els.auctionOwner.innerHTML = ''; delete els.auctionOwner.dataset.domain; }
