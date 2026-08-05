@@ -35,7 +35,7 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="apple-mobile-web-app-title" content="Snagged Research" />
     <meta name="theme-color" content="#254254" />
-    <link rel="stylesheet" href="styles.css?v=20260805tmetrics" />
+    <link rel="stylesheet" href="styles.css?v=20260805ext" />
     <!-- Layout: horizontal tab nav (Admin-style), no sidebar. -->
   </head>
   <body>
@@ -715,6 +715,7 @@
           <!-- Surface toggle: Explore (discover + add) ⇄ Target list (curate). -->
           <div id="sr-surface" class="sr-surface" hidden role="group" aria-label="Sales hub surface">
             <button type="button" class="sr-surf-btn active" data-surface="explore">Explore</button>
+            <button type="button" class="sr-surf-btn" data-surface="extensions">🌐 Extensions</button>
             <button type="button" class="sr-surf-btn" data-surface="targets">🎯 Target list<span class="sr-surf-n" id="sr-target-count">0</span></button>
           </div>
 
@@ -806,6 +807,19 @@
             </form>
             <div id="sr-targets-top5"></div>
             <div id="sr-targets-list" class="sr-table-wrap"></div>
+          </section>
+
+          <!-- Extensions — Beast-Mode TLD sweep of the exact SLD across every TLD. -->
+          <section id="sr-extensions" class="sr-results" hidden>
+            <div class="sr-toolbar">
+              <div class="sr-summary" id="sr-ext-summary"></div>
+              <div class="sr-actions">
+                <button id="sr-ext-refresh" type="button" class="sr-btn sr-btn-ghost">↻ Refresh</button>
+                <button id="sr-ext-csv" type="button" class="sr-btn sr-btn-ghost">Download CSV</button>
+              </div>
+            </div>
+            <p class="sr-ext-hint muted">Every extension of the exact name — what's taken, for sale (+ asking price), available, or a live site. Powered by the Beast-Mode sweep.</p>
+            <div id="sr-ext-table" class="sr-table-wrap"></div>
           </section>
         </section>
 
@@ -1381,6 +1395,6 @@ The model parses it into structured filters (TLDs, length, budget, tone, etc.) a
     </div>
 
     <!-- Bump ?v= on any public/app.js or styles.css change to bust caches. -->
-    <script src="app.js?v=20260805tmetrics"></script>
+    <script src="app.js?v=20260805ext"></script>
   </body>
 </html>

@@ -1540,6 +1540,15 @@ design in `domain-research/SALES_HUB_SPEC.md`. Additive to the existing module �
   CSV cols (OPR / OPR rank). **On-list chip** moved to the FRONT of the Explore card name line (green, by the
   checkbox) so it's a scannable fixed-left column instead of trailing a variable-length name. Cache-bust
   `?v=20260805opr`. **Live-verify OPR on deploy** (key is Vercel-only, not in the sandbox).
+- **Extensions surface — Beast-Mode TLD sweep (2026-08-05).** A third Sales Hub surface (`#sr-surface`
+  toggle Explore / 🌐 Extensions / 🎯 Target list) that sweeps the EXACT seed SLD across every TLD and
+  shows taken / for-sale (+ asking price + marketplace) / available / active-site — reusing the naming
+  exercise engine (`lib/variations/sweep.js` `sweepVariations` with `prefixes:[], suffixes:[]` →
+  extensions only). API action `extensions {domain}` in `api/sales.js` (gated `research.sales`, filters
+  `kind==='extension'`). UI (`public/app.js` `loadExtensions`/`renderExtensions`, cached per session;
+  `.sx-*` table styles) — status pills, price, marketplace link, register link, refresh, CSV.
+  Complements Upgrades (which resolves TLD siblings to COMPANIES): Extensions shows each domain's
+  DISPOSITION (buyable / parked / active / price). Cache-bust `?v=20260805ext`.
 - **One-time setup:** run `0019_sales_targets.sql` on the research project. No new
   permission/env. **Out of scope (v1):** public no-login share (a token'd Top-5 view is a
   later add), CRM push, auto-outreach, cross-name rollups, per-company threaded comment log.

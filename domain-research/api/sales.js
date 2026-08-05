@@ -17,6 +17,7 @@ import { anglesForSeed } from '../lib/sales/discovery/angles.js';
 import { enrichCompany } from '../lib/sales/enrich/contacts.js';
 import { firmographics, abilityToPay } from '../lib/sales/enrich/firmographics.js';
 import { openPageRank } from '../lib/openpagerank.js';
+import { sweepVariations } from '../lib/variations/sweep.js';
 import {
   createSalesProject, getSalesProject, listSalesProjects, listSalesCandidates, getSalesCandidate,
   setSalesSelection, setCandidateEnrichStatus, replaceCandidateContacts, listContactsForCandidates,
@@ -238,6 +239,22 @@ async function handleShortlist(body, res) {
   res.status(200).json({ ok: true, id, rank });
 }
 
+// Extensions — a Beast-Mode-style TLD sweep of the EXACT seed SLD across every
+// extension: taken / for-sale / available / active-site + price + marketplace.
+// Reuses the naming-exercise variations engine (extensions only — no affixes).
+async function handleExtensions(body, res) {
+  const raw = String(body.domain || '').trim().toLowerCase();
+  const { sld, domain } = seedParts(raw);
+  if (!sld) { res.status(400).json({ error: 'Provide a domain, e.g. carrot.ai' }); return; }
+  try {
+    const all = await sweepVariations(domain, { env: process.env, prefixes: [], suffixes: [] });
+    const results = (all || []).filter((r) => r.kind === 'extension');
+    res.status(200).json({ ok: true, seed: sld, count: results.length, results });
+  } catch (e) {
+    res.status(500).json({ error: String(e.message || e) });
+  }
+}
+
 // Prominence — a FREE Open PageRank (0–10 authority + global rank) per target
 // domain, a traffic proxy for the target list. Batched, fail-open (no key → {}).
 async function handleProminence(body, res) {
@@ -275,6 +292,7 @@ async function route(req, res) {
     if (action === 'shortlist') return handleShortlist(body, res);
     if (action === 'update_target') return handleUpdateTarget(body, res);
     if (action === 'prominence') return handleProminence(body, res);
+    if (action === 'extensions') return handleExtensions(body, res);
     res.status(400).json({ error: `Unknown action: ${action}` });
     return;
   }

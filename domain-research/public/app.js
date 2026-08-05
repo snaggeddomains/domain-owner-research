@@ -8524,8 +8524,10 @@ function resetSalesView() {
   salesSelected.clear();
   salesTargets = []; salesTargetSel.clear(); salesSurface = 'explore';
   salesTargetFilter = 'all'; salesTargetSort = 'added';
+  salesExtRows = null;
   if (sEl('sr-surface')) sEl('sr-surface').hidden = true;
   if (sEl('sr-targets')) sEl('sr-targets').hidden = true;
+  if (sEl('sr-extensions')) sEl('sr-extensions').hidden = true;
   if (sEl('sr-t-addform')) sEl('sr-t-addform').hidden = true;
   if (sEl('sr-t-filterbar')) sEl('sr-t-filterbar').hidden = true;
   if (els.srDomain) els.srDomain.value = '';
@@ -8707,7 +8709,7 @@ function openSalesProject(id) {
   salesProjectId = id;
   salesSeed = '';                // cleared until the poll returns the real seed
   salesTargets = []; salesTargetSel.clear(); salesSelected.clear(); salesSurface = 'explore';
-  salesTargetFilter = 'all'; salesTargetSort = 'added';
+  salesTargetFilter = 'all'; salesTargetSort = 'added'; salesExtRows = null;
   els.srGo.disabled = true;
   setSalesMode('results', '');   // collapse entry; seed filled in once the poll returns it
   setSalesStatus('Discovering candidates and qualifying ability-to-pay…');
@@ -9263,22 +9265,84 @@ function salesFmtDate(x) { const d = new Date(x); return isNaN(d) ? '' : d.toLoc
 // visibility of both sections + the toggle bar (only visible once a run is open).
 function updateSalesSurfaceUI() {
   const bar = sEl('sr-surface');
-  const targetsSec = sEl('sr-targets');
   const hasRun = !!salesProjectId && !!salesSeed;
   if (bar) bar.hidden = !hasRun;
   const cnt = sEl('sr-target-count'); if (cnt) cnt.textContent = String(salesTargets.length);
   bar?.querySelectorAll('.sr-surf-btn').forEach((b) => b.classList.toggle('active', b.dataset.surface === salesSurface));
-  const onTargets = salesSurface === 'targets';
-  if (els.srResults) els.srResults.hidden = onTargets || !hasRun;
-  if (targetsSec) targetsSec.hidden = !onTargets || !hasRun;
+  if (els.srResults) els.srResults.hidden = !(hasRun && salesSurface === 'explore');
+  const ext = sEl('sr-extensions'); if (ext) ext.hidden = !(hasRun && salesSurface === 'extensions');
+  const tg = sEl('sr-targets'); if (tg) tg.hidden = !(hasRun && salesSurface === 'targets');
 }
 function setSalesSurface(s) {
-  salesSurface = (s === 'targets') ? 'targets' : 'explore';
+  salesSurface = (s === 'targets' || s === 'extensions') ? s : 'explore';
   updateSalesSurfaceUI();
-  if (salesSurface === 'targets') renderTargetList();   // triggers the free OPR prominence fetch
+  if (salesSurface === 'targets') renderTargetList();     // triggers the free OPR prominence fetch
+  if (salesSurface === 'extensions') loadExtensions();    // Beast-Mode TLD sweep (cached per session)
 }
 sEl('sr-surface')?.addEventListener('click', (e) => {
   const b = e.target.closest('.sr-surf-btn'); if (b) setSalesSurface(b.dataset.surface);
+});
+
+// ── Extensions surface — Beast-Mode TLD sweep of the exact SLD ────────────────
+let salesExtRows = null;   // cached sweep rows for this project (null = not loaded)
+let salesExtBusy = false;
+const EXT_ORDER = { for_sale: 0, available: 1, active: 2, parked: 3, registered: 4 };
+const EXT_LABEL = { for_sale: 'For sale', available: 'Available', active: 'Active site', parked: 'Parked', registered: 'Registered' };
+const extSym = (c) => ({ USD: '$', EUR: '€', GBP: '£' }[c] || '$');
+function extPrice(r) {
+  if (r.category !== 'for_sale') return '—';
+  if (r.price > 0) return `${extSym(r.currency)}${Number(r.price).toLocaleString()}${(r.price_range && r.price_min) ? `–${extSym(r.currency)}${Number(r.price_min).toLocaleString()}` : ''}`;
+  if (r.min_offer > 0) return `${extSym(r.currency)}${Number(r.min_offer).toLocaleString()} <span class="sx-tag">min offer</span>`;
+  if (r.make_offer) return 'Make offer';
+  return '—';
+}
+async function loadExtensions(force) {
+  if (salesExtBusy || !salesSeed) return;
+  if (salesExtRows && !force) { renderExtensions(); return; }
+  salesExtBusy = true;
+  const table = sEl('sr-ext-table');
+  if (table) table.innerHTML = spinHtml(`Sweeping every extension of ${escapeHtml(salesSeed)}…`);
+  try {
+    const data = await salesPost({ action: 'extensions', domain: salesSeed });
+    salesExtRows = data.results || [];
+    renderExtensions();
+  } catch (e) { if (table) table.innerHTML = `<p class="sr-status-err">${escapeHtml(String(e.message || e))}</p>`; }
+  finally { salesExtBusy = false; }
+}
+function renderExtensions() {
+  const table = sEl('sr-ext-table'); const summary = sEl('sr-ext-summary');
+  if (!table) return;
+  const rows = (salesExtRows || []).slice().sort((a, b) => (EXT_ORDER[a.category] ?? 9) - (EXT_ORDER[b.category] ?? 9) || String(a.domain).localeCompare(String(b.domain)));
+  if (summary) {
+    const n = (cat) => rows.filter((r) => r.category === cat).length;
+    summary.innerHTML = rows.length
+      ? `<span class="sr-sum-n">${rows.length}</span> extensions<span class="sr-sum-dot">·</span>${n('for_sale')} for sale<span class="sr-sum-dot">·</span>${n('available')} available<span class="sr-sum-dot">·</span>${n('active')} active`
+      : '';
+  }
+  if (!rows.length) { table.innerHTML = '<p class="muted">No extensions found.</p>'; return; }
+  const listCell = (r) => {
+    if (r.for_sale && r.link) return `<a href="${escapeHtml(r.link)}" target="_blank" rel="noopener">${escapeHtml(r.marketplace || 'Listing')} ↗</a>`;
+    if (r.category === 'available') return `<a href="https://porkbun.com/checkout/search?q=${encodeURIComponent(r.domain)}" target="_blank" rel="noopener">Register ↗</a>`;
+    return '—';
+  };
+  table.innerHTML = `<table class="sx-table"><thead><tr><th>Domain</th><th>Status</th><th>Price</th><th>Listing</th></tr></thead><tbody>${rows.map((r) => `
+    <tr>
+      <td><a class="sx-dom" href="https://${escapeHtml(r.domain)}" target="_blank" rel="noopener">${escapeHtml(r.domain)}</a></td>
+      <td><span class="sx-st sx-st-${r.category}">${EXT_LABEL[r.category] || escapeHtml(r.category || '')}</span></td>
+      <td>${extPrice(r)}</td>
+      <td>${listCell(r)}</td>
+    </tr>`).join('')}</tbody></table>`;
+}
+sEl('sr-ext-refresh')?.addEventListener('click', () => loadExtensions(true));
+sEl('sr-ext-csv')?.addEventListener('click', () => {
+  const rows = salesExtRows || []; if (!rows.length) return;
+  const cell = (v) => { const s = v == null ? '' : String(v); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
+  let csv = ['Domain', 'Status', 'Price', 'Currency', 'Marketplace', 'Link'].map(cell).join(',') + '\n';
+  for (const r of rows) csv += [r.domain, EXT_LABEL[r.category] || r.category, r.price || r.min_offer || '', r.currency || '', r.marketplace || '', r.link || ''].map(cell).join(',') + '\n';
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href = url; a.download = `${(salesSeed || 'sales').replace(/\W+/g, '-').slice(0, 40)}-extensions-${new Date().toISOString().split('T')[0]}.csv`;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
 });
 
 function salesContactLine(p) {
