@@ -46,41 +46,50 @@ Each Sales Research run is a dead-end:
 
 ## The Sales Hub (per name)
 
-One screen per name (`/research/sales/:id`), organized around a **saved target list**:
+Enter a name (e.g. `carrot.ai`) → its hub opens (`/research/sales/:id`). The hub has
+**two surfaces** and a persistent **target list** that ties them together.
 
-### 1. Candidates → Targets (promote, don't export)
-- Discovery output is saved to the name (already is — `domain_research_sales_candidates`).
-- A candidate is a *suggestion*. **Promoting it makes it a Target** (`is_target=true`) —
-  a first-class row that persists and is worked.
-- The old "download CSV" stays as an export of the **Targets** (not all candidates), but
-  it's no longer the point of the tool.
+### Surface A — Explore (multi-select → Add to target list)
 
-### 2. Manual targets, contact info optional
-- **＋ Add company manually** form: `company` (required), `domain` (optional),
-  `description`/`location`/`notes` (optional). No contact info required.
-- A manual target is `is_target=true`, `manual=true`, `status='unknown'`,
-  `enrich_status=null`. It sits in the list exactly like a discovered target.
-- Contact enrichment is a **per-target on-demand button** (RocketReach), not a
-  prerequisite — a target can live indefinitely with zero contacts and get enriched
-  later, or never.
+The discovery side, where you gather candidates. It has the exploration modes the module
+already supports, each with **checkbox multi-select + an "＋ Add to target list" button**:
 
-### 3. Top 5 best fits
-- As the person working the name (Judy, Brian, …) goes through candidates and targets,
-  they mark the ones they judge to be the **best fits for this name** — a **⭐ Top-fit**
-  toggle sets `shortlist_rank` (1-5). Max 5 per name; toggling a 6th is rejected
-  client-side with a nudge to unstar one first.
-- The hub pins a **Top 5** section up top — the best-fit companies for the name (a
-  human judgment made while working it, not an auto-ranking). Everything else is the full
-  target list below it.
-- The 5 are order-able (drag or up/down), stored in `shortlist_rank` — the ⭐ is a
-  human "this is a top fit" mark, not a queue/assignment.
+- **Upgrades** — the ranked potential-upgrade companies for the name (`try.com`-style TLD/
+  affix variations resolved to companies). Check several → **Add to target list**.
+- **By category / angle** — explore product-named and keyword-angle companies (the existing
+  `angles` / `research_angles` path — e.g. carrot.ai's "companies whose product is Carrot"
+  and keyword-relevant companies). Check the ones that fit → **Add to target list**.
 
-### 4. Everything in one place
-Research candidates, promoted + manual targets, per-target contacts, per-target status —
-all on the name. The loop collapses to: discover → promote/add → shortlist 5 → enrich on
-demand. No CSV round-trip.
+Adding is the *promote* action: the checked candidates get `is_target=true` and move onto
+the target list. Explore stays a working scratch surface — you can come back and add more
+from either mode at any time; the list accumulates.
 
-### 5. Link-shareable
+### Surface B — Target list (the curated worklist)
+
+Click into the **Target list** to see every company you've added — the shortlisted set for
+this name. This is where curation + enrichment happen:
+
+- **Add a company manually** — `company` (required), `domain`/`description`/`location`/
+  `notes` (optional). No contact info required. A manual target sits in the list exactly
+  like a discovered one (`manual=true`, `is_target=true`).
+- **Delete** a company from the list (demote — `is_target=false`; it drops back to a plain
+  candidate in Explore, not destroyed).
+- **Mark top fits** — highlight the best fits for the name as a **⭐ Top 5 focus**
+  (`shortlist_rank` 1-5, max 5, order-able). A human "this is a top fit" judgment made while
+  working the list, not an auto-ranking or an assignment. The 5 pin to the top of the list.
+- **Enrich** — kick the contact-enrichment (RocketReach) here, per-target on demand (or
+  bulk over the selected/whole list). Enrichment is **strictly optional and additive** — a
+  target (including a #1 top fit) stays on the list with zero contacts; see the invariant
+  above.
+
+### The hub persists everything (shareable, returnable, appendable)
+
+All of it — the added targets, the top-5 marks, the notes, the enriched contacts — is saved
+in the name's hub. You can **share it** (§ below), **come back to it** later, and **append**
+more targets (from Explore or manually) over time. Nothing is a throwaway run; the hub is
+the durable home for the name's sell-side target work.
+
+### Link-shareable
 The hub has a **🔗 Share** button that copies a clean, stable URL to *this name's hub*
 (`https://app.snagged.com/research/sales/<id>`) — so a target list can be handed to a
 teammate (e.g. Judy) with one link instead of a CSV.
@@ -107,10 +116,12 @@ Migration on the **research project** — `domain_research_sales_candidates`:
 
 ```sql
 alter table domain_research_sales_candidates
-  add column if not exists is_target      boolean not null default false,
-  add column if not exists manual         boolean not null default false,
-  add column if not exists shortlist_rank smallint,   -- 1..5, null = not shortlisted
-  add column if not exists notes          text;
+  add column if not exists is_target       boolean not null default false,
+  add column if not exists manual          boolean not null default false,
+  add column if not exists shortlist_rank  smallint,     -- 1..5, null = not a top fit
+  add column if not exists notes           text,         -- free-text comments per company
+  add column if not exists added_at        timestamptz,  -- when promoted onto the target list
+  add column if not exists shortlisted_at  timestamptz;  -- when marked a ⭐ top fit
 
 create index if not exists idx_sales_cand_target
   on domain_research_sales_candidates (project_id, is_target);
@@ -118,6 +129,13 @@ create index if not exists idx_sales_cand_shortlist
   on domain_research_sales_candidates (project_id, shortlist_rank)
   where shortlist_rank is not null;
 ```
+
+**Per-company metadata.** `added_at` is stamped when a company is added to the target list
+(via `add_to_targets` or a manual add), `shortlisted_at` when it's first marked a top fit —
+so the list can show/sort by "date added" and "date shortlisted." `notes` is the free-text
+**comments/notes on each company** (edited inline on Surface B). A single notes field covers
+v1; if a threaded comment *log* per company is wanted later, it's an additive child table
+(`domain_research_sales_notes`) — out of scope here.
 
 Notes on existing columns we reuse (no change):
 - `selected` stays as the transient checkbox state for bulk actions; `is_target` is the
@@ -137,44 +155,59 @@ applied.
 
 ## API changes (`api/sales.js`, gated `research.sales`)
 
-New/changed POST actions (existing `create`/`select`/`enrich`/`qualify` unchanged):
+New/changed POST actions (existing `create`/`select`/`angles`/`research_angles`/`enrich`/
+`qualify` unchanged — the `angles`/`research_angles` path already powers Explore's
+by-category mode):
 
+- `add_to_targets` `{project_id, ids[]}` → **the "Add to target list" bulk action** from
+  Explore (upgrades or by-category): promotes the checked candidates (`is_target=true`,
+  stamps `added_at`).
 - `add_target` `{project_id, company, domain?, description?, location?, notes?}` →
-  inserts one manual target (`manual=true, is_target=true`). Returns the new candidate.
-- `set_target` `{ids[], is_target}` → promote/demote candidates to/from the target list.
-- `shortlist` `{id, rank|null}` → set/clear `shortlist_rank` (server enforces the max-5
-  per project; a rank collision reorders rather than duplicating).
-- `update_target` `{id, notes?, company?, domain?, ...}` → edit a manual (or any) target's
-  editable fields.
-- `enrich` `{candidate_id}` — unchanged, but now the primary way contacts get added
-  (per-target button).
+  inserts one **manual** target (`manual=true, is_target=true`, `added_at=now()`). Returns
+  the new candidate.
+- `remove_target` `{ids[]}` → **delete from the list** (demote `is_target=false`; the row
+  stays a candidate in Explore, not destroyed).
+- `shortlist` `{id, rank|null}` → set/clear the **⭐ Top-fit** `shortlist_rank` (server
+  enforces max-5 per project; a rank collision reorders rather than duplicating; stamps
+  `shortlisted_at` on first mark).
+- `update_target` `{id, notes?, company?, domain?, ...}` → edit a target's editable fields.
+- `enrich` `{candidate_id}` — unchanged single-target enrich; **`enrich {ids[]}`** added for
+  bulk enrich over selected targets. The primary way contacts get added, from Surface B.
 
-GET `?id=` already returns the project + candidates + contacts; it additionally sorts so
-shortlisted targets lead, then other targets, then un-promoted candidates. CSV export
-(`?id=&format=csv`) exports **targets only** by default (`&all=1` for every candidate).
+GET `?id=` returns the project + candidates + contacts, split so the UI can render both
+surfaces: `targets` (is_target, shortlisted first) and `candidates` (the Explore pool).
+CSV export (`?id=&format=csv`) exports the **target list** by default (`&all=1` for every
+candidate).
 
-DB helpers (`lib/db/sales.js`): add `addManualTarget`, `setTargetFlag(ids, v)`,
-`setShortlistRank(id, rank)`, `updateTarget(id, patch)` — each strip-and-retry on 42703.
+DB helpers (`lib/db/sales.js`): add `addToTargets(ids)`, `addManualTarget(...)`,
+`removeTargets(ids)`, `setShortlistRank(id, rank)`, `updateTarget(id, patch)`,
+`listTargets`/`listCandidates` — each strip-and-retry on 42703.
 
 ---
 
 ## UI changes (`public/index.html` `#view-sales`, `app.js` `sales*`, `.sr-*`)
 
-The seed → poll → ranked-table flow is unchanged for discovery. The results view gains
-three regions:
+Two surfaces under the name's hub, with a toggle/tab between them (the seed → poll flow
+into Explore is unchanged):
 
-1. **⭐ Top 5** (pinned) — the best-fit targets marked for this name, each a compact card: company · domain ·
-   tier · best contact (or "no contact — Enrich") · notes. Reorderable.
-2. **🎯 Targets** — every `is_target` row, with per-row: demote, ⭐ shortlist toggle,
-   Enrich (on-demand), edit notes, contacts inline.
-3. **Suggestions** — the un-promoted discovered candidates (the current ranked table),
-   each with a **＋ Promote to target** action. "Show for-sale/inactive" toggle stays.
+**Surface A — Explore** (the existing discovery UI, extended):
+- **Upgrades** table + a **By category / angle** view (product-named + keyword companies,
+  the existing angles UI). Both get a **checkbox column** and a sticky **"＋ Add to target
+  list (N)"** button that fires `add_to_targets` for the checked rows. "Show for-sale/
+  inactive" toggle stays. A row already on the list shows an "✓ on list" chip.
 
-Plus an **＋ Add company manually** button (opens the manual-target form) above the
-Targets region, and **Download targets CSV**.
+**Surface B — Target list** (new view, click in from a "🎯 Target list (N)" tab):
+- **⭐ Top 5** pinned at the top — best-fit cards (company · domain · tier · best contact
+  or "no contact — Enrich" · notes), order-able.
+- The full target list below: per-row **⭐ top-fit toggle**, **Enrich** (single) / **Enrich
+  selected** (bulk), **edit notes/comments** (inline), **date added** (+ date shortlisted),
+  **✕ remove from list**, contacts inline. Columns are sortable (incl. by date added / tier).
+- **＋ Add company manually** button (opens the manual-target form).
+- **Download target-list CSV**.
 
-Recent-runs list + deep-link (`/research/sales/:id`) already exist; the hub *is* the
-opened run. Cache-bust `app.js`/`styles.css` on ship.
+Both surfaces live under the hub header (name + **🔗 Share**). Recent-runs list + deep-link
+(`/research/sales/:id`) already exist; the hub *is* the opened run, now durable + appendable.
+Cache-bust `app.js`/`styles.css` on ship.
 
 ---
 
