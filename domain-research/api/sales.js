@@ -20,6 +20,7 @@ import {
   createSalesProject, getSalesProject, listSalesProjects, listSalesCandidates, getSalesCandidate,
   setSalesSelection, setCandidateEnrichStatus, replaceCandidateContacts, listContactsForCandidates,
   insertSalesCandidates, updateCandidateQualification, setSalesProjectStatus,
+  addToTargets, addManualTarget, removeTargets, setShortlistRank, updateTarget,
 } from '../lib/db/sales.js';
 
 export const config = { maxDuration: 60 };
@@ -41,9 +42,22 @@ async function handleGet(req, res) {
   const contacts = await listContactsForCandidates(candidates.map((c) => c.id));
   const byCand = {};
   for (const c of contacts) (byCand[c.candidate_id] ||= []).push(c);
+  const withContacts = candidates.map((c) => ({ ...c, contacts: byCand[c.id] || [] }));
+  // Sales Hub: split off the TARGET LIST — is_target rows, top fits first
+  // (shortlist_rank asc), then most-recently-added, then score/size. Explore
+  // keeps the full `candidates` pool (targets show an "on list" chip there).
+  const rank = (c) => (c.shortlist_rank == null ? 99 : Number(c.shortlist_rank));
+  const targets = withContacts
+    .filter((c) => c.is_target)
+    .sort((a, b) =>
+      (rank(a) - rank(b))
+      || (String(b.added_at || '').localeCompare(String(a.added_at || '')))
+      || ((Number(b.score) || 0) - (Number(a.score) || 0))
+      || ((b.employee_count || 0) - (a.employee_count || 0)));
   res.status(200).json({
     project: { id: project.id, seed_domain: project.seed_domain, status: project.status, stage: project.stage, error: project.error },
-    candidates: candidates.map((c) => ({ ...c, contacts: byCand[c.id] || [] })),
+    candidates: withContacts,
+    targets,
   });
 }
 
@@ -128,11 +142,10 @@ async function handleQualify(body, res) {
   res.status(200).json({ ok: true, qualified: out });
 }
 
-async function handleEnrich(body, res) {
-  const candidateId = String(body.candidate_id || '').trim();
-  if (!candidateId) { res.status(400).json({ error: 'candidate_id required' }); return; }
+// Enrich ONE company's contacts (RocketReach). Shared by the single + bulk paths.
+async function enrichOne(candidateId) {
   const cand = await getSalesCandidate(candidateId);
-  if (!cand) { res.status(404).json({ error: 'Candidate not found' }); return; }
+  if (!cand) return { id: candidateId, error: 'not found' };
   await setCandidateEnrichStatus(candidateId, 'pending');
   try {
     const contacts = await enrichCompany(
@@ -141,11 +154,95 @@ async function handleEnrich(body, res) {
     );
     await replaceCandidateContacts(candidateId, contacts);
     await setCandidateEnrichStatus(candidateId, 'done');
-    res.status(200).json({ ok: true, candidate_id: candidateId, contacts });
+    return { id: candidateId, contacts };
   } catch (e) {
     await setCandidateEnrichStatus(candidateId, 'failed');
-    res.status(500).json({ error: String(e.message || e) });
+    return { id: candidateId, error: String(e.message || e) };
   }
+}
+
+async function handleEnrich(body, res) {
+  // Bulk: enrich the selected targets (Surface B). Bounded concurrency so a
+  // handful of RocketReach lookups stay inside the 60s API cap.
+  const ids = Array.isArray(body.ids) ? body.ids.map(String).filter(Boolean) : [];
+  if (ids.length) {
+    const out = new Array(ids.length);
+    let i = 0;
+    const worker = async () => { while (i < ids.length) { const idx = i++; out[idx] = await enrichOne(ids[idx]); } };
+    await Promise.all(Array.from({ length: Math.min(4, ids.length) }, worker));
+    res.status(200).json({ ok: true, enriched: out });
+    return;
+  }
+  const candidateId = String(body.candidate_id || '').trim();
+  if (!candidateId) { res.status(400).json({ error: 'candidate_id or ids required' }); return; }
+  const r = await enrichOne(candidateId);
+  if (r.error) { res.status(r.error === 'not found' ? 404 : 500).json({ error: r.error }); return; }
+  res.status(200).json({ ok: true, candidate_id: candidateId, contacts: r.contacts });
+}
+
+// ── Sales Hub target-list actions (see SALES_HUB_SPEC.md) ───────────────────
+
+// "＋ Add to target list" — promote the checked Explore candidates.
+async function handleAddToTargets(body, res) {
+  const projectId = String(body.project_id || '').trim();
+  const ids = Array.isArray(body.ids) ? body.ids.map(String).filter(Boolean) : [];
+  if (!projectId || !ids.length) { res.status(400).json({ error: 'project_id and ids required' }); return; }
+  const added = await addToTargets(projectId, ids);
+  res.status(200).json({ ok: true, added });
+}
+
+// Add a company by hand (company required; domain/contact optional).
+async function handleAddTarget(body, res) {
+  const projectId = String(body.project_id || '').trim();
+  const company = String(body.company || '').trim();
+  if (!projectId || !company) { res.status(400).json({ error: 'project_id and company required' }); return; }
+  const domain = String(body.domain || '').trim().toLowerCase().replace(/^https?:\/\//, '').replace(/\/.*$/, '') || null;
+  const target = await addManualTarget(projectId, {
+    company,
+    domain,
+    company_url: String(body.company_url || '').trim() || null,
+    description: String(body.description || '').trim() || null,
+    location: String(body.location || '').trim() || null,
+    notes: String(body.notes || '').trim() || null,
+  });
+  res.status(200).json({ ok: true, target: target ? { ...target, contacts: [] } : null });
+}
+
+// Remove from the target list (demote — stays a candidate in Explore).
+async function handleRemoveTarget(body, res) {
+  const ids = Array.isArray(body.ids) ? body.ids.map(String).filter(Boolean) : [];
+  if (!ids.length) { res.status(400).json({ error: 'ids required' }); return; }
+  const removed = await removeTargets(ids);
+  res.status(200).json({ ok: true, removed });
+}
+
+// Set / clear the ⭐ Top-fit mark (max 5 per project, enforced here).
+async function handleShortlist(body, res) {
+  const id = String(body.id || '').trim();
+  if (!id) { res.status(400).json({ error: 'id required' }); return; }
+  const cand = await getSalesCandidate(id);
+  if (!cand) { res.status(404).json({ error: 'Candidate not found' }); return; }
+  const clearing = body.rank == null;
+  if (!clearing) {
+    // Enforce the max-5: count OTHER shortlisted rows in this project.
+    const all = await listSalesCandidates(cand.project_id);
+    const others = all.filter((c) => c.id !== id && c.shortlist_rank != null).length;
+    if (cand.shortlist_rank == null && others >= 5) {
+      res.status(400).json({ error: 'Top 5 is full — unmark one first.' });
+      return;
+    }
+  }
+  const rank = clearing ? null : Math.max(1, Math.min(5, Number(body.rank) || 1));
+  await setShortlistRank(id, rank);
+  res.status(200).json({ ok: true, id, rank });
+}
+
+// Edit a target's inline fields (notes/comments + basic identity).
+async function handleUpdateTarget(body, res) {
+  const id = String(body.id || '').trim();
+  if (!id) { res.status(400).json({ error: 'id required' }); return; }
+  await updateTarget(id, body);
+  res.status(200).json({ ok: true, id });
 }
 
 async function route(req, res) {
@@ -160,6 +257,11 @@ async function route(req, res) {
     if (action === 'qualify') return handleQualify(body, res);
     if (action === 'select') return handleSelect(body, res);
     if (action === 'enrich') return handleEnrich(body, res);
+    if (action === 'add_to_targets') return handleAddToTargets(body, res);
+    if (action === 'add_target') return handleAddTarget(body, res);
+    if (action === 'remove_target') return handleRemoveTarget(body, res);
+    if (action === 'shortlist') return handleShortlist(body, res);
+    if (action === 'update_target') return handleUpdateTarget(body, res);
     res.status(400).json({ error: `Unknown action: ${action}` });
     return;
   }

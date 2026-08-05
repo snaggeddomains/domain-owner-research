@@ -1432,6 +1432,45 @@ Find companies that would BUY a domain we're selling. UI at **research.snagged.c
 - **Permission:** `research.sales` in snagged-admin `dashboard/lib/permissions.ts`
   (MODULES + CATALOG; stored flat as `sales`). Grant per-user in the Users editor.
 
+## Sales Hub — per-name persistent target list (2026-08-05)
+
+Evolves Sales Research from *run-and-export-a-CSV* into a durable **per-name hub**: a saved,
+curated **target list** you build up, shortlist, enrich, share, and append over time. Full
+design in `domain-research/SALES_HUB_SPEC.md`. Additive to the existing module — same
+`research.sales` gate + the three `domain_research_sales_*` tables. NO HubSpot/CRM.
+
+- **Two surfaces** under the name's hub (`#view-sales`, surface toggle `#sr-surface`):
+  **Explore** (the existing Upgrades + Explore-by-category discovery, now with a checkbox
+  **＋ Add to target list** bulk action) and **Target list** (`#sr-targets` — the curated set).
+  Explore cards show a **✓ on list** chip once added.
+- **Target list (Surface B):** promote candidates OR **add a company manually**
+  (`#sr-t-addform`, company required, domain/contact optional), **remove** (demote — stays a
+  candidate in Explore), **⭐ mark up to 5 top fits** (best-fit-for-this-name human judgment,
+  pinned Top 5 up top), **per-target + bulk Enrich** (RocketReach on demand), **inline
+  notes/comments**, **date added**. **🔗 Share** button copies a gated deep-link
+  (`/research/sales/<id>` — internal, any `research.sales` teammate).
+- **INVARIANT (hold the build to this):** a target's worth is independent of its contact
+  info — a great target (incl. a #1 top fit) STAYS on the list with zero contacts; enrichment
+  is strictly additive/optional. `is_target`/`shortlist_rank` are set by fit, never gated on
+  contacts; no-contact targets never sort below lesser ones with an email; nothing expires a
+  target for lacking contacts.
+- **Data** (migration `supabase/migrations/0019_sales_targets.sql`, run on the research
+  project): `domain_research_sales_candidates` +`is_target`/`manual`/`shortlist_rank`
+  (1-5)/`notes`/`added_at`/`shortlisted_at` + 2 indexes. All writers in `lib/db/sales.js`
+  (`addToTargets`/`addManualTarget`/`removeTargets`/`setShortlistRank`/`updateTarget`,
+  `updateCandidatesSafe`) **strip-and-retry 42703** so it degrades gracefully pre-migration
+  (target features are simply off until 0019 runs).
+- **API** (`api/sales.js`): actions `add_to_targets`/`add_target`/`remove_target`/`shortlist`
+  (max-5 enforced server-side)/`update_target` + **bulk `enrich {ids[]}`**; GET returns
+  `{candidates, targets}` (targets = is_target, top fits first). `angles`/`research_angles`
+  power Explore's by-category mode (unchanged).
+- **UI** (`public/app.js` `salesTargets`/`salesSurface`/`renderTargetList`/`targetCardHtml`/
+  `toggleTopFit`/`enrichTarget` etc.; `.sr-surf-*`/`.sr-t-*` styles). Cache-bust
+  `?v=20260805saleshub`.
+- **One-time setup:** run `0019_sales_targets.sql` on the research project. No new
+  permission/env. **Out of scope (v1):** public no-login share (a token'd Top-5 view is a
+  later add), CRM push, auto-outreach, cross-name rollups, per-company threaded comment log.
+
 ---
 
 # Corporate Portfolios — reverse-WHOIS a company → its premium domains (2026-06-11)

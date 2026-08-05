@@ -96,6 +96,98 @@ export async function setSalesSelection(projectId, ids, selected) {
   if (error) throw new Error(`setSalesSelection: ${error.message}`);
 }
 
+// ── Sales Hub: per-name target list (see SALES_HUB_SPEC.md) ─────────────────
+// A candidate becomes a first-class TARGET (is_target) — promoted from Explore
+// or added manually. All writes strip-and-retry a not-yet-migrated column
+// (42703 / "Could not find the 'x' column") so the module degrades gracefully
+// before 0019_sales_targets.sql is applied (the features light up once it is).
+
+async function updateCandidatesSafe(patch, applyFilter) {
+  let p = { ...patch };
+  for (let i = 0; i < 6; i++) {
+    if (!Object.keys(p).length) return false;                 // nothing left to write (pre-migration)
+    const { error } = await applyFilter(getDb().from(CANDIDATES).update(p));
+    if (!error) return true;
+    const m = /column "?([a-z_]+)"?|Could not find the '([a-z_]+)' column/i.exec(error.message || '');
+    const col = m && (m[1] || m[2]);
+    if (!col || !(col in p)) throw new Error(`updateCandidates: ${error.message}`);
+    const { [col]: _drop, ...rest } = p; p = rest;
+  }
+  return false;
+}
+
+// Promote checked Explore candidates onto the target list. Stamps added_at only
+// on rows not already on the list (a re-add never resets the date).
+export async function addToTargets(projectId, ids) {
+  if (!ids.length) return 0;
+  await getDb().from(CANDIDATES)
+    .update({ added_at: new Date().toISOString() })
+    .eq('project_id', projectId).in('id', ids).is('added_at', null);   // pre-migration: errors are ignored
+  const ok = await updateCandidatesSafe({ is_target: true }, (q) => q.eq('project_id', projectId).in('id', ids));
+  return ok ? ids.length : 0;
+}
+
+// Add a company by hand (contact info optional — it lives on the list like any
+// discovered target). category='manual' so it never shows in Explore's paths.
+export async function addManualTarget(projectId, fields = {}) {
+  let row = {
+    project_id: projectId,
+    company: fields.company || null,
+    domain: fields.domain || null,
+    company_url: fields.company_url || null,
+    description: fields.description || null,
+    location: fields.location || null,
+    category: 'manual',
+    status: 'unknown',
+    manual: true,
+    is_target: true,
+    notes: fields.notes || null,
+    added_at: new Date().toISOString(),
+  };
+  for (let i = 0; i < 6; i++) {
+    const { data, error } = await getDb().from(CANDIDATES).insert(row).select('*').single();
+    if (!error) return data;
+    const m = /column "?([a-z_]+)"?|Could not find the '([a-z_]+)' column/i.exec(error.message || '');
+    const col = m && (m[1] || m[2]);
+    if (!col || !(col in row)) throw new Error(`addManualTarget: ${error.message}`);
+    const { [col]: _drop, ...rest } = row; row = rest;
+  }
+  throw new Error('addManualTarget: could not insert');
+}
+
+// Remove from the target list (demote — the row stays a candidate in Explore,
+// not destroyed). Also clears any top-fit mark.
+export async function removeTargets(ids) {
+  if (!ids.length) return 0;
+  const ok = await updateCandidatesSafe(
+    { is_target: false, shortlist_rank: null, shortlisted_at: null },
+    (q) => q.in('id', ids),
+  );
+  return ok ? ids.length : 0;
+}
+
+// Set / clear the ⭐ Top-fit mark (a human "best fit for this name" judgment,
+// independent of contact status). Stamps shortlisted_at on the FIRST mark only.
+export async function setShortlistRank(id, rank) {
+  if (rank == null) {
+    await updateCandidatesSafe({ shortlist_rank: null }, (q) => q.eq('id', id));
+    return;
+  }
+  await getDb().from(CANDIDATES)
+    .update({ shortlisted_at: new Date().toISOString() })
+    .eq('id', id).is('shortlisted_at', null);                         // pre-migration: errors ignored
+  await updateCandidatesSafe({ shortlist_rank: Number(rank) }, (q) => q.eq('id', id));
+}
+
+const TARGET_EDITABLE = ['notes', 'company', 'domain', 'description', 'location'];
+// Edit a target's inline fields (notes/comments + basic identity). Blank → null.
+export async function updateTarget(id, patch = {}) {
+  const clean = {};
+  for (const k of TARGET_EDITABLE) if (k in patch) clean[k] = patch[k] === '' ? null : patch[k];
+  if (!Object.keys(clean).length) return;
+  await updateCandidatesSafe(clean, (q) => q.eq('id', id));
+}
+
 // Fill in firmographics + ability-to-pay after a manual Apollo qualify.
 export async function updateCandidateQualification(id, firmo, atp) {
   const patch = {

@@ -1844,6 +1844,53 @@ body.drawer-open { overflow: hidden; }
 .sr-reshead-seed { color: var(--navy); }
 .sr-new-btn { padding: 9px 16px; font-size: 14px; font-weight: 700; background: var(--cream); color: var(--coral-deep); border: 1.5px solid var(--coral); border-radius: 999px; cursor: pointer; }
 .sr-new-btn:hover { background: var(--coral); color: #fff; }
+.sr-reshead-actions { display: inline-flex; gap: 8px; flex-wrap: wrap; }
+
+/* ── Sales Hub — surface toggle (Explore ⇄ Target list) ─────────────────────*/
+.sr-surface { display: inline-flex; gap: 4px; padding: 4px; background: var(--cream); border: 1.5px solid var(--line); border-radius: 999px; margin-bottom: 16px; }
+.sr-surf-btn { padding: 7px 16px; font-size: 13.5px; font-weight: 700; color: var(--navy-2); background: transparent; border: 0; border-radius: 999px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; }
+.sr-surf-btn:hover { color: var(--coral-deep); }
+.sr-surf-btn.active { background: var(--navy); color: #fff; }
+.sr-surf-n { font-size: 11.5px; font-weight: 800; min-width: 18px; padding: 1px 6px; border-radius: 999px; background: rgba(0,0,0,.12); }
+.sr-surf-btn.active .sr-surf-n { background: rgba(255,255,255,.22); }
+
+/* On-list chip on an Explore card. */
+.sr-onlist-badge { font-size: 10.5px; font-weight: 800; text-transform: uppercase; letter-spacing: .03em; color: #1b6fa8; background: #e2f0fb; border-radius: 999px; padding: 2px 9px; margin-left: 10px; vertical-align: middle; }
+
+/* ── Target list (Surface B) ────────────────────────────────────────────────*/
+.sr-t-top5 { margin-bottom: 20px; }
+.sr-t-top5-head, .sr-t-resthead { font-size: 13px; font-weight: 800; text-transform: uppercase; letter-spacing: .04em; color: var(--navy-2); margin: 0 0 10px; padding-bottom: 7px; border-bottom: 2px solid var(--line); }
+.sr-t-resthead { margin-top: 4px; }
+.sr-t-empty { padding: 22px 4px; }
+.sr-t-card { border-left-color: var(--line); }
+.sr-t-card-top { border-left-color: var(--coral); background: #fff8f5; }
+.sr-star { font-size: 20px; line-height: 1; background: none; border: 0; cursor: pointer; color: var(--navy-3); padding: 0 2px; align-self: flex-start; }
+.sr-star:hover { color: var(--coral-deep); }
+.sr-star.on { color: #e8a020; }
+.sr-topfit-pill { font-size: 10.5px; font-weight: 800; text-transform: uppercase; letter-spacing: .03em; color: var(--coral-deep); background: #ffe6dc; border-radius: 999px; padding: 2px 9px; margin-left: 10px; vertical-align: middle; }
+.sr-manual-badge { font-size: 10.5px; font-weight: 700; color: #6b7280; background: #f0f1f4; border-radius: 999px; padding: 2px 9px; margin-left: 8px; vertical-align: middle; }
+.sr-t-added { font-size: 11.5px; color: var(--navy-3); white-space: nowrap; }
+.sr-t-remove { font-size: 14px; font-weight: 800; line-height: 1; color: var(--navy-3); background: none; border: 0; cursor: pointer; padding: 2px 4px; }
+.sr-t-remove:hover { color: #c0392b; }
+.sr-t-contacts { margin-top: 8px; display: flex; flex-direction: column; gap: 8px; }
+.sr-t-c { font-size: 13px; }
+.sr-t-c-name { font-weight: 700; color: var(--navy); }
+.sr-t-c-reach { font-size: 12.5px; margin-top: 1px; }
+.sr-t-nocontact { margin-top: 8px; font-size: 13px; display: flex; align-items: center; gap: 8px; }
+.sr-tlink { font-size: 12.5px; font-weight: 700; color: var(--coral-deep); background: none; border: 0; cursor: pointer; padding: 0; }
+.sr-tlink:hover { text-decoration: underline; }
+.sr-t-note { width: 100%; margin-top: 10px; padding: 7px 10px; font: inherit; font-size: 12.5px; color: var(--navy); background: #fff; border: 1.5px solid var(--line); border-radius: var(--radius-sm); resize: vertical; min-height: 34px; }
+.sr-t-note:focus { outline: none; border-color: var(--coral); }
+/* Manual-add form. */
+.sr-t-addform { margin: 4px 0 18px; padding: 16px; background: var(--cream); border: 1.5px solid var(--line); border-radius: var(--radius-sm); }
+.sr-t-addgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.sr-t-addform input, .sr-t-addform textarea { padding: 9px 12px; font: inherit; font-size: 13.5px; color: var(--navy); background: #fff; border: 1.5px solid var(--line); border-radius: var(--radius-sm); }
+.sr-t-addform textarea { width: 100%; margin-top: 10px; resize: vertical; }
+.sr-t-addform input:focus, .sr-t-addform textarea:focus { outline: none; border-color: var(--coral); }
+.sr-t-addfoot { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 12px; flex-wrap: wrap; }
+.sr-t-addhint { font-size: 12px; color: var(--navy-3); }
+.sr-t-addbtns { display: inline-flex; gap: 8px; }
+@media (max-width: 560px) { .sr-t-addgrid { grid-template-columns: 1fr; } }
 .sr-sum-strong { color: #2e9e57; }
 /* Labelled metric grid — fixed columns so the same stat sits in the same place
    on every card and you can scan/compare straight down the list. */

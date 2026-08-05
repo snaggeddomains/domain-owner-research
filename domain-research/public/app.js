@@ -8475,6 +8475,11 @@ const salesCollapsed = new Set();  // candidate ids whose contacts are collapsed
 const salesSelected = new Set();   // checked candidate ids — persist across path-filter tabs
 let salesAngles = [];              // angle objects from the last gate render
 let salesPathFilter = 'all';       // view filter: 'all' | 'upgrade' | 'product' | 'keyword'
+// ── Sales Hub: per-name target list (see SALES_HUB_SPEC.md) ─────────────────
+let salesTargets = [];             // is_target rows (curated list), top fits first
+let salesSurface = 'explore';      // which surface is showing: 'explore' | 'targets'
+const salesTargetSel = new Set();  // checked target ids (Surface B selection)
+const sEl = (id) => document.getElementById(id);   // scoped helper for the new Sales-Hub nodes
 
 // Pull a human string out of an API error payload. Vercel's function-timeout
 // envelope is `{error:{code,message}}`, so a naive `data.error` stringifies to
@@ -8514,6 +8519,10 @@ function resetSalesView() {
   hideAngleGate();
   salesProjectId = null; salesCandidates = []; salesSeed = ''; salesPathFilter = 'all';
   salesSelected.clear();
+  salesTargets = []; salesTargetSel.clear(); salesSurface = 'explore';
+  if (sEl('sr-surface')) sEl('sr-surface').hidden = true;
+  if (sEl('sr-targets')) sEl('sr-targets').hidden = true;
+  if (sEl('sr-t-addform')) sEl('sr-t-addform').hidden = true;
   if (els.srDomain) els.srDomain.value = '';
   if (els.srResults) els.srResults.hidden = true;
   if (els.srTable) els.srTable.innerHTML = '';
@@ -8692,6 +8701,7 @@ function openSalesProject(id) {
   hideAngleGate();               // drop any stale angle gate from the previous run
   salesProjectId = id;
   salesSeed = '';                // cleared until the poll returns the real seed
+  salesTargets = []; salesTargetSel.clear(); salesSelected.clear(); salesSurface = 'explore';
   els.srGo.disabled = true;
   setSalesMode('results', '');   // collapse entry; seed filled in once the poll returns it
   setSalesStatus('Discovering candidates and qualifying ability-to-pay…');
@@ -8770,10 +8780,12 @@ function salesVisible() {
 function renderSalesResults(data) {
   salesSeed = data.project.seed_domain || '';
   salesCandidates = data.candidates || [];
+  salesTargets = data.targets || [];
   setSalesStatus('');
   setSalesMode('results', salesSeed);
-  if (els.srResults) els.srResults.hidden = false;
   renderSalesTable();
+  renderTargetList();
+  updateSalesSurfaceUI();   // shows the surface toggle + routes Explore/Target visibility
 }
 
 function renderSalesTable() {
@@ -8881,6 +8893,7 @@ function renderSalesTable() {
     const unq = !c.firmographics;   // keyword/angle company not yet Apollo-qualified
     const recommend = unq && c.category === 'keyword' && Number(c.score) >= 2
       ? '<span class="sr-rec-badge">★ recommended</span>' : '';
+    const onList = c.is_target ? '<span class="sr-onlist-badge" title="Already on this name\'s target list">✓ on list</span>' : '';
     // Off-target (relevance gate) + low-confidence (wrong-looking firmographic match).
     const offBadge = c.firmographics && c.firmographics.atp_relevant === false
       ? `<span class="sr-off-badge" title="${escapeHtml(c.firmographics.atp_relevant_reason || 'not a fit for this domain')}">⚠ off-target</span>` : '';
@@ -8896,7 +8909,7 @@ function renderSalesTable() {
       <div class="sr-card-head">
         <label class="sr-card-check"><input type="checkbox" class="sr-cb" data-id="${escapeHtml(c.id)}"${salesSelected.has(c.id) ? ' checked' : ''}></label>
         <div class="sr-card-id">
-          <div class="sr-card-name">${escapeHtml(c.company || '—')}${recommend}${angleBadge}${lowConfBadge}${offBadge}</div>
+          <div class="sr-card-name">${escapeHtml(c.company || '—')}${onList}${recommend}${angleBadge}${lowConfBadge}${offBadge}</div>
           <div class="sr-card-links">
             <a class="sr-card-domain" href="https://${escapeHtml(c.domain)}" target="_blank" rel="noopener">${escapeHtml(c.domain)}</a>
             ${coLi ? `<a class="sr-card-li" href="${escapeHtml(coLi)}" target="_blank" rel="noopener" title="Company LinkedIn" aria-label="Company LinkedIn">in</a>` : ''}
@@ -8978,6 +8991,17 @@ function updateSalesEnrichBtn() {
     els.srSelectAll.checked = visIds.length > 0 && visSel.length === visIds.length;
     els.srSelectAll.indeterminate = visSel.length > 0 && visSel.length < visIds.length;
   }
+  updateAddTargetBtn();
+}
+
+// "＋ Add to target list" reflects how many CHECKED companies aren't already on
+// the list (adding an on-list company again is a no-op, so we don't count it).
+function updateAddTargetBtn() {
+  const btn = sEl('sr-add-target');
+  if (!btn) return;
+  const addable = selectedCandidateIds().filter((id) => { const c = salesCandidates.find((x) => x.id === id); return c && !c.is_target; });
+  btn.disabled = addable.length === 0;
+  btn.textContent = addable.length ? `＋ Add to target list (${addable.length})` : '＋ Add to target list';
 }
 
 // Select all / none of the currently-visible cards (other tabs' picks are untouched).
@@ -9217,6 +9241,256 @@ async function refreshSalesProject() {
   const data = await res.json();
   if (res.ok) renderSalesResults(data);
 }
+
+// ── Sales Hub — Surface B: the per-name target list ──────────────────────────
+async function salesPost(body) {
+  const res = await fetch('/research/api/sales', {
+    method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(apiErrText(data, res));
+  return data;
+}
+function salesFmtDate(x) { const d = new Date(x); return isNaN(d) ? '' : d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }); }
+
+// Surface toggle: show Explore (discover + add) or Target list (curate). Owns the
+// visibility of both sections + the toggle bar (only visible once a run is open).
+function updateSalesSurfaceUI() {
+  const bar = sEl('sr-surface');
+  const targetsSec = sEl('sr-targets');
+  const hasRun = !!salesProjectId && !!salesSeed;
+  if (bar) bar.hidden = !hasRun;
+  const cnt = sEl('sr-target-count'); if (cnt) cnt.textContent = String(salesTargets.length);
+  bar?.querySelectorAll('.sr-surf-btn').forEach((b) => b.classList.toggle('active', b.dataset.surface === salesSurface));
+  const onTargets = salesSurface === 'targets';
+  if (els.srResults) els.srResults.hidden = onTargets || !hasRun;
+  if (targetsSec) targetsSec.hidden = !onTargets || !hasRun;
+}
+function setSalesSurface(s) { salesSurface = (s === 'targets') ? 'targets' : 'explore'; updateSalesSurfaceUI(); }
+sEl('sr-surface')?.addEventListener('click', (e) => {
+  const b = e.target.closest('.sr-surf-btn'); if (b) setSalesSurface(b.dataset.surface);
+});
+
+function salesContactLine(p) {
+  const tel = String(p.phone || '').replace(/[^+\d]/g, '');
+  const bits = [
+    p.email ? `<a href="mailto:${escapeHtml(p.email)}">${escapeHtml(p.email)}</a>` : '',
+    tel ? `<a href="tel:${escapeHtml(tel)}">${escapeHtml(p.phone)}</a>` : '',
+    p.linkedin ? `<a href="${escapeHtml(p.linkedin)}" target="_blank" rel="noopener">in</a>` : '',
+  ].filter(Boolean).join(' · ');
+  return `<div class="sr-t-c"><span class="sr-t-c-name">${escapeHtml(p.name || '—')}</span>${p.title ? ` <span class="muted">${escapeHtml(p.title)}</span>` : ''}${bits ? `<div class="sr-t-c-reach">${bits}</div>` : ''}</div>`;
+}
+
+// A target card (Surface B): checkbox · ⭐ top-fit · name/domain/meta · badges +
+// added-date + remove · contacts (or Enrich) · inline notes. Contact info is
+// OPTIONAL — a target (incl. a #1 top fit) shows here with zero contacts.
+function targetCardHtml(c) {
+  const starred = c.shortlist_rank != null;
+  const li = (c.firmographics && c.firmographics.linkedin) || '';
+  const meta = [c.location || (c.firmographics && c.firmographics.location) || '', (c.firmographics && c.firmographics.industry) || ''].filter(Boolean).join(' · ');
+  const added = c.added_at ? salesFmtDate(c.added_at) : '';
+  const tierBadge = c.tier ? `<span class="sr-tier sr-tier-${escapeHtml(c.tier)}">${escapeHtml(c.tier)}</span>` : '';
+  const statusBadge = (c.status && c.status !== 'unknown') ? `<span class="sr-st sr-st-${escapeHtml(c.status)}">${escapeHtml(c.status)}</span>` : '';
+  const manualTag = c.manual ? '<span class="sr-manual-badge" title="Added manually">✎ manual</span>' : '';
+  const topPill = starred ? '<span class="sr-topfit-pill">top fit</span>' : '';
+  const domHtml = c.domain
+    ? `<a class="sr-card-domain" href="https://${escapeHtml(c.domain)}" target="_blank" rel="noopener">${escapeHtml(c.domain)}</a>`
+    : '<span class="muted">no domain</span>';
+  let contacts;
+  if (c.enrich_status === 'pending') contacts = '<div class="sr-contacts-note sr-enriching"><span class="sr-spin"></span> Finding contacts…</div>';
+  else if (c.contacts && c.contacts.length) contacts = `<div class="sr-t-contacts">${c.contacts.map(salesContactLine).join('')}</div>`;
+  else contacts = `<div class="sr-t-nocontact"><span class="muted">No contacts yet</span> <button type="button" class="sr-tlink" data-enrich data-id="${escapeHtml(c.id)}">🔓 Enrich</button></div>`;
+  const notes = `<textarea class="sr-t-note" data-note data-id="${escapeHtml(c.id)}" rows="1" placeholder="Notes / comments…">${escapeHtml(c.notes || '')}</textarea>`;
+  return `
+  <div class="sr-card sr-t-card${starred ? ' sr-t-card-top' : ''}" data-id="${escapeHtml(c.id)}">
+    <div class="sr-card-head">
+      <label class="sr-card-check"><input type="checkbox" class="sr-tcb" data-id="${escapeHtml(c.id)}"${salesTargetSel.has(c.id) ? ' checked' : ''}></label>
+      <button type="button" class="sr-star${starred ? ' on' : ''}" data-star data-id="${escapeHtml(c.id)}" title="${starred ? 'Remove top-fit mark' : 'Mark a top fit (best fits for this name)'}" aria-label="Top fit">${starred ? '★' : '☆'}</button>
+      <div class="sr-card-id">
+        <div class="sr-card-name">${escapeHtml(c.company || '—')}${topPill}${manualTag}</div>
+        <div class="sr-card-links">${domHtml}${li ? ` <a class="sr-card-li" href="${escapeHtml(li)}" target="_blank" rel="noopener" title="Company LinkedIn">in</a>` : ''}</div>
+        ${meta ? `<div class="sr-card-meta">${escapeHtml(meta)}</div>` : ''}
+      </div>
+      <div class="sr-card-badges">${statusBadge}${tierBadge}${added ? `<span class="sr-t-added" title="Date added to the list">added ${escapeHtml(added)}</span>` : ''}<button type="button" class="sr-t-remove" data-remove data-id="${escapeHtml(c.id)}" title="Remove from the target list" aria-label="Remove">✕</button></div>
+    </div>
+    ${contacts}
+    ${notes}
+  </div>`;
+}
+
+function renderTargetList() {
+  const summary = sEl('sr-targets-summary');
+  const top5El = sEl('sr-targets-top5');
+  const listEl = sEl('sr-targets-list');
+  if (!listEl) return;
+  for (const id of [...salesTargetSel]) if (!salesTargets.some((t) => t.id === id)) salesTargetSel.delete(id);
+  const shortlisted = salesTargets.filter((t) => t.shortlist_rank != null);
+  const rest = salesTargets.filter((t) => t.shortlist_rank == null);
+  if (summary) {
+    summary.innerHTML = salesTargets.length
+      ? `<span class="sr-sum-n">${salesTargets.length}</span> target${salesTargets.length === 1 ? '' : 's'}`
+        + `<span class="sr-sum-dot">·</span><span class="sr-sum-strong">${shortlisted.length} top fit${shortlisted.length === 1 ? '' : 's'}</span>`
+      : '';
+  }
+  if (top5El) {
+    top5El.innerHTML = shortlisted.length
+      ? `<div class="sr-t-top5"><div class="sr-t-top5-head">⭐ Top ${shortlisted.length} — best fits for ${escapeHtml(salesSeed)}</div><div class="sr-cards">${shortlisted.map(targetCardHtml).join('')}</div></div>`
+      : '';
+  }
+  if (!salesTargets.length) {
+    listEl.innerHTML = '<p class="muted sr-t-empty">No targets yet. In <strong>Explore</strong>, check companies and “Add to target list” — or add one manually above. A company can be a target even with no contact info.</p>';
+  } else {
+    listEl.innerHTML = rest.length
+      ? `<div class="sr-t-resthead">Target list</div><div class="sr-cards">${rest.map(targetCardHtml).join('')}</div>`
+      : '';
+  }
+  updateTargetEnrichBtn();
+  updateSalesSurfaceUI();
+}
+
+function selectedTargetIds() { return [...salesTargetSel].filter((id) => salesTargets.some((t) => t.id === id)); }
+function updateTargetEnrichBtn() {
+  const ids = selectedTargetIds();
+  const eb = sEl('sr-t-enrich'); if (eb) eb.disabled = ids.length === 0;
+  const sa = sEl('sr-t-select-all');
+  if (sa) {
+    const all = salesTargets.map((t) => t.id);
+    const sel = all.filter((id) => salesTargetSel.has(id));
+    sa.checked = all.length > 0 && sel.length === all.length;
+    sa.indeterminate = sel.length > 0 && sel.length < all.length;
+  }
+}
+
+// ＋ Add to target list — promote the checked Explore companies (skips ones
+// already on the list), then jump to the Target list.
+sEl('sr-add-target')?.addEventListener('click', async () => {
+  const ids = selectedCandidateIds().filter((id) => { const c = salesCandidates.find((x) => x.id === id); return c && !c.is_target; });
+  if (!ids.length || !salesProjectId) return;
+  const btn = sEl('sr-add-target'); btn.disabled = true; btn.textContent = 'Adding…';
+  try {
+    await salesPost({ action: 'add_to_targets', project_id: salesProjectId, ids });
+    salesSelected.clear();
+    await refreshSalesProject();
+    setSalesSurface('targets');
+  } catch (e) { alert(String(e.message || e)); updateAddTargetBtn(); }
+});
+
+// Top-fit ⭐ toggle (max 5, best fits for THIS name — independent of contacts).
+async function toggleTopFit(id) {
+  const t = salesTargets.find((x) => x.id === id); if (!t) return;
+  const makeTop = t.shortlist_rank == null;
+  const current = salesTargets.filter((x) => x.shortlist_rank != null).length;
+  if (makeTop && current >= 5) { alert('Top 5 is full — unmark one first.'); return; }
+  try {
+    await salesPost({ action: 'shortlist', id, rank: makeTop ? current + 1 : null });
+    await refreshSalesProject();
+  } catch (e) { alert(String(e.message || e)); }
+}
+async function removeTarget(id) {
+  try { await salesPost({ action: 'remove_target', ids: [id] }); salesTargetSel.delete(id); await refreshSalesProject(); }
+  catch (e) { alert(String(e.message || e)); }
+}
+async function enrichTarget(id) {
+  const t = salesTargets.find((x) => x.id === id); if (!t) return;
+  t.enrich_status = 'pending'; renderTargetList();
+  try { const data = await salesPost({ action: 'enrich', candidate_id: id }); t.enrich_status = 'done'; t.contacts = data.contacts || []; }
+  catch { t.enrich_status = 'failed'; }
+  renderTargetList();
+}
+
+// Row actions (delegated on the target-list section).
+sEl('sr-targets')?.addEventListener('click', (e) => {
+  const star = e.target.closest('[data-star]'); if (star) { toggleTopFit(star.dataset.id); return; }
+  const rm = e.target.closest('[data-remove]'); if (rm) { removeTarget(rm.dataset.id); return; }
+  const en = e.target.closest('[data-enrich]'); if (en) { enrichTarget(en.dataset.id); return; }
+});
+sEl('sr-targets')?.addEventListener('change', (e) => {
+  const cb = e.target.closest('.sr-tcb');
+  if (cb) { if (cb.checked) salesTargetSel.add(cb.dataset.id); else salesTargetSel.delete(cb.dataset.id); updateTargetEnrichBtn(); }
+});
+// Save notes/comments on blur (only when changed).
+sEl('sr-targets')?.addEventListener('focusout', async (e) => {
+  const ta = e.target.closest('[data-note]'); if (!ta) return;
+  const id = ta.dataset.id; const t = salesTargets.find((x) => x.id === id); if (!t) return;
+  const val = ta.value.trim();
+  if ((t.notes || '') === val) return;
+  t.notes = val;
+  try { await salesPost({ action: 'update_target', id, notes: val }); } catch { /* keep optimistic */ }
+});
+sEl('sr-t-select-all')?.addEventListener('change', (e) => {
+  if (e.target.checked) salesTargets.forEach((t) => salesTargetSel.add(t.id)); else salesTargetSel.clear();
+  renderTargetList();
+});
+sEl('sr-t-enrich')?.addEventListener('click', async () => {
+  const ids = selectedTargetIds(); if (!ids.length) return;
+  const btn = sEl('sr-t-enrich'); btn.disabled = true;
+  for (const id of ids) { const t = salesTargets.find((x) => x.id === id); if (t) t.enrich_status = 'pending'; }
+  renderTargetList();
+  for (const id of ids) {
+    const t = salesTargets.find((x) => x.id === id);
+    try { const data = await salesPost({ action: 'enrich', candidate_id: id }); if (t) { t.enrich_status = 'done'; t.contacts = data.contacts || []; } }
+    catch { if (t) t.enrich_status = 'failed'; }
+    renderTargetList();
+  }
+});
+
+// ＋ Add company manually (contact info optional).
+sEl('sr-t-add')?.addEventListener('click', () => {
+  const f = sEl('sr-t-addform'); if (!f) return;
+  f.hidden = !f.hidden;
+  if (!f.hidden) sEl('sr-t-company')?.focus();
+});
+sEl('sr-t-cancel')?.addEventListener('click', () => { const f = sEl('sr-t-addform'); if (f) { f.reset(); f.hidden = true; } });
+sEl('sr-t-addform')?.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  if (!salesProjectId) return;
+  const company = (sEl('sr-t-company')?.value || '').trim();
+  if (!company) { sEl('sr-t-company')?.focus(); return; }
+  const btn = e.submitter; if (btn) btn.disabled = true;
+  try {
+    await salesPost({
+      action: 'add_target', project_id: salesProjectId, company,
+      domain: (sEl('sr-t-domain')?.value || '').trim(),
+      location: (sEl('sr-t-location')?.value || '').trim(),
+      description: (sEl('sr-t-desc')?.value || '').trim(),
+      notes: (sEl('sr-t-notes')?.value || '').trim(),
+    });
+    const f = sEl('sr-t-addform'); if (f) { f.reset(); f.hidden = true; }
+    await refreshSalesProject();
+  } catch (err) { alert(String(err.message || err)); }
+  finally { if (btn) btn.disabled = false; }
+});
+
+// Download the whole target list (with notes, dates, contacts).
+sEl('sr-t-csv')?.addEventListener('click', () => {
+  if (!salesTargets.length) return;
+  const cell = (v) => { const s = v == null ? '' : String(v); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
+  const header = ['Top fit', 'Company', 'Domain', 'Status', 'Ability to pay', 'Employees', 'Funding', 'Location', 'Added', 'Notes', 'Contact name', 'Title', 'Email', 'Phone', 'LinkedIn'];
+  let csv = header.map(cell).join(',') + '\n';
+  for (const c of salesTargets) {
+    const base = [c.shortlist_rank != null ? `#${c.shortlist_rank}` : '', c.company, c.domain, c.status, c.tier, c.employee_count, c.funding, c.location, c.added_at ? salesFmtDate(c.added_at) : '', c.notes];
+    const contacts = (c.contacts && c.contacts.length) ? c.contacts : [null];
+    for (const p of contacts) csv += [...base, p && p.name, p && p.title, p && p.email, p && p.phone, p && p.linkedin].map(cell).join(',') + '\n';
+  }
+  const slug = (salesSeed || 'sales').replace(/\W+/g, '-').slice(0, 40);
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = `${slug}-targets-${new Date().toISOString().split('T')[0]}.csv`;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+});
+
+// 🔗 Share — copy a gated deep-link to this name's hub (opens for any teammate
+// with Sales Research access).
+sEl('sr-share')?.addEventListener('click', async () => {
+  if (!salesProjectId) return;
+  const url = `${location.origin}/research/sales/${encodeURIComponent(salesProjectId)}`;
+  const btn = sEl('sr-share'); const orig = btn.textContent;
+  try { await navigator.clipboard.writeText(url); btn.textContent = '✓ Link copied'; }
+  catch { window.prompt('Copy this link', url); }
+  setTimeout(() => { if (btn && btn.textContent === '✓ Link copied') btn.textContent = orig; }, 1800);
+});
 
 // Recent list / projects list — open a run on click; "view all" → projects page.
 function openSalesRunFromList(li) {

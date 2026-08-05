@@ -35,7 +35,7 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="apple-mobile-web-app-title" content="Snagged Research" />
     <meta name="theme-color" content="#254254" />
-    <link rel="stylesheet" href="styles.css?v=20260805noindustry" />
+    <link rel="stylesheet" href="styles.css?v=20260805saleshub" />
     <!-- Layout: horizontal tab nav (Admin-style), no sidebar. -->
   </head>
   <body>
@@ -706,7 +706,16 @@
           <!-- Compact results header — replaces the hero/form when a run is open. -->
           <div id="sr-reshead" class="sr-reshead" hidden>
             <h1 class="sr-reshead-title"><span id="sr-reshead-seed"></span> <span class="accent">buyers</span></h1>
-            <button id="sr-new" type="button" class="sr-new-btn">+ New report</button>
+            <div class="sr-reshead-actions">
+              <button id="sr-share" type="button" class="sr-new-btn" title="Copy a link to this name's hub — any teammate with Sales Research access can open it">🔗 Share</button>
+              <button id="sr-new" type="button" class="sr-new-btn">+ New report</button>
+            </div>
+          </div>
+
+          <!-- Surface toggle: Explore (discover + add) ⇄ Target list (curate). -->
+          <div id="sr-surface" class="sr-surface" hidden role="group" aria-label="Sales hub surface">
+            <button type="button" class="sr-surf-btn active" data-surface="explore">Explore</button>
+            <button type="button" class="sr-surf-btn" data-surface="targets">🎯 Target list<span class="sr-surf-n" id="sr-target-count">0</span></button>
           </div>
 
           <div id="sr-status" class="sr-status" hidden></div>
@@ -726,6 +735,7 @@
                   <label class="sr-check"><input type="checkbox" id="sr-show-all" /> Show for-sale / inactive</label>
                 </div>
                 <div class="sr-actions">
+                  <button id="sr-add-target" type="button" class="sr-btn sr-btn-primary" disabled title="Add the checked companies to this name's target list — a persistent, curated list you can shortlist, enrich, and share.">＋ Add to target list</button>
                   <button id="sr-angles" type="button" class="sr-btn sr-btn-primary">✨ Explore by category</button>
                   <button id="sr-qualify" type="button" class="sr-btn sr-btn-ghost" disabled title="Ability-to-pay screen: pulls company firmographics from Apollo (size, funding, revenue) for the checked companies and scores how likely they can afford a premium domain. ~1 credit each.">Qualify selected</button>
                   <button id="sr-enrich" type="button" class="sr-btn sr-btn-ghost" disabled title="Pulls decision-maker contacts from RocketReach (names, titles, emails, phone, LinkedIn) for the checked companies — who you'd actually reach out to.">Enrich selected</button>
@@ -736,6 +746,42 @@
             <!-- Keyword/angle gate: pick which industries to research (Tier 2). -->
             <div id="sr-anglegate" class="sr-anglegate" hidden></div>
             <div id="sr-table" class="sr-table-wrap"></div>
+          </section>
+
+          <!-- Surface B — the curated target list for this name. -->
+          <section id="sr-targets" class="sr-results" hidden>
+            <div class="sr-toolbar">
+              <div class="sr-summary" id="sr-targets-summary"></div>
+              <div class="sr-controls">
+                <div class="sr-controls-left">
+                  <label class="sr-check"><input type="checkbox" id="sr-t-select-all" /> Select all</label>
+                </div>
+                <div class="sr-actions">
+                  <button id="sr-t-add" type="button" class="sr-btn sr-btn-primary">＋ Add company manually</button>
+                  <button id="sr-t-enrich" type="button" class="sr-btn sr-btn-ghost" disabled title="Pull decision-maker contacts (RocketReach) for the checked targets. Optional — a target stays on the list with no contacts.">Enrich selected</button>
+                  <button id="sr-t-csv" type="button" class="sr-btn sr-btn-ghost" title="Export the whole target list (with notes, dates, contacts) to CSV.">Download CSV</button>
+                </div>
+              </div>
+            </div>
+            <!-- Add a company by hand — contact info optional. -->
+            <form id="sr-t-addform" class="sr-t-addform" hidden autocomplete="off">
+              <div class="sr-t-addgrid">
+                <input id="sr-t-company" type="text" placeholder="Company name (required)" />
+                <input id="sr-t-domain" type="text" placeholder="Domain (optional)" />
+                <input id="sr-t-location" type="text" placeholder="Location (optional)" />
+                <input id="sr-t-desc" type="text" placeholder="What they do (optional)" />
+              </div>
+              <textarea id="sr-t-notes" rows="2" placeholder="Notes / comments (optional)"></textarea>
+              <div class="sr-t-addfoot">
+                <span class="sr-t-addhint">No contact info needed — a great target stays a target even without it.</span>
+                <div class="sr-t-addbtns">
+                  <button type="button" id="sr-t-cancel" class="sr-btn sr-btn-ghost">Cancel</button>
+                  <button type="submit" class="sr-btn sr-btn-primary">Add to list</button>
+                </div>
+              </div>
+            </form>
+            <div id="sr-targets-top5"></div>
+            <div id="sr-targets-list" class="sr-table-wrap"></div>
           </section>
         </section>
 
@@ -1311,6 +1357,6 @@ The model parses it into structured filters (TLDs, length, budget, tone, etc.) a
     </div>
 
     <!-- Bump ?v= on any public/app.js or styles.css change to bust caches. -->
-    <script src="app.js?v=20260805noindustry"></script>
+    <script src="app.js?v=20260805saleshub"></script>
   </body>
 </html>
