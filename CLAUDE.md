@@ -1501,6 +1501,15 @@ design in `domain-research/SALES_HUB_SPEC.md`. Additive to the existing module �
 - **UI** (`public/app.js` `salesTargets`/`salesSurface`/`renderTargetList`/`targetCardHtml`/
   `toggleTopFit`/`enrichTarget` etc.; `.sr-surf-*`/`.sr-t-*` styles). Cache-bust
   `?v=20260805saleshub`.
+- **Category pills + filter/sort on the target list (2026-08-05).** Each target shows a
+  **category badge pill** (`targetCat` → Upgrade/Product/Keyword/Manual). A filter/sort bar
+  (`#sr-t-filterbar`): filter by category (chips w/ counts) + sort by Date added / Top fit /
+  Category / Employees / Funding / Revenue / Founded / Company. Employees/funding/revenue/founded
+  come from Apollo firmographics, so a **"Qualify selected"** button was added to the target list
+  (mirrors Explore's — `qualify` API action, chunked) to fill them; blanks sort last. CSV gains
+  Category/Revenue/Founded columns. **Website traffic** is NOT collected yet (Apollo doesn't return
+  it) — a free popularity/authority proxy (Tranco rank / OpenPageRank) is a pending follow-up, not
+  true visits. Cache-bust `?v=20260805targetlist`.
 - **One-time setup:** run `0019_sales_targets.sql` on the research project. No new
   permission/env. **Out of scope (v1):** public no-login share (a token'd Top-5 view is a
   later add), CRM push, auto-outreach, cross-name rollups, per-company threaded comment log.

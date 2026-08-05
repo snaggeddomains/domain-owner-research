@@ -35,7 +35,7 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="apple-mobile-web-app-title" content="Snagged Research" />
     <meta name="theme-color" content="#254254" />
-    <link rel="stylesheet" href="styles.css?v=20260805saleshub" />
+    <link rel="stylesheet" href="styles.css?v=20260805targetlist" />
     <!-- Layout: horizontal tab nav (Admin-style), no sidebar. -->
   </head>
   <body>
@@ -758,10 +758,33 @@
                 </div>
                 <div class="sr-actions">
                   <button id="sr-t-add" type="button" class="sr-btn sr-btn-primary">＋ Add company manually</button>
+                  <button id="sr-t-qualify" type="button" class="sr-btn sr-btn-ghost" disabled title="Ability-to-pay screen: pulls firmographics (employees, funding, revenue, founded) from Apollo for the checked targets so you can filter/sort by them. ~1 credit each.">Qualify selected</button>
                   <button id="sr-t-enrich" type="button" class="sr-btn sr-btn-ghost" disabled title="Pull decision-maker contacts (RocketReach) for the checked targets. Optional — a target stays on the list with no contacts.">Enrich selected</button>
                   <button id="sr-t-csv" type="button" class="sr-btn sr-btn-ghost" title="Export the whole target list (with notes, dates, contacts) to CSV.">Download CSV</button>
                 </div>
               </div>
+            </div>
+            <!-- Filter by category + sort by firmographics (fills once qualified). -->
+            <div id="sr-t-filterbar" class="sr-t-filterbar" hidden>
+              <div class="sr-t-catfilter" id="sr-t-catfilter" role="group" aria-label="Filter by category">
+                <button type="button" class="sr-t-cat-btn active" data-cat="all">All</button>
+                <button type="button" class="sr-t-cat-btn" data-cat="upgrade">Upgrade</button>
+                <button type="button" class="sr-t-cat-btn" data-cat="product">Product</button>
+                <button type="button" class="sr-t-cat-btn" data-cat="keyword">Keyword</button>
+                <button type="button" class="sr-t-cat-btn" data-cat="manual">Manual</button>
+              </div>
+              <label class="sr-t-sort">Sort
+                <select id="sr-t-sort">
+                  <option value="added">Date added</option>
+                  <option value="topfit">Top fit</option>
+                  <option value="category">Category</option>
+                  <option value="employees">Employees</option>
+                  <option value="funding">Funding raised</option>
+                  <option value="revenue">Revenue</option>
+                  <option value="founded">Year founded</option>
+                  <option value="company">Company (A–Z)</option>
+                </select>
+              </label>
             </div>
             <!-- Add a company by hand — contact info optional. -->
             <form id="sr-t-addform" class="sr-t-addform" hidden autocomplete="off">
@@ -1357,6 +1380,6 @@ The model parses it into structured filters (TLDs, length, budget, tone, etc.) a
     </div>
 
     <!-- Bump ?v= on any public/app.js or styles.css change to bust caches. -->
-    <script src="app.js?v=20260805saleshub"></script>
+    <script src="app.js?v=20260805targetlist"></script>
   </body>
 </html>

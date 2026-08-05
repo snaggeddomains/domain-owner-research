@@ -8479,6 +8479,8 @@ let salesPathFilter = 'all';       // view filter: 'all' | 'upgrade' | 'product'
 let salesTargets = [];             // is_target rows (curated list), top fits first
 let salesSurface = 'explore';      // which surface is showing: 'explore' | 'targets'
 const salesTargetSel = new Set();  // checked target ids (Surface B selection)
+let salesTargetFilter = 'all';     // target-list category filter
+let salesTargetSort = 'added';     // target-list sort key
 const sEl = (id) => document.getElementById(id);   // scoped helper for the new Sales-Hub nodes
 
 // Pull a human string out of an API error payload. Vercel's function-timeout
@@ -8520,9 +8522,11 @@ function resetSalesView() {
   salesProjectId = null; salesCandidates = []; salesSeed = ''; salesPathFilter = 'all';
   salesSelected.clear();
   salesTargets = []; salesTargetSel.clear(); salesSurface = 'explore';
+  salesTargetFilter = 'all'; salesTargetSort = 'added';
   if (sEl('sr-surface')) sEl('sr-surface').hidden = true;
   if (sEl('sr-targets')) sEl('sr-targets').hidden = true;
   if (sEl('sr-t-addform')) sEl('sr-t-addform').hidden = true;
+  if (sEl('sr-t-filterbar')) sEl('sr-t-filterbar').hidden = true;
   if (els.srDomain) els.srDomain.value = '';
   if (els.srResults) els.srResults.hidden = true;
   if (els.srTable) els.srTable.innerHTML = '';
@@ -8702,6 +8706,7 @@ function openSalesProject(id) {
   salesProjectId = id;
   salesSeed = '';                // cleared until the poll returns the real seed
   salesTargets = []; salesTargetSel.clear(); salesSelected.clear(); salesSurface = 'explore';
+  salesTargetFilter = 'all'; salesTargetSort = 'added';
   els.srGo.disabled = true;
   setSalesMode('results', '');   // collapse entry; seed filled in once the poll returns it
   setSalesStatus('Discovering candidates and qualifying ability-to-pay…');
@@ -9281,10 +9286,35 @@ function salesContactLine(p) {
   return `<div class="sr-t-c"><span class="sr-t-c-name">${escapeHtml(p.name || '—')}</span>${p.title ? ` <span class="muted">${escapeHtml(p.title)}</span>` : ''}${bits ? `<div class="sr-t-c-reach">${bits}</div>` : ''}</div>`;
 }
 
+// Which discovery bucket a target came from — carried through to the target list
+// as a badge pill + a filter/sort facet.
+const TARGET_CAT_LABEL = { upgrade: 'Upgrade', product: 'Product', keyword: 'Keyword', manual: 'Manual' };
+function targetCat(c) {
+  if (c.manual) return 'manual';
+  if (c.angle === 'product_named' || c.angle === 'product_named_exact') return 'product';
+  if (c.category === 'keyword') return 'keyword';
+  return 'upgrade';
+}
+// Numeric pulls for sorting (firmographics fill in after Qualify; blanks sort last).
+function tEmployees(c) { const f = c.firmographics || {}; const v = f.employees != null ? f.employees : c.employee_count; return (v == null || v === '') ? null : Number(v); }
+function tFounded(c) { const y = c.firmographics && c.firmographics.foundedYear; return y ? Number(y) : null; }
+function parseMoney(v) {
+  if (v == null || v === '') return null;
+  if (typeof v === 'number') return isFinite(v) ? v : null;
+  const s = String(v).replace(/[$,\s]/g, '');
+  const m = /^(\d+(?:\.\d+)?)([kmb])?/i.exec(s);
+  if (!m) return null;
+  const mult = { k: 1e3, m: 1e6, b: 1e9 }[(m[2] || '').toLowerCase()] || 1;
+  return Number(m[1]) * mult;
+}
+function tFunding(c) { const f = c.firmographics || {}; return parseMoney(f.fundingAmount != null ? f.fundingAmount : (f.funding || c.funding)); }
+function tRevenue(c) { const f = c.firmographics || {}; return parseMoney(f.revenueAmount != null ? f.revenueAmount : f.revenue); }
+
 // A target card (Surface B): checkbox · ⭐ top-fit · name/domain/meta · badges +
 // added-date + remove · contacts (or Enrich) · inline notes. Contact info is
 // OPTIONAL — a target (incl. a #1 top fit) shows here with zero contacts.
 function targetCardHtml(c) {
+  const cat = targetCat(c);
   const starred = c.shortlist_rank != null;
   const li = (c.firmographics && c.firmographics.linkedin) || '';
   const meta = [c.location || (c.firmographics && c.firmographics.location) || '', (c.firmographics && c.firmographics.industry) || ''].filter(Boolean).join(' · ');
@@ -9307,7 +9337,7 @@ function targetCardHtml(c) {
       <label class="sr-card-check"><input type="checkbox" class="sr-tcb" data-id="${escapeHtml(c.id)}"${salesTargetSel.has(c.id) ? ' checked' : ''}></label>
       <button type="button" class="sr-star${starred ? ' on' : ''}" data-star data-id="${escapeHtml(c.id)}" title="${starred ? 'Remove top-fit mark' : 'Mark a top fit (best fits for this name)'}" aria-label="Top fit">${starred ? '★' : '☆'}</button>
       <div class="sr-card-id">
-        <div class="sr-card-name">${escapeHtml(c.company || '—')}${topPill}${manualTag}</div>
+        <div class="sr-card-name">${escapeHtml(c.company || '—')}<span class="sr-cat-pill sr-cat-${cat}">${TARGET_CAT_LABEL[cat]}</span>${topPill}</div>
         <div class="sr-card-links">${domHtml}${li ? ` <a class="sr-card-li" href="${escapeHtml(li)}" target="_blank" rel="noopener" title="Company LinkedIn">in</a>` : ''}</div>
         ${meta ? `<div class="sr-card-meta">${escapeHtml(meta)}</div>` : ''}
       </div>
@@ -9318,18 +9348,50 @@ function targetCardHtml(c) {
   </div>`;
 }
 
+// Sort comparator for the target list (blanks always last; numeric desc, text asc).
+function targetSortCmp(key) {
+  const num = (fn) => (a, b) => { const x = fn(a), y = fn(b); if (x == null && y == null) return 0; if (x == null) return 1; if (y == null) return -1; return y - x; };
+  if (key === 'employees') return num(tEmployees);
+  if (key === 'funding') return num(tFunding);
+  if (key === 'revenue') return num(tRevenue);
+  if (key === 'founded') return num(tFounded);
+  if (key === 'category') return (a, b) => (targetCat(a).localeCompare(targetCat(b))) || (String(b.added_at || '').localeCompare(String(a.added_at || '')));
+  if (key === 'company') return (a, b) => String(a.company || '').localeCompare(String(b.company || ''));
+  if (key === 'topfit') return (a, b) => ((a.shortlist_rank == null ? 99 : a.shortlist_rank) - (b.shortlist_rank == null ? 99 : b.shortlist_rank)) || String(b.added_at || '').localeCompare(String(a.added_at || ''));
+  return (a, b) => String(b.added_at || '').localeCompare(String(a.added_at || ''));   // 'added' (newest first)
+}
+
 function renderTargetList() {
   const summary = sEl('sr-targets-summary');
   const top5El = sEl('sr-targets-top5');
   const listEl = sEl('sr-targets-list');
+  const filterbar = sEl('sr-t-filterbar');
   if (!listEl) return;
   for (const id of [...salesTargetSel]) if (!salesTargets.some((t) => t.id === id)) salesTargetSel.delete(id);
-  const shortlisted = salesTargets.filter((t) => t.shortlist_rank != null);
-  const rest = salesTargets.filter((t) => t.shortlist_rank == null);
+  // Category filter applies to the whole list (incl. the Top 5).
+  const inFilter = (t) => salesTargetFilter === 'all' || targetCat(t) === salesTargetFilter;
+  const visible = salesTargets.filter(inFilter);
+  const shortlisted = visible.filter((t) => t.shortlist_rank != null).sort((a, b) => (a.shortlist_rank || 0) - (b.shortlist_rank || 0));
+  const rest = visible.filter((t) => t.shortlist_rank == null).sort(targetSortCmp(salesTargetSort));
+  // Category counts for the filter chips.
+  const counts = { all: salesTargets.length, upgrade: 0, product: 0, keyword: 0, manual: 0 };
+  for (const t of salesTargets) counts[targetCat(t)]++;
+  if (filterbar) {
+    filterbar.hidden = salesTargets.length === 0;
+    filterbar.querySelectorAll('.sr-t-cat-btn').forEach((b) => {
+      const cat = b.dataset.cat; const n = counts[cat] || 0;
+      b.classList.toggle('active', cat === salesTargetFilter);
+      b.disabled = cat !== 'all' && n === 0;
+      b.innerHTML = cat === 'all' ? `All<span class="sr-t-cat-n">${counts.all}</span>` : `${TARGET_CAT_LABEL[cat]}<span class="sr-t-cat-n">${n}</span>`;
+    });
+    const sortSel = sEl('sr-t-sort'); if (sortSel && sortSel.value !== salesTargetSort) sortSel.value = salesTargetSort;
+  }
   if (summary) {
+    const topN = salesTargets.filter((t) => t.shortlist_rank != null).length;
     summary.innerHTML = salesTargets.length
       ? `<span class="sr-sum-n">${salesTargets.length}</span> target${salesTargets.length === 1 ? '' : 's'}`
-        + `<span class="sr-sum-dot">·</span><span class="sr-sum-strong">${shortlisted.length} top fit${shortlisted.length === 1 ? '' : 's'}</span>`
+        + `<span class="sr-sum-dot">·</span><span class="sr-sum-strong">${topN} top fit${topN === 1 ? '' : 's'}</span>`
+        + (salesTargetFilter !== 'all' ? `<span class="sr-sum-dot">·</span>${visible.length} ${escapeHtml(TARGET_CAT_LABEL[salesTargetFilter] || '')}` : '')
       : '';
   }
   if (top5El) {
@@ -9339,6 +9401,8 @@ function renderTargetList() {
   }
   if (!salesTargets.length) {
     listEl.innerHTML = '<p class="muted sr-t-empty">No targets yet. In <strong>Explore</strong>, check companies and “Add to target list” — or add one manually above. A company can be a target even with no contact info.</p>';
+  } else if (!visible.length) {
+    listEl.innerHTML = `<p class="muted sr-t-empty">No ${escapeHtml(TARGET_CAT_LABEL[salesTargetFilter] || '')} targets.</p>`;
   } else {
     listEl.innerHTML = rest.length
       ? `<div class="sr-t-resthead">Target list</div><div class="sr-cards">${rest.map(targetCardHtml).join('')}</div>`
@@ -9352,6 +9416,9 @@ function selectedTargetIds() { return [...salesTargetSel].filter((id) => salesTa
 function updateTargetEnrichBtn() {
   const ids = selectedTargetIds();
   const eb = sEl('sr-t-enrich'); if (eb) eb.disabled = ids.length === 0;
+  // Qualify (Apollo firmographics) enables when any SELECTED target isn't qualified yet.
+  const qb = sEl('sr-t-qualify');
+  if (qb) qb.disabled = !ids.some((id) => { const t = salesTargets.find((x) => x.id === id); return t && !t.firmographics; });
   const sa = sEl('sr-t-select-all');
   if (sa) {
     const all = salesTargets.map((t) => t.id);
@@ -9360,6 +9427,32 @@ function updateTargetEnrichBtn() {
     sa.indeterminate = sel.length > 0 && sel.length < all.length;
   }
 }
+
+// Category filter chips + sort dropdown (client-side over the loaded targets).
+sEl('sr-t-catfilter')?.addEventListener('click', (e) => {
+  const b = e.target.closest('.sr-t-cat-btn'); if (!b || b.disabled) return;
+  salesTargetFilter = b.dataset.cat || 'all';
+  renderTargetList();
+});
+sEl('sr-t-sort')?.addEventListener('change', (e) => { salesTargetSort = e.target.value || 'added'; renderTargetList(); });
+
+// Qualify selected targets — pull Apollo firmographics so the employees/funding/
+// revenue/founded sorts have data. Chunked (bounds the 60s API cap), refresh as it goes.
+sEl('sr-t-qualify')?.addEventListener('click', async () => {
+  const ids = selectedTargetIds().filter((id) => { const t = salesTargets.find((x) => x.id === id); return t && !t.firmographics; });
+  if (!ids.length) return;
+  const btn = sEl('sr-t-qualify'); btn.disabled = true; const orig = btn.textContent;
+  let done = 0;
+  try {
+    for (let i = 0; i < ids.length; i += 10) {
+      const batch = ids.slice(i, i + 10);
+      btn.textContent = ids.length > 10 ? `Qualifying ${done + 1}–${done + batch.length} of ${ids.length}…` : `Qualifying ${batch.length}…`;
+      try { await salesPost({ action: 'qualify', ids: batch }); } catch { /* keep going */ }
+      done += batch.length;
+      await refreshSalesProject();
+    }
+  } finally { btn.textContent = orig; }
+});
 
 // ＋ Add to target list — promote the checked Explore companies (skips ones
 // already on the list), then jump to the Target list.
@@ -9465,10 +9558,11 @@ sEl('sr-t-addform')?.addEventListener('submit', async (e) => {
 sEl('sr-t-csv')?.addEventListener('click', () => {
   if (!salesTargets.length) return;
   const cell = (v) => { const s = v == null ? '' : String(v); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
-  const header = ['Top fit', 'Company', 'Domain', 'Status', 'Ability to pay', 'Employees', 'Funding', 'Location', 'Added', 'Notes', 'Contact name', 'Title', 'Email', 'Phone', 'LinkedIn'];
+  const header = ['Top fit', 'Category', 'Company', 'Domain', 'Status', 'Ability to pay', 'Employees', 'Funding', 'Revenue', 'Founded', 'Location', 'Added', 'Notes', 'Contact name', 'Title', 'Email', 'Phone', 'LinkedIn'];
   let csv = header.map(cell).join(',') + '\n';
   for (const c of salesTargets) {
-    const base = [c.shortlist_rank != null ? `#${c.shortlist_rank}` : '', c.company, c.domain, c.status, c.tier, c.employee_count, c.funding, c.location, c.added_at ? salesFmtDate(c.added_at) : '', c.notes];
+    const f = c.firmographics || {};
+    const base = [c.shortlist_rank != null ? `#${c.shortlist_rank}` : '', TARGET_CAT_LABEL[targetCat(c)], c.company, c.domain, c.status, c.tier, tEmployees(c) ?? '', f.funding || c.funding || '', f.revenue || '', f.foundedYear || '', c.location, c.added_at ? salesFmtDate(c.added_at) : '', c.notes];
     const contacts = (c.contacts && c.contacts.length) ? c.contacts : [null];
     for (const p of contacts) csv += [...base, p && p.name, p && p.title, p && p.email, p && p.phone, p && p.linkedin].map(cell).join(',') + '\n';
   }

@@ -1869,6 +1869,24 @@ body.drawer-open { overflow: hidden; }
 .sr-star.on { color: #e8a020; }
 .sr-topfit-pill { font-size: 10.5px; font-weight: 800; text-transform: uppercase; letter-spacing: .03em; color: var(--coral-deep); background: #ffe6dc; border-radius: 999px; padding: 2px 9px; margin-left: 10px; vertical-align: middle; }
 .sr-manual-badge { font-size: 10.5px; font-weight: 700; color: #6b7280; background: #f0f1f4; border-radius: 999px; padding: 2px 9px; margin-left: 8px; vertical-align: middle; }
+/* Category pill — which discovery bucket the target came from. */
+.sr-cat-pill { font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: .03em; border-radius: 999px; padding: 2px 8px; margin-left: 10px; vertical-align: middle; }
+.sr-cat-upgrade { color: #1b6fa8; background: #e2f0fb; }
+.sr-cat-product { color: #1b7a3d; background: #e3f6e9; }
+.sr-cat-keyword { color: #8a5a1a; background: #fbeed8; }
+.sr-cat-manual  { color: #6b7280; background: #f0f1f4; }
+/* Filter/sort bar. */
+.sr-t-filterbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 4px 0 16px; flex-wrap: wrap; }
+.sr-t-catfilter { display: inline-flex; gap: 4px; padding: 4px; background: var(--cream); border: 1.5px solid var(--line); border-radius: 999px; flex-wrap: wrap; }
+.sr-t-cat-btn { padding: 6px 13px; font-size: 12.5px; font-weight: 700; color: var(--navy-2); background: transparent; border: 0; border-radius: 999px; cursor: pointer; display: inline-flex; align-items: center; gap: 5px; }
+.sr-t-cat-btn:hover:not(:disabled) { color: var(--coral-deep); }
+.sr-t-cat-btn.active { background: var(--navy); color: #fff; }
+.sr-t-cat-btn:disabled { opacity: .4; cursor: default; }
+.sr-t-cat-n { font-size: 11px; font-weight: 800; padding: 0 5px; border-radius: 999px; background: rgba(0,0,0,.10); }
+.sr-t-cat-btn.active .sr-t-cat-n { background: rgba(255,255,255,.22); }
+.sr-t-sort { font-size: 12.5px; font-weight: 600; color: var(--navy-2); display: inline-flex; align-items: center; gap: 7px; }
+.sr-t-sort select { padding: 7px 10px; font: inherit; font-size: 13px; color: var(--navy); background: #fff; border: 1.5px solid var(--line); border-radius: var(--radius-sm); cursor: pointer; }
+.sr-t-sort select:focus { outline: none; border-color: var(--coral); }
 .sr-t-added { font-size: 11.5px; color: var(--navy-3); white-space: nowrap; }
 .sr-t-remove { font-size: 14px; font-weight: 800; line-height: 1; color: var(--navy-3); background: none; border: 0; cursor: pointer; padding: 2px 4px; }
 .sr-t-remove:hover { color: #c0392b; }
