@@ -260,6 +260,8 @@ const els = {
   navNameserver: $('nav-nameserver'),
   navSales: $('nav-sales'),
   navPortfolio: $('nav-portfolio'),
+  navAhrefs: $('nav-ahrefs'),
+  ahrefsForm: $('ahrefs-form'), ahrefsQ: $('ahrefs-q'), ahrefsGo: $('ahrefs-go'), ahrefsStatus: $('ahrefs-status'), ahrefsResult: $('ahrefs-result'), ahrefsRecent: $('ahrefs-recent'), ahrefsRecentList: $('ahrefs-recent-list'),
   navBeeper: $('nav-beeper'),
   navWhois: $('nav-whois'),
   navAuctionOwners: $('nav-auctionowners'), aoSearch: $('ao-search'), aoRegistry: $('ao-registry'),
@@ -546,7 +548,7 @@ function clearHash() {
 // the SPA): Domain DB Screen at /dbscreen, DB Search at /dbsearch.
 const VANITY_TOOLS = ['dbscreen', 'dbsearch'];
 function currentToolRoute() {
-  let m = location.pathname.match(/^\/research\/(trademark|appraisal|naming|dbscreen|dbsearch|nameserver|sales|portfolio|person|evaluate|bulk-eval|tld-count|renewal|expiring|beeper|whois|auction-owners|diq|admin)(?:\/(.+?))?\/?$/);
+  let m = location.pathname.match(/^\/research\/(trademark|appraisal|naming|dbscreen|dbsearch|nameserver|sales|portfolio|ahrefs|person|evaluate|bulk-eval|tld-count|renewal|expiring|beeper|whois|auction-owners|diq|admin)(?:\/(.+?))?\/?$/);
   if (!m) m = location.pathname.match(/^\/(dbscreen|dbsearch)(?:\/(.+?))?\/?$/);
   if (!m) return null;
   return { tool: m[1], slug: m[2] ? decodeURIComponent(m[2]) : '' };
@@ -573,6 +575,7 @@ const TOOL_PERMISSION = {
   diq: 'domain_owner',
   'auction-owners': 'domain_owner',
   portfolio: 'portfolio',
+  ahrefs: 'ahrefs',
   person: 'person',
   evaluate: 'evaluate',
   'bulk-eval': 'bulk_eval',
@@ -945,6 +948,13 @@ function route() {
     showView('portfolio');
     if (tr.slug) openPortfolioRun(tr.slug);
     else resetPortfolioView();
+    return;
+  }
+  if (tr && tr.tool === 'ahrefs') {
+    showView('ahrefs');
+    refreshAhrefsRecent();
+    if (tr.slug) { if (els.ahrefsQ) els.ahrefsQ.value = tr.slug; ahrefsLookup(tr.slug); }
+    else resetAhrefsView();
     return;
   }
   if (tr && tr.tool === 'person') {
@@ -2716,7 +2726,7 @@ async function checkAuth() {
       if (els.topbarAdmin) els.topbarAdmin.hidden = !canEnterAdmin(u);
       // Reports section now also hosts Corporate Portfolios (a research-app page),
       // so a portfolio-only user should see Reports in the header too.
-      if (els.topbarReports) els.topbarReports.hidden = !(canEnterReports(u) || u.is_admin || (u.permissions && u.permissions.portfolio));
+      if (els.topbarReports) els.topbarReports.hidden = !(canEnterReports(u) || u.is_admin || (u.permissions && (u.permissions.portfolio || u.permissions.ahrefs)));
       // Deals — the buy-side CRM (admin app); shown to anyone with deals access.
       if (els.topbarDeals) els.topbarDeals.hidden = !(u.is_admin || (u.permissions && (u.permissions.deals || u.permissions['deals.all'])));
       if (els.navAccount) els.navAccount.hidden = false;
@@ -2889,6 +2899,7 @@ function gateNavByPermissions(user) {
   // Reports sub-nav: Corporate Portfolios (a research-app page) needs `portfolio`;
   // the analytics tabs (admin app, full nav) need Reports access.
   if (els.navPortfolio) els.navPortfolio.hidden = !can('portfolio');
+  if (els.navAhrefs) els.navAhrefs.hidden = !can('ahrefs');
   if (els.navPerson) els.navPerson.hidden = !can('person');
   const repAccess = canEnterReports(user);
   for (const el of [els.navRepAnalytics, els.navRepMarketplace, els.navRepChat, els.navRepCost]) {
@@ -4198,6 +4209,7 @@ const VIEWS = {
   'sales-projects': { view: 'view-sales-projects', nav: 'nav-sales' },
   portfolio: { view: 'view-portfolio', nav: 'nav-portfolio' },
   'portfolio-runs': { view: 'view-portfolio-runs', nav: 'nav-portfolio' },
+  ahrefs: { view: 'view-ahrefs', nav: 'nav-ahrefs' },
   person: { view: 'view-person', nav: 'nav-person' },
   'person-runs': { view: 'view-person-runs', nav: 'nav-person' },
   evaluate: { view: 'view-evaluate', nav: 'nav-snap-eval' },
@@ -4220,7 +4232,7 @@ const SECTION_NAV = {
   snap: { group: 'nav-snap-group', topbar: 'topbar-snap' },
   reports: { group: 'nav-reports-group', topbar: 'topbar-reports' },
 };
-const VIEW_SECTION = { evaluate: 'snap', 'bulk-eval': 'snap', expiring: 'snap', portfolio: 'reports', 'portfolio-runs': 'reports' };
+const VIEW_SECTION = { evaluate: 'snap', 'bulk-eval': 'snap', expiring: 'snap', portfolio: 'reports', 'portfolio-runs': 'reports', ahrefs: 'reports' };
 const sectionForView = (name) => VIEW_SECTION[name] || 'research';
 
 function showView(name) {
@@ -9563,6 +9575,7 @@ function parseMoney(v) {
 function tFunding(c) { const f = c.firmographics || {}; return parseMoney(f.fundingAmount != null ? f.fundingAmount : (f.funding || c.funding)); }
 function tRevenue(c) { const f = c.firmographics || {}; return parseMoney(f.revenueAmount != null ? f.revenueAmount : f.revenue); }
 function tOpr(c) { return (c.opr == null || c.opr === '') ? null : Number(c.opr); }
+function tTraffic(c) { return (c.ah_traffic == null || c.ah_traffic === '') ? null : Number(c.ah_traffic); }
 function srMoney(v) { const s = String(v ?? '').trim(); return s ? (/^\$/.test(s) ? s : '$' + s) : ''; }
 
 // Firmographic values shown on a target card (fills after Qualify). Type-of-match
@@ -9585,15 +9598,18 @@ function targetMetricsHtml(c) {
   return `<div class="sr-t-metrics">${cells.map(([k, v]) => `<div class="sr-t-m"><span class="sr-t-m-k">${k}</span><span class="sr-t-m-v">${escapeHtml(v)}</span></div>`).join('')}</div>`;
 }
 
-// Merge cached Open PageRank (prominence) onto the loaded targets for display/sort.
+// Merge cached prominence (Open PageRank + Ahrefs traffic/DR) onto the loaded
+// targets for display/sort.
 function applyOpr() {
   for (const t of salesTargets) {
     const v = salesOprCache.get(String(t.domain || '').toLowerCase().replace(/^www\./, ''));
-    if (v) { t.opr = v.opr; t.opr_rank = v.rank; }
+    if (v) { t.opr = v.opr; t.opr_rank = v.rank; t.ah_traffic = v.traffic ?? null; t.ah_dr = v.dr ?? null; }
   }
 }
-// Fetch Open PageRank for any target domains we haven't looked up yet (one free,
-// batched call), cache per session, then repaint. Fail-open (no key → nulls).
+// Fetch prominence for any target domains we haven't looked up yet (one batched
+// call), cache per session, then repaint. Returns Open PageRank (free) always, and
+// Ahrefs organic traffic + Domain Rating when AHREF_API_KEY is set (the paid, far
+// better read). Fail-open (no keys → nulls).
 let salesProminenceBusy = false;
 async function loadProminence() {
   if (salesProminenceBusy || !salesProjectId || !salesTargets.length) return;
@@ -9603,10 +9619,15 @@ async function loadProminence() {
   try {
     const data = await salesPost({ action: 'prominence', project_id: salesProjectId });
     const p = data.prominence || {};
-    for (const d of need) salesOprCache.set(d, p[d] || { opr: null, rank: null });   // mark fetched (even null) to avoid re-loops
+    const tr = data.traffic || {};
+    for (const d of need) {
+      const o = p[d] || {};
+      const a = tr[d] || {};
+      salesOprCache.set(d, { opr: o.opr ?? null, rank: o.rank ?? null, traffic: a.traffic ?? null, dr: a.dr ?? null });   // mark fetched (even null) to avoid re-loops
+    }
     applyOpr();
     renderTargetList();
-  } catch { for (const d of need) salesOprCache.set(d, { opr: null, rank: null }); }
+  } catch { for (const d of need) salesOprCache.set(d, { opr: null, rank: null, traffic: null, dr: null }); }
   finally { salesProminenceBusy = false; }
 }
 
@@ -9644,7 +9665,7 @@ function targetCardHtml(c) {
         <div class="sr-card-links">${domHtml}${li ? ` <a class="sr-card-li" href="${escapeHtml(li)}" target="_blank" rel="noopener" title="Company LinkedIn">in</a>` : ''}</div>
         ${meta ? `<div class="sr-card-meta">${escapeHtml(meta)}</div>` : ''}
       </div>
-      <div class="sr-card-badges">${c.opr != null ? `<span class="sr-opr" title="Open PageRank — domain authority 0–10 (a free traffic/prominence proxy)${c.opr_rank ? ` · global rank #${Number(c.opr_rank).toLocaleString()}` : ''}">OPR ${Number(c.opr).toFixed(1)}</span>` : ''}${statusBadge}${tierBadge}${added ? `<span class="sr-t-added" title="Date added to the list">added ${escapeHtml(added)}</span>` : ''}</div>
+      <div class="sr-card-badges">${c.ah_traffic != null ? `<span class="sr-traffic" title="Ahrefs — estimated monthly organic search traffic${c.ah_dr != null ? ` · Domain Rating ${Math.round(c.ah_dr)}` : ''}">📈 ${ahNum(c.ah_traffic)}/mo${c.ah_dr != null ? ` · DR ${Math.round(c.ah_dr)}` : ''}</span>` : ''}${c.opr != null ? `<span class="sr-opr" title="Open PageRank — domain authority 0–10 (a free traffic/prominence proxy)${c.opr_rank ? ` · global rank #${Number(c.opr_rank).toLocaleString()}` : ''}">OPR ${Number(c.opr).toFixed(1)}</span>` : ''}${statusBadge}${tierBadge}${added ? `<span class="sr-t-added" title="Date added to the list">added ${escapeHtml(added)}</span>` : ''}</div>
     </div>
     ${targetMetricsHtml(c)}
     ${contacts}
@@ -9660,6 +9681,7 @@ function targetSortCmp(key) {
   if (key === 'revenue') return num(tRevenue);
   if (key === 'founded') return num(tFounded);
   if (key === 'prominence') return num(tOpr);
+  if (key === 'traffic') return num(tTraffic);
   if (key === 'category') return (a, b) => (targetCat(a).localeCompare(targetCat(b))) || (String(b.added_at || '').localeCompare(String(a.added_at || '')));
   if (key === 'company') return (a, b) => String(a.company || '').localeCompare(String(b.company || ''));
   if (key === 'topfit') return (a, b) => ((a.shortlist_rank == null ? 99 : a.shortlist_rank) - (b.shortlist_rank == null ? 99 : b.shortlist_rank)) || String(b.added_at || '').localeCompare(String(a.added_at || ''));
@@ -9865,11 +9887,11 @@ sEl('sr-t-addform')?.addEventListener('submit', async (e) => {
 sEl('sr-t-csv')?.addEventListener('click', () => {
   if (!salesTargets.length) return;
   const cell = (v) => { const s = v == null ? '' : String(v); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
-  const header = ['Top fit', 'Category', 'Company', 'Domain', 'Status', 'Ability to pay', 'Employees', 'Funding', 'Revenue', 'Founded', 'OPR', 'OPR rank', 'Location', 'Added', 'Notes', 'Contact name', 'Title', 'Email', 'Phone', 'LinkedIn'];
+  const header = ['Top fit', 'Category', 'Company', 'Domain', 'Status', 'Ability to pay', 'Employees', 'Funding', 'Revenue', 'Founded', 'Ahrefs traffic/mo', 'Ahrefs DR', 'OPR', 'OPR rank', 'Location', 'Added', 'Notes', 'Contact name', 'Title', 'Email', 'Phone', 'LinkedIn'];
   let csv = header.map(cell).join(',') + '\n';
   for (const c of salesTargets) {
     const f = c.firmographics || {};
-    const base = [c.shortlist_rank != null ? `#${c.shortlist_rank}` : '', TARGET_CAT_LABEL[targetCat(c)], c.company, c.domain, c.status, c.tier, tEmployees(c) ?? '', f.funding || c.funding || '', f.revenue || '', f.foundedYear || '', c.opr != null ? Number(c.opr).toFixed(1) : '', c.opr_rank || '', c.location, c.added_at ? salesFmtDate(c.added_at) : '', c.notes];
+    const base = [c.shortlist_rank != null ? `#${c.shortlist_rank}` : '', TARGET_CAT_LABEL[targetCat(c)], c.company, c.domain, c.status, c.tier, tEmployees(c) ?? '', f.funding || c.funding || '', f.revenue || '', f.foundedYear || '', c.ah_traffic != null ? Math.round(c.ah_traffic) : '', c.ah_dr != null ? Math.round(c.ah_dr) : '', c.opr != null ? Number(c.opr).toFixed(1) : '', c.opr_rank || '', c.location, c.added_at ? salesFmtDate(c.added_at) : '', c.notes];
     const contacts = (c.contacts && c.contacts.length) ? c.contacts : [null];
     for (const p of contacts) csv += [...base, p && p.name, p && p.title, p && p.email, p && p.phone, p && p.linkedin].map(cell).join(',') + '\n';
   }
@@ -11427,6 +11449,210 @@ els.renewalForm?.addEventListener('submit', (e) => {
   setToolUrl('renewal', '');
   renewalLookup(q);
 });
+
+// ── Ahrefs Report — full website deep-dive (traffic / DR / keywords / links) ──
+let ahrefsLast = null;
+// Compact number: 1234 → 1.2K, 3_400_000 → 3.4M. Blank/null → —.
+const ahNum = (n) => {
+  if (n == null || !isFinite(Number(n))) return '—';
+  const v = Number(n);
+  const a = Math.abs(v);
+  if (a >= 1e9) return (v / 1e9).toFixed(a >= 1e10 ? 0 : 1).replace(/\.0$/, '') + 'B';
+  if (a >= 1e6) return (v / 1e6).toFixed(a >= 1e7 ? 0 : 1).replace(/\.0$/, '') + 'M';
+  if (a >= 1e3) return (v / 1e3).toFixed(a >= 1e4 ? 0 : 1).replace(/\.0$/, '') + 'K';
+  return String(Math.round(v));
+};
+const ahUsd = (n) => (n == null || !isFinite(Number(n)) ? '—' : '$' + ahNum(n));
+const ahPct = (p) => {
+  if (p == null || !isFinite(Number(p))) return '';
+  const v = Number(p);
+  const cls = v > 0 ? 'ah-up' : v < 0 ? 'ah-down' : 'ah-flat';
+  const arr = v > 0 ? '▲' : v < 0 ? '▼' : '·';
+  return `<span class="ah-delta ${cls}">${arr} ${Math.abs(v)}%</span>`;
+};
+const AH_COUNTRY = { us: '🇺🇸 US', gb: '🇬🇧 UK', ca: '🇨🇦 Canada', au: '🇦🇺 Australia', de: '🇩🇪 Germany', fr: '🇫🇷 France', in: '🇮🇳 India', es: '🇪🇸 Spain', it: '🇮🇹 Italy', nl: '🇳🇱 Netherlands', br: '🇧🇷 Brazil', jp: '🇯🇵 Japan', mx: '🇲🇽 Mexico', ru: '🇷🇺 Russia' };
+const ahCountry = (c) => AH_COUNTRY[String(c || '').toLowerCase()] || String(c || '').toUpperCase();
+
+// Inline SVG bar chart of the monthly organic-traffic history.
+function ahSpark(history) {
+  const rows = (history || []).filter((r) => r && r.org_traffic != null);
+  if (rows.length < 2) return '';
+  const max = Math.max(...rows.map((r) => Number(r.org_traffic)), 1);
+  const W = 640, H = 120, n = rows.length, bw = W / n;
+  const bars = rows.map((r, i) => {
+    const h = Math.max(1, (Number(r.org_traffic) / max) * (H - 8));
+    const x = i * bw, y = H - h;
+    return `<rect x="${(x + 1).toFixed(1)}" y="${y.toFixed(1)}" width="${Math.max(1, bw - 2).toFixed(1)}" height="${h.toFixed(1)}" rx="1"><title>${escapeHtml(r.date || '')}: ${ahNum(r.org_traffic)} visits</title></rect>`;
+  }).join('');
+  const first = rows[0].date || '', lastD = rows[rows.length - 1].date || '';
+  return `<div class="ah-chart"><svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" class="ah-spark">${bars}</svg>
+    <div class="ah-chart-axis"><span>${escapeHtml(first)}</span><span>peak ${ahNum(max)}/mo</span><span>${escapeHtml(lastD)}</span></div></div>`;
+}
+
+function ahStat(label, value, sub) {
+  return `<div class="ah-stat"><div class="ah-stat-v">${value}</div><div class="ah-stat-l">${label}</div>${sub ? `<div class="ah-stat-s">${sub}</div>` : ''}</div>`;
+}
+
+function renderAhrefs(d) {
+  if (!els.ahrefsResult) return;
+  ahrefsLast = d;
+  const o = d.overview || {};
+  const t = d.trends || {};
+  const drTxt = o.dr != null ? Math.round(o.dr) : '—';
+  const head = `<div class="ah-head">
+    <div class="ah-head-l"><span class="ah-dr" title="Domain Rating (0–100)">DR ${drTxt}</span>
+      <h2 class="ah-domain"><a href="https://${escapeHtml(d.domain)}" target="_blank" rel="noopener">${escapeHtml(d.domain)}</a></h2></div>
+    <div class="ah-head-r">
+      ${d.cached ? `<span class="ah-cached muted" title="Served from cache — no credits spent">cached${d.updated_at ? ' · ' + escapeHtml(String(d.updated_at).slice(0, 10)) : ''}</span>` : ''}
+      <button type="button" class="be-ghost" id="ah-refresh">↻ Refresh</button>
+    </div></div>`;
+
+  const stats = `<div class="ah-stats">
+    ${ahStat('Organic traffic / mo', ahNum(o.org_traffic), 'est. monthly search visits')}
+    ${ahStat('Traffic value / mo', ahUsd(o.org_value_usd), 'equiv. PPC cost')}
+    ${ahStat('Organic keywords', ahNum(o.org_keywords), o.org_keywords_top3 != null ? `${ahNum(o.org_keywords_top3)} in top 3` : '')}
+    ${ahStat('Referring domains', ahNum(o.refdomains), o.backlinks != null ? `${ahNum(o.backlinks)} backlinks` : '')}
+    ${ahStat('Domain Rating', drTxt, o.ahrefs_rank != null ? `Ahrefs rank #${ahNum(o.ahrefs_rank)}` : '')}
+    ${ahStat('Paid traffic / mo', ahNum(o.paid_traffic), o.paid_keywords != null ? `${ahNum(o.paid_keywords)} paid kw` : '')}
+  </div>`;
+
+  const trends = (t && (t.per_month != null || t.per_year != null)) ? `<div class="ah-sec">
+    <div class="ah-sec-h">Organic traffic over time ${t.mom_pct != null ? ahPct(t.mom_pct) + '<span class="muted ah-dl">MoM</span>' : ''} ${t.yoy_pct != null ? ahPct(t.yoy_pct) + '<span class="muted ah-dl">YoY</span>' : ''}</div>
+    <div class="ah-trend">
+      ${ahStat('Per week', ahNum(t.per_week), 'latest month ÷ 4.3')}
+      ${ahStat('Per month', ahNum(t.per_month), 'latest month')}
+      ${ahStat('Per quarter', ahNum(t.per_quarter), 'last 3 months')}
+      ${ahStat('Per year', ahNum(t.per_year), 'last 12 months')}
+    </div>
+    ${ahSpark(d.history)}
+  </div>` : '';
+
+  const kwRows = (d.keywords || []).slice(0, 40).map((k) => `<tr>
+    <td class="ah-kw">${k.url ? `<a href="${escapeHtml(k.url)}" target="_blank" rel="noopener">${escapeHtml(k.keyword || '')}</a>` : escapeHtml(k.keyword || '')}</td>
+    <td class="ah-r">${k.position != null ? '#' + k.position : '—'}</td>
+    <td class="ah-r">${ahNum(k.volume)}</td>
+    <td class="ah-r">${ahNum(k.traffic)}</td>
+    <td class="ah-r">${k.difficulty != null ? k.difficulty : '—'}</td>
+    <td class="ah-r">${k.cpc_usd != null ? ahUsd(k.cpc_usd) : '—'}</td></tr>`).join('');
+  const keywords = kwRows ? `<div class="ah-sec"><div class="ah-sec-h">Top organic keywords <span class="muted">— what it ranks for</span>
+      <button type="button" class="be-ghost ah-csv" data-ah-csv="keywords">⬇ CSV</button></div>
+    <div class="ah-tablewrap"><table class="ah-table"><thead><tr><th>Keyword</th><th class="ah-r">Pos</th><th class="ah-r">Volume</th><th class="ah-r">Traffic</th><th class="ah-r" title="Keyword Difficulty 0–100">KD</th><th class="ah-r">CPC</th></tr></thead><tbody>${kwRows}</tbody></table></div></div>` : '';
+
+  const pgRows = (d.pages || []).slice(0, 25).map((p) => `<tr>
+    <td class="ah-kw">${p.url ? `<a href="${escapeHtml(p.url)}" target="_blank" rel="noopener">${escapeHtml(p.url.replace(/^https?:\/\//, ''))}</a>` : '—'}</td>
+    <td class="ah-r">${ahNum(p.traffic)}</td>
+    <td class="ah-r">${ahNum(p.keywords)}</td>
+    <td>${p.top_keyword ? escapeHtml(p.top_keyword) : '—'}</td>
+    <td class="ah-r">${ahNum(p.refdomains)}</td></tr>`).join('');
+  const pages = pgRows ? `<div class="ah-sec"><div class="ah-sec-h">Top pages by traffic</div>
+    <div class="ah-tablewrap"><table class="ah-table"><thead><tr><th>Page</th><th class="ah-r">Traffic</th><th class="ah-r">Keywords</th><th>Top keyword</th><th class="ah-r">Ref. domains</th></tr></thead><tbody>${pgRows}</tbody></table></div></div>` : '';
+
+  const rdRows = (d.refdomains || []).slice(0, 40).map((r) => `<tr>
+    <td class="ah-kw"><a href="https://${escapeHtml(r.domain || '')}" target="_blank" rel="noopener">${escapeHtml(r.domain || '')}</a></td>
+    <td class="ah-r">${r.dr != null ? Math.round(r.dr) : '—'}</td>
+    <td class="ah-r">${ahNum(r.traffic)}</td>
+    <td class="ah-r">${ahNum(r.links)}</td>
+    <td class="ah-r">${r.first_seen ? escapeHtml(String(r.first_seen).slice(0, 10)) : '—'}</td></tr>`).join('');
+  const refdomains = rdRows ? `<div class="ah-sec"><div class="ah-sec-h">Referring domains <span class="muted">— who links to it</span>
+      <button type="button" class="be-ghost ah-csv" data-ah-csv="refdomains">⬇ CSV</button></div>
+    <div class="ah-tablewrap"><table class="ah-table"><thead><tr><th>Domain</th><th class="ah-r">DR</th><th class="ah-r">Traffic</th><th class="ah-r">Links</th><th class="ah-r">First seen</th></tr></thead><tbody>${rdRows}</tbody></table></div></div>` : '';
+
+  const cpRows = (d.competitors || []).slice(0, 20).map((c) => `<tr>
+    <td class="ah-kw"><a href="https://${escapeHtml(c.domain || '')}" target="_blank" rel="noopener">${escapeHtml(c.domain || '')}</a></td>
+    <td class="ah-r">${c.dr != null ? Math.round(c.dr) : '—'}</td>
+    <td class="ah-r">${ahNum(c.common_keywords)}</td>
+    <td class="ah-r">${ahNum(c.keywords)}</td>
+    <td class="ah-r">${ahNum(c.traffic)}</td></tr>`).join('');
+  const competitors = cpRows ? `<div class="ah-sec"><div class="ah-sec-h">Organic competitors <span class="muted">— sites ranking for the same keywords</span></div>
+    <div class="ah-tablewrap"><table class="ah-table"><thead><tr><th>Domain</th><th class="ah-r">DR</th><th class="ah-r">Common kw</th><th class="ah-r">Total kw</th><th class="ah-r">Traffic</th></tr></thead><tbody>${cpRows}</tbody></table></div></div>` : '';
+
+  const coRows = (d.countries || []).slice(0, 10).map((c) => {
+    const totVisit = (d.countries || []).reduce((a, b) => a + (Number(b.org_traffic) || 0), 0) || 1;
+    const share = Math.round((Number(c.org_traffic) || 0) / totVisit * 100);
+    return `<tr><td>${escapeHtml(ahCountry(c.country))}</td><td class="ah-r">${ahNum(c.org_traffic)}</td><td class="ah-r">${share}%</td><td class="ah-r">${ahNum(c.org_keywords)}</td></tr>`;
+  }).join('');
+  const countries = coRows ? `<div class="ah-sec"><div class="ah-sec-h">Traffic by country</div>
+    <div class="ah-tablewrap"><table class="ah-table"><thead><tr><th>Country</th><th class="ah-r">Traffic</th><th class="ah-r">Share</th><th class="ah-r">Keywords</th></tr></thead><tbody>${coRows}</tbody></table></div></div>` : '';
+
+  const anyData = Object.keys(o).length || (d.history || []).length || (d.keywords || []).length;
+  const errNote = (d.errors && d.errors.length && !anyData)
+    ? `<p class="ah-err">Ahrefs returned no data for this domain. It may have no organic presence, or the API plan may not cover these reports.<br><span class="muted">${escapeHtml(d.errors.join(' · '))}</span></p>`
+    : (d.errors && d.errors.length) ? `<p class="ah-err muted">Some sections couldn't load: ${escapeHtml(d.errors.map((e) => String(e).split(':')[0]).join(', '))}.</p>` : '';
+
+  els.ahrefsResult.innerHTML = head + stats + trends + keywords + pages + refdomains + competitors + countries + errNote;
+  els.ahrefsResult.hidden = false;
+  const rf = document.getElementById('ah-refresh');
+  if (rf) rf.addEventListener('click', () => ahrefsLookup(d.domain, { refresh: true }));
+  els.ahrefsResult.querySelectorAll('.ah-csv').forEach((b) => b.addEventListener('click', () => ahrefsCsv(b.dataset.ahCsv)));
+}
+
+function ahrefsCsv(kind) {
+  if (!ahrefsLast) return;
+  const dom = ahrefsLast.domain || 'domain';
+  let header, rows;
+  if (kind === 'refdomains') {
+    header = ['Domain', 'DR', 'Traffic', 'Links', 'Dofollow', 'First seen', 'Last seen'];
+    rows = (ahrefsLast.refdomains || []).map((r) => [r.domain, r.dr, r.traffic, r.links, r.dofollow, r.first_seen, r.last_seen]);
+  } else {
+    header = ['Keyword', 'Position', 'Volume', 'Traffic', 'Difficulty', 'CPC (USD)', 'URL'];
+    rows = (ahrefsLast.keywords || []).map((k) => [k.keyword, k.position, k.volume, k.traffic, k.difficulty, k.cpc_usd, k.url]);
+  }
+  const esc = (v) => { const s = v == null ? '' : String(v); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
+  const csv = [header, ...rows].map((r) => r.map(esc).join(',')).join('\n');
+  const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+  const a = document.createElement('a');
+  a.href = url; a.download = `ahrefs-${dom}-${kind}.csv`; a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 2000);
+}
+
+function resetAhrefsView() {
+  if (els.ahrefsResult) { els.ahrefsResult.hidden = true; els.ahrefsResult.innerHTML = ''; }
+  if (els.ahrefsStatus) els.ahrefsStatus.hidden = true;
+  if (els.ahrefsQ) els.ahrefsQ.value = '';
+}
+
+async function refreshAhrefsRecent() {
+  if (!els.ahrefsRecentList) return;
+  try {
+    const res = await fetch('/research/api/ahrefs?list=1&limit=8');
+    if (!res.ok) return;
+    const { lookups } = await res.json();
+    if (!lookups || !lookups.length) { if (els.ahrefsRecent) els.ahrefsRecent.hidden = true; return; }
+    els.ahrefsRecentList.innerHTML = lookups.map((l) => `<li><a href="/research/ahrefs/${encodeURIComponent(l.query)}" data-ah-recent="${escapeHtml(l.query)}">${escapeHtml(l.query)}</a></li>`).join('');
+    els.ahrefsRecentList.querySelectorAll('[data-ah-recent]').forEach((a) => a.addEventListener('click', (e) => {
+      if (newTabClick(e)) return; e.preventDefault();
+      const q = a.dataset.ahRecent; if (els.ahrefsQ) els.ahrefsQ.value = q; setToolUrl('ahrefs', q); ahrefsLookup(q);
+    }));
+    if (els.ahrefsRecent) els.ahrefsRecent.hidden = false;
+  } catch { /* ignore */ }
+}
+
+async function ahrefsLookup(q, { refresh = false } = {}) {
+  const domain = String(q || '').trim().toLowerCase().replace(/^https?:\/\//, '').replace(/^www\./, '').split('/')[0];
+  if (!domain || !domain.includes('.') || !els.ahrefsResult) return;
+  els.ahrefsResult.hidden = false;
+  els.ahrefsResult.innerHTML = `<div class="ah-loading muted"><span class="ev-spinner"></span> Pulling the Ahrefs report for <strong>${escapeHtml(domain)}</strong>… <span class="ah-loadnote">(first run gathers traffic, keywords, backlinks &amp; competitors — a few seconds)</span></div>`;
+  try {
+    const res = await fetch(`/research/api/ahrefs?domain=${encodeURIComponent(domain)}${refresh ? '&refresh=1' : ''}`);
+    if (res.status === 503) { els.ahrefsResult.innerHTML = `<div class="ah-err muted">Ahrefs isn't configured yet (missing API key).</div>`; return; }
+    if (res.status === 403) { els.ahrefsResult.innerHTML = `<div class="ah-err muted">You don't have access to the Ahrefs Report.</div>`; return; }
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+    renderAhrefs(data);
+    refreshAhrefsRecent();
+  } catch (e) {
+    els.ahrefsResult.innerHTML = `<div class="ah-err muted">Couldn't load the Ahrefs report: ${escapeHtml(String(e.message || e))}</div>`;
+  }
+}
+
+els.ahrefsForm?.addEventListener('submit', (e) => {
+  e.preventDefault();
+  const q = (els.ahrefsQ && els.ahrefsQ.value || '').trim();
+  if (!q) return;
+  setToolUrl('ahrefs', '');
+  ahrefsLookup(q);
+});
+els.navAhrefs?.addEventListener('click', (e) => { if (newTabClick(e)) return; e.preventDefault(); setToolUrl('ahrefs', ''); route(); });
 
 // ── Expiring .ai — SNAP report of good one-word .ai names in the redemption window ─
 let expiringLast = [];

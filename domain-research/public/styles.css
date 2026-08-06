@@ -1902,6 +1902,7 @@ body.drawer-open { overflow: hidden; }
 .sr-t-sort select:focus { outline: none; border-color: var(--coral); }
 .sr-t-added { font-size: 11.5px; color: var(--navy-3); white-space: nowrap; }
 .sr-opr { font-size: 11px; font-weight: 800; color: #5b3d8a; background: #efe8fb; border-radius: 999px; padding: 2px 8px; white-space: nowrap; }
+.sr-traffic { font-size: 11px; font-weight: 800; color: #1f6f57; background: #e4f5ec; border-radius: 999px; padding: 2px 8px; white-space: nowrap; }
 /* Firmographic metrics on a target card (fills after Qualify). */
 .sr-t-metrics { display: flex; flex-wrap: wrap; gap: 18px 26px; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); }
 .sr-t-m { display: flex; flex-direction: column; gap: 1px; }
@@ -2627,3 +2628,54 @@ a.sr-ag-co-link:hover { border-color: var(--coral); color: var(--coral-deep); ba
 .xp-rr-who { font-size: 11.5px; }
 .xp-rr-none { font-size: 11.5px; }
 .xp-rr-btn { margin-top: 4px; font-size: 11.5px; padding: 2px 8px; color: #6b4a8a; }
+
+/* ── Ahrefs Report — website deep-dive (traffic / DR / keywords / links) ───── */
+.ah-result { margin-top: 8px; }
+.ah-loading, .ah-err { display: flex; align-items: center; gap: 10px; padding: 22px; font-size: 14px; }
+.ah-err { display: block; background: #fbf6ee; border: 1px solid var(--line); border-radius: 12px; color: var(--navy); }
+.ah-loadnote { font-size: 12.5px; }
+.ah-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin: 4px 0 14px; }
+.ah-head-l { display: flex; align-items: center; gap: 12px; }
+.ah-dr { flex: 0 0 auto; background: var(--teal-deep); color: #fff; font-weight: 800; font-size: 14px; padding: 8px 12px; border-radius: 10px; letter-spacing: .3px; }
+.ah-domain { font-size: 22px; margin: 0; font-weight: 800; }
+.ah-domain a { color: var(--navy); text-decoration: none; }
+.ah-domain a:hover { text-decoration: underline; }
+.ah-head-r { display: flex; align-items: center; gap: 10px; }
+.ah-cached { font-size: 12px; }
+.ah-head-r .be-ghost { padding: 7px 13px; font-size: 13px; font-weight: 600; border-radius: 8px; border: 1.5px solid #d9e0e4; background: #fff; color: #33475a; cursor: pointer; }
+.ah-head-r .be-ghost:hover { background: #fbf6ee; border-color: var(--coral); }
+.ah-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-bottom: 18px; }
+.ah-stat { background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; }
+.ah-stat-v { font-size: 24px; font-weight: 800; color: var(--navy); line-height: 1.1; }
+.ah-stat-l { font-size: 12.5px; color: var(--navy-2); margin-top: 4px; font-weight: 600; }
+.ah-stat-s { font-size: 11.5px; color: var(--navy-3); margin-top: 2px; }
+.ah-sec { margin: 22px 0; }
+.ah-sec-h { font-size: 15px; font-weight: 800; color: var(--navy); margin-bottom: 10px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.ah-sec-h .muted { font-weight: 500; font-size: 13px; }
+.ah-sec-h .be-ghost { margin-left: auto; padding: 4px 10px; font-size: 12px; font-weight: 600; border-radius: 7px; border: 1.5px solid #d9e0e4; background: #fff; color: #33475a; cursor: pointer; }
+.ah-sec-h .be-ghost:hover { background: #fbf6ee; border-color: var(--coral); }
+.ah-dl { font-size: 11px; font-weight: 600; margin-left: 2px; }
+.ah-delta { font-size: 12.5px; font-weight: 700; padding: 1px 6px; border-radius: 6px; }
+.ah-up { color: #1f8a54; background: #e6f6ec; }
+.ah-down { color: #c0492f; background: #fdeadf; }
+.ah-flat { color: var(--navy-3); background: #f0ece2; }
+.ah-trend { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; margin-bottom: 14px; }
+.ah-chart { background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; }
+.ah-spark { width: 100%; height: 120px; display: block; }
+.ah-spark rect { fill: var(--teal-deep); opacity: .85; }
+.ah-spark rect:hover { fill: var(--coral); opacity: 1; }
+.ah-chart-axis { display: flex; justify-content: space-between; font-size: 11px; color: var(--navy-3); margin-top: 6px; }
+.ah-tablewrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 12px; background: #fff; }
+.ah-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.ah-table th { text-align: left; font-size: 11.5px; text-transform: uppercase; letter-spacing: .4px; color: var(--navy-3); font-weight: 700; padding: 9px 12px; border-bottom: 1.5px solid var(--line); white-space: nowrap; }
+.ah-table td { padding: 8px 12px; border-bottom: 1px solid var(--line-2); vertical-align: top; }
+.ah-table tbody tr:last-child td { border-bottom: none; }
+.ah-table tbody tr:hover { background: #fbf8f2; }
+.ah-table .ah-r { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.ah-kw { max-width: 340px; overflow: hidden; text-overflow: ellipsis; }
+.ah-kw a { color: var(--teal-deep); text-decoration: none; }
+.ah-kw a:hover { text-decoration: underline; }
+@media (max-width: 640px) {
+  .ah-domain { font-size: 18px; }
+  .ah-stat-v { font-size: 20px; }
+}

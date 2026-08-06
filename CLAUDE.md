@@ -15,6 +15,47 @@ Source of truth for any Claude Code session picking up work on this repo. **Read
 
 ---
 
+## Ahrefs Report — website deep-dive (2026-08-06)
+
+A Reports-section tool (`/research/ahrefs`, gated `ahrefs`) that pulls a comprehensive
+website deep-dive from the **Ahrefs Site Explorer API v3** for one domain: overview (Domain
+Rating + Ahrefs rank, organic traffic + traffic value + keywords, live backlinks + referring
+domains), a **monthly organic-traffic history** with per-week/month/quarter/year rollups +
+MoM/YoY deltas + an inline bar chart, traffic **by country**, the **organic keywords** it ranks
+for, its **top pages**, **referring domains**, and **organic competitors**.
+
+- **Client** `lib/ahrefs.js` (dependency-free, `fetchJson`, base `https://api.ahrefs.com/v3/
+  site-explorer`, auth `Authorization: Bearer <AHREF_API_KEY>` — also accepts `AHREFS_API_KEY`).
+  `ahrefsConfigured(env)`; `ahrefsOne(domain,env)` (metrics + domain-rating, for the Sales Hub
+  prominence chip); **`ahrefsReport(domain,env,{country})`** = the full report — every section an
+  independent, **fail-open** call (a section that errors is omitted + noted in `errors[]`), run in
+  parallel. Endpoint/param/column names + JSON wrapper keys were verified against the v3 docs
+  (`metrics`/`domain-rating`/`backlinks-stats`/`metrics-history`/`metrics-by-country`/
+  `organic-keywords`→`keywords`/`top-pages`→`pages`/`refdomains`/`organic-competitors`→`competitors`).
+  List endpoints REQUIRE an exact `select` column list (a wrong column 400s just that section).
+  **⚠️ Cost fields (`org_cost`/`cpc`/`value`) are assumed USD CENTS (÷100 to $) per the docs —
+  verify the magnitude on the first live run** (if values look 100× off, drop the `cents()` divide).
+- **API** `api/ahrefs.js` (gated `ahrefs`; admins auto-pass; maxDuration 60): `GET ?domain=&country=us&refresh=1`
+  → the report; `GET ?list=1` → recent. **Cache-first by DOMAIN** (kind `ah` in
+  `domain_research_tool_lookups`) so a re-view is instant + never re-spends; `refresh=1` forces.
+  503 if `AHREF_API_KEY` unset. Only caches a report that returned data (never an all-errors miss).
+- **UI** (`public/app.js` `ahrefs*` helpers — `ahrefsLookup`/`renderAhrefs`/`ahSpark`/`ahNum`/
+  `ahrefsCsv`; `#view-ahrefs` + `#nav-ahrefs` in the **Reports** nav group; `.ah-*` styles):
+  DR badge + stat cards + traffic-trend cards + SVG bar chart + keyword/pages/refdomains/
+  competitors/country tables + per-section CSV (keywords, refdomains) + a ↻ Refresh button.
+  `VIEW_SECTION.ahrefs='reports'`; `topbar-reports` also shows for an ahrefs-only user. Cache-bust
+  `?v=20260806ahrefs`.
+- **Also feeds the Sales Hub prominence** — `handleProminence` (`api/sales.js`) now returns Ahrefs
+  `traffic`/`dr` per target alongside Open PageRank; the target card shows a **📈 <traffic>/mo · DR**
+  chip, an "Organic traffic (Ahrefs)" sort, and Ahrefs columns in the CSV (OPR stays the free fallback).
+- **Permission:** `research.ahrefs` (module, group Reports, stored flat as `ahrefs`) in snagged-admin
+  `dashboard/lib/permissions.ts` (MODULES + REPORTS_TABS + CATALOG). Grant per-user; admins auto-pass.
+- **Setup:** set `AHREF_API_KEY` in the research Vercel project (done). No new table (reuses
+  `domain_research_tool_lookups`). **Verify field shapes on first live run** — built + probed
+  against the docs but not run authenticated from the sandbox (key is Vercel-only).
+
+---
+
 ## Add to Pipedrive — buy-side deal button on research surfaces (2026-07-20)
 
 **2026-07-21 — Pipedrive DROPPED for a native in-house CRM (snagged-admin "Deals" module).**

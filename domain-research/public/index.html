@@ -35,7 +35,7 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="apple-mobile-web-app-title" content="Snagged Research" />
     <meta name="theme-color" content="#254254" />
-    <link rel="stylesheet" href="styles.css?v=20260806beastdismiss" />
+    <link rel="stylesheet" href="styles.css?v=20260806ahrefs" />
     <!-- Layout: horizontal tab nav (Admin-style), no sidebar. -->
   </head>
   <body>
@@ -237,6 +237,7 @@
           <a id="nav-rep-chat" class="nav-btn" href="/reports/chat" hidden>Chat</a>
           <a id="nav-rep-cost" class="nav-btn" href="/reports/cost" hidden>Cost &amp; usage</a>
           <a id="nav-portfolio" class="nav-btn" href="/research/portfolio" hidden>Corporate Portfolios</a>
+          <a id="nav-ahrefs" class="nav-btn" href="/research/ahrefs" hidden>Ahrefs Report</a>
         </span>
         <!-- Lessons (playbook curation) is admin-only and now lives in the
              umbrella Admin module; reachable directly at /research/admin. -->
@@ -784,6 +785,7 @@
                   <option value="funding">Funding raised</option>
                   <option value="revenue">Revenue</option>
                   <option value="founded">Year founded</option>
+                  <option value="traffic">Organic traffic (Ahrefs)</option>
                   <option value="prominence">Prominence (OPR)</option>
                   <option value="company">Company (A–Z)</option>
                 </select>
@@ -997,6 +999,23 @@
           </form>
           <div id="renewal-status" class="sr-status" hidden></div>
           <div id="renewal-result" class="tc-result" hidden></div>
+        </section>
+
+        <section id="view-ahrefs" hidden>
+          <div class="hero tool-hero">
+            <h1 class="hero-title">Ahrefs <span class="accent">Report</span></h1>
+            <p class="hero-sub">A full website deep-dive from <strong>Ahrefs</strong> — organic search traffic (per week / month / quarter / year with the trend), Domain Rating &amp; backlink profile, the keywords it ranks for, its top pages, referring domains, and organic competitors. Cached per domain, so a re-view is instant.</p>
+          </div>
+          <form id="ahrefs-form" class="search tld-form" autocomplete="off">
+            <input id="ahrefs-q" type="text" placeholder="a domain, e.g. stripe.com" autocapitalize="off" autocorrect="off" spellcheck="false" />
+            <button id="ahrefs-go" type="submit">Run report</button>
+          </form>
+          <div id="ahrefs-recent" class="sr-recent" hidden>
+            <div class="sr-recent-head">Recent reports</div>
+            <ul id="ahrefs-recent-list" class="sr-recent-list"></ul>
+          </div>
+          <div id="ahrefs-status" class="sr-status" hidden></div>
+          <div id="ahrefs-result" class="ah-result" hidden></div>
         </section>
 
         <section id="view-expiring" hidden>
@@ -1404,6 +1423,6 @@ The model parses it into structured filters (TLDs, length, budget, tone, etc.) a
     </div>
 
     <!-- Bump ?v= on any public/app.js or styles.css change to bust caches. -->
-    <script src="app.js?v=20260806beastdismiss"></script>
+    <script src="app.js?v=20260806ahrefs"></script>
   </body>
 </html>

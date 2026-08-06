@@ -17,6 +17,7 @@ import { anglesForSeed } from '../lib/sales/discovery/angles.js';
 import { enrichCompany } from '../lib/sales/enrich/contacts.js';
 import { firmographics, abilityToPay } from '../lib/sales/enrich/firmographics.js';
 import { openPageRank } from '../lib/openpagerank.js';
+import { ahrefsTraffic, ahrefsConfigured } from '../lib/ahrefs.js';
 import { sweepVariations } from '../lib/variations/sweep.js';
 import {
   createSalesProject, getSalesProject, listSalesProjects, listSalesProjectsWithCounts, listSalesCandidates, getSalesCandidate,
@@ -319,15 +320,28 @@ async function handleAddExtTargets(body, res) {
   res.status(200).json({ ok: true, added });
 }
 
-// Prominence — a FREE Open PageRank (0–10 authority + global rank) per target
-// domain, a traffic proxy for the target list. Batched, fail-open (no key → {}).
+// Prominence — a per-target-domain read of how prominent/valuable the target's site
+// is. Two signals, both fail-open + additive:
+//   • Open PageRank (FREE): 0–10 domain-authority + global rank (a traffic proxy).
+//   • Ahrefs (PAID, when AHREF_API_KEY is set): real estimated monthly organic search
+//     traffic + Domain Rating (0–100) + organic keywords — a far better prominence read.
+// The client merges whichever came back (Ahrefs traffic/DR when present; OPR always).
 async function handleProminence(body, res) {
   const projectId = String(body.project_id || '').trim();
   if (!projectId) { res.status(400).json({ error: 'project_id required' }); return; }
   const cands = await listSalesCandidates(projectId);
   const domains = cands.filter((c) => c.is_target && c.domain).map((c) => c.domain);
-  const prominence = await openPageRank(domains, process.env);
-  res.status(200).json({ ok: true, prominence, configured: !!(process.env.OPENPAGERANK_API_KEY || process.env.OPEN_PAGE_RANK_API_KEY) });
+  const [prominence, traffic] = await Promise.all([
+    openPageRank(domains, process.env),
+    ahrefsTraffic(domains, process.env),
+  ]);
+  res.status(200).json({
+    ok: true,
+    prominence,
+    traffic,
+    ahrefs: ahrefsConfigured(process.env),
+    configured: !!(process.env.OPENPAGERANK_API_KEY || process.env.OPEN_PAGE_RANK_API_KEY),
+  });
 }
 
 // One-time cleanup — merge all legacy duplicate projects per name (admin only).
