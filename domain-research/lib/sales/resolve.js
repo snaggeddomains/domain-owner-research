@@ -146,11 +146,15 @@ export async function resolveCandidates(cands, opts = {}) {
     while (i < cands.length) { const idx = i++; resolvedAll[idx] = await resolveCandidate(cands[idx], { ...opts, cache }); }
   }));
 
-  // Drop dead enumerated probes (affix/tld_variant that didn't resolve to a live
-  // site, a company name, or firmographics) so ~80 NXDOMAIN affix tries don't
-  // flood the list. name_match rows (from a company index) are always kept.
+  // Drop dead enumerated probes (AFFIX tries that didn't resolve to a live site, a
+  // company name, or firmographics) so ~80 NXDOMAIN affix tries don't flood the list.
+  // name_match rows (from a company index) AND every tld_variant (the EXACT SLD on a
+  // TLD — the highest-value upgrade signal) are ALWAYS kept, so a flaky live classify
+  // can never drop e.g. carrot.com from the Upgrades list. The UI's "show for-sale /
+  // inactive" toggle hides any non-active ones by default.
   const resolved = resolvedAll.filter((r) =>
     r.subtype === 'name_match'
+    || r.subtype === 'tld_variant'
     || r.status === 'active' || r.status === 'for_sale'
     || r.company || r.firmographics,
   );
