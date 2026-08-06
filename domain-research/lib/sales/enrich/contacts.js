@@ -14,6 +14,7 @@ import rocketreachSearch from '../../sources/rocketreach.js';
 import rocketreachLookup from '../../sources/rocketreachlookup.js';
 import fullenrichLookup from '../../sources/fullenrich.js';
 import { apolloPeopleByDomain, apolloReveal } from './apollopeople.js';
+import { scrapeSiteContacts } from './sitescrape.js';
 
 const SMB_ROLES = ['Founder', 'Co-Founder', 'CEO', 'President', 'Owner', 'CMO', 'CTO', 'Head of Marketing', 'VP Marketing', 'Head of Product'];
 const ENTERPRISE_ROLES = ['CMO', 'VP Marketing', 'Head of Brand', 'Head of Digital', 'Chief Digital Officer', 'General Counsel', 'CFO', 'Head of Product', 'VP Product'];
@@ -160,6 +161,32 @@ export async function enrichCompany(candidate, { env = process.env, lookup = tru
         }
       } catch { /* fill miss */ }
       break;   // one FullEnrich fill per company (the 40s poll dominates the budget)
+    }
+  }
+
+  // 4) SITE SCRAPE (FREE, no key) — when the paid vendors left us thin on REACHABLE
+  // people, skim the company's own site (footer + About/Contact/Team) for emails +
+  // phones. Many small/early companies (godelegate.com, usedelegate.com, …) have no
+  // Apollo/RR/FullEnrich coverage but print a real contact in the footer. Time-budgeted
+  // so a bulk enrich stays under the 60s API cap.
+  const reachable = () => [...byName.values()].filter((c) => c.email || c.phone).length;
+  if (domain && reachable() < 2 && (Date.now() - t0) < 22000) {
+    let scraped = [];
+    try { scraped = await scrapeSiteContacts(domain, { env, maxPages: 3, maxContacts }); } catch { scraped = []; }
+    const haveEmails = new Set([...byName.values()].map((c) => (c.email || '').toLowerCase()).filter(Boolean));
+    for (const s of scraped) {
+      if (s.email && haveEmails.has(s.email.toLowerCase())) continue;   // already have this address
+      const named = /^[A-Z][a-z]/.test(s.name || '') && !/[@()]/.test(s.name || '');
+      if (named) {
+        const c = add(s.name, s.title, null, 'website');
+        if (c) { if (s.email && !c.email) c.email = s.email; if (s.phone && !c.phone) c.phone = s.phone; }
+      } else if (s.email) {
+        // A role/company inbox — keep it as its own reachable "contact" keyed by email
+        // (add() dedups by NAME, which these lack), so it never collides with a person.
+        const key = `site:${s.email.toLowerCase()}`;
+        if (!byName.has(key)) byName.set(key, { name: s.name, title: s.title || 'Company inbox', email: s.email, phone: s.phone || null, linkedin: null, sources: ['website'] });
+      }
+      if (s.email) haveEmails.add(s.email.toLowerCase());
     }
   }
 

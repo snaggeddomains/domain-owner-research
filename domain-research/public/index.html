@@ -35,7 +35,7 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="apple-mobile-web-app-title" content="Snagged Research" />
     <meta name="theme-color" content="#254254" />
-    <link rel="stylesheet" href="styles.css?v=20260805beastfilters" />
+    <link rel="stylesheet" href="styles.css?v=20260806dismiss" />
     <!-- Layout: horizontal tab nav (Admin-style), no sidebar. -->
   </head>
   <body>
@@ -734,6 +734,7 @@
                   </div>
                   <label class="sr-check"><input type="checkbox" id="sr-select-all" /> Select all</label>
                   <label class="sr-check"><input type="checkbox" id="sr-show-all" /> Show for-sale / inactive</label>
+                  <button type="button" id="sr-show-dismissed" class="sr-dismissed-toggle" hidden title="Review the companies you dismissed as not-a-fit — restore any back into Explore."></button>
                 </div>
                 <div class="sr-actions">
                   <button id="sr-add-target" type="button" class="sr-btn sr-btn-primary" disabled title="Add the checked companies to this name's target list — a persistent, curated list you can shortlist, enrich, and share.">＋ Add to target list</button>
@@ -1401,6 +1402,6 @@ The model parses it into structured filters (TLDs, length, budget, tone, etc.) a
     </div>
 
     <!-- Bump ?v= on any public/app.js or styles.css change to bust caches. -->
-    <script src="app.js?v=20260805beastfilters"></script>
+    <script src="app.js?v=20260806dismiss"></script>
   </body>
 </html>

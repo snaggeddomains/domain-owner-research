@@ -1619,6 +1619,39 @@ design in `domain-research/SALES_HUB_SPEC.md`. Additive to the existing module �
   name directory (`.sr-dir-*` styles); headers relabeled "Your names · master target lists" / "Target
   lists". Reachable **within admin** via the existing Research → Sales Research nav tab (already in
   `snagged-admin` RESEARCH_TABS → `/research/sales`) — no admin change. Cache-bust `?v=20260805masterdir`.
+- **Dismiss / hide a not-a-fit candidate (2026-08-06).** Working down Explore + Beast Mode as a
+  triage list, you either ADD a name to targets or DISMISS it (e.g. askdelegate.com is garbage). A
+  dismissed row is hidden by default + restorable. `domain_research_sales_candidates.dismissed`/
+  `dismissed_at` (migration `0020_sales_dismissed.sql`); `dismissCandidates(ids, dismissed)`
+  (`lib/db/sales.js`, strip-and-retry 42703 → degrades pre-migration) — dismiss also demotes the row
+  off the target list (`is_target=false`, clears shortlist), restore just un-hides. API action
+  `dismiss {ids, dismissed}` (`api/sales.js`). UI (`public/app.js`): a per-card **✕** dismiss button
+  (↩ Restore when viewing dismissed) on Explore cards; `salesVisible()`/`updatePathFilter` hide
+  `dismissed` by default; a **"Show dismissed (N)"** toggle (`#sr-show-dismissed`, `salesShowDismissed`)
+  flips to a dismissed-only review view (→ "← Back to Explore"). Optimistic (`dismissCandidate`),
+  falls back to a refresh on failure. Cache-bust `?v=20260806dismiss`.
+- **Enrich/Qualify "searched, nothing found" state (2026-08-06).** A card that was ENRICHED or
+  QUALIFIED but came back empty read identically to one never run. Now they differ: the TARGET card
+  shows **"✓ Searched · no contacts found · ↻ Try again"** (enrich) / **"✓ Qualified · no
+  firmographics found"** (qualify) instead of the "🔓 Enrich" / "tick + Qualify" prompt; a `failed`
+  enrich shows "⚠ Enrichment failed · ↻ Retry". Enrich already carried `enrich_status`
+  (`pending|done|failed`); qualify now records **`qualify_status`** (`done` matched / `empty` searched-
+  nothing) on the candidate — `updateCandidateQualification` sets it + routes through
+  `updateCandidatesSafe` (strip-and-retry, so it degrades pre-`0020`). Explore's `contactsBlock`
+  already had the done-empty state; the gap was the target card + qualify. Migration `0020` adds
+  `qualify_status text`.
+- **Contact enrichment lever #4 — SITE SCRAPE (2026-08-06).** Many small/early companies have NO
+  Apollo/RocketReach/FullEnrich coverage but print a real contact in the footer / About / Contact page
+  (godelegate.com → hello@godelegate.com; delegatespace.com → info@ + phone). New FREE, no-key leg
+  `lib/sales/enrich/sitescrape.js` `scrapeSiteContacts(domain)` — fetches homepage + about/contact/team
+  (`fetchText`, `maxPages` 3), extracts mailto: (with adjacent name text) + bare-text emails + tel:
+  phones, drops vendor/tracking junk (`JUNK_EMAIL_RE`), names a person from the anchor label or a
+  `first.last@` localpart, keeps role inboxes (info@/hello@/…) as labelled "Company inbox" contacts,
+  on-domain + named first. Wired as step 4 of the `enrichCompany` waterfall in
+  `lib/sales/enrich/contacts.js` — runs only when the paid vendors left us with <2 reachable people AND
+  there's time budget (<22s in, to stay under the 60s API cap). A site-sourced contact shows a **🌐 site**
+  chip in both Explore + Target contact cards. Live-verified: godelegate.com/delegatespace.com return
+  real footer contacts. Fail-open (unreachable/JS-only site → nothing, vendors unaffected).
 
 ---
 

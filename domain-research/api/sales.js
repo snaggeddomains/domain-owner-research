@@ -23,7 +23,7 @@ import {
   setSalesSelection, setCandidateEnrichStatus, replaceCandidateContacts, listContactsForCandidates,
   insertSalesCandidates, updateCandidateQualification, setSalesProjectStatus,
   addToTargets, addManualTarget, removeTargets, setShortlistRank, updateTarget, addExtensionTargets,
-  consolidateAllDuplicateProjects,
+  dismissCandidates, consolidateAllDuplicateProjects,
 } from '../lib/db/sales.js';
 
 export const config = { maxDuration: 120 };   // the Beast-Mode sweep (affixes × TLDs) needs headroom
@@ -219,6 +219,16 @@ async function handleRemoveTarget(body, res) {
   res.status(200).json({ ok: true, removed });
 }
 
+// Dismiss / restore a not-a-fit candidate. Dismissed rows are hidden from Explore
+// + Beast Mode by default (client-side), viewable via "Show dismissed", restorable.
+async function handleDismiss(body, res) {
+  const ids = Array.isArray(body.ids) ? body.ids.map(String).filter(Boolean) : [];
+  if (!ids.length) { res.status(400).json({ error: 'ids required' }); return; }
+  const dismissed = body.dismissed !== false;   // default true
+  const n = await dismissCandidates(ids, dismissed);
+  res.status(200).json({ ok: true, dismissed, count: n });
+}
+
 // Set / clear the ⭐ Top-fit mark. No cap — star as many as you want; the rank
 // just preserves the order they were starred in.
 async function handleShortlist(body, res) {
@@ -327,6 +337,7 @@ async function route(req, res) {
     if (action === 'add_target') return handleAddTarget(body, res);
     if (action === 'remove_target') return handleRemoveTarget(body, res);
     if (action === 'shortlist') return handleShortlist(body, res);
+    if (action === 'dismiss') return handleDismiss(body, res);
     if (action === 'update_target') return handleUpdateTarget(body, res);
     if (action === 'prominence') return handleProminence(body, res);
     if (action === 'extensions') return handleExtensions(body, res);

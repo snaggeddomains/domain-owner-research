@@ -265,6 +265,20 @@ export async function removeTargets(ids) {
   return ok ? ids.length : 0;
 }
 
+// Dismiss / un-dismiss a candidate — a NOT-A-FIT triage flag. A dismissed row is
+// hidden from Explore/Beast Mode by default (viewable via "Show dismissed") and can
+// be restored later. Dismiss also demotes it off the target list (a dismissed name
+// isn't a target); restore leaves is_target alone (it just un-hides). Strip-and-retry
+// so it degrades gracefully before 0020_sales_dismissed.sql is applied.
+export async function dismissCandidates(ids, dismissed = true) {
+  if (!ids.length) return 0;
+  const patch = dismissed
+    ? { dismissed: true, dismissed_at: new Date().toISOString(), is_target: false, shortlist_rank: null, shortlisted_at: null }
+    : { dismissed: false, dismissed_at: null };
+  const ok = await updateCandidatesSafe(patch, (q) => q.in('id', ids));
+  return ok ? ids.length : 0;
+}
+
 // Set / clear the ⭐ Top-fit mark (a human "best fit for this name" judgment,
 // independent of contact status). Stamps shortlisted_at on the FIRST mark only.
 export async function setShortlistRank(id, rank) {
@@ -324,12 +338,15 @@ export async function updateTarget(id, patch = {}) {
 }
 
 // Fill in firmographics + ability-to-pay after a manual Apollo qualify.
+// qualify_status records that a qualify was ATTEMPTED ('done' matched / 'empty' no
+// coverage) so the UI can distinguish "searched, nothing found" from "never tried".
 export async function updateCandidateQualification(id, firmo, atp) {
   const patch = {
     firmographics: firmo || null,
     tier: atp.tier,
     score: { strong: 3, medium: 2, low: 1, unknown: 0 }[atp.tier],
     match_reason: (atp.reasons || []).join(' · ') || null,
+    qualify_status: firmo ? 'done' : 'empty',
   };
   if (firmo) {
     patch.employee_count = firmo.employees ?? null;
@@ -337,8 +354,9 @@ export async function updateCandidateQualification(id, firmo, atp) {
     patch.location = firmo.location ?? null;
     if (firmo.company) patch.company = firmo.company;
   }
-  const { error } = await getDb().from(CANDIDATES).update(patch).eq('id', id);
-  if (error) throw new Error(`updateCandidateQualification: ${error.message}`);
+  // Strip-and-retry so a not-yet-migrated qualify_status column doesn't fail the write.
+  const ok = await updateCandidatesSafe(patch, (q) => q.eq('id', id));
+  if (!ok) throw new Error('updateCandidateQualification: write failed');
 }
 
 export async function setCandidateEnrichStatus(id, enrich_status) {

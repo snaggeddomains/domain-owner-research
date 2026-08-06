@@ -8475,6 +8475,7 @@ const salesCollapsed = new Set();  // candidate ids whose contacts are collapsed
 const salesSelected = new Set();   // checked candidate ids — persist across path-filter tabs
 let salesAngles = [];              // angle objects from the last gate render
 let salesPathFilter = 'all';       // view filter: 'all' | 'upgrade' | 'product' | 'keyword'
+let salesShowDismissed = false;    // Explore: reveal dismissed (not-a-fit) candidates
 // ── Sales Hub: per-name target list (see SALES_HUB_SPEC.md) ─────────────────
 let salesTargets = [];             // is_target rows (curated list), top fits first
 let salesSurface = 'explore';      // which surface is showing: 'explore' | 'targets'
@@ -8522,6 +8523,7 @@ function resetSalesView() {
   clearSalesPoll();
   hideAngleGate();
   salesProjectId = null; salesCandidates = []; salesSeed = ''; salesPathFilter = 'all';
+  salesShowDismissed = false;
   salesSelected.clear();
   salesTargets = []; salesTargetSel.clear(); salesSurface = 'explore';
   salesTargetFilter = 'all'; salesTargetSort = 'added';
@@ -8771,10 +8773,14 @@ function salesPaths(c) {
 
 function salesVisible() {
   const showAll = els.srShowAll && els.srShowAll.checked;
+  // Dismissed (not-a-fit) rows are hidden unless "Show dismissed" is on; when it is,
+  // show ONLY the dismissed set (a review-what-I-dropped view) so they don't clutter.
   return salesCandidates.filter((c) =>
+    (salesShowDismissed ? c.dismissed : !c.dismissed) &&
     (showAll || c.status === 'active') &&
     (salesPathFilter === 'all' || salesPaths(c).has(salesPathFilter)));
 }
+function salesDismissedCount() { return salesCandidates.filter((c) => c.dismissed).length; }
 
 function renderSalesResults(data) {
   salesSeed = data.project.seed_domain || '';
@@ -8800,6 +8806,16 @@ function renderSalesTable() {
     || ((b.employee_count || 0) - (a.employee_count || 0)));
   const active = salesCandidates.filter((c) => c.status === 'active').length;
   const strong = salesCandidates.filter((c) => c.tier === 'strong').length;
+  // "Show dismissed (N)" toggle — only when there are dismissed rows (or we're
+  // currently viewing them, so you can toggle back).
+  const dismissedN = salesDismissedCount();
+  const dismBtn = sEl('sr-show-dismissed');
+  if (dismBtn) {
+    const show = dismissedN > 0 || salesShowDismissed;
+    dismBtn.hidden = !show;
+    dismBtn.textContent = salesShowDismissed ? '← Back to Explore' : `Show dismissed (${dismissedN})`;
+    dismBtn.classList.toggle('active', salesShowDismissed);
+  }
   if (els.srSummary) {
     els.srSummary.innerHTML =
       `<span class="sr-sum-n">${salesCandidates.length}</span> companies`
@@ -8856,8 +8872,9 @@ function renderSalesTable() {
   const cRow = (ico, present, html) => `<div class="sr-c-row${present ? '' : ' sr-c-row-missing'}"><span class="sr-c-ico">${ico}</span>${present ? html : '<span class="sr-c-dash">—</span>'}</div>`;
   const contactCard = (p) => {
     const tel = String(p.phone || '').replace(/[^+\d]/g, '');
+    const srcTag = /website/.test(String(p.source || '')) ? ' <span class="sr-c-src" title="Found on the company website (footer / About / Contact page)">🌐 site</span>' : '';
     return `<div class="sr-contact-card">
-      <div class="sr-c-name">${escapeHtml(p.name || '—')}</div>
+      <div class="sr-c-name">${escapeHtml(p.name || '—')}${srcTag}</div>
       ${p.title ? `<div class="sr-c-title">${escapeHtml(p.title)}</div>` : ''}
       <div class="sr-c-rows">
         ${cRow('✉', !!p.email, `<a class="sr-c-link" href="mailto:${escapeHtml(p.email || '')}">${escapeHtml(p.email || '')}</a>`)}
@@ -8902,11 +8919,14 @@ function renderSalesTable() {
       ? `<span class="sr-lowconf-badge" title="${escapeHtml(c.firmographics.atp_lowconf_reason || 'unverified match')}">⚠ unverified match</span>` : '';
     // The free LLM "why this company would want it" (for unqualified picks).
     const whyLine = unq && c.match_reason ? `<div class="sr-why-llm">${escapeHtml(c.match_reason)}</div>` : '';
+    const qualifyEmpty = unq && c.qualify_status && c.qualify_status !== 'done';
     const qualifying = c._qualifying
       ? '<div class="sr-contacts-note sr-enriching"><span class="sr-spin"></span> Qualifying (ability-to-pay)…</div>'
-      : (unq ? `${whyLine}<div class="sr-unq muted">Not yet qualified — tick + “Qualify selected” to score ability-to-pay &amp; pull contacts.</div>` : '');
+      : (qualifyEmpty
+        ? `${whyLine}<div class="sr-unq sr-unq-empty muted" title="We searched Apollo for firmographics — no coverage for this company">✓ Qualified · no firmographics found</div>`
+        : (unq ? `${whyLine}<div class="sr-unq muted">Not yet qualified — tick + “Qualify selected” to score ability-to-pay &amp; pull contacts.</div>` : ''));
     return `
-    <div class="sr-card sr-card-${escapeHtml(c.tier || 'unknown')}${unq ? ' sr-card-unq' : ''}" data-id="${escapeHtml(c.id)}">
+    <div class="sr-card sr-card-${escapeHtml(c.tier || 'unknown')}${unq ? ' sr-card-unq' : ''}${c.dismissed ? ' sr-card-dismissed' : ''}" data-id="${escapeHtml(c.id)}">
       <div class="sr-card-head">
         <label class="sr-card-check"><input type="checkbox" class="sr-cb" data-id="${escapeHtml(c.id)}"${salesSelected.has(c.id) ? ' checked' : ''}></label>
         <div class="sr-card-id">
@@ -8918,6 +8938,9 @@ function renderSalesTable() {
           ${metaLine(c)}
         </div>
         <div class="sr-card-badges">${statusBadge(c.status)}${tierBadge(c.tier)}</div>
+        ${c.dismissed
+          ? `<button type="button" class="sr-undismiss-btn" data-id="${escapeHtml(c.id)}" title="Restore — put back in Explore">↩ Restore</button>`
+          : `<button type="button" class="sr-dismiss-btn" data-id="${escapeHtml(c.id)}" title="Not a fit — dismiss so it stops showing up (viewable via “Show dismissed”)" aria-label="Dismiss — not a fit">✕</button>`}
       </div>
       ${c.firmographics ? metricsGrid(c) : ''}
       ${qualifying}
@@ -8951,6 +8974,7 @@ function renderSalesTable() {
       if (cb.checked) salesSelected.add(cb.dataset.id); else salesSelected.delete(cb.dataset.id);
       updateSalesEnrichBtn();
     }));
+    wireDismissBtns(els.srTable);
     updateSalesEnrichBtn();
     return;
   }
@@ -8971,7 +8995,29 @@ function renderSalesTable() {
     if (cb.checked) salesSelected.add(cb.dataset.id); else salesSelected.delete(cb.dataset.id);
     updateSalesEnrichBtn();
   }));
+  wireDismissBtns(els.srTable);
   updateSalesEnrichBtn();
+}
+
+// Dismiss (not-a-fit) / restore a candidate. Optimistic — flip the local flag, drop
+// it from the selection, re-render, then persist. A dismiss also demotes it off the
+// target list server-side (mirrored locally). Falls back to a refresh on failure.
+async function dismissCandidate(id, dismissed) {
+  const c = salesCandidates.find((x) => x.id === id);
+  if (!c) return;
+  c.dismissed = dismissed;
+  if (dismissed) { c.is_target = false; c.shortlist_rank = null; salesSelected.delete(id); }
+  renderSalesTable();
+  try { await salesPost({ action: 'dismiss', ids: [id], dismissed }); }
+  catch { await refreshSalesProject(); return; }
+  // Keep the target list + counts honest (a dismiss can remove a target).
+  if (dismissed) { salesTargets = salesTargets.filter((t) => t.id !== id); renderTargetList(); }
+}
+function wireDismissBtns(container) {
+  container.querySelectorAll('.sr-dismiss-btn').forEach((b) =>
+    b.addEventListener('click', () => dismissCandidate(b.dataset.id, true)));
+  container.querySelectorAll('.sr-undismiss-btn').forEach((b) =>
+    b.addEventListener('click', () => dismissCandidate(b.dataset.id, false)));
 }
 
 // Selection persists across path-filter tabs (set-backed, not DOM-backed), so you
@@ -9057,6 +9103,11 @@ els.srQualify?.addEventListener('click', async () => {
 
 els.srShowAll?.addEventListener('change', renderSalesTable);
 
+sEl('sr-show-dismissed')?.addEventListener('click', () => {
+  salesShowDismissed = !salesShowDismissed;
+  renderSalesTable();
+});
+
 els.srPathfilter?.addEventListener('click', (e) => {
   const btn = e.target.closest('.sr-pf-btn');
   if (!btn || btn.disabled) return;
@@ -9068,7 +9119,9 @@ els.srPathfilter?.addEventListener('click', (e) => {
 // "All" if the active filter would show nothing for this run.
 function updatePathFilter() {
   if (!els.srPathfilter) return;
-  const pool = salesCandidates.filter((c) => (els.srShowAll && els.srShowAll.checked) || c.status === 'active');
+  const pool = salesCandidates.filter((c) =>
+    (salesShowDismissed ? c.dismissed : !c.dismissed) &&
+    ((els.srShowAll && els.srShowAll.checked) || c.status === 'active'));
   const counts = { all: pool.length, upgrade: 0, product: 0, keyword: 0 };
   for (const c of pool) for (const p of salesPaths(c)) counts[p]++;
   if (salesPathFilter !== 'all' && !counts[salesPathFilter]) salesPathFilter = 'all';
@@ -9431,7 +9484,9 @@ function salesContactLine(p) {
     tel ? `<a href="tel:${escapeHtml(tel)}">${escapeHtml(p.phone)}</a>` : '',
     p.linkedin ? `<a href="${escapeHtml(p.linkedin)}" target="_blank" rel="noopener">in</a>` : '',
   ].filter(Boolean).join(' · ');
-  return `<div class="sr-t-c"><span class="sr-t-c-name">${escapeHtml(p.name || '—')}</span>${p.title ? ` <span class="muted">${escapeHtml(p.title)}</span>` : ''}${bits ? `<div class="sr-t-c-reach">${bits}</div>` : ''}</div>`;
+  const src = String(p.source || '');
+  const srcTag = /website/.test(src) ? '<span class="sr-c-src" title="Found on the company website (footer / About / Contact page)">🌐 site</span>' : '';
+  return `<div class="sr-t-c"><span class="sr-t-c-name">${escapeHtml(p.name || '—')}</span>${p.title ? ` <span class="muted">${escapeHtml(p.title)}</span>` : ''}${srcTag}${bits ? `<div class="sr-t-c-reach">${bits}</div>` : ''}</div>`;
 }
 
 // Which discovery bucket a target came from — carried through to the target list
@@ -9472,6 +9527,9 @@ function targetMetricsHtml(c) {
   if (f.revenue) cells.push(['Revenue', srMoney(f.revenue)]);
   if (f.foundedYear) cells.push(['Founded', String(f.foundedYear)]);
   if (!cells.length) {
+    if (c.qualify_status && c.qualify_status !== 'done') {
+      return '<div class="sr-t-unq sr-t-unq-empty muted" title="We searched Apollo for firmographics — no coverage for this company">✓ Qualified · no firmographics found</div>';
+    }
     return '<div class="sr-t-unq muted">Not qualified — tick + “Qualify selected” to pull size / funding / revenue.</div>';
   }
   return `<div class="sr-t-metrics">${cells.map(([k, v]) => `<div class="sr-t-m"><span class="sr-t-m-k">${k}</span><span class="sr-t-m-v">${escapeHtml(v)}</span></div>`).join('')}</div>`;
@@ -9521,7 +9579,9 @@ function targetCardHtml(c) {
   let contacts;
   if (c.enrich_status === 'pending') contacts = '<div class="sr-contacts-note sr-enriching"><span class="sr-spin"></span> Finding contacts…</div>';
   else if (c.contacts && c.contacts.length) contacts = `<div class="sr-t-contacts">${c.contacts.map(salesContactLine).join('')}</div>`;
-  else contacts = `<div class="sr-t-nocontact"><span class="muted">No contacts yet</span> <button type="button" class="sr-tlink" data-enrich data-id="${escapeHtml(c.id)}">🔓 Enrich</button></div>`;
+  else if (c.enrich_status === 'failed') contacts = `<div class="sr-t-nocontact sr-t-searched"><span class="sr-status-err">⚠ Enrichment failed</span> <button type="button" class="sr-tlink" data-enrich data-id="${escapeHtml(c.id)}">↻ Retry</button></div>`;
+  else if (c.enrich_status === 'done') contacts = `<div class="sr-t-nocontact sr-t-searched"><span class="sr-t-nores" title="We searched Apollo, RocketReach, FullEnrich, and the company site — no reachable contact found">✓ Searched · no contacts found</span> <button type="button" class="sr-tlink" data-enrich data-id="${escapeHtml(c.id)}">↻ Try again</button></div>`;
+  else contacts = `<div class="sr-t-nocontact"><span class="muted">Not enriched yet</span> <button type="button" class="sr-tlink" data-enrich data-id="${escapeHtml(c.id)}">🔓 Enrich</button></div>`;
   const notes = `<textarea class="sr-t-note" data-note data-id="${escapeHtml(c.id)}" rows="1" placeholder="Notes / comments…">${escapeHtml(c.notes || '')}</textarea>`;
   return `
   <div class="sr-card sr-t-card${starred ? ' sr-t-card-top' : ''}" data-id="${escapeHtml(c.id)}">
