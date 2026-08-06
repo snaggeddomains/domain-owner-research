@@ -9493,6 +9493,7 @@ function targetCardHtml(c) {
   const notes = `<textarea class="sr-t-note" data-note data-id="${escapeHtml(c.id)}" rows="1" placeholder="Notes / comments…">${escapeHtml(c.notes || '')}</textarea>`;
   return `
   <div class="sr-card sr-t-card${starred ? ' sr-t-card-top' : ''}" data-id="${escapeHtml(c.id)}">
+    <button type="button" class="sr-t-remove" data-remove data-id="${escapeHtml(c.id)}" title="Remove from the target list" aria-label="Remove from target list">✕</button>
     <div class="sr-card-head">
       <label class="sr-card-check"><input type="checkbox" class="sr-tcb" data-id="${escapeHtml(c.id)}"${salesTargetSel.has(c.id) ? ' checked' : ''}></label>
       <button type="button" class="sr-star${starred ? ' on' : ''}" data-star data-id="${escapeHtml(c.id)}" title="${starred ? 'Remove top-fit mark' : 'Mark a top fit (best fits for this name)'}" aria-label="Top fit">${starred ? '★' : '☆'}</button>
@@ -9501,7 +9502,7 @@ function targetCardHtml(c) {
         <div class="sr-card-links">${domHtml}${li ? ` <a class="sr-card-li" href="${escapeHtml(li)}" target="_blank" rel="noopener" title="Company LinkedIn">in</a>` : ''}</div>
         ${meta ? `<div class="sr-card-meta">${escapeHtml(meta)}</div>` : ''}
       </div>
-      <div class="sr-card-badges">${c.opr != null ? `<span class="sr-opr" title="Open PageRank — domain authority 0–10 (a free traffic/prominence proxy)${c.opr_rank ? ` · global rank #${Number(c.opr_rank).toLocaleString()}` : ''}">OPR ${Number(c.opr).toFixed(1)}</span>` : ''}${statusBadge}${tierBadge}${added ? `<span class="sr-t-added" title="Date added to the list">added ${escapeHtml(added)}</span>` : ''}<button type="button" class="sr-t-remove" data-remove data-id="${escapeHtml(c.id)}" title="Remove from the target list" aria-label="Remove">✕</button></div>
+      <div class="sr-card-badges">${c.opr != null ? `<span class="sr-opr" title="Open PageRank — domain authority 0–10 (a free traffic/prominence proxy)${c.opr_rank ? ` · global rank #${Number(c.opr_rank).toLocaleString()}` : ''}">OPR ${Number(c.opr).toFixed(1)}</span>` : ''}${statusBadge}${tierBadge}${added ? `<span class="sr-t-added" title="Date added to the list">added ${escapeHtml(added)}</span>` : ''}</div>
     </div>
     ${targetMetricsHtml(c)}
     ${contacts}
