@@ -8540,22 +8540,26 @@ function resetSalesView() {
   loadSalesRecent();   // re-show the last-5 block under the form
 }
 
-// Recent runs (last 5) under the form + the "View all" link.
+// One canonical hub per name — pick the richest (most targets, tie → first/newest)
+// so every entry point opens the SAME hub even while legacy dupes linger.
+function canonicalPerName(projects) {
+  const byName = new Map();
+  for (const p of projects) {
+    const k = p.seed_domain || '';
+    const prev = byName.get(k);
+    if (!prev || Number(p.target_count || 0) > Number(prev.target_count || 0)) byName.set(k, p);
+  }
+  return [...byName.values()];
+}
+
+// Recent names (last 5) under the form + the "View all" link.
 async function loadSalesRecent() {
   if (!els.srRecent) return;
   try {
-    const res = await fetch('/research/api/sales?list=1&limit=30');
+    const res = await fetch('/research/api/sales?list=1&limit=50');
     const data = await res.json().catch(() => ({}));
     const projects = res.ok && Array.isArray(data.projects) ? data.projects : [];
-    // Canonical hubs = one per name; show the 5 most recent names + their target counts.
-    const seen = new Set();
-    const top = [];
-    for (const p of projects) {
-      if (seen.has(p.seed_domain)) continue;
-      seen.add(p.seed_domain);
-      top.push(p);
-      if (top.length >= 5) break;
-    }
+    const top = canonicalPerName(projects).slice(0, 5);
     els.srRecent.hidden = top.length === 0;
     if (els.srRecentList) els.srRecentList.innerHTML = top.map((p) => salesProjectRow(p)).join('');
   } catch { els.srRecent.hidden = true; }
@@ -8573,12 +8577,8 @@ async function loadSalesProjects(q = '') {
     if (!res.ok) throw new Error(data.error || `Failed (${res.status})`);
     const projects = data.projects || [];
     if (!projects.length) { els.srProjectsList.innerHTML = '<li class="muted">No target lists yet — run Sales Research on a name to start one.</li>'; return; }
-    // Canonical hubs = one per name. Flat directory of names + their target counts;
-    // dedupe defensively in case legacy dupes linger. Clicking opens the master list.
-    const seen = new Set();
-    els.srProjectsList.innerHTML = projects
-      .filter((p) => { const k = p.seed_domain || '(unknown)'; if (seen.has(k)) return false; seen.add(k); return true; })
-      .map((p) => salesProjectRow(p)).join('');
+    // One canonical hub per name (richest by targets) → the master list per name.
+    els.srProjectsList.innerHTML = canonicalPerName(projects).map((p) => salesProjectRow(p)).join('');
   } catch (e) {
     els.srProjectsList.innerHTML = `<li class="muted">${escapeHtml(String(e.message || e))}</li>`;
   }

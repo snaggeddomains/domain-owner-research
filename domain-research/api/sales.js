@@ -23,6 +23,7 @@ import {
   setSalesSelection, setCandidateEnrichStatus, replaceCandidateContacts, listContactsForCandidates,
   insertSalesCandidates, updateCandidateQualification, setSalesProjectStatus,
   addToTargets, addManualTarget, removeTargets, setShortlistRank, updateTarget, addExtensionTargets,
+  consolidateAllDuplicateProjects,
 } from '../lib/db/sales.js';
 
 export const config = { maxDuration: 60 };
@@ -310,6 +311,13 @@ async function handleProminence(body, res) {
   res.status(200).json({ ok: true, prominence, configured: !!(process.env.OPENPAGERANK_API_KEY || process.env.OPEN_PAGE_RANK_API_KEY) });
 }
 
+// One-time cleanup — merge all legacy duplicate projects per name (admin only).
+async function handleConsolidate(res, user) {
+  if (!(user && (user.is_admin || (user.permissions && user.permissions.admin)))) { res.status(403).json({ error: 'Admin only' }); return; }
+  const summary = await consolidateAllDuplicateProjects();
+  res.status(200).json({ ok: true, ...summary });
+}
+
 // Edit a target's inline fields (notes/comments + basic identity).
 async function handleUpdateTarget(body, res) {
   const id = String(body.id || '').trim();
@@ -338,6 +346,7 @@ async function route(req, res) {
     if (action === 'prominence') return handleProminence(body, res);
     if (action === 'extensions') return handleExtensions(body, res);
     if (action === 'add_ext_targets') return handleAddExtTargets(body, res);
+    if (action === 'consolidate') return handleConsolidate(res, req._salesUser);
     res.status(400).json({ error: `Unknown action: ${action}` });
     return;
   }

@@ -9,11 +9,34 @@ const CONTACTS = 'domain_research_sales_contacts';
 
 const normCo = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
 
+// MERGE legacy duplicate projects for a name into one canonical hub — moves every
+// other project's candidates onto `canonicalId`, dedupes by domain (keeping the
+// richest row: target > shortlisted > has-notes > enriched), then deletes the now-
+// empty duplicate projects. Fail-safe (best-effort; never throws to the caller).
+async function consolidateProjectsForName(db, canonicalId, otherIds) {
+  if (!otherIds.length) return;
+  try {
+    await db.from(CANDIDATES).update({ project_id: canonicalId }).in('project_id', otherIds);
+    const { data: all } = await db.from(CANDIDATES)
+      .select('id,domain,company,is_target,shortlist_rank,notes,firmographics,score').eq('project_id', canonicalId);
+    const rank = (r) => (r.is_target ? 8 : 0) + (r.shortlist_rank != null ? 4 : 0) + (r.notes ? 2 : 0) + (r.firmographics ? 1 : 0) + (Number(r.score) || 0) / 1000;
+    const best = new Map(); const dropIds = [];
+    for (const r of (all || [])) {
+      const key = String(r.domain || '').toLowerCase() || (r.company ? `co:${normCo(r.company)}` : `id:${r.id}`);
+      const prev = best.get(key);
+      if (!prev) { best.set(key, r); continue; }
+      if (rank(r) > rank(prev)) { dropIds.push(prev.id); best.set(key, r); } else { dropIds.push(r.id); }
+    }
+    for (let i = 0; i < dropIds.length; i += 200) await db.from(CANDIDATES).delete().in('id', dropIds.slice(i, i + 200));
+    await db.from(PROJECTS).delete().in('id', otherIds);   // now empty (candidates moved off)
+  } catch { /* best-effort — a partial merge still leaves the canonical hub usable */ }
+}
+
 // FIND-OR-CREATE by NAME (normalized seed domain). The target list is a durable
 // per-name asset, so re-running research REUSES the same hub instead of forking a
-// fresh empty list (see SALES_HUB_SPEC.md "master list"). When legacy duplicate
-// projects exist for a name, we consolidate onto the one that already holds the
-// most targets (so we never orphan a curated list), else the newest.
+// fresh empty list (see SALES_HUB_SPEC.md "master list"). Legacy duplicate projects
+// for a name are CONSOLIDATED into the one holding the most targets (candidates
+// merged + deduped by domain) so counts are consistent across every entry point.
 export async function createSalesProject({ seed_domain, seed_sld, filters = null, created_by = null }) {
   const db = getDb();
   const norm = String(seed_domain || '').trim().toLowerCase();
@@ -24,13 +47,12 @@ export async function createSalesProject({ seed_domain, seed_sld, filters = null
       if (projs.length > 1) {
         const ids = projs.map((p) => p.id);
         const { data: tg } = await db.from(CANDIDATES).select('project_id').in('project_id', ids).eq('is_target', true);
-        if (tg && tg.length) {
-          const counts = {};
-          for (const r of tg) counts[r.project_id] = (counts[r.project_id] || 0) + 1;
-          chosen = Object.entries(counts).sort((a, b) => b[1] - a[1])[0][0];
-        }
+        const counts = {};
+        for (const r of (tg || [])) counts[r.project_id] = (counts[r.project_id] || 0) + 1;
+        // Canonical = most targets, tie-broken by newest (ids is created-desc).
+        chosen = ids.slice().sort((a, b) => (counts[b] || 0) - (counts[a] || 0))[0];
+        await consolidateProjectsForName(db, chosen, ids.filter((id) => id !== chosen));
       }
-      // Reset run status for the new pass; the row + its candidates/targets are kept.
       await db.from(PROJECTS).update({ status: 'pending', stage: null, error: null }).eq('id', chosen);
       return chosen;
     }
@@ -41,6 +63,32 @@ export async function createSalesProject({ seed_domain, seed_sld, filters = null
   const { data, error } = await db.from(PROJECTS).insert(row).select('id').single();
   if (error) throw new Error(`createSalesProject: ${error.message}`);
   return data.id;
+}
+
+// One-time cleanup: merge every name's duplicate projects into a single canonical
+// hub (pure DB — no re-research, no credits spent). Returns a summary.
+export async function consolidateAllDuplicateProjects() {
+  const db = getDb();
+  const { data: projs } = await db.from(PROJECTS).select('id,seed_domain').order('created_at', { ascending: false });
+  if (!projs) return { names: 0, projects_removed: 0 };
+  const byName = new Map();
+  for (const p of projs) {
+    const k = String(p.seed_domain || '').toLowerCase();
+    if (!k) continue;
+    if (!byName.has(k)) byName.set(k, []);
+    byName.get(k).push(p.id);
+  }
+  let names = 0; let removed = 0;
+  for (const [, ids] of byName) {
+    if (ids.length < 2) continue;
+    const { data: tg } = await db.from(CANDIDATES).select('project_id').in('project_id', ids).eq('is_target', true);
+    const counts = {};
+    for (const r of (tg || [])) counts[r.project_id] = (counts[r.project_id] || 0) + 1;
+    const chosen = ids.slice().sort((a, b) => (counts[b] || 0) - (counts[a] || 0))[0];   // most targets, tie → newest
+    await consolidateProjectsForName(db, chosen, ids.filter((id) => id !== chosen));
+    names += 1; removed += ids.length - 1;
+  }
+  return { names, projects_removed: removed };
 }
 
 export async function getSalesProject(id) {
