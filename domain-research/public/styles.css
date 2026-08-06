@@ -1862,6 +1862,7 @@ body.drawer-open { overflow: hidden; }
 /* ── Target list (Surface B) ────────────────────────────────────────────────*/
 .sr-t-top5 { margin-bottom: 20px; }
 .sr-t-top5-head, .sr-t-resthead { font-size: 13px; font-weight: 800; text-transform: uppercase; letter-spacing: .04em; color: var(--navy-2); margin: 0 0 10px; padding-bottom: 7px; border-bottom: 2px solid var(--line); }
+.sr-t-top5-n { color: var(--navy-3); font-weight: 700; }
 .sr-t-resthead { margin-top: 4px; }
 .sr-t-empty { padding: 22px 4px; }
 .sr-t-card { border-left-color: var(--line); }
@@ -1919,6 +1920,17 @@ body.drawer-open { overflow: hidden; }
 .sx-list-link:hover { text-decoration: underline; }
 .sx-tag { font-size: 10px; font-weight: 700; color: var(--navy-3); }
 .sx-kind { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; color: var(--navy-3); background: #eceae4; border-radius: 999px; padding: 2px 8px; margin-left: 8px; vertical-align: middle; }
+.sx-kind-prefix { color: #1b6fa8; background: #e2f0fb; }
+.sx-kind-suffix { color: #7a5bb0; background: #efe8fb; }
+/* Beast Mode filters. */
+.sr-ext-filter { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 14px; }
+.sr-ext-fbtn { display: inline-flex; align-items: center; gap: 6px; padding: 6px 13px; font-size: 13px; font-weight: 700; color: var(--navy-2); background: var(--cream); border: 1.5px solid var(--line); border-radius: 999px; cursor: pointer; }
+.sr-ext-fbtn:hover:not(:disabled) { border-color: var(--coral); color: var(--coral-deep); }
+.sr-ext-fbtn.active { background: var(--navy); color: #fff; border-color: var(--navy); }
+.sr-ext-fbtn:disabled { opacity: .45; cursor: default; }
+.sr-ext-fn { font-size: 11px; font-weight: 800; padding: 0 6px; border-radius: 999px; background: rgba(0,0,0,.1); }
+.sr-ext-fbtn.active .sr-ext-fn { background: rgba(255,255,255,.22); }
+.sr-ext-controls { display: flex; flex-wrap: wrap; gap: 8px 20px; margin: -4px 0 16px; }
 .sx-co { margin-top: 3px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .sx-co-name { font-size: 14px; font-weight: 700; color: var(--navy); }
 /* Master-list directory — name row + its target/top-fit counts. */

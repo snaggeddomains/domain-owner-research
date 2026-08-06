@@ -35,7 +35,7 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="apple-mobile-web-app-title" content="Snagged Research" />
     <meta name="theme-color" content="#254254" />
-    <link rel="stylesheet" href="styles.css?v=20260805beastmode" />
+    <link rel="stylesheet" href="styles.css?v=20260805beastfilters" />
     <!-- Layout: horizontal tab nav (Admin-style), no sidebar. -->
   </head>
   <body>
@@ -819,7 +819,12 @@
                 <button id="sr-ext-csv" type="button" class="sr-btn sr-btn-ghost">Download CSV</button>
               </div>
             </div>
-            <p class="sr-ext-hint muted">The full Beast-Mode sweep — the exact name on every TLD plus prefix/suffix combos (get·, try·, use·, hi·, go· / ·labs, ·hq, ·inc …): what's taken, for sale (+ asking price), available, or a live site. Active-site variations are real companies on the name — tick them to add as buyers.</p>
+            <p class="sr-ext-hint muted">The full Beast-Mode sweep — the exact name on every TLD plus prefix/suffix combos (get·, try·, use·, hi·, go· / ·labs, ·hq, ·inc …). Active-site variations are real companies on the name — tick them to add as buyers.</p>
+            <div class="sr-ext-controls">
+              <label class="sr-check"><input type="checkbox" id="sr-ext-hide-forsale" checked> Hide for sale</label>
+              <label class="sr-check"><input type="checkbox" id="sr-ext-hide-avail" checked> Hide available</label>
+              <label class="sr-check"><input type="checkbox" id="sr-ext-hide-taken" checked> Hide parked / doesn't resolve</label>
+            </div>
             <div id="sr-ext-table" class="sr-table-wrap"></div>
           </section>
         </section>
@@ -1396,6 +1401,6 @@ The model parses it into structured filters (TLDs, length, budget, tone, etc.) a
     </div>
 
     <!-- Bump ?v= on any public/app.js or styles.css change to bust caches. -->
-    <script src="app.js?v=20260805beastmode"></script>
+    <script src="app.js?v=20260805beastfilters"></script>
   </body>
 </html>

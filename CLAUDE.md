@@ -1578,6 +1578,16 @@ design in `domain-research/SALES_HUB_SPEC.md`. Additive to the existing module �
     firmographics (capped 16) + get the add-to-target checkbox. `api/sales.js` `maxDuration` bumped
     60→120 for the bigger sweep. Cache-bust `?v=20260805beastmode`. (Explore also now floats on-list
     rows to the TOP of each category via `byScore`.)
+  - **Beast Mode filters + defaults (2026-08-05).** Kind filter chips (All / Extension / Prefix /
+    Suffix — `salesExtKindFilter`, counts over the visible set) + a per-row kind chip (`sx-kind`;
+    prefix/suffix also show the affix). Disposition hide-toggles (`#sr-ext-hide-forsale/-avail/-taken`,
+    all **checked by default**) so the default view is **only active sites** (real content); for-sale,
+    available, and parked/registered/**doesn't-resolve** are hidden until toggled (a non-resolving name
+    isn't a real target). On-list ✓ chip now leads the card name line (matching Explore) for any
+    already-a-target row. Cache-bust `?v=20260805beastfilters`.
+  - **Top-fit ⭐ is now UNCAPPED (2026-08-05)** — star as many best fits as you want (was max 5). Removed
+    the cap in `api/sales.js` `handleShortlist` + client `toggleTopFit`; `shortlist_rank` just preserves
+    starring order. Section header "⭐ Best fits for <name>" with a count (was "Top 5").
 - **One-time setup:** run `0019_sales_targets.sql` on the research project. No new
   permission/env. **Out of scope (v1):** public no-login share (a token'd Top-5 view is a
   later add), CRM push, auto-outreach, cross-name rollups, per-company threaded comment log.

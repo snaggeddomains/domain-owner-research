@@ -8700,7 +8700,7 @@ function openSalesProject(id, surface = 'explore') {
   salesSeed = '';                // cleared until the poll returns the real seed
   salesTargets = []; salesTargetSel.clear(); salesSelected.clear(); salesSurface = 'explore';
   salesPendingSurface = (surface === 'targets' || surface === 'extensions') ? surface : null;
-  salesTargetFilter = 'all'; salesTargetSort = 'added'; salesExtRows = null; salesExtSel.clear();
+  salesTargetFilter = 'all'; salesTargetSort = 'added'; salesExtRows = null; salesExtSel.clear(); salesExtKindFilter = 'all';
   els.srGo.disabled = true;
   setSalesMode('results', '');   // collapse entry; seed filled in once the poll returns it
   setSalesStatus('Discovering candidates and qualifying ability-to-pay…');
@@ -9283,6 +9283,7 @@ sEl('sr-surface')?.addEventListener('click', (e) => {
 let salesExtRows = null;   // cached sweep rows for this project (null = not loaded)
 let salesExtBusy = false;
 const salesExtSel = new Set();   // checked active-site extension domains (to add as targets)
+let salesExtKindFilter = 'all';  // Beast Mode kind filter: all | tld | prefix | suffix
 const EXT_ORDER = { for_sale: 0, available: 1, active: 2, parked: 3, registered: 4 };
 const EXT_LABEL = { for_sale: 'For sale', available: 'Available', active: 'Active site', parked: 'Parked', registered: 'Registered' };
 const extSym = (c) => ({ USD: '$', EUR: '€', GBP: '£' }[c] || '$');
@@ -9306,18 +9307,40 @@ async function loadExtensions(force) {
   } catch (e) { if (table) table.innerHTML = `<p class="sr-status-err">${escapeHtml(String(e.message || e))}</p>`; }
   finally { salesExtBusy = false; }
 }
+const EXT_KIND_LABEL = { all: 'All', tld: 'Extension', prefix: 'Prefix', suffix: 'Suffix' };
+const extKindOf = (r) => (r.kind === 'prefix' || r.kind === 'suffix') ? r.kind : 'tld';
 function renderExtensions() {
   const table = sEl('sr-ext-table'); const summary = sEl('sr-ext-summary');
   if (!table) return;
-  const rows = (salesExtRows || []).slice().sort((a, b) => (EXT_ORDER[a.category] ?? 9) - (EXT_ORDER[b.category] ?? 9) || String(a.domain).localeCompare(String(b.domain)));
+  const allRows = salesExtRows || [];
+  for (const d of [...salesExtSel]) if (!allRows.some((r) => r.domain === d)) salesExtSel.delete(d);
   if (summary) {
-    const n = (cat) => rows.filter((r) => r.category === cat).length;
-    summary.innerHTML = rows.length
-      ? `<span class="sr-sum-n">${rows.length}</span> variations<span class="sr-sum-dot">·</span>${n('for_sale')} for sale<span class="sr-sum-dot">·</span>${n('available')} available<span class="sr-sum-dot">·</span>${n('active')} active`
+    const n = (cat) => allRows.filter((r) => r.category === cat).length;
+    summary.innerHTML = allRows.length
+      ? `<span class="sr-sum-n">${allRows.length}</span> variations<span class="sr-sum-dot">·</span>${n('for_sale')} for sale<span class="sr-sum-dot">·</span>${n('available')} available<span class="sr-sum-dot">·</span>${n('active')} active`
       : '';
   }
-  for (const d of [...salesExtSel]) if (!rows.some((r) => r.domain === d)) salesExtSel.delete(d);
-  if (!rows.length) { table.innerHTML = '<p class="muted">No variations found.</p>'; updateExtAddBtn(); return; }
+  // Disposition hide-toggles (default: show ONLY active sites — real content).
+  // A non-resolving / registered name isn't a real target, so it's hidden with parked.
+  const hideFS = sEl('sr-ext-hide-forsale')?.checked !== false;
+  const hideAV = sEl('sr-ext-hide-avail')?.checked !== false;
+  const hidePK = sEl('sr-ext-hide-taken')?.checked !== false;
+  const dispOk = (r) => {
+    if (r.category === 'active') return true;
+    if (r.category === 'for_sale') return !hideFS;
+    if (r.category === 'available') return !hideAV;
+    return !hidePK;                                   // parked / registered / doesn't-resolve
+  };
+  const dispRows = allRows.filter(dispOk);
+  // Filter chips by kind (Extension / Prefix / Suffix), counted over the visible set.
+  const kindN = (k) => k === 'all' ? dispRows.length : dispRows.filter((r) => extKindOf(r) === k).length;
+  const filterBar = dispRows.length
+    ? `<div class="sr-ext-filter">${['all', 'tld', 'prefix', 'suffix'].map((k) => `<button type="button" class="sr-ext-fbtn${salesExtKindFilter === k ? ' active' : ''}" data-extkind="${k}"${(k !== 'all' && kindN(k) === 0) ? ' disabled' : ''}>${EXT_KIND_LABEL[k]}<span class="sr-ext-fn">${kindN(k)}</span></button>`).join('')}</div>`
+    : '';
+  const rows = dispRows
+    .filter((r) => salesExtKindFilter === 'all' || extKindOf(r) === salesExtKindFilter)
+    .slice().sort((a, b) => (EXT_ORDER[a.category] ?? 9) - (EXT_ORDER[b.category] ?? 9) || String(a.domain).localeCompare(String(b.domain)));
+  if (!rows.length) { table.innerHTML = filterBar + '<p class="muted">No matching variations — adjust the filters above.</p>'; updateExtAddBtn(); return; }
   const listLink = (r) => {
     if (r.for_sale && r.link) return `<a class="sx-list-link" href="${escapeHtml(r.link)}" target="_blank" rel="noopener">${escapeHtml(r.marketplace || 'Listing')} ↗</a>`;
     if (r.category === 'available') return `<a class="sx-list-link" href="https://porkbun.com/checkout/search?q=${encodeURIComponent(r.domain)}" target="_blank" rel="noopener">Register ↗</a>`;
@@ -9334,22 +9357,23 @@ function renderExtensions() {
     if (r.revenue) cells.push(['Revenue', srMoney(r.revenue)]);
     if (r.founded_year) cells.push(['Founded', String(r.founded_year)]);
     const metrics = cells.length ? `<div class="sr-t-metrics">${cells.map(([k, v]) => `<div class="sr-t-m"><span class="sr-t-m-k">${k}</span><span class="sr-t-m-v">${escapeHtml(v)}</span></div>`).join('')}</div>` : '';
-    return `<div class="sx-co"><span class="sx-co-name">${escapeHtml(r.company)}</span>${li ? ` <a class="sr-card-li" href="${escapeHtml(li)}" target="_blank" rel="noopener" title="Company LinkedIn">in</a>` : ''}${r.tier ? ` <span class="sr-tier sr-tier-${escapeHtml(r.tier)}">${escapeHtml(r.tier)}</span>` : ''}${r.on_list ? '<span class="sr-onlist-badge" style="margin-left:8px">✓ on list</span>' : ''}</div>${meta ? `<div class="sr-card-meta">${escapeHtml(meta)}</div>` : ''}${metrics}`;
+    return `<div class="sx-co"><span class="sx-co-name">${escapeHtml(r.company)}</span>${li ? ` <a class="sr-card-li" href="${escapeHtml(li)}" target="_blank" rel="noopener" title="Company LinkedIn">in</a>` : ''}${r.tier ? ` <span class="sr-tier sr-tier-${escapeHtml(r.tier)}">${escapeHtml(r.tier)}</span>` : ''}</div>${meta ? `<div class="sr-card-meta">${escapeHtml(meta)}</div>` : ''}${metrics}`;
   };
   // Mark which active extensions are already on the target list (by domain).
   const targetDomains = new Set(salesTargets.map((t) => String(t.domain || '').toLowerCase()));
   // Card layout mirrors Explore: left-border by disposition, domain + status pill;
   // an ACTIVE-site extension (a real company) gets a checkbox + company info.
-  table.innerHTML = `<div class="sr-cards">${rows.map((r) => {
+  table.innerHTML = filterBar + `<div class="sr-cards">${rows.map((r) => {
     const buyer = r.category === 'active';
     r.on_list = buyer && targetDomains.has(String(r.domain || '').toLowerCase());
     const price = extPrice(r);
     const cb = buyer ? `<label class="sr-card-check"><input type="checkbox" class="sx-cb" data-domain="${escapeHtml(r.domain)}"${salesExtSel.has(r.domain) ? ' checked' : ''}></label>` : '';
+    const kind = extKindOf(r);
     return `<div class="sr-card sx-card sx-card-${r.category}">
       <div class="sr-card-head">
         ${cb}
         <div class="sr-card-id">
-          <div class="sr-card-name"><a class="sx-dom" href="https://${escapeHtml(r.domain)}" target="_blank" rel="noopener">${escapeHtml(r.domain)}</a>${r.kind && r.kind !== 'tld' ? `<span class="sx-kind">${escapeHtml(r.kind)}</span>` : ''}<span class="sx-st sx-st-${r.category}">${EXT_LABEL[r.category] || escapeHtml(r.category || '')}</span></div>
+          <div class="sr-card-name">${r.on_list ? '<span class="sr-onlist-badge">✓ on list</span>' : ''}<a class="sx-dom" href="https://${escapeHtml(r.domain)}" target="_blank" rel="noopener">${escapeHtml(r.domain)}</a><span class="sx-kind sx-kind-${kind}">${EXT_KIND_LABEL[kind]}${(kind !== 'tld' && r.affix) ? ` · ${escapeHtml(r.affix)}` : ''}</span><span class="sx-st sx-st-${r.category}">${EXT_LABEL[r.category] || escapeHtml(r.category || '')}</span></div>
           ${buyer ? extInfo(r) : (r.evidence ? `<div class="sr-card-meta">${escapeHtml(r.evidence)}</div>` : '')}
         </div>
         <div class="sr-card-badges sx-badges">${price !== '—' ? `<span class="sx-price">${price}</span>` : ''}${listLink(r)}</div>
@@ -9358,6 +9382,11 @@ function renderExtensions() {
   }).join('')}</div>`;
   updateExtAddBtn();
 }
+sEl('sr-ext-table')?.addEventListener('click', (e) => {
+  const b = e.target.closest('[data-extkind]'); if (!b || b.disabled) return;
+  salesExtKindFilter = b.dataset.extkind; renderExtensions();
+});
+['sr-ext-hide-forsale', 'sr-ext-hide-avail', 'sr-ext-hide-taken'].forEach((id) => sEl(id)?.addEventListener('change', renderExtensions));
 
 function selectedExtRows() { return (salesExtRows || []).filter((r) => r.category === 'active' && salesExtSel.has(r.domain) && !r.on_list); }
 function updateExtAddBtn() {
@@ -9563,7 +9592,7 @@ function renderTargetList() {
   }
   if (top5El) {
     top5El.innerHTML = shortlisted.length
-      ? `<div class="sr-t-top5"><div class="sr-t-top5-head">⭐ Top ${shortlisted.length} — best fits for ${escapeHtml(salesSeed)}</div><div class="sr-cards">${shortlisted.map(targetCardHtml).join('')}</div></div>`
+      ? `<div class="sr-t-top5"><div class="sr-t-top5-head">⭐ Best fits for ${escapeHtml(salesSeed)} <span class="sr-t-top5-n">${shortlisted.length}</span></div><div class="sr-cards">${shortlisted.map(targetCardHtml).join('')}</div></div>`
       : '';
   }
   if (!salesTargets.length) {
@@ -9636,12 +9665,12 @@ sEl('sr-add-target')?.addEventListener('click', async () => {
   } catch (e) { alert(String(e.message || e)); updateAddTargetBtn(); }
 });
 
-// Top-fit ⭐ toggle (max 5, best fits for THIS name — independent of contacts).
+// Top-fit ⭐ toggle (no cap — star as many best fits as you want; independent of
+// contacts). The rank just preserves the order they were starred in.
 async function toggleTopFit(id) {
   const t = salesTargets.find((x) => x.id === id); if (!t) return;
   const makeTop = t.shortlist_rank == null;
   const current = salesTargets.filter((x) => x.shortlist_rank != null).length;
-  if (makeTop && current >= 5) { alert('Top 5 is full — unmark one first.'); return; }
   try {
     await salesPost({ action: 'shortlist', id, rank: makeTop ? current + 1 : null });
     await refreshSalesProject();

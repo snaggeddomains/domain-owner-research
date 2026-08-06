@@ -219,23 +219,12 @@ async function handleRemoveTarget(body, res) {
   res.status(200).json({ ok: true, removed });
 }
 
-// Set / clear the ⭐ Top-fit mark (max 5 per project, enforced here).
+// Set / clear the ⭐ Top-fit mark. No cap — star as many as you want; the rank
+// just preserves the order they were starred in.
 async function handleShortlist(body, res) {
   const id = String(body.id || '').trim();
   if (!id) { res.status(400).json({ error: 'id required' }); return; }
-  const cand = await getSalesCandidate(id);
-  if (!cand) { res.status(404).json({ error: 'Candidate not found' }); return; }
-  const clearing = body.rank == null;
-  if (!clearing) {
-    // Enforce the max-5: count OTHER shortlisted rows in this project.
-    const all = await listSalesCandidates(cand.project_id);
-    const others = all.filter((c) => c.id !== id && c.shortlist_rank != null).length;
-    if (cand.shortlist_rank == null && others >= 5) {
-      res.status(400).json({ error: 'Top 5 is full — unmark one first.' });
-      return;
-    }
-  }
-  const rank = clearing ? null : Math.max(1, Math.min(5, Number(body.rank) || 1));
+  const rank = (body.rank == null) ? null : Math.max(1, Number(body.rank) || 1);
   await setShortlistRank(id, rank);
   res.status(200).json({ ok: true, id, rank });
 }
