@@ -230,6 +230,42 @@ export async function setShortlistRank(id, rank) {
   await updateCandidatesSafe({ shortlist_rank: Number(rank) }, (q) => q.eq('id', id));
 }
 
+// Promote ACTIVE-site extensions to targets (from the Extensions sweep). Upserts a
+// candidate per domain — promotes an existing candidate, or inserts a new tld_variant
+// candidate carrying the resolved company/firmographics — and marks it a target.
+export async function addExtensionTargets(projectId, rows) {
+  if (!rows || !rows.length) return 0;
+  const db = getDb();
+  const domains = rows.map((r) => String(r.domain || '').toLowerCase()).filter(Boolean);
+  const { data: existing } = await db.from(CANDIDATES).select('id,domain').eq('project_id', projectId).in('domain', domains);
+  const byDomain = new Map((existing || []).map((c) => [String(c.domain || '').toLowerCase(), c.id]));
+  const promoteIds = [];
+  let toInsert = [];
+  for (const r of rows) {
+    const d = String(r.domain || '').toLowerCase();
+    if (!d) continue;
+    if (byDomain.has(d)) { promoteIds.push(byDomain.get(d)); continue; }
+    toInsert.push({
+      project_id: projectId, domain: d, company: r.company || d, company_url: `https://${d}`,
+      category: 'upgrade', subtype: 'tld_variant', status: 'active',
+      is_target: true, added_at: new Date().toISOString(),
+      employee_count: r.employee_count ?? null, location: r.location || null, funding: r.funding || null,
+      tier: r.tier || null, firmographics: r.firmographics || null,
+      match_reason: 'Exact name on another extension (active site)',
+    });
+  }
+  if (promoteIds.length) await addToTargets(projectId, promoteIds);
+  for (let i = 0; toInsert.length && i < 6; i++) {
+    const { error } = await db.from(CANDIDATES).insert(toInsert);
+    if (!error) break;
+    const m = /column "?([a-z_]+)"?|Could not find the '([a-z_]+)' column/i.exec(error.message || '');
+    const col = m && (m[1] || m[2]);
+    if (!col) throw new Error(`addExtensionTargets: ${error.message}`);
+    toInsert = toInsert.map(({ [col]: _drop, ...x }) => x);   // strip a not-yet-migrated column + retry
+  }
+  return promoteIds.length + toInsert.length;
+}
+
 const TARGET_EDITABLE = ['notes', 'company', 'domain', 'description', 'location'];
 // Edit a target's inline fields (notes/comments + basic identity). Blank → null.
 export async function updateTarget(id, patch = {}) {

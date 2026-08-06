@@ -8526,6 +8526,7 @@ function resetSalesView() {
   salesTargets = []; salesTargetSel.clear(); salesSurface = 'explore';
   salesTargetFilter = 'all'; salesTargetSort = 'added';
   salesExtRows = null;
+  salesExtSel.clear();
   if (sEl('sr-surface')) sEl('sr-surface').hidden = true;
   if (sEl('sr-targets')) sEl('sr-targets').hidden = true;
   if (sEl('sr-extensions')) sEl('sr-extensions').hidden = true;
@@ -8699,7 +8700,7 @@ function openSalesProject(id, surface = 'explore') {
   salesSeed = '';                // cleared until the poll returns the real seed
   salesTargets = []; salesTargetSel.clear(); salesSelected.clear(); salesSurface = 'explore';
   salesPendingSurface = (surface === 'targets' || surface === 'extensions') ? surface : null;
-  salesTargetFilter = 'all'; salesTargetSort = 'added'; salesExtRows = null;
+  salesTargetFilter = 'all'; salesTargetSort = 'added'; salesExtRows = null; salesExtSel.clear();
   els.srGo.disabled = true;
   setSalesMode('results', '');   // collapse entry; seed filled in once the poll returns it
   setSalesStatus('Discovering candidates and qualifying ability-to-pay…');
@@ -9278,6 +9279,7 @@ sEl('sr-surface')?.addEventListener('click', (e) => {
 // ── Extensions surface — Beast-Mode TLD sweep of the exact SLD ────────────────
 let salesExtRows = null;   // cached sweep rows for this project (null = not loaded)
 let salesExtBusy = false;
+const salesExtSel = new Set();   // checked active-site extension domains (to add as targets)
 const EXT_ORDER = { for_sale: 0, available: 1, active: 2, parked: 3, registered: 4 };
 const EXT_LABEL = { for_sale: 'For sale', available: 'Available', active: 'Active site', parked: 'Parked', registered: 'Registered' };
 const extSym = (c) => ({ USD: '$', EUR: '€', GBP: '£' }[c] || '$');
@@ -9311,27 +9313,73 @@ function renderExtensions() {
       ? `<span class="sr-sum-n">${rows.length}</span> extensions<span class="sr-sum-dot">·</span>${n('for_sale')} for sale<span class="sr-sum-dot">·</span>${n('available')} available<span class="sr-sum-dot">·</span>${n('active')} active`
       : '';
   }
-  if (!rows.length) { table.innerHTML = '<p class="muted">No extensions found.</p>'; return; }
+  for (const d of [...salesExtSel]) if (!rows.some((r) => r.domain === d)) salesExtSel.delete(d);
+  if (!rows.length) { table.innerHTML = '<p class="muted">No extensions found.</p>'; updateExtAddBtn(); return; }
   const listLink = (r) => {
     if (r.for_sale && r.link) return `<a class="sx-list-link" href="${escapeHtml(r.link)}" target="_blank" rel="noopener">${escapeHtml(r.marketplace || 'Listing')} ↗</a>`;
     if (r.category === 'available') return `<a class="sx-list-link" href="https://porkbun.com/checkout/search?q=${encodeURIComponent(r.domain)}" target="_blank" rel="noopener">Register ↗</a>`;
     return '';
   };
-  // Card layout mirrors the Explore/target surfaces: left-border by disposition,
-  // domain as the "name" + a status pill, price + listing on the right.
+  // Company info + metrics for a resolved active-site extension (it's a real buyer).
+  const extInfo = (r) => {
+    if (!r.company) return r.evidence ? `<div class="sr-card-meta">${escapeHtml(r.evidence)}</div>` : '';
+    const li = r.linkedin || (r.firmographics && r.firmographics.linkedin) || '';
+    const meta = [r.location || '', r.industry || ''].filter(Boolean).join(' · ');
+    const cells = [];
+    if (r.employee_count != null) cells.push(['Employees', Number(r.employee_count).toLocaleString()]);
+    if (r.funding) cells.push(['Raised', srMoney(r.funding)]);
+    if (r.revenue) cells.push(['Revenue', srMoney(r.revenue)]);
+    if (r.founded_year) cells.push(['Founded', String(r.founded_year)]);
+    const metrics = cells.length ? `<div class="sr-t-metrics">${cells.map(([k, v]) => `<div class="sr-t-m"><span class="sr-t-m-k">${k}</span><span class="sr-t-m-v">${escapeHtml(v)}</span></div>`).join('')}</div>` : '';
+    return `<div class="sx-co"><span class="sx-co-name">${escapeHtml(r.company)}</span>${li ? ` <a class="sr-card-li" href="${escapeHtml(li)}" target="_blank" rel="noopener" title="Company LinkedIn">in</a>` : ''}${r.tier ? ` <span class="sr-tier sr-tier-${escapeHtml(r.tier)}">${escapeHtml(r.tier)}</span>` : ''}${r.on_list ? '<span class="sr-onlist-badge" style="margin-left:8px">✓ on list</span>' : ''}</div>${meta ? `<div class="sr-card-meta">${escapeHtml(meta)}</div>` : ''}${metrics}`;
+  };
+  // Mark which active extensions are already on the target list (by domain).
+  const targetDomains = new Set(salesTargets.map((t) => String(t.domain || '').toLowerCase()));
+  // Card layout mirrors Explore: left-border by disposition, domain + status pill;
+  // an ACTIVE-site extension (a real company) gets a checkbox + company info.
   table.innerHTML = `<div class="sr-cards">${rows.map((r) => {
+    const buyer = r.category === 'active';
+    r.on_list = buyer && targetDomains.has(String(r.domain || '').toLowerCase());
     const price = extPrice(r);
+    const cb = buyer ? `<label class="sr-card-check"><input type="checkbox" class="sx-cb" data-domain="${escapeHtml(r.domain)}"${salesExtSel.has(r.domain) ? ' checked' : ''}></label>` : '';
     return `<div class="sr-card sx-card sx-card-${r.category}">
       <div class="sr-card-head">
+        ${cb}
         <div class="sr-card-id">
           <div class="sr-card-name"><a class="sx-dom" href="https://${escapeHtml(r.domain)}" target="_blank" rel="noopener">${escapeHtml(r.domain)}</a><span class="sx-st sx-st-${r.category}">${EXT_LABEL[r.category] || escapeHtml(r.category || '')}</span></div>
-          ${r.evidence ? `<div class="sr-card-meta">${escapeHtml(r.evidence)}</div>` : ''}
+          ${buyer ? extInfo(r) : (r.evidence ? `<div class="sr-card-meta">${escapeHtml(r.evidence)}</div>` : '')}
         </div>
         <div class="sr-card-badges sx-badges">${price !== '—' ? `<span class="sx-price">${price}</span>` : ''}${listLink(r)}</div>
       </div>
     </div>`;
   }).join('')}</div>`;
+  updateExtAddBtn();
 }
+
+function selectedExtRows() { return (salesExtRows || []).filter((r) => r.category === 'active' && salesExtSel.has(r.domain) && !r.on_list); }
+function updateExtAddBtn() {
+  const btn = sEl('sr-ext-add'); if (!btn) return;
+  const n = selectedExtRows().length;
+  btn.disabled = n === 0;
+  btn.textContent = n ? `＋ Add to target list (${n})` : '＋ Add to target list';
+}
+sEl('sr-ext-table')?.addEventListener('change', (e) => {
+  const cb = e.target.closest('.sx-cb'); if (!cb) return;
+  if (cb.checked) salesExtSel.add(cb.dataset.domain); else salesExtSel.delete(cb.dataset.domain);
+  updateExtAddBtn();
+});
+sEl('sr-ext-add')?.addEventListener('click', async () => {
+  const picks = selectedExtRows(); if (!picks.length || !salesProjectId) return;
+  const btn = sEl('sr-ext-add'); btn.disabled = true; btn.textContent = 'Adding…';
+  const targets = picks.map((r) => ({ domain: r.domain, company: r.company || r.domain, employee_count: r.employee_count, location: r.location, funding: r.funding, tier: r.tier, firmographics: r.firmographics }));
+  try {
+    await salesPost({ action: 'add_ext_targets', project_id: salesProjectId, targets });
+    salesExtSel.clear();
+    await refreshSalesProject();     // reloads targets (so on-list chips show) + candidates
+    renderExtensions();
+    setSalesSurface('targets');
+  } catch (e) { alert(String(e.message || e)); updateExtAddBtn(); }
+});
 sEl('sr-ext-refresh')?.addEventListener('click', () => loadExtensions(true));
 sEl('sr-ext-csv')?.addEventListener('click', () => {
   const rows = salesExtRows || []; if (!rows.length) return;

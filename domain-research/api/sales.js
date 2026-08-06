@@ -22,7 +22,7 @@ import {
   createSalesProject, getSalesProject, listSalesProjects, listSalesProjectsWithCounts, listSalesCandidates, getSalesCandidate,
   setSalesSelection, setCandidateEnrichStatus, replaceCandidateContacts, listContactsForCandidates,
   insertSalesCandidates, updateCandidateQualification, setSalesProjectStatus,
-  addToTargets, addManualTarget, removeTargets, setShortlistRank, updateTarget,
+  addToTargets, addManualTarget, removeTargets, setShortlistRank, updateTarget, addExtensionTargets,
 } from '../lib/db/sales.js';
 
 export const config = { maxDuration: 60 };
@@ -242,6 +242,16 @@ async function handleShortlist(body, res) {
 // Extensions — a Beast-Mode-style TLD sweep of the EXACT seed SLD across every
 // extension: taken / for-sale / available / active-site + price + marketplace.
 // Reuses the naming-exercise variations engine (extensions only — no affixes).
+// Bounded-concurrency map (shared small helper).
+async function mapPool(items, limit, fn) {
+  const out = new Array(items.length);
+  let i = 0;
+  await Promise.all(Array.from({ length: Math.min(limit, items.length || 1) }, async () => {
+    while (i < items.length) { const idx = i++; out[idx] = await fn(items[idx], idx); }
+  }));
+  return out;
+}
+
 async function handleExtensions(body, res) {
   const raw = String(body.domain || '').trim().toLowerCase();
   const { sld, domain } = seedParts(raw);
@@ -250,10 +260,43 @@ async function handleExtensions(body, res) {
     const swept = await sweepVariations(domain, { env: process.env, prefixes: [], suffixes: [] });
     const rows = (swept && Array.isArray(swept.results)) ? swept.results : [];
     const results = rows.filter((r) => r.kind === 'tld');   // exact SLD on each TLD (enumerate tags these 'tld')
+    // An ACTIVE-site extension IS a real company using the exact name on another TLD
+    // — a prime buyer. Resolve its firmographics so the card shows company info +
+    // can be added to the target list (fail-open; disposition-only rows untouched).
+    if (process.env.APOLLO_ENRICH_API_KEY) {
+      const actives = results.filter((r) => r.category === 'active');
+      await mapPool(actives, 6, async (r) => {
+        try {
+          const f = await firmographics(r.domain, process.env);
+          if (f && f.company) {
+            r.company = f.company;
+            r.employee_count = f.employees ?? null;
+            r.location = f.location || null;
+            r.funding = f.funding || null;
+            r.revenue = f.revenue || null;
+            r.founded_year = f.foundedYear || null;
+            r.industry = f.industry || null;
+            r.linkedin = f.linkedin || null;
+            r.tier = abilityToPay(f).tier;
+            r.firmographics = f;
+          }
+        } catch { /* fail-open — keep the disposition row */ }
+      });
+    }
     res.status(200).json({ ok: true, seed: sld, count: results.length, results });
   } catch (e) {
     res.status(500).json({ error: String(e.message || e) });
   }
+}
+
+// Promote checked ACTIVE-site extensions onto the target list — upsert a candidate
+// per domain (with the company info already resolved) and mark it a target.
+async function handleAddExtTargets(body, res) {
+  const projectId = String(body.project_id || '').trim();
+  const targets = Array.isArray(body.targets) ? body.targets : [];
+  if (!projectId || !targets.length) { res.status(400).json({ error: 'project_id and targets required' }); return; }
+  const added = await addExtensionTargets(projectId, targets);
+  res.status(200).json({ ok: true, added });
 }
 
 // Prominence — a FREE Open PageRank (0–10 authority + global rank) per target
@@ -294,6 +337,7 @@ async function route(req, res) {
     if (action === 'update_target') return handleUpdateTarget(body, res);
     if (action === 'prominence') return handleProminence(body, res);
     if (action === 'extensions') return handleExtensions(body, res);
+    if (action === 'add_ext_targets') return handleAddExtTargets(body, res);
     res.status(400).json({ error: `Unknown action: ${action}` });
     return;
   }

@@ -1561,6 +1561,15 @@ design in `domain-research/SALES_HUB_SPEC.md`. Additive to the existing module �
   `.sx-*` table styles) — status pills, price, marketplace link, register link, refresh, CSV.
   Complements Upgrades (which resolves TLD siblings to COMPANIES): Extensions shows each domain's
   DISPOSITION (buyable / parked / active / price). Cache-bust `?v=20260805ext`.
+  - **Cards + checkboxes + add-to-target (2026-08-05).** Extensions renders as Explore-style cards
+    (`.sx-card` left-border by disposition). An **ACTIVE-site extension IS a real company** on the
+    exact name (a prime buyer), so `handleExtensions` resolves those rows' **firmographics** (Apollo,
+    bounded, fail-open) → company/employees/revenue/founded/industry/linkedin/tier on the card, plus a
+    **checkbox** + a **"＋ Add to target list (N)"** action (`add_ext_targets` → `addExtensionTargets`
+    upserts a `tld_variant` candidate per domain carrying the firmo + marks `is_target`; promotes an
+    existing candidate by domain instead of duplicating). For-sale/available/parked rows stay
+    disposition-only (not buyers → no checkbox). An already-a-target extension shows a ✓ on-list chip.
+    Cache-bust `?v=20260805extadd`.
 - **One-time setup:** run `0019_sales_targets.sql` on the research project. No new
   permission/env. **Out of scope (v1):** public no-login share (a token'd Top-5 view is a
   later add), CRM push, auto-outreach, cross-name rollups, per-company threaded comment log.
