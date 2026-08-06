@@ -1897,19 +1897,26 @@ body.drawer-open { overflow: hidden; }
 .sr-t-m-k { font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: .04em; color: var(--navy-3); }
 .sr-t-m-v { font-size: 14px; font-weight: 700; color: var(--navy); }
 .sr-t-unq { font-size: 12px; margin-top: 8px; }
-/* Extensions surface — Beast-Mode TLD sweep table. */
+/* Extensions surface — Beast-Mode TLD sweep, rendered as Explore-style cards. */
 .sr-ext-hint { font-size: 12.5px; margin: -4px 0 14px; }
-.sx-table { width: 100%; border-collapse: collapse; font-size: 14px; }
-.sx-table thead th { text-align: left; font-size: 10.5px; font-weight: 800; text-transform: uppercase; letter-spacing: .04em; color: var(--navy-3); padding: 0 14px 8px; border-bottom: 2px solid var(--line); }
-.sx-table tbody td { padding: 11px 14px; border-bottom: 1px solid var(--line); vertical-align: middle; }
-.sx-dom { font-weight: 700; color: var(--navy); }
+.sx-card { border-left-color: var(--line); }
+.sx-card-for_sale { border-left-color: #2e9e57; }
+.sx-card-available { border-left-color: #1b6fa8; }
+.sx-card-active { border-left-color: var(--coral); }
+.sx-card-parked { border-left-color: #d99a3a; }
+.sx-card-registered { border-left-color: #c2c8cf; }
+.sx-dom { font-weight: 800; color: var(--navy); font-size: 15px; }
 .sx-dom:hover { color: var(--coral-deep); }
-.sx-st { font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: .03em; padding: 3px 10px; border-radius: 999px; white-space: nowrap; }
+.sx-st { font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: .03em; padding: 3px 10px; border-radius: 999px; white-space: nowrap; margin-left: 10px; vertical-align: middle; }
 .sx-st-for_sale { color: #1b7a3d; background: #e3f6e9; }
 .sx-st-available { color: #1b6fa8; background: #e2f0fb; }
 .sx-st-active { color: var(--coral-deep); background: #ffe6dc; }
 .sx-st-parked { color: #8a5a1a; background: #fbeed8; }
 .sx-st-registered { color: #6b7280; background: #f0f1f4; }
+.sx-badges { display: flex; align-items: center; gap: 14px; white-space: nowrap; }
+.sx-price { font-size: 15px; font-weight: 800; color: var(--navy); }
+.sx-list-link { font-size: 13px; font-weight: 700; color: var(--coral-deep); }
+.sx-list-link:hover { text-decoration: underline; }
 .sx-tag { font-size: 10px; font-weight: 700; color: var(--navy-3); }
 /* Master-list directory — name row + its target/top-fit counts. */
 .sr-dir-count { font-size: 12.5px; font-weight: 700; color: var(--coral-deep); white-space: nowrap; }

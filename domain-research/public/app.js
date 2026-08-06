@@ -9312,18 +9312,25 @@ function renderExtensions() {
       : '';
   }
   if (!rows.length) { table.innerHTML = '<p class="muted">No extensions found.</p>'; return; }
-  const listCell = (r) => {
-    if (r.for_sale && r.link) return `<a href="${escapeHtml(r.link)}" target="_blank" rel="noopener">${escapeHtml(r.marketplace || 'Listing')} ↗</a>`;
-    if (r.category === 'available') return `<a href="https://porkbun.com/checkout/search?q=${encodeURIComponent(r.domain)}" target="_blank" rel="noopener">Register ↗</a>`;
-    return '—';
+  const listLink = (r) => {
+    if (r.for_sale && r.link) return `<a class="sx-list-link" href="${escapeHtml(r.link)}" target="_blank" rel="noopener">${escapeHtml(r.marketplace || 'Listing')} ↗</a>`;
+    if (r.category === 'available') return `<a class="sx-list-link" href="https://porkbun.com/checkout/search?q=${encodeURIComponent(r.domain)}" target="_blank" rel="noopener">Register ↗</a>`;
+    return '';
   };
-  table.innerHTML = `<table class="sx-table"><thead><tr><th>Domain</th><th>Status</th><th>Price</th><th>Listing</th></tr></thead><tbody>${rows.map((r) => `
-    <tr>
-      <td><a class="sx-dom" href="https://${escapeHtml(r.domain)}" target="_blank" rel="noopener">${escapeHtml(r.domain)}</a></td>
-      <td><span class="sx-st sx-st-${r.category}">${EXT_LABEL[r.category] || escapeHtml(r.category || '')}</span></td>
-      <td>${extPrice(r)}</td>
-      <td>${listCell(r)}</td>
-    </tr>`).join('')}</tbody></table>`;
+  // Card layout mirrors the Explore/target surfaces: left-border by disposition,
+  // domain as the "name" + a status pill, price + listing on the right.
+  table.innerHTML = `<div class="sr-cards">${rows.map((r) => {
+    const price = extPrice(r);
+    return `<div class="sr-card sx-card sx-card-${r.category}">
+      <div class="sr-card-head">
+        <div class="sr-card-id">
+          <div class="sr-card-name"><a class="sx-dom" href="https://${escapeHtml(r.domain)}" target="_blank" rel="noopener">${escapeHtml(r.domain)}</a><span class="sx-st sx-st-${r.category}">${EXT_LABEL[r.category] || escapeHtml(r.category || '')}</span></div>
+          ${r.evidence ? `<div class="sr-card-meta">${escapeHtml(r.evidence)}</div>` : ''}
+        </div>
+        <div class="sr-card-badges sx-badges">${price !== '—' ? `<span class="sx-price">${price}</span>` : ''}${listLink(r)}</div>
+      </div>
+    </div>`;
+  }).join('')}</div>`;
 }
 sEl('sr-ext-refresh')?.addEventListener('click', () => loadExtensions(true));
 sEl('sr-ext-csv')?.addEventListener('click', () => {
