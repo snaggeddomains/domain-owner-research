@@ -793,6 +793,15 @@ can NEVER hold a specific word fixed — so it returned public-safety-*themed* n
   h1 == the domain, ≤1 link), so it stays `parked`. Multilingual "under construction"
   (`en construction`/`im aufbau`/…) + builder-default titles ("My Company", title-only
   `HOLDING_TITLE_RE`) still force parked. Cache-bust `?v=20260709variations11`.
+- **active-rescue tightened for bare-name placeholders (2026-08-06).** delegatecloud.com /
+  delegatehub.com showed as `active` in Beast Mode but don't load in a browser. Two gaps in
+  `inspectSite`: (1) delegatecloud.com serves a "This domain is brand new" placeholder — added
+  `brand[- ]?new|new` + `(brand[- ]?new|newly registered|newly created|recently registered) domain`
+  to `HOLDING_RE`; (2) delegatehub.com is titled only after its own SLD with nav links but no real
+  h1/description — a builder/registrar placeholder. The `richNav` rescue now also requires the title
+  NOT be a bare domain/SLD (`titleIsBareName = isName(title)`), so nav links ALONE no longer rescue a
+  bare-name placeholder to active (a real minimal site still has a real h1/desc/branded title).
+  Shared with the naming exercise (backend-only, no cache-bust).
 
 ## Nav sections — research SPA (config-driven, 2026-06-28)
 

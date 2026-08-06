@@ -75,7 +75,7 @@ function marketplaceFromNs(nameservers, domain) {
 // evidence } — where for_sale_page means an EXPLICIT for-sale page (own or marketplace).
 const MARKETPLACE_HOST_RE = /(^|\.)(dan\.com|afternic\.com|sedo\.com|atom\.com|hugedomains\.com|undeveloped\.com|efty\.com|sav\.com|above\.com|squadhelp\.com|brandbucket\.com)$/i;
 // Registrar/holding landing pages — registered but NOT in active use. GoDaddy et al.
-const HOLDING_RE = /future home of|website coming soon|coming soon|under construction|en construction|construction en cours|im aufbau|in aanbouw|domain (name )?is parked|parked (free|page)|parking page|parked domain|domain parked|is parked|this domain (name )?is (parked|registered|not configured|available)|default (web ?page|server page|page)|welcome to nginx|apache\b.{0,30}default|it works!|test page|this is the default|new site|placeholder|buy now this domain|this webpage is parked|account suspended|just another wordpress|example domain|new wordpress site/i;
+const HOLDING_RE = /future home of|website coming soon|coming soon|under construction|en construction|construction en cours|im aufbau|in aanbouw|domain (name )?is parked|parked (free|page)|parking page|parked domain|domain parked|is parked|this domain (name )?is (parked|registered|not configured|available|brand[- ]?new|new)|(brand[- ]?new|newly registered|newly created|recently registered) domain|default (web ?page|server page|page)|welcome to nginx|apache\b.{0,30}default|it works!|test page|this is the default|new site|placeholder|buy now this domain|this webpage is parked|account suspended|just another wordpress|example domain|new wordpress site/i;
 // Website-builder DEFAULT template titles (Wix/Squarespace/GoDaddy Websites+Marketing/
 // WordPress starters) — a site that was set up but never customized. Matched on the
 // <title> ONLY: these strings ("My Company", "Site Title") are too generic to test
@@ -247,7 +247,11 @@ async function inspectSite(domain) {
     || /^(index of|default|domain|welcome|coming soon|under construction|parked|home ?page|new site|untitled|website)/i.test((title || '').trim());
   const hasRealH1 = h1.length >= 3 && !isName(h1);
   const hasDesc = desc.trim().length >= 12;
-  const richNav = linkCount >= 5 && text.length >= 50;
+  // A page titled ONLY after its own domain ("delegatehub") with no real headline or
+  // description is a builder/registrar placeholder even if it carries nav links — so
+  // don't rescue it as active on nav ALONE (a real minimal site has a real h1/desc).
+  const titleIsBareName = isName(title);
+  const richNav = linkCount >= 5 && text.length >= 50 && !titleIsBareName;
   if (r.ok && ((title && !genericTitle) || hasRealH1 || hasDesc || richNav)) {
     const label = (title && !genericTitle) ? title : (hasRealH1 ? h1 : (title || sld));
     return { site: 'active', title: title || h1 || null, for_sale_page: false, evidence: `active site — "${label}"` };
