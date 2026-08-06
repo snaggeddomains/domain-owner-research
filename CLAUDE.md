@@ -1570,6 +1570,14 @@ design in `domain-research/SALES_HUB_SPEC.md`. Additive to the existing module �
     existing candidate by domain instead of duplicating). For-sale/available/parked rows stay
     disposition-only (not buyers → no checkbox). An already-a-target extension shows a ✓ on-list chip.
     Cache-bust `?v=20260805extadd`.
+  - **Renamed to 🦾 Beast Mode + full affix sweep (2026-08-05).** The surface is now "Beast Mode" (was
+    "Extensions") and runs the FULL naming-exercise sweep — `sweepVariations(domain)` with the DEFAULT
+    prefixes/suffixes (get/try/use/hi/hello/go… + labs/hq/inc…), not just the exact SLD on TLDs — so
+    prefix/suffix brand combos (getcarrot.com, carrotlabs.com) are checked for live sites too. Rows carry
+    `kind` (`tld`/`prefix`/`suffix`) shown as a small chip. Active-site rows of ANY kind resolve
+    firmographics (capped 16) + get the add-to-target checkbox. `api/sales.js` `maxDuration` bumped
+    60→120 for the bigger sweep. Cache-bust `?v=20260805beastmode`. (Explore also now floats on-list
+    rows to the TOP of each category via `byScore`.)
 - **One-time setup:** run `0019_sales_targets.sql` on the research project. No new
   permission/env. **Out of scope (v1):** public no-login share (a token'd Top-5 view is a
   later add), CRM push, auto-outreach, cross-name rollups, per-company threaded comment log.

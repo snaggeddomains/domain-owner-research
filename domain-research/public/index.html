@@ -35,7 +35,7 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="apple-mobile-web-app-title" content="Snagged Research" />
     <meta name="theme-color" content="#254254" />
-    <link rel="stylesheet" href="styles.css?v=20260805consolidate" />
+    <link rel="stylesheet" href="styles.css?v=20260805beastmode" />
     <!-- Layout: horizontal tab nav (Admin-style), no sidebar. -->
   </head>
   <body>
@@ -715,7 +715,7 @@
           <!-- Surface toggle: Explore (discover + add) ⇄ Target list (curate). -->
           <div id="sr-surface" class="sr-surface" hidden role="group" aria-label="Sales hub surface">
             <button type="button" class="sr-surf-btn active" data-surface="explore">Explore</button>
-            <button type="button" class="sr-surf-btn" data-surface="extensions">🌐 Extensions</button>
+            <button type="button" class="sr-surf-btn" data-surface="extensions">🦾 Beast Mode</button>
             <button type="button" class="sr-surf-btn" data-surface="targets">🎯 Target list<span class="sr-surf-n" id="sr-target-count">0</span></button>
           </div>
 
@@ -819,7 +819,7 @@
                 <button id="sr-ext-csv" type="button" class="sr-btn sr-btn-ghost">Download CSV</button>
               </div>
             </div>
-            <p class="sr-ext-hint muted">Every extension of the exact name — what's taken, for sale (+ asking price), available, or a live site. Active-site extensions are real companies on the name — tick them to add as buyers. Powered by the Beast-Mode sweep.</p>
+            <p class="sr-ext-hint muted">The full Beast-Mode sweep — the exact name on every TLD plus prefix/suffix combos (get·, try·, use·, hi·, go· / ·labs, ·hq, ·inc …): what's taken, for sale (+ asking price), available, or a live site. Active-site variations are real companies on the name — tick them to add as buyers.</p>
             <div id="sr-ext-table" class="sr-table-wrap"></div>
           </section>
         </section>
@@ -1396,6 +1396,6 @@ The model parses it into structured filters (TLDs, length, budget, tone, etc.) a
     </div>
 
     <!-- Bump ?v= on any public/app.js or styles.css change to bust caches. -->
-    <script src="app.js?v=20260805consolidate"></script>
+    <script src="app.js?v=20260805beastmode"></script>
   </body>
 </html>

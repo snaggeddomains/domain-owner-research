@@ -26,7 +26,7 @@ import {
   consolidateAllDuplicateProjects,
 } from '../lib/db/sales.js';
 
-export const config = { maxDuration: 60 };
+export const config = { maxDuration: 120 };   // the Beast-Mode sweep (affixes × TLDs) needs headroom
 
 async function handleGet(req, res) {
   // List mode: recent / searchable past projects.
@@ -240,9 +240,6 @@ async function handleShortlist(body, res) {
   res.status(200).json({ ok: true, id, rank });
 }
 
-// Extensions — a Beast-Mode-style TLD sweep of the EXACT seed SLD across every
-// extension: taken / for-sale / available / active-site + price + marketplace.
-// Reuses the naming-exercise variations engine (extensions only — no affixes).
 // Bounded-concurrency map (shared small helper).
 async function mapPool(items, limit, fn) {
   const out = new Array(items.length);
@@ -258,14 +255,13 @@ async function handleExtensions(body, res) {
   const { sld, domain } = seedParts(raw);
   if (!sld) { res.status(400).json({ error: 'Provide a domain, e.g. carrot.ai' }); return; }
   try {
-    const swept = await sweepVariations(domain, { env: process.env, prefixes: [], suffixes: [] });
-    const rows = (swept && Array.isArray(swept.results)) ? swept.results : [];
-    const results = rows.filter((r) => r.kind === 'tld');   // exact SLD on each TLD (enumerate tags these 'tld')
-    // An ACTIVE-site extension IS a real company using the exact name on another TLD
-    // — a prime buyer. Resolve its firmographics so the card shows company info +
-    // can be added to the target list (fail-open; disposition-only rows untouched).
+    const swept = await sweepVariations(domain, { env: process.env });   // full Beast Mode: affixes + TLDs
+    const results = (swept && Array.isArray(swept.results)) ? swept.results : [];
+    // An ACTIVE-site variation IS a real company on the name (an exact TLD sibling OR
+    // an affix brand like getcarrot.com) — a prime buyer. Resolve its firmographics so
+    // the card shows company info + can be added to the target list (capped + fail-open).
     if (process.env.APOLLO_ENRICH_API_KEY) {
-      const actives = results.filter((r) => r.category === 'active');
+      const actives = results.filter((r) => r.category === 'active').slice(0, 16);
       await mapPool(actives, 6, async (r) => {
         try {
           const f = await firmographics(r.domain, process.env);

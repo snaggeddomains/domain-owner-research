@@ -8929,7 +8929,10 @@ function renderSalesTable() {
   // (already use the name — cheap + relevant) PLUS the best-fit keyword picks
   // (score ≥ 2). Keyword expansions = the rest of the angle companies (tougher
   // sell). Others = for-sale / inactive.
-  const byScore = (a, b) => ((Number(b.score) || 0) - (Number(a.score) || 0)) || ((b.employee_count || 0) - (a.employee_count || 0));
+  // On-list (already a target) rows float to the TOP of every category, then by
+  // score / size — so you can see what's already added at a glance.
+  const byScore = (a, b) => (Boolean(b.is_target) - Boolean(a.is_target))
+    || ((Number(b.score) || 0) - (Number(a.score) || 0)) || ((b.employee_count || 0) - (a.employee_count || 0));
   const sections = [
     { label: 'Recommended — upgrades & best-fit buyers', rows: [] },
     { label: 'Product-name matches — companies with a product of this name', rows: [] },
@@ -9295,7 +9298,7 @@ async function loadExtensions(force) {
   if (salesExtRows && !force) { renderExtensions(); return; }
   salesExtBusy = true;
   const table = sEl('sr-ext-table');
-  if (table) table.innerHTML = spinHtml(`Sweeping every extension of ${escapeHtml(salesSeed)}…`);
+  if (table) table.innerHTML = spinHtml(`Running Beast Mode on ${escapeHtml(salesSeed)} — sweeping every TLD + affix combo…`);
   try {
     const data = await salesPost({ action: 'extensions', domain: salesSeed });
     salesExtRows = data.results || [];
@@ -9310,11 +9313,11 @@ function renderExtensions() {
   if (summary) {
     const n = (cat) => rows.filter((r) => r.category === cat).length;
     summary.innerHTML = rows.length
-      ? `<span class="sr-sum-n">${rows.length}</span> extensions<span class="sr-sum-dot">·</span>${n('for_sale')} for sale<span class="sr-sum-dot">·</span>${n('available')} available<span class="sr-sum-dot">·</span>${n('active')} active`
+      ? `<span class="sr-sum-n">${rows.length}</span> variations<span class="sr-sum-dot">·</span>${n('for_sale')} for sale<span class="sr-sum-dot">·</span>${n('available')} available<span class="sr-sum-dot">·</span>${n('active')} active`
       : '';
   }
   for (const d of [...salesExtSel]) if (!rows.some((r) => r.domain === d)) salesExtSel.delete(d);
-  if (!rows.length) { table.innerHTML = '<p class="muted">No extensions found.</p>'; updateExtAddBtn(); return; }
+  if (!rows.length) { table.innerHTML = '<p class="muted">No variations found.</p>'; updateExtAddBtn(); return; }
   const listLink = (r) => {
     if (r.for_sale && r.link) return `<a class="sx-list-link" href="${escapeHtml(r.link)}" target="_blank" rel="noopener">${escapeHtml(r.marketplace || 'Listing')} ↗</a>`;
     if (r.category === 'available') return `<a class="sx-list-link" href="https://porkbun.com/checkout/search?q=${encodeURIComponent(r.domain)}" target="_blank" rel="noopener">Register ↗</a>`;
@@ -9346,7 +9349,7 @@ function renderExtensions() {
       <div class="sr-card-head">
         ${cb}
         <div class="sr-card-id">
-          <div class="sr-card-name"><a class="sx-dom" href="https://${escapeHtml(r.domain)}" target="_blank" rel="noopener">${escapeHtml(r.domain)}</a><span class="sx-st sx-st-${r.category}">${EXT_LABEL[r.category] || escapeHtml(r.category || '')}</span></div>
+          <div class="sr-card-name"><a class="sx-dom" href="https://${escapeHtml(r.domain)}" target="_blank" rel="noopener">${escapeHtml(r.domain)}</a>${r.kind && r.kind !== 'tld' ? `<span class="sx-kind">${escapeHtml(r.kind)}</span>` : ''}<span class="sx-st sx-st-${r.category}">${EXT_LABEL[r.category] || escapeHtml(r.category || '')}</span></div>
           ${buyer ? extInfo(r) : (r.evidence ? `<div class="sr-card-meta">${escapeHtml(r.evidence)}</div>` : '')}
         </div>
         <div class="sr-card-badges sx-badges">${price !== '—' ? `<span class="sx-price">${price}</span>` : ''}${listLink(r)}</div>
