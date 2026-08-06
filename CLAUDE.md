@@ -1597,8 +1597,8 @@ design in `domain-research/SALES_HUB_SPEC.md`. Additive to the existing module �
   - **Top-fit ⭐ is now UNCAPPED (2026-08-05)** — star as many best fits as you want (was max 5). Removed
     the cap in `api/sales.js` `handleShortlist` + client `toggleTopFit`; `shortlist_rank` just preserves
     starring order. Section header "⭐ Best fits for <name>" with a count (was "Top 5").
-- **One-time setup:** run `0019_sales_targets.sql` on the research project. No new
-  permission/env. **Out of scope (v1):** public no-login share (a token'd Top-5 view is a
+- **One-time setup:** run `0019_sales_targets.sql` AND `0020_sales_dismissed.sql` on the research
+  project. No new permission/env. **Out of scope (v1):** public no-login share (a token'd Top-5 view is a
   later add), CRM push, auto-outreach, cross-name rollups, per-company threaded comment log.
 - **Canonical per-name hub — the master target list (2026-08-05).** The target list is now a
   DURABLE PER-NAME asset, independent of research runs. `createSalesProject` (`lib/db/sales.js`) is
@@ -1630,6 +1630,17 @@ design in `domain-research/SALES_HUB_SPEC.md`. Additive to the existing module �
   `dismissed` by default; a **"Show dismissed (N)"** toggle (`#sr-show-dismissed`, `salesShowDismissed`)
   flips to a dismissed-only review view (→ "← Back to Explore"). Optimistic (`dismissCandidate`),
   falls back to a refresh on failure. Cache-bust `?v=20260806dismiss`.
+- **Beast Mode: SAVED sweep + dismiss (2026-08-06).** Beast Mode is a heavy live crawl, so its
+  results are now PERSISTED per name and loaded instantly; a **↻ Refresh** re-sweeps. Stored in
+  `domain_research_sales_projects.ext_results` (jsonb) + `ext_swept_at` (migration `0020`;
+  `saveExtResults`/`getExtResults`, strip-and-retry). `handleExtensions` reads saved unless
+  `refresh:true`; the client (`loadExtensions`) passes `project_id`+`refresh`, shows a "Last swept …"
+  stamp. **Dismiss on Beast Mode** persists BY DOMAIN so a Refresh returning the same name stays
+  hidden: `dismissExtensionDomain(projectId, row, dismissed)` flags an existing candidate or UPSERTS a
+  minimal dismissed one (category `tld_variant`/`prefix`/`suffix`); API action `dismiss_ext`. UI: a
+  per-card ✕ / ↩ Restore, a Beast Mode "Show dismissed (N)" toggle (`#sr-ext-show-dismissed`), and
+  `renderExtensions` unions the DB dismissed set (`salesCandidates.dismissed` by domain) with a
+  session set + hides them by default. Cache-bust `?v=20260806beastdismiss`.
 - **Enrich/Qualify "searched, nothing found" state (2026-08-06).** A card that was ENRICHED or
   QUALIFIED but came back empty read identically to one never run. Now they differ: the TARGET card
   shows **"✓ Searched · no contacts found · ↻ Try again"** (enrich) / **"✓ Qualified · no

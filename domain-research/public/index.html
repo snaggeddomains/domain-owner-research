@@ -35,7 +35,7 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="apple-mobile-web-app-title" content="Snagged Research" />
     <meta name="theme-color" content="#254254" />
-    <link rel="stylesheet" href="styles.css?v=20260806dismiss" />
+    <link rel="stylesheet" href="styles.css?v=20260806beastdismiss" />
     <!-- Layout: horizontal tab nav (Admin-style), no sidebar. -->
   </head>
   <body>
@@ -825,6 +825,8 @@
               <label class="sr-check"><input type="checkbox" id="sr-ext-hide-forsale" checked> Hide for sale</label>
               <label class="sr-check"><input type="checkbox" id="sr-ext-hide-avail" checked> Hide available</label>
               <label class="sr-check"><input type="checkbox" id="sr-ext-hide-taken" checked> Hide parked / doesn't resolve</label>
+              <button type="button" id="sr-ext-show-dismissed" class="sr-dismissed-toggle" hidden title="Review the extensions you dismissed as not-a-fit — restore any back."></button>
+              <span id="sr-ext-swept" class="sr-ext-swept muted"></span>
             </div>
             <div id="sr-ext-table" class="sr-table-wrap"></div>
           </section>
@@ -1402,6 +1404,6 @@ The model parses it into structured filters (TLDs, length, budget, tone, etc.) a
     </div>
 
     <!-- Bump ?v= on any public/app.js or styles.css change to bust caches. -->
-    <script src="app.js?v=20260806dismiss"></script>
+    <script src="app.js?v=20260806beastdismiss"></script>
   </body>
 </html>

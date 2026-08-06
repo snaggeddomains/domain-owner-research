@@ -8527,7 +8527,7 @@ function resetSalesView() {
   salesSelected.clear();
   salesTargets = []; salesTargetSel.clear(); salesSurface = 'explore';
   salesTargetFilter = 'all'; salesTargetSort = 'added';
-  salesExtRows = null;
+  salesExtRows = null; salesExtSweptAt = null; salesExtShowDismissed = false; salesExtDismissed.clear();
   salesExtSel.clear();
   if (sEl('sr-surface')) sEl('sr-surface').hidden = true;
   if (sEl('sr-targets')) sEl('sr-targets').hidden = true;
@@ -8703,6 +8703,7 @@ function openSalesProject(id, surface = 'explore') {
   salesTargets = []; salesTargetSel.clear(); salesSelected.clear(); salesSurface = 'explore';
   salesPendingSurface = (surface === 'targets' || surface === 'extensions') ? surface : null;
   salesTargetFilter = 'all'; salesTargetSort = 'added'; salesExtRows = null; salesExtSel.clear(); salesExtKindFilter = 'all';
+  salesExtSweptAt = null; salesExtShowDismissed = false; salesExtDismissed.clear();
   els.srGo.disabled = true;
   setSalesMode('results', '');   // collapse entry; seed filled in once the poll returns it
   setSalesStatus('Discovering candidates and qualifying ability-to-pay…');
@@ -9335,7 +9336,10 @@ sEl('sr-surface')?.addEventListener('click', (e) => {
 // ── Extensions surface — Beast-Mode TLD sweep of the exact SLD ────────────────
 let salesExtRows = null;   // cached sweep rows for this project (null = not loaded)
 let salesExtBusy = false;
+let salesExtSweptAt = null;      // when the saved Beast Mode sweep was taken
 const salesExtSel = new Set();   // checked active-site extension domains (to add as targets)
+const salesExtDismissed = new Set();  // dismissed Beast Mode domains (persisted by candidate, session-optimistic)
+let salesExtShowDismissed = false;    // Beast Mode: reveal dismissed rows
 let salesExtKindFilter = 'all';  // Beast Mode kind filter: all | tld | prefix | suffix
 const EXT_ORDER = { for_sale: 0, available: 1, active: 2, parked: 3, registered: 4 };
 const EXT_LABEL = { for_sale: 'For sale', available: 'Available', active: 'Active site', parked: 'Parked', registered: 'Registered' };
@@ -9352,10 +9356,14 @@ async function loadExtensions(force) {
   if (salesExtRows && !force) { renderExtensions(); return; }
   salesExtBusy = true;
   const table = sEl('sr-ext-table');
-  if (table) table.innerHTML = spinHtml(`Running Beast Mode on ${escapeHtml(salesSeed)} — sweeping every TLD + affix combo…`);
+  if (table) table.innerHTML = spinHtml(force
+    ? `Refreshing Beast Mode on ${escapeHtml(salesSeed)} — re-sweeping every TLD + affix combo…`
+    : `Loading Beast Mode for ${escapeHtml(salesSeed)}…`);
   try {
-    const data = await salesPost({ action: 'extensions', domain: salesSeed });
+    // Results are SAVED per name — this loads them instantly; force=Refresh re-sweeps.
+    const data = await salesPost({ action: 'extensions', domain: salesSeed, project_id: salesProjectId, refresh: !!force });
     salesExtRows = data.results || [];
+    salesExtSweptAt = data.swept_at || null;
     renderExtensions();
   } catch (e) { if (table) table.innerHTML = `<p class="sr-status-err">${escapeHtml(String(e.message || e))}</p>`; }
   finally { salesExtBusy = false; }
@@ -9367,18 +9375,37 @@ function renderExtensions() {
   if (!table) return;
   const allRows = salesExtRows || [];
   for (const d of [...salesExtSel]) if (!allRows.some((r) => r.domain === d)) salesExtSel.delete(d);
+  // Dismissed (not-a-fit) domains — persisted as dismissed candidates by domain, so a
+  // Refresh that returns the same name stays hidden. Union the DB set with the session
+  // set (so a just-dismissed row hides before the project reloads).
+  const dismSet = new Set(salesExtDismissed);
+  for (const c of salesCandidates) if (c.dismissed && c.domain) dismSet.add(String(c.domain).toLowerCase());
+  const isDism = (r) => dismSet.has(String(r.domain || '').toLowerCase());
   if (summary) {
-    const n = (cat) => allRows.filter((r) => r.category === cat).length;
+    const live = allRows.filter((r) => !isDism(r));
+    const n = (cat) => live.filter((r) => r.category === cat).length;
     summary.innerHTML = allRows.length
-      ? `<span class="sr-sum-n">${allRows.length}</span> variations<span class="sr-sum-dot">·</span>${n('for_sale')} for sale<span class="sr-sum-dot">·</span>${n('available')} available<span class="sr-sum-dot">·</span>${n('active')} active`
+      ? `<span class="sr-sum-n">${live.length}</span> variations<span class="sr-sum-dot">·</span>${n('for_sale')} for sale<span class="sr-sum-dot">·</span>${n('available')} available<span class="sr-sum-dot">·</span>${n('active')} active`
       : '';
   }
+  // "Show dismissed (N)" toggle + last-swept stamp.
+  const dismN = allRows.filter(isDism).length;
+  const dismBtn = sEl('sr-ext-show-dismissed');
+  if (dismBtn) {
+    dismBtn.hidden = !(dismN > 0 || salesExtShowDismissed);
+    dismBtn.textContent = salesExtShowDismissed ? '← Back' : `Show dismissed (${dismN})`;
+    dismBtn.classList.toggle('active', salesExtShowDismissed);
+  }
+  const sweptEl = sEl('sr-ext-swept');
+  if (sweptEl) sweptEl.textContent = salesExtSweptAt ? `Last swept ${salesFmtDate(salesExtSweptAt)} · ↻ Refresh to re-pull` : '';
   // Disposition hide-toggles (default: show ONLY active sites — real content).
   // A non-resolving / registered name isn't a real target, so it's hidden with parked.
   const hideFS = sEl('sr-ext-hide-forsale')?.checked !== false;
   const hideAV = sEl('sr-ext-hide-avail')?.checked !== false;
   const hidePK = sEl('sr-ext-hide-taken')?.checked !== false;
   const dispOk = (r) => {
+    if (salesExtShowDismissed) return isDism(r);       // dismissed-only review view
+    if (isDism(r)) return false;                       // hide dismissed by default
     if (r.category === 'active') return true;
     if (r.category === 'for_sale') return !hideFS;
     if (r.category === 'available') return !hideAV;
@@ -9422,24 +9449,47 @@ function renderExtensions() {
     const price = extPrice(r);
     const cb = buyer ? `<label class="sr-card-check"><input type="checkbox" class="sx-cb" data-domain="${escapeHtml(r.domain)}"${salesExtSel.has(r.domain) ? ' checked' : ''}></label>` : '';
     const kind = extKindOf(r);
-    return `<div class="sr-card sx-card sx-card-${r.category}">
+    const dismBtnHtml = salesExtShowDismissed
+      ? `<button type="button" class="sr-undismiss-btn" data-extundismiss data-domain="${escapeHtml(r.domain)}" title="Restore">↩ Restore</button>`
+      : `<button type="button" class="sr-dismiss-btn" data-extdismiss data-domain="${escapeHtml(r.domain)}" title="Not a fit — dismiss (stays hidden even after a Refresh)" aria-label="Dismiss — not a fit">✕</button>`;
+    return `<div class="sr-card sx-card sx-card-${r.category}${salesExtShowDismissed ? ' sr-card-dismissed' : ''}">
       <div class="sr-card-head">
         ${cb}
         <div class="sr-card-id">
           <div class="sr-card-name">${r.on_list ? '<span class="sr-onlist-badge">✓ on list</span>' : ''}<a class="sx-dom" href="https://${escapeHtml(r.domain)}" target="_blank" rel="noopener">${escapeHtml(r.domain)}</a><span class="sx-kind sx-kind-${kind}">${EXT_KIND_LABEL[kind]}${(kind !== 'tld' && r.affix) ? ` · ${escapeHtml(r.affix)}` : ''}</span><span class="sx-st sx-st-${r.category}">${EXT_LABEL[r.category] || escapeHtml(r.category || '')}</span></div>
           ${buyer ? extInfo(r) : (r.evidence ? `<div class="sr-card-meta">${escapeHtml(r.evidence)}</div>` : '')}
         </div>
-        <div class="sr-card-badges sx-badges">${price !== '—' ? `<span class="sx-price">${price}</span>` : ''}${listLink(r)}</div>
+        <div class="sr-card-badges sx-badges">${price !== '—' ? `<span class="sx-price">${price}</span>` : ''}${listLink(r)}${dismBtnHtml}</div>
       </div>
     </div>`;
   }).join('')}</div>`;
+  wireExtDismissBtns(table);
   updateExtAddBtn();
+}
+
+// Dismiss / restore a Beast-Mode row by domain. Optimistic (session set), persisted
+// server-side so a Refresh that returns the same name stays hidden.
+async function dismissExt(domain, dismissed) {
+  const d = String(domain || '').toLowerCase();
+  if (!d) return;
+  if (dismissed) { salesExtDismissed.add(d); salesExtSel.delete(domain); } else salesExtDismissed.delete(d);
+  renderExtensions();
+  const row = (salesExtRows || []).find((r) => String(r.domain || '').toLowerCase() === d) || { domain };
+  try { await salesPost({ action: 'dismiss_ext', project_id: salesProjectId, domain, dismissed, row: { domain, company: row.company, kind: row.kind, category: row.category } }); }
+  catch { /* keep optimistic; it'll reconcile on next load */ }
+}
+function wireExtDismissBtns(container) {
+  container.querySelectorAll('[data-extdismiss]').forEach((b) =>
+    b.addEventListener('click', () => dismissExt(b.dataset.domain, true)));
+  container.querySelectorAll('[data-extundismiss]').forEach((b) =>
+    b.addEventListener('click', () => dismissExt(b.dataset.domain, false)));
 }
 sEl('sr-ext-table')?.addEventListener('click', (e) => {
   const b = e.target.closest('[data-extkind]'); if (!b || b.disabled) return;
   salesExtKindFilter = b.dataset.extkind; renderExtensions();
 });
 ['sr-ext-hide-forsale', 'sr-ext-hide-avail', 'sr-ext-hide-taken'].forEach((id) => sEl(id)?.addEventListener('change', renderExtensions));
+sEl('sr-ext-show-dismissed')?.addEventListener('click', () => { salesExtShowDismissed = !salesExtShowDismissed; renderExtensions(); });
 
 function selectedExtRows() { return (salesExtRows || []).filter((r) => r.category === 'active' && salesExtSel.has(r.domain) && !r.on_list); }
 function updateExtAddBtn() {

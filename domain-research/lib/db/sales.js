@@ -279,6 +279,67 @@ export async function dismissCandidates(ids, dismissed = true) {
   return ok ? ids.length : 0;
 }
 
+// Dismiss / restore a BEAST-MODE (live-sweep) row BY DOMAIN. Beast Mode rows aren't
+// persisted candidates, so we dismiss the existing candidate if one exists (an
+// upgrade that also showed in Beast Mode), else UPSERT a minimal dismissed candidate
+// so the name stops re-surfacing on future sweeps. Restore just clears the flag.
+export async function dismissExtensionDomain(projectId, row = {}, dismissed = true) {
+  const domain = String(row.domain || '').trim().toLowerCase();
+  if (!projectId || !domain) return null;
+  const db = getDb();
+  const { data: existing } = await db.from(CANDIDATES)
+    .select('id').eq('project_id', projectId).ilike('domain', domain).limit(1);
+  const id = existing && existing[0] && existing[0].id;
+  if (id) { await dismissCandidates([id], dismissed); return id; }
+  if (!dismissed) return null;                                  // nothing to restore
+  let ins = {
+    project_id: projectId,
+    domain,
+    company: row.company || null,
+    category: (row.kind === 'prefix' || row.kind === 'suffix') ? row.kind : 'tld_variant',
+    status: row.category || 'unknown',
+    dismissed: true,
+    dismissed_at: new Date().toISOString(),
+  };
+  for (let i = 0; i < 6; i++) {
+    const { data, error } = await db.from(CANDIDATES).insert(ins).select('id').single();
+    if (!error) return data.id;
+    const m = /column "?([a-z_]+)"?|Could not find the '([a-z_]+)' column/i.exec(error.message || '');
+    const col = m && (m[1] || m[2]);
+    if (col === 'dismissed') return null;                       // pre-migration → don't insert a VISIBLE phantom
+    if (!col || !(col in ins)) throw new Error(`dismissExtensionDomain: ${error.message}`);
+    const { [col]: _d, ...rest } = ins; ins = rest;
+  }
+  return null;
+}
+
+// Beast Mode results are SAVED per project (a full sweep is expensive) so the surface
+// loads instantly; Refresh re-sweeps + overwrites. Both strip-and-retry so they no-op
+// gracefully before the ext_results/ext_swept_at columns are migrated.
+export async function saveExtResults(projectId, payload) {
+  if (!projectId) return false;
+  let patch = { ext_results: payload || null, ext_swept_at: new Date().toISOString() };
+  for (let i = 0; i < 4; i++) {
+    if (!Object.keys(patch).length) return false;
+    const { error } = await getDb().from(PROJECTS).update(patch).eq('id', projectId);
+    if (!error) return true;
+    const m = /column "?([a-z_]+)"?|Could not find the '([a-z_]+)' column/i.exec(error.message || '');
+    const col = m && (m[1] || m[2]);
+    if (!col || !(col in patch)) return false;
+    const { [col]: _d, ...rest } = patch; patch = rest;
+  }
+  return false;
+}
+
+export async function getExtResults(projectId) {
+  if (!projectId) return null;
+  const { data, error } = await getDb().from(PROJECTS)
+    .select('ext_results,ext_swept_at').eq('id', projectId).maybeSingle();
+  if (error) return null;                                       // pre-migration → treat as none saved
+  if (!data || !data.ext_results) return null;
+  return { ...data.ext_results, swept_at: data.ext_swept_at };
+}
+
 // Set / clear the ⭐ Top-fit mark (a human "best fit for this name" judgment,
 // independent of contact status). Stamps shortlisted_at on the FIRST mark only.
 export async function setShortlistRank(id, rank) {

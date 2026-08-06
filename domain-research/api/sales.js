@@ -23,7 +23,7 @@ import {
   setSalesSelection, setCandidateEnrichStatus, replaceCandidateContacts, listContactsForCandidates,
   insertSalesCandidates, updateCandidateQualification, setSalesProjectStatus,
   addToTargets, addManualTarget, removeTargets, setShortlistRank, updateTarget, addExtensionTargets,
-  dismissCandidates, consolidateAllDuplicateProjects,
+  dismissCandidates, dismissExtensionDomain, saveExtResults, getExtResults, consolidateAllDuplicateProjects,
 } from '../lib/db/sales.js';
 
 export const config = { maxDuration: 120 };   // the Beast-Mode sweep (affixes × TLDs) needs headroom
@@ -251,9 +251,20 @@ async function mapPool(items, limit, fn) {
 
 async function handleExtensions(body, res) {
   const raw = String(body.domain || '').trim().toLowerCase();
+  const projectId = String(body.project_id || '').trim();
+  const refresh = !!body.refresh;
   const { sld, domain } = seedParts(raw);
   if (!sld) { res.status(400).json({ error: 'Provide a domain, e.g. carrot.ai' }); return; }
   try {
+    // Beast Mode is a heavy live sweep, so we SAVE the results per name and serve them
+    // instantly; only a Refresh (or a name with nothing saved) re-sweeps.
+    if (projectId && !refresh) {
+      const saved = await getExtResults(projectId);
+      if (saved && Array.isArray(saved.results) && saved.results.length) {
+        res.status(200).json({ ok: true, seed: sld, count: saved.results.length, results: saved.results, swept_at: saved.swept_at || null, cached: true });
+        return;
+      }
+    }
     const swept = await sweepVariations(domain, { env: process.env });   // full Beast Mode: affixes + TLDs
     const results = (swept && Array.isArray(swept.results)) ? swept.results : [];
     // An ACTIVE-site variation IS a real company on the name (an exact TLD sibling OR
@@ -279,10 +290,23 @@ async function handleExtensions(body, res) {
         } catch { /* fail-open — keep the disposition row */ }
       });
     }
-    res.status(200).json({ ok: true, seed: sld, count: results.length, results });
+    const swept_at = new Date().toISOString();
+    if (projectId) { try { await saveExtResults(projectId, { seed: sld, results }); } catch { /* non-fatal */ } }
+    res.status(200).json({ ok: true, seed: sld, count: results.length, results, swept_at, cached: false });
   } catch (e) {
     res.status(500).json({ error: String(e.message || e) });
   }
+}
+
+// Dismiss / restore a Beast-Mode row BY DOMAIN (persisted, so a refresh that returns
+// the same name stays hidden). Flags an existing candidate or upserts a dismissed one.
+async function handleDismissExt(body, res) {
+  const projectId = String(body.project_id || '').trim();
+  const row = body.row && typeof body.row === 'object' ? body.row : { domain: body.domain };
+  if (!projectId || !row.domain) { res.status(400).json({ error: 'project_id and domain required' }); return; }
+  const dismissed = body.dismissed !== false;
+  const id = await dismissExtensionDomain(projectId, row, dismissed);
+  res.status(200).json({ ok: true, id, dismissed });
 }
 
 // Promote checked ACTIVE-site extensions onto the target list — upsert a candidate
@@ -341,6 +365,7 @@ async function route(req, res) {
     if (action === 'update_target') return handleUpdateTarget(body, res);
     if (action === 'prominence') return handleProminence(body, res);
     if (action === 'extensions') return handleExtensions(body, res);
+    if (action === 'dismiss_ext') return handleDismissExt(body, res);
     if (action === 'add_ext_targets') return handleAddExtTargets(body, res);
     if (action === 'consolidate') return handleConsolidate(res, req._salesUser);
     res.status(400).json({ error: `Unknown action: ${action}` });

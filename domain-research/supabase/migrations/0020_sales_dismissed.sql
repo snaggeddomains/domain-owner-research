@@ -22,3 +22,9 @@ create index if not exists idx_sales_cand_dismissed
 -- after a real attempt came back empty. Strip-and-retry so writes degrade pre-migration.
 alter table domain_research_sales_candidates
   add column if not exists qualify_status text;
+
+-- Beast Mode (the TLD/affix sweep) is expensive (a full live crawl), so its results are
+-- SAVED per name and loaded instantly; a Refresh button re-sweeps. Stored on the project.
+alter table domain_research_sales_projects
+  add column if not exists ext_results  jsonb,
+  add column if not exists ext_swept_at timestamptz;
