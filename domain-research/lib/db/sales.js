@@ -61,6 +61,18 @@ export async function listSalesProjects({ limit = 50, q = '' } = {}) {
   return data || [];
 }
 
+// The master-directory view: each per-name hub + how many targets / top fits it holds.
+export async function listSalesProjectsWithCounts({ limit = 50, q = '' } = {}) {
+  const projects = await listSalesProjects({ limit, q });
+  if (!projects.length) return projects;
+  const ids = projects.map((p) => p.id);
+  const { data, error } = await getDb().from(CANDIDATES).select('project_id,shortlist_rank').eq('is_target', true).in('project_id', ids);
+  if (error) return projects.map((p) => ({ ...p, target_count: 0, top_fit_count: 0 }));   // fail-open (pre-migration)
+  const t = {}; const f = {};
+  for (const r of (data || [])) { t[r.project_id] = (t[r.project_id] || 0) + 1; if (r.shortlist_rank != null) f[r.project_id] = (f[r.project_id] || 0) + 1; }
+  return projects.map((p) => ({ ...p, target_count: t[p.id] || 0, top_fit_count: f[p.id] || 0 }));
+}
+
 export async function setSalesProjectStatus(id, status, stage = null, error = null) {
   const patch = { status };
   if (stage !== null) patch.stage = stage;

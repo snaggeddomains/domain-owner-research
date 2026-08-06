@@ -8482,6 +8482,7 @@ const salesTargetSel = new Set();  // checked target ids (Surface B selection)
 let salesTargetFilter = 'all';     // target-list category filter
 let salesTargetSort = 'added';     // target-list sort key
 const salesOprCache = new Map();   // domain → {opr, rank} (Open PageRank prominence, session cache)
+let salesPendingSurface = null;    // surface to land on once the opened hub renders (deep-link from the directory)
 const sEl = (id) => document.getElementById(id);   // scoped helper for the new Sales-Hub nodes
 
 // Pull a human string out of an API error payload. Vercel's function-timeout
@@ -8545,9 +8546,7 @@ async function loadSalesRecent() {
     const res = await fetch('/research/api/sales?list=1&limit=30');
     const data = await res.json().catch(() => ({}));
     const projects = res.ok && Array.isArray(data.projects) ? data.projects : [];
-    // Collapse to one entry per domain (latest run), with a run count; up to 5.
-    const counts = new Map();
-    for (const p of projects) counts.set(p.seed_domain, (counts.get(p.seed_domain) || 0) + 1);
+    // Canonical hubs = one per name; show the 5 most recent names + their target counts.
     const seen = new Set();
     const top = [];
     for (const p of projects) {
@@ -8557,7 +8556,7 @@ async function loadSalesRecent() {
       if (top.length >= 5) break;
     }
     els.srRecent.hidden = top.length === 0;
-    if (els.srRecentList) els.srRecentList.innerHTML = top.map((p) => salesProjectRow(p, counts.get(p.seed_domain))).join('');
+    if (els.srRecentList) els.srRecentList.innerHTML = top.map((p) => salesProjectRow(p)).join('');
   } catch { els.srRecent.hidden = true; }
 }
 
@@ -8572,40 +8571,30 @@ async function loadSalesProjects(q = '') {
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || `Failed (${res.status})`);
     const projects = data.projects || [];
-    if (!projects.length) { els.srProjectsList.innerHTML = '<li class="muted">No sales research runs yet.</li>'; return; }
-    // Group by seed domain (preserves the API's created-desc order).
-    const groups = [];
-    const byDomain = new Map();
-    for (const p of projects) {
-      const key = p.seed_domain || '(unknown)';
-      if (!byDomain.has(key)) { const g = { domain: key, runs: [] }; byDomain.set(key, g); groups.push(g); }
-      byDomain.get(key).runs.push(p);
-    }
-    els.srProjectsList.innerHTML = groups.map((g) => {
-      const items = g.runs.map((p) => {
-        const when = p.created_at ? new Date(p.created_at).toLocaleString() : '';
-        const running = p.status && p.status !== 'done';
-        const meta = running ? `${escapeHtml(p.status)}…` : when;
-        return `<li class="project-run${running ? ' active' : ''}" data-id="${escapeHtml(p.id)}">${escapeHtml(meta)}</li>`;
-      }).join('');
-      const count = g.runs.length > 1 ? `<span class="project-count">${g.runs.length} runs</span>` : '';
-      return `<li class="project-group">
-        <div class="project-group-title">${escapeHtml(g.domain)}${count}</div>
-        <ul class="project-runs">${items}</ul>
-      </li>`;
-    }).join('');
+    if (!projects.length) { els.srProjectsList.innerHTML = '<li class="muted">No target lists yet — run Sales Research on a name to start one.</li>'; return; }
+    // Canonical hubs = one per name. Flat directory of names + their target counts;
+    // dedupe defensively in case legacy dupes linger. Clicking opens the master list.
+    const seen = new Set();
+    els.srProjectsList.innerHTML = projects
+      .filter((p) => { const k = p.seed_domain || '(unknown)'; if (seen.has(k)) return false; seen.add(k); return true; })
+      .map((p) => salesProjectRow(p)).join('');
   } catch (e) {
     els.srProjectsList.innerHTML = `<li class="muted">${escapeHtml(String(e.message || e))}</li>`;
   }
 }
 
-function salesProjectRow(p, runCount = 1) {
-  const when = p.created_at ? new Date(p.created_at).toLocaleString() : '';
-  const st = p.status === 'done' ? '' : ` · ${escapeHtml(p.status || '')}`;
-  const runs = runCount > 1 ? `<span class="project-count">${runCount} runs</span>` : '';
+// A name's master-list row: name + how many targets / top fits it holds. Opening it
+// deep-links straight to the Target list (its master), not a research run.
+function salesProjectRow(p) {
+  const st = (p.status && p.status !== 'done') ? ` · ${escapeHtml(p.status)}…` : '';
+  const tc = Number(p.target_count || 0);
+  const fc = Number(p.top_fit_count || 0);
+  const counts = tc
+    ? `<span class="sr-dir-count">${tc} target${tc === 1 ? '' : 's'}${fc ? ` · ${fc} top fit${fc === 1 ? '' : 's'}` : ''}</span>`
+    : '<span class="sr-dir-count sr-dir-empty">no targets yet</span>';
   return `<li class="recent-run" data-id="${escapeHtml(p.id)}">`
-    + `<span class="recent-domain">${escapeHtml(p.seed_domain || '')}${runs}${st}</span>`
-    + `<span class="recent-when">${escapeHtml(when)}</span></li>`;
+    + `<span class="recent-domain">${escapeHtml(p.seed_domain || '')}${st}</span>`
+    + `${counts}</li>`;
 }
 
 // Create a run, retrying transient platform hiccups (a cold-start /
@@ -8703,12 +8692,13 @@ async function researchSelectedAngles() {
   }
 }
 
-function openSalesProject(id) {
+function openSalesProject(id, surface = 'explore') {
   clearSalesPoll();
   hideAngleGate();               // drop any stale angle gate from the previous run
   salesProjectId = id;
   salesSeed = '';                // cleared until the poll returns the real seed
   salesTargets = []; salesTargetSel.clear(); salesSelected.clear(); salesSurface = 'explore';
+  salesPendingSurface = (surface === 'targets' || surface === 'extensions') ? surface : null;
   salesTargetFilter = 'all'; salesTargetSort = 'added'; salesExtRows = null;
   els.srGo.disabled = true;
   setSalesMode('results', '');   // collapse entry; seed filled in once the poll returns it
@@ -8794,6 +8784,8 @@ function renderSalesResults(data) {
   renderSalesTable();
   renderTargetList();
   updateSalesSurfaceUI();   // shows the surface toggle + routes Explore/Target visibility
+  // Deep-link from the master directory: land on the requested surface once loaded.
+  if (salesPendingSurface) { const s = salesPendingSurface; salesPendingSurface = null; setSalesSurface(s); }
 }
 
 function renderSalesTable() {
@@ -9708,10 +9700,10 @@ function openSalesRunFromList(li) {
   if (!li || !li.dataset.id) return;
   history.pushState(null, '', `/research/sales/${encodeURIComponent(li.dataset.id)}`);
   showView('sales');
-  openSalesProject(li.dataset.id);
+  openSalesProject(li.dataset.id, 'targets');   // land on the name's MASTER target list
 }
 els.srRecentList?.addEventListener('click', (e) => openSalesRunFromList(e.target.closest('.recent-run')));
-els.srProjectsList?.addEventListener('click', (e) => openSalesRunFromList(e.target.closest('.project-run')));
+els.srProjectsList?.addEventListener('click', (e) => openSalesRunFromList(e.target.closest('.recent-run, .project-run')));
 els.srRecentAll?.addEventListener('click', (e) => {
   if (newTabClick(e)) return;
   e.preventDefault();

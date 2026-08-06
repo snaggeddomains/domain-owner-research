@@ -1574,6 +1574,15 @@ design in `domain-research/SALES_HUB_SPEC.md`. Additive to the existing module �
   genuinely-new companies and never touches existing targets/notes/shortlist. No migration/schema
   change (reuses the unique-ish name lookup). Recent-runs effectively becomes one row per name.
   (Deferred #2/#3 from the design: a pipeline STAGE per target + a cross-name pipeline board.)
+- **Master-list DIRECTORY (2026-08-05).** The Sales Research recent/"View all" list is now framed as the
+  master directory of NAMES (not a run log): `listSalesProjectsWithCounts` (`lib/db/sales.js`, fail-open
+  pre-migration) attaches `target_count`/`top_fit_count` per hub; the GET `?list=1` returns them.
+  `salesProjectRow` shows **name · N targets · M top fits**; clicking a name deep-links straight to its
+  **Target list** surface (`openSalesProject(id,'targets')` via a `salesPendingSurface` hook applied in
+  `renderSalesResults`). "View all" (`#view-sales-projects`, `/research/sales/all`) is a flat searchable
+  name directory (`.sr-dir-*` styles); headers relabeled "Your names · master target lists" / "Target
+  lists". Reachable **within admin** via the existing Research → Sales Research nav tab (already in
+  `snagged-admin` RESEARCH_TABS → `/research/sales`) — no admin change. Cache-bust `?v=20260805masterdir`.
 
 ---
 

@@ -19,7 +19,7 @@ import { firmographics, abilityToPay } from '../lib/sales/enrich/firmographics.j
 import { openPageRank } from '../lib/openpagerank.js';
 import { sweepVariations } from '../lib/variations/sweep.js';
 import {
-  createSalesProject, getSalesProject, listSalesProjects, listSalesCandidates, getSalesCandidate,
+  createSalesProject, getSalesProject, listSalesProjects, listSalesProjectsWithCounts, listSalesCandidates, getSalesCandidate,
   setSalesSelection, setCandidateEnrichStatus, replaceCandidateContacts, listContactsForCandidates,
   insertSalesCandidates, updateCandidateQualification, setSalesProjectStatus,
   addToTargets, addManualTarget, removeTargets, setShortlistRank, updateTarget,
@@ -32,7 +32,7 @@ async function handleGet(req, res) {
   if (req.query.list != null) {
     const q = String(req.query.q || '').trim();
     const limit = Math.min(Number(req.query.limit) || 50, 100);
-    const projects = await listSalesProjects({ q, limit });
+    const projects = await listSalesProjectsWithCounts({ q, limit });
     res.status(200).json({ projects });
     return;
   }
