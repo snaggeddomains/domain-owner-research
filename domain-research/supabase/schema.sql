@@ -438,9 +438,12 @@ create table if not exists domain_research_sales_projects (
   error       text,
   created_by  uuid references domain_research_users(id) on delete set null,
   created_at  timestamptz not null default now(),
+  last_activity_at timestamptz,                        -- bumped when you re-run research / curate targets; drives the master-directory order
   angles      jsonb                                  -- Keyword phase; null in 1A
 );
+alter table domain_research_sales_projects add column if not exists last_activity_at timestamptz;
 create index if not exists idx_sales_proj_created on domain_research_sales_projects (created_at desc);
+create index if not exists idx_sales_proj_activity on domain_research_sales_projects (last_activity_at desc nulls last);
 
 create table if not exists domain_research_sales_candidates (
   id            uuid primary key default gen_random_uuid(),

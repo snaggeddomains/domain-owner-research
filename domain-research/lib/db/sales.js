@@ -9,6 +9,20 @@ const CONTACTS = 'domain_research_sales_contacts';
 
 const normCo = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
 
+// True if a Postgres error is "column last_activity_at doesn't exist" (pre-migration).
+const missingActivityCol = (e) => e && /last_activity_at/.test(String(e.message || e)) && /(column|does not exist|schema cache|42703|PGRST204)/i.test(String(e.message || e));
+
+// Bump a hub's last-worked-on time so the master directory floats the names you
+// actually spend time on (re-running research, curating targets), not just the
+// newest-created. Best-effort + strip-safe: a no-op before the migration lands.
+export async function touchSalesProject(id) {
+  if (!id) return;
+  try {
+    const { error } = await getDb().from(PROJECTS).update({ last_activity_at: new Date().toISOString() }).eq('id', id);
+    if (error && !missingActivityCol(error)) throw error;
+  } catch { /* fail-open */ }
+}
+
 // MERGE legacy duplicate projects for a name into one canonical hub — moves every
 // other project's candidates onto `canonicalId`, dedupes by domain (keeping the
 // richest row: target > shortlisted > has-notes > enriched), then deletes the now-
@@ -53,16 +67,27 @@ export async function createSalesProject({ seed_domain, seed_sld, filters = null
         chosen = ids.slice().sort((a, b) => (counts[b] || 0) - (counts[a] || 0))[0];
         await consolidateProjectsForName(db, chosen, ids.filter((id) => id !== chosen));
       }
-      await db.from(PROJECTS).update({ status: 'pending', stage: null, error: null }).eq('id', chosen);
+      // Re-running research on an existing hub = spending time on it → bump last_activity_at
+      // so it floats to the top of the master directory. Strip-and-retry pre-migration.
+      const reset = { status: 'pending', stage: null, error: null, last_activity_at: new Date().toISOString() };
+      let upd = await db.from(PROJECTS).update(reset).eq('id', chosen);
+      if (upd.error && missingActivityCol(upd.error)) {
+        const { last_activity_at, ...rest } = reset;
+        upd = await db.from(PROJECTS).update(rest).eq('id', chosen);
+      }
       return chosen;
     }
   }
-  const row = { seed_domain: norm || seed_domain, seed_sld, status: 'pending' };
+  const row = { seed_domain: norm || seed_domain, seed_sld, status: 'pending', last_activity_at: new Date().toISOString() };
   if (filters) row.filters = filters;
   if (created_by) row.created_by = created_by;
-  const { data, error } = await db.from(PROJECTS).insert(row).select('id').single();
-  if (error) throw new Error(`createSalesProject: ${error.message}`);
-  return data.id;
+  let ins = await db.from(PROJECTS).insert(row).select('id').single();
+  if (ins.error && missingActivityCol(ins.error)) {
+    const { last_activity_at, ...rest } = row;
+    ins = await db.from(PROJECTS).insert(rest).select('id').single();
+  }
+  if (ins.error) throw new Error(`createSalesProject: ${ins.error.message}`);
+  return ins.data.id;
 }
 
 // One-time cleanup: merge every name's duplicate projects into a single canonical
@@ -98,13 +123,20 @@ export async function getSalesProject(id) {
 }
 
 export async function listSalesProjects({ limit = 50, q = '' } = {}) {
-  let query = getDb()
-    .from(PROJECTS)
-    .select('id,seed_domain,status,stage,created_at')
-    .order('created_at', { ascending: false })
-    .limit(limit);
-  if (q) query = query.ilike('seed_domain', `%${q}%`);
-  const { data, error } = await query;
+  // Order by last-worked-on (re-run research / curation bumps last_activity_at) so the
+  // names you've recently spent time on lead — even if the hub was created long ago.
+  // A hub never touched since the migration has a null last_activity_at → it falls back
+  // below the touched ones, ordered by created_at. Strip-and-retry pre-migration.
+  const build = (withActivity) => {
+    let query = getDb().from(PROJECTS)
+      .select(withActivity ? 'id,seed_domain,status,stage,created_at,last_activity_at' : 'id,seed_domain,status,stage,created_at');
+    if (withActivity) query = query.order('last_activity_at', { ascending: false, nullsFirst: false });
+    query = query.order('created_at', { ascending: false }).limit(limit);
+    if (q) query = query.ilike('seed_domain', `%${q}%`);
+    return query;
+  };
+  let { data, error } = await build(true);
+  if (error && missingActivityCol(error)) ({ data, error } = await build(false));
   if (error) throw new Error(`listSalesProjects: ${error.message}`);
   return data || [];
 }
@@ -223,6 +255,7 @@ export async function addToTargets(projectId, ids) {
     .update({ added_at: new Date().toISOString() })
     .eq('project_id', projectId).in('id', ids).is('added_at', null);   // pre-migration: errors are ignored
   const ok = await updateCandidatesSafe({ is_target: true }, (q) => q.eq('project_id', projectId).in('id', ids));
+  await touchSalesProject(projectId);
   return ok ? ids.length : 0;
 }
 
@@ -245,7 +278,7 @@ export async function addManualTarget(projectId, fields = {}) {
   };
   for (let i = 0; i < 6; i++) {
     const { data, error } = await getDb().from(CANDIDATES).insert(row).select('*').single();
-    if (!error) return data;
+    if (!error) { await touchSalesProject(projectId); return data; }
     const m = /column "?([a-z_]+)"?|Could not find the '([a-z_]+)' column/i.exec(error.message || '');
     const col = m && (m[1] || m[2]);
     if (!col || !(col in row)) throw new Error(`addManualTarget: ${error.message}`);
@@ -386,6 +419,7 @@ export async function addExtensionTargets(projectId, rows) {
     if (!col) throw new Error(`addExtensionTargets: ${error.message}`);
     toInsert = toInsert.map(({ [col]: _drop, ...x }) => x);   // strip a not-yet-migrated column + retry
   }
+  await touchSalesProject(projectId);
   return promoteIds.length + toInsert.length;
 }
 

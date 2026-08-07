@@ -1660,6 +1660,17 @@ design in `domain-research/SALES_HUB_SPEC.md`. Additive to the existing module �
   name directory (`.sr-dir-*` styles); headers relabeled "Your names · master target lists" / "Target
   lists". Reachable **within admin** via the existing Research → Sales Research nav tab (already in
   `snagged-admin` RESEARCH_TABS → `/research/sales`) — no admin change. Cache-bust `?v=20260805masterdir`.
+- **Directory orders by LAST-WORKED-ON, not created-at (2026-08-07).** Re-running research on an
+  OLD name (Rob re-did gush.ai) reuses its hub (`createSalesProject` find-or-create) but the list
+  ordered by `created_at desc`, so the freshly-worked name stayed buried. Fix = a new nullable
+  `domain_research_sales_projects.last_activity_at` (migration `0021_sales_last_activity.sql`,
+  `add column if not exists` + `idx_sales_proj_activity` + a one-time backfill from `max(candidate.added_at)`
+  ‖ `created_at`). `touchSalesProject(id)` (best-effort, strip-safe) bumps it; called from
+  `createSalesProject` (BOTH the reuse-update and the fresh insert — a re-run counts as spending time)
+  and the target-add writers (`addToTargets`/`addManualTarget`/`addExtensionTargets` — curation counts too).
+  `listSalesProjects` now orders `last_activity_at desc nulls last, created_at desc`, with a strip-and-retry
+  fallback to plain `created_at` pre-migration (so it works before 0021 runs; a hub untouched since the
+  migration sorts by created_at until next touched). No UI change (the directory just reflects the new order).
 - **Dismiss / hide a not-a-fit candidate (2026-08-06).** Working down Explore + Beast Mode as a
   triage list, you either ADD a name to targets or DISMISS it (e.g. askdelegate.com is garbage). A
   dismissed row is hidden by default + restorable. `domain_research_sales_candidates.dismissed`/
