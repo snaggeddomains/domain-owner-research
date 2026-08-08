@@ -184,6 +184,28 @@ PART-1 via `summarizeReport` (`lib/reportSummary.js`) + best email/phone from `c
 (primary tier first); appraisal = cache-first `appraisalOnly`. All fail-open to null. Lets the
 admin Deals sidebar auto-fill likely owner / owner contact / appraisal once research has run.
 
+## FullEnrich phone waterfall — chat can request it + button shows past a landline (2026-08-08)
+
+Two fixes so a user can actually get a mobile for the likely owner when RocketReach has none
+(hit on opentabs.com / Peter Seitz — RocketReach returned 4 emails, 0 phones, and the report
+already carried a 2017 WHOIS **office landline**, so neither path let us hunt for a mobile):
+- **Chat couldn't request a phone.** `fullenrich_lookup` (`lib/sources/fullenrich.js`) `run()` has
+  always honored `include_phone` (adds `contact.phones` to `enrich_fields`), but `include_phone` was
+  deliberately **NOT in the tool's `parameters` schema**, so the chat/research agent could only ever
+  run it emails-only (it correctly said "even when it completes it won't yield a phone"). Now
+  `include_phone` IS exposed, with a hard-gated description: **emails-only by default; set
+  `include_phone:true` ONLY when the user EXPLICITLY asks for a phone/mobile for a specific person and
+  no mobile was already found — never in the autonomous pass, never proactively.** So "get me a phone
+  for X" now runs the phone waterfall without a further prompt. (The on-demand button path
+  `api/research.js enhance_contact` already passed `include_phone:true` — unchanged.)
+- **"☎ Get phone number" button was hidden whenever ANY phone existed.** `public/app.js` gated the
+  button on `!hasPhone(rows)`, so an office **landline** suppressed it even when we lacked a mobile.
+  New `isMobileRow`/`hasMobile` (reuses the mobile-vs-landline note regex from the WhatsApp/Telegram
+  link logic) — the button now shows when there's **no MOBILE** (a landline no longer hides it), and
+  relabels to **"Get mobile number"** when a landline is already on file. Both call sites (primary
+  `contact-card` + `leadCard`) updated. Gated by `canEnhance` (= deep-pass perm) as before. Cache-bust
+  `?v=20260808phone`.
+
 ## TLD Count + valuation calibration + cross-app valuate endpoint (2026-07-18)
 
 - **TLD Count tool** — a free DotDB-style "how many TLDs is this word registered in"

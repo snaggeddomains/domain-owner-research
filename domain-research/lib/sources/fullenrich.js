@@ -38,14 +38,18 @@ function collectPhones(ci) {
 export default {
   name: 'fullenrich_lookup',
   description:
-    'FullEnrich WATERFALL contact lookup (PREMIUM — COST-GATED FALLBACK, EMAILS ONLY). Runs many data providers in ' +
-    'sequence to find a NAMED person\'s best WORK + PERSONAL emails (with deliverability status). It returns EMAILS ONLY ' +
-    '— it does NOT look up phone numbers (the FullEnrich phone waterfall is far too expensive to run automatically; the ' +
-    'user pulls a phone on demand later via a button). Use this as a FALLBACK, not in parallel: run it for a person ONLY ' +
-    'when rocketreach_lookup did NOT return a usable email for them (its value is finding contacts RocketReach lacks). ' +
-    'Do NOT run it redundantly when RocketReach already returned a deliverable email. Pass their name plus the domain ' +
-    'under research and/or their company/LinkedIn URL. A miss just means no provider had a record. NEVER run it on ' +
-    'brokers, marketplaces, or registrar/privacy entities.',
+    'FullEnrich WATERFALL contact lookup (PREMIUM — COST-GATED FALLBACK). Runs many data providers in sequence to find ' +
+    'a NAMED person\'s best WORK + PERSONAL emails (with deliverability status), and — ONLY when explicitly requested — ' +
+    'their PHONE. DEFAULT IS EMAILS ONLY. Use as a FALLBACK, not in parallel: run it for a person ONLY when ' +
+    'rocketreach_lookup did NOT return a usable email for them (its value is finding contacts RocketReach lacks). Do NOT ' +
+    'run it redundantly when RocketReach already returned a deliverable email. Pass their name plus the domain under ' +
+    'research and/or their company/LinkedIn URL. A miss just means no provider had a record. NEVER run it on brokers, ' +
+    'marketplaces, or registrar/privacy entities. ' +
+    'PHONE: the FullEnrich phone waterfall is expensive, so NEVER set include_phone during the autonomous research pass ' +
+    'or proactively. Set include_phone:true ONLY when the USER has EXPLICITLY asked for a phone/mobile number for a ' +
+    'specific person AND no usable mobile was already found (e.g. RocketReach returned no mobile) — then run it once for ' +
+    'that ONE person (a LinkedIn URL is the strongest anchor for a phone hit). This is exactly the "get me a phone for X" ' +
+    'request: do it without asking for further confirmation.',
   parameters: {
     type: 'object',
     properties: {
@@ -54,11 +58,8 @@ export default {
       last_name: { type: 'string', description: 'Last name' },
       domain: { type: 'string', description: 'Domain associated with the person (e.g. the domain under research) — strongly improves the match' },
       company: { type: 'string', description: 'Company / employer name to disambiguate' },
-      linkedin_url: { type: 'string', description: 'LinkedIn profile URL — the single strongest anchor when known' },
-      // NOTE: include_phone is intentionally NOT exposed here so the research
-      // agent can never trigger FullEnrich's expensive phone waterfall. run()
-      // still honors it internally for the on-demand "Get phone number" button
-      // (api/research.js enhance_contact), which passes include_phone:true.
+      linkedin_url: { type: 'string', description: 'LinkedIn profile URL — the single strongest anchor when known (and the best anchor for a phone hit)' },
+      include_phone: { type: 'boolean', description: 'Run the PREMIUM phone waterfall too (emails + phone). Default false (emails only). Set true ONLY when the user explicitly asked for a phone/mobile for this specific person and no mobile was already found — never in the autonomous pass, never proactively.' },
     },
   },
   requiresKey: ['FULL_ENRICH_API_KEY'],

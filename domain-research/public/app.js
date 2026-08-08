@@ -1955,9 +1955,23 @@ function renderSummary(d) {
     // the FullEnrich waterfall, so they're not pulled automatically — this lets a
     // user spend a credit for ONE named person when they actually need it.
     const hasPhone = (rows) => rows.some((c) => String(c.type || '').toLowerCase() === 'phone' && c.value);
+    // A MOBILE (not a landline/office/fax) already on file — this is what should
+    // suppress the "Get phone" button. An office landline (e.g. a 2017 WHOIS
+    // registrant line) should NOT hide it: the user may still want a mobile.
+    const isMobileRow = (c) => {
+      if (String(c.type || '').toLowerCase() !== 'phone' || !c.value) return false;
+      const note = String(c.note || '');
+      const digits = String(c.value || '').replace(/\D/g, '');
+      return /\b(mobile|cell|cellular|personal|whatsapp|text|sms)\b/i.test(note) &&
+        !/\b(fax|switchboard|office|landline|main line|reception|toll|hq|head ?office)\b/i.test(note) &&
+        digits.length >= 10 && digits.length <= 15;
+    };
+    const hasMobile = (rows) => rows.some(isMobileRow);
     const liUrlOf = (rows, seed) => rows.map((c) => liCanon(c.value)).find(Boolean) || (seed && seed[0]) || '';
-    const enhanceBtn = (name, liUrl) =>
-      `<div class="lc-enhance"><button type="button" class="enhance-phone" data-name="${e(String(name || ''))}" data-linkedin="${e(String(liUrl || ''))}">☎ Get phone number</button><span class="lc-enhance-note">premium · spends a credit</span></div>`;
+    // Label the button "Get mobile number" when only a landline is on file (so it's
+    // clear we're hunting for the missing mobile), else "Get phone number".
+    const enhanceBtn = (name, liUrl, hasLandline) =>
+      `<div class="lc-enhance"><button type="button" class="enhance-phone" data-name="${e(String(name || ''))}" data-linkedin="${e(String(liUrl || ''))}">☎ Get ${hasLandline ? 'mobile' : 'phone'} number</button><span class="lc-enhance-note">premium · spends a credit</span></div>`;
     // Promote LinkedIn profiles out of row notes into their own social rows (full
     // URL, de-duped against any social row already present), and strip them from
     // those notes. seedUrls carries profiles pulled from a card/header note.
@@ -1999,7 +2013,7 @@ function renderSummary(d) {
       if (orgC) h += `<div class="cc-org">${linkify(orgC)}${orgNote ? ` <span class="muted">— ${linkifyNote(orgNote)}</span>` : ''}</div>`;
       if (emails.length) h += `<div class="cc-actions"><button type="button" class="copy-emails" data-emails="${e(emails.join(', '))}">Copy ${emails.length === 1 ? 'email' : `all ${emails.length} emails`}</button></div>`;
       if (rest.length) h += list(rest);
-      if (nameC && canEnhance && !hasPhone(rest)) h += enhanceBtn(nameC.value, liUrlOf(rest, seed));
+      if (nameC && canEnhance && !hasMobile(rest)) h += enhanceBtn(nameC.value, liUrlOf(rest, seed), hasPhone(rest));
       return h + '</div>';
     };
     // Group a contact array into per-entity blocks: a new block starts at each
@@ -2035,7 +2049,7 @@ function renderSummary(d) {
       }
       const rows = promoteLinkedIn(g.rows, seed);
       const isPerson = g.header && String(g.header.type || '').toLowerCase() === 'name';
-      const enh = (canEnhance && isPerson && !hasPhone(rows)) ? enhanceBtn(g.header.value, liUrlOf(rows, seed)) : '';
+      const enh = (canEnhance && isPerson && !hasMobile(rows)) ? enhanceBtn(g.header.value, liUrlOf(rows, seed), hasPhone(rows)) : '';
       return `<div class="lead-card">${head}${rows.length ? list(rows) : ''}${enh}</div>`;
     };
     const leadCards = (arr) => `<div class="lead-cards">${groupLeads(arr).map(leadCard).join('')}</div>`;
