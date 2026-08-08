@@ -184,6 +184,45 @@ PART-1 via `summarizeReport` (`lib/reportSummary.js`) + best email/phone from `c
 (primary tier first); appraisal = cache-first `appraisalOnly`. All fail-open to null. Lets the
 admin Deals sidebar auto-fill likely owner / owner contact / appraisal once research has run.
 
+## Owner-research triangulation sources — CT logs, email infra, reverse-analytics, corp registry, Hunter (2026-08-08)
+
+Five new sources in `lib/sources/` to crack privacy-walled owners + expand an owner's footprint. Two are
+FREE and auto-seed on EVERY report (added to `preRun` in `lib/agent.js`, so their results anchor the report
+and they're removed from the model's tool list); three are key-gated + deep-pass only (in the `PAID` set for
+tier-gating + quota control). All registered in `lib/sources/index.js` (ALL + PAID + CATEGORY + usageMeters);
+the agent SYSTEM_PROMPT gained a bullet per source (right after the ns_siblings triangulation bullet).
+
+- **`cert_transparency` (crtsh.js) — FREE, keyless, auto-seeded.** Certificate Transparency: every TLS cert a
+  domain used is public, so it can't be privacy-walled. Returns the domain's own **subdomains** (what they run)
+  + **related_domains** = OTHER registrable domains that shared a cert with the target (strong same-operator
+  signal → pivot to a sibling with public WHOIS). **Two providers for resilience: crt.sh first (3 retries,
+  best coverage, no cap) → falls back to SSLMate Certspotter** (crt.sh 502s constantly). Optional
+  `CERTSPOTTER_API_KEY` raises the fallback limit. Verified live: stripe.com → link.com / stripecdn.com /
+  stripe.network (all Stripe-owned).
+- **`email_infra` (emailinfra.js) — FREE, keyless (node:dns), auto-seeded.** Parses MX/SPF/DMARC into owner
+  hints: MX provider, non-generic SPF `include:` hosts, and the **DMARC rua/ruf reporting addresses** (real
+  owner-controlled mailboxes that often name the operating company even under WHOIS privacy → `operator_domain_hints`).
+  Also flags marketplace verification TXT tokens (afternic-verification, etc.) tying the domain to a seller
+  account. Verified live: snagged.com → Google Workspace, DMARC p=quarantine, rua parsed.
+- **`reverse_analytics` (reverseanalytics.js) — PAID, deep-pass, needs a key.** The missing half of
+  `analytics_footprint`: given a tracking id (GA4/UA/GTM/AdSense/Meta pixel) it finds EVERY other site carrying
+  it = the operator's portfolio. Providers: **PublicWWW (`PUBLICWWW_API_KEY`, preferred, CSV export) or
+  DNSlytics (`DNSLYTICS_API_KEY`)** — `requiresKey:[['PUBLICWWW_API_KEY','DNSLYTICS_API_KEY']]`. A shared
+  PLATFORM id only proves same-platform (prefer a distinctive GA/AdSense id). Meters `publicwww.search` /
+  `dnslytics.reverse`.
+- **`opencorporates_search` (opencorporates.js) — PAID, deep-pass, `OPENCORPORATES_API_KEY`.** Company name →
+  official registry record: jurisdiction, status, registered address, and **officers** (named directors, for
+  the top match — 1 bounded extra call). Turns "owned by Acme LLC" into reachable humans. Free developer tier
+  exists; meters `opencorporates.search`.
+- **`hunter_search` (hunter.js) — PAID, deep-pass, `HUNTER_API_KEY`.** Company domain → email **pattern**
+  (`{first}.{last}@`) + known verified addresses. Construct/confirm a reachable email for a named owner when
+  RocketReach/FullEnrich came up empty. Free tier ~25/mo; meters `hunter.search`.
+- **Setup:** cert_transparency + email_infra work with NO setup (already live on deploy). To activate the
+  other three, set the keys in the research Vercel project (all optional + fail-open — a source with no key is
+  simply hidden from the tool list). Env documented in `.env.example`. No new table/permission (reuses the
+  existing usage meter + tool-lookup infra). CATEGORY groups reuse existing recap sections (Portfolio & shared
+  infra / Infrastructure (DNS) / People & contacts).
+
 ## FullEnrich phone waterfall — chat can request it + button shows past a landline (2026-08-08)
 
 Two fixes so a user can actually get a mobile for the likely owner when RocketReach has none

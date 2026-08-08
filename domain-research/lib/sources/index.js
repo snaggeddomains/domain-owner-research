@@ -33,6 +33,11 @@ import namepros from './namepros.js';
 import nsSiblings from './ns_siblings.js';
 import gleif from './gleif.js';
 import secEdgar from './sec_edgar.js';
+import certTransparency from './crtsh.js';
+import emailInfra from './emailinfra.js';
+import reverseAnalytics from './reverseanalytics.js';
+import opencorporates from './opencorporates.js';
+import hunter from './hunter.js';
 import { recordUsage } from '../db/usage.js';
 
 // To add a new data source: create a module exporting { name, description,
@@ -42,6 +47,7 @@ const ALL = [
   whoisxml, domainiq, bigdomaindata, reversewhois, reversens, reverseip, websearch, bravesearch, trademark, appraise, atomAppraise,
   rocketreachLookup, fullenrich, whoxyHistory, whoxyReverse, identify, namebio, namebioComps, namepros, nsSiblings,
   gleif, secEdgar,
+  certTransparency, emailInfra, reverseAnalytics, opencorporates, hunter,
 ];
 
 // Paid sources spend external API credits. They are withheld from the free
@@ -52,6 +58,10 @@ const PAID = new Set([
   'reverse_whois', 'reverse_ns', 'reverse_ip', 'web_search', 'brave_search', 'trademark_search', 'appraise_lookup',
   'rocketreach_lookup', 'fullenrich_lookup', 'whoxy_history', 'whoxy_reverse', 'identify_operator', 'namebio_sales',
   'namebio_comps', 'namepros_search',
+  // Deep-pass only. reverse_analytics genuinely spends credits (PublicWWW/DNSlytics);
+  // opencorporates_search + hunter_search have small free-tier quotas we don't want to
+  // burn on every free pre-flight, so they're gated to the deliberate "go deeper" pass.
+  'reverse_analytics', 'opencorporates_search', 'hunter_search',
 ]);
 
 // Paid sources we nonetheless run on the FREE pre-flight pass (still cost-metered
@@ -73,6 +83,9 @@ const CATEGORY = {
   whoxy_reverse: 'Portfolio & shared infra',
   reverse_ns: 'Portfolio & shared infra',
   reverse_ip: 'Portfolio & shared infra',
+  cert_transparency: 'Portfolio & shared infra',
+  reverse_analytics: 'Portfolio & shared infra',
+  email_infra: 'Infrastructure (DNS)',
   wayback_history: 'Archive (Wayback)',
   livesite_inspect: 'Live site',
   analytics_footprint: 'Live site',
@@ -87,6 +100,8 @@ const CATEGORY = {
   rocketreach_search: 'People & contacts',
   rocketreach_lookup: 'People & contacts',
   fullenrich_lookup: 'People & contacts',
+  opencorporates_search: 'People & contacts',
+  hunter_search: 'People & contacts',
   web_search: 'Web & social',
   brave_search: 'Web & social',
   read_url: 'Web & social',
@@ -150,6 +165,9 @@ function usageMeters(name, data) {
     case 'trademark_search': return [['signa.trademark', 1]];
     case 'namebio_sales': return [['namebio.sales', 1]];
     case 'namebio_comps': return [['namebio.comps', 1]];
+    case 'reverse_analytics': return [[data && data.provider === 'dnslytics' ? 'dnslytics.reverse' : 'publicwww.search', 1]];
+    case 'opencorporates_search': return [['opencorporates.search', 1]];
+    case 'hunter_search': return [['hunter.search', 1]];
     case 'appraise_lookup':
       // 3 credits new / 1 cached; only count when an appraisal actually returns
       // (skip the async "pending" submit-poll churn).
