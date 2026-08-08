@@ -1856,8 +1856,19 @@ button.
   type (`revealContacts` keeps only `{value, source}`), so links show on any valid mobile-length
   number (10–15 digits) and skip a phone explicitly noted as fax/landline/office (`p.note`/`p.type`)
   — the user picks which number is a good fit. Reuses the existing `.msg-links` style. Cache-bust
-  `?v=20260808prmsg`. (Follow-up if wanted: preserve the RR phone `type` end-to-end to auto-gate to
-  mobiles only.)
+  `?v=20260808prmsg`.
+- **Phone line-type enrichment → auto-gate the launchers to mobiles (2026-08-08).** `lib/phone/linetype.js`
+  runs each revealed phone through **Twilio Lookup v2 (Line Type Intelligence)** → `{line_type, carrier}`
+  (mobile / landline / nonFixedVoip / …). `enrichLineTypes(phones, env)` is called in BOTH person contact
+  paths (`revealContacts` after dedupe + the email-seed `identifyByEmail`), cache-first per E.164 (kind
+  `lt` in `domain_research_tool_lookups`, so a re-view never re-spends ~$0.005/lookup), bounded
+  concurrency, fully fail-open (no key / bad number → phone stays untagged). UI: `prContactsHtml` shows a
+  mobile/landline/VoIP **pr-tag** (carrier in the title) and `prMsgLinks` gates WhatsApp/Telegram to
+  messageable lines (`PR_MSG_LINES` = mobile/voip/personal) when the type is KNOWN, falling back to the
+  length+note heuristic when UNKNOWN (no key). Line type is the compliant signal — it does NOT confirm a
+  WhatsApp/Telegram account (no clean API for that; clicking the launcher is the real presence check).
+  **Setup: set `TWILIO_ACCOUNT_SID` + `TWILIO_AUTH_TOKEN`** in the research Vercel project to activate;
+  until then it's a no-op and the launchers use the fallback. Cache-bust `?v=20260808linetype`.
 - **Permission:** `research.person` added in snagged-admin `dashboard/lib/permissions.ts`
   (MODULES + RESEARCH_TABS + CATALOG; stored flat as `person`). Grant per-user; admins
   auto-pass. Optional model override `PERSON_MODEL`.

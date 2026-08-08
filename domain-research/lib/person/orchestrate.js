@@ -14,6 +14,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { runTool } from '../sources/index.js';
 import { recordModelUsage } from '../db/usage.js';
+import { enrichLineTypes } from '../phone/linetype.js';
 
 // ---- platforms + follower parsing -----------------------------------------
 
@@ -240,6 +241,8 @@ async function identifyByEmail({ email, name, env }) {
 
   // Anchor the triangulation on the LinkedIn we found (if any).
   if (subject.linkedin_url) { subject.input_url = subject.linkedin_url; subject.input_platform = 'linkedin'; }
+  // Tag phones mobile/landline/VoIP so the UI can gate WhatsApp/Telegram to mobiles.
+  await enrichLineTypes(contacts.phones, env).catch(() => {});
   return { subject, inputPage: null, rrProfile: null, contacts };
 }
 
@@ -505,6 +508,9 @@ export async function revealContacts({ subject, includePhone = false, env = proc
   };
   out.emails = dedupe(out.emails);
   out.phones = dedupe(out.phones);
+  // Tag each phone mobile/landline/VoIP (Twilio Lookup, cache-first) so the UI can
+  // gate the WhatsApp/Telegram launchers to real mobiles. Fail-open / no-op if unset.
+  await enrichLineTypes(out.phones, env).catch(() => {});
   out.found = out.emails.length > 0 || out.phones.length > 0;
   return out;
 }

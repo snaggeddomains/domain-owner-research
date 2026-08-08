@@ -10341,15 +10341,32 @@ function prFmtCount(n) {
   if (n >= 1e3) return `${(n / 1e3).toFixed(n >= 1e4 ? 0 : 1)}K`;
   return String(n);
 }
-// One-tap WhatsApp / Telegram launchers for a phone number. RocketReach/FullEnrich
-// person phones don't carry a mobile-vs-landline type, so we show the links on any
-// valid mobile-length number and let the user pick which they think is a good fit.
-// A phone that's explicitly noted as a landline/office/fax is skipped.
+// Line types (Twilio Lookup) that can plausibly carry WhatsApp/Telegram — the
+// launchers are gated to these when the type is known. Landline/fixed-VoIP/toll-free
+// are excluded; an UNKNOWN type (no Twilio key / miss) falls back to a note heuristic.
+const PR_MSG_LINES = /^(mobile|nonfixedvoip|voip|personal)$/i;
+function prLineLabel(lt) {
+  const t = String(lt || '').toLowerCase();
+  if (!t) return '';
+  if (t === 'mobile') return 'mobile';
+  if (t === 'landline') return 'landline';
+  if (t.includes('voip')) return 'VoIP';
+  if (t === 'tollfree') return 'toll-free';
+  return t;
+}
+// One-tap WhatsApp / Telegram launchers for a phone. When we know the line type
+// (Twilio) we only show them on messageable lines (mobile/VoIP); when it's unknown we
+// fall back to showing them on any valid mobile-length number, skipping obvious landlines.
 function prMsgLinks(p) {
-  const note = String((p && p.note) || (p && p.type) || '');
-  if (/\b(fax|landline|office|switchboard|main line|reception|hq|head ?office)\b/i.test(note)) return '';
   const digits = String((p && p.value) || '').replace(/\D/g, '');
   if (digits.length < 10 || digits.length > 15) return '';
+  const lt = String((p && p.line_type) || '').toLowerCase();
+  if (lt) {
+    if (!PR_MSG_LINES.test(lt)) return '';   // known + not messageable → no links
+  } else {
+    const note = String((p && p.note) || '');
+    if (/\b(fax|landline|office|switchboard|main line|reception|hq|head ?office)\b/i.test(note)) return '';
+  }
   return ` <span class="msg-links"><a href="https://wa.me/${digits}" target="_blank" rel="noopener">WhatsApp</a><a href="https://t.me/${digits}" target="_blank" rel="noopener">Telegram</a></span>`;
 }
 function prContactsHtml(contacts) {
@@ -10359,7 +10376,8 @@ function prContactsHtml(contacts) {
   const ph = (contacts.phones || []).map((p) => {
     const digits = String(p.value || '').replace(/\D/g, '');
     const num = digits ? `<a href="tel:+${digits}">${escapeHtml(p.value)}</a>` : escapeHtml(p.value);
-    return `<li>📞 ${num}${prMsgLinks(p)}<span class="pr-src">${escapeHtml(p.source || '')}</span></li>`;
+    const lbl = p.line_type ? ` <span class="pr-tag" title="${escapeHtml(p.carrier || '')}">${escapeHtml(prLineLabel(p.line_type))}</span>` : '';
+    return `<li>📞 ${num}${lbl}${prMsgLinks(p)}<span class="pr-src">${escapeHtml(p.source || '')}</span></li>`;
   }).join('');
   return `<ul class="pr-contacts">${em}${ph}</ul>`;
 }
