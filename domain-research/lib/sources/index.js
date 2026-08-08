@@ -31,6 +31,8 @@ import namebio from './namebio.js';
 import namebioComps from './namebio_comps.js';
 import namepros from './namepros.js';
 import nsSiblings from './ns_siblings.js';
+import gleif from './gleif.js';
+import secEdgar from './sec_edgar.js';
 import { recordUsage } from '../db/usage.js';
 
 // To add a new data source: create a module exporting { name, description,
@@ -39,6 +41,7 @@ const ALL = [
   rdap, whois, dns, wayback, livesite, marketplace, domainscout, cluster, masterlist, universeOwnership, rocketreach, readurl, analytics,
   whoisxml, domainiq, bigdomaindata, reversewhois, reversens, reverseip, websearch, bravesearch, trademark, appraise, atomAppraise,
   rocketreachLookup, fullenrich, whoxyHistory, whoxyReverse, identify, namebio, namebioComps, namepros, nsSiblings,
+  gleif, secEdgar,
 ];
 
 // Paid sources spend external API credits. They are withheld from the free
@@ -79,6 +82,8 @@ const CATEGORY = {
   domainscout_lookup: 'Marketplace',
   masterlist_lookup: 'Internal list',
   universe_ownership: 'Internal list',
+  gleif_entity: 'Company & entity',
+  sec_edgar: 'Company & entity',
   rocketreach_search: 'People & contacts',
   rocketreach_lookup: 'People & contacts',
   fullenrich_lookup: 'People & contacts',

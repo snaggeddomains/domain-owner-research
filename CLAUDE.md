@@ -303,6 +303,29 @@ anorexias←anorexia). The NameClub import surfaced ~30% such plurals.
 
 ---
 
+## GLEIF + SEC EDGAR — free entity-enrichment sources (2026-08-08)
+
+Two FREE, KEYLESS company/entity sources added to `domain-research/lib/sources/` — both confirm/enrich
+a registrant ORGANIZATION already identified from WHOIS/RDAP/the site (not owner-discovery).
+
+- **`gleif_entity`** (`gleif.js`) — GLEIF (Global Legal Entity Identifier Foundation) lookup by company
+  NAME (or a known 20-char LEI). Returns authoritative legal name, registered address + jurisdiction,
+  entity status, legal form, and — best-effort — the **direct corporate PARENT** (`/lei-records/<lei>/direct-parent`).
+  Fulltext search (`filter[fulltext]`, `accept: application/vnd.api+json`), top 5. Coverage skews to
+  larger / registered / financial entities (only entities holding an LEI). Keyless, fail-open.
+- **`sec_edgar`** (`sec_edgar.js`) — SEC EDGAR lookup by company NAME. Determines whether the owner is a
+  U.S. SEC-registered (public/reporting) company: caches `company_tickers.json` (~10.4k cos, 6h), ranks
+  name matches (exact/startsWith/contains, top 3), then pulls `data.sec.gov/submissions/CIK<10>.json` for
+  CIK / official name / ticker / SIC industry / HQ state+city / exchange / **most recent filings**
+  (10-K/10-Q/8-K/S-1/DEF 14A/20-F/…). **Keyless but the SEC REQUIRES a descriptive User-Agent** —
+  `SEC_EDGAR_UA` env (default `rob-personal domain-owner-research (rob@snagged.com)`). U.S. filers only.
+- **Wiring:** both imported + added to `ALL[]` in `index.js`, category **"Company & entity"**. NEITHER is
+  in `PAID` (free → available on both the free pre-flight and deep passes, and to the agent). No keys, no
+  migration, no setup. Verified live 2026-08-08 (GLEIF returned parent hierarchies; SEC returned Selective
+  Insurance Group CIK 230557 / SIGI / Nasdaq / recent 10-Q).
+
+---
+
 ## What this project is
 
 A serverless Vercel + Inngest + Supabase app at **research.snagged.com** that takes a domain and produces a defensible ownership/contact report. Two-tier execution: a **free pre-flight pass** (RDAP, WHOIS, DNS, Wayback, marketplace check, registration cluster) and a paid **"go deeper" pass** (WhoisXML, DomainIQ, BigDomainData, Whoxy, reverse-WHOIS, RocketReach lookup, web/Brave search, trademark, valuation). Standalone Trademark and Appraisal tools are also live.
