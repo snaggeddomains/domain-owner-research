@@ -1849,6 +1849,15 @@ button.
   presence with follower counts + contact panel with a **🔓 Reveal email & phone**
   button + best-way-to-reach), saved + deep-linkable runs, recent list. Research-group
   tab `#nav-person`. Cache-bust `?v=20260709person1`.
+- **WhatsApp / Telegram links on revealed phones (2026-08-08).** The person dossier's revealed
+  contact panel (`prContactsHtml`) now renders each phone as a `tel:` link + one-tap **WhatsApp**
+  (`wa.me/<digits>`) and **Telegram** (`t.me/<digits>`) launchers via `prMsgLinks(p)` — mirrors the
+  Domain Owner report's `msgLinks`. RocketReach/FullEnrich person phones carry NO mobile-vs-landline
+  type (`revealContacts` keeps only `{value, source}`), so links show on any valid mobile-length
+  number (10–15 digits) and skip a phone explicitly noted as fax/landline/office (`p.note`/`p.type`)
+  — the user picks which number is a good fit. Reuses the existing `.msg-links` style. Cache-bust
+  `?v=20260808prmsg`. (Follow-up if wanted: preserve the RR phone `type` end-to-end to auto-gate to
+  mobiles only.)
 - **Permission:** `research.person` added in snagged-admin `dashboard/lib/permissions.ts`
   (MODULES + RESEARCH_TABS + CATALOG; stored flat as `person`). Grant per-user; admins
   auto-pass. Optional model override `PERSON_MODEL`.

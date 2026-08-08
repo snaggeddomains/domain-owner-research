@@ -10341,11 +10341,26 @@ function prFmtCount(n) {
   if (n >= 1e3) return `${(n / 1e3).toFixed(n >= 1e4 ? 0 : 1)}K`;
   return String(n);
 }
+// One-tap WhatsApp / Telegram launchers for a phone number. RocketReach/FullEnrich
+// person phones don't carry a mobile-vs-landline type, so we show the links on any
+// valid mobile-length number and let the user pick which they think is a good fit.
+// A phone that's explicitly noted as a landline/office/fax is skipped.
+function prMsgLinks(p) {
+  const note = String((p && p.note) || (p && p.type) || '');
+  if (/\b(fax|landline|office|switchboard|main line|reception|hq|head ?office)\b/i.test(note)) return '';
+  const digits = String((p && p.value) || '').replace(/\D/g, '');
+  if (digits.length < 10 || digits.length > 15) return '';
+  return ` <span class="msg-links"><a href="https://wa.me/${digits}" target="_blank" rel="noopener">WhatsApp</a><a href="https://t.me/${digits}" target="_blank" rel="noopener">Telegram</a></span>`;
+}
 function prContactsHtml(contacts) {
   if (!contacts) return '';
   if (!contacts.found) return '<p class="muted">No emails or phone numbers found for this person.</p>';
   const em = (contacts.emails || []).map((e) => `<li>✉ <a href="mailto:${escapeHtml(e.value)}">${escapeHtml(e.value)}</a>${e.label ? ` <span class="pr-tag">${escapeHtml(e.label)}</span>` : ''}<span class="pr-src">${escapeHtml(e.source || '')}</span></li>`).join('');
-  const ph = (contacts.phones || []).map((p) => `<li>📞 ${escapeHtml(p.value)}<span class="pr-src">${escapeHtml(p.source || '')}</span></li>`).join('');
+  const ph = (contacts.phones || []).map((p) => {
+    const digits = String(p.value || '').replace(/\D/g, '');
+    const num = digits ? `<a href="tel:+${digits}">${escapeHtml(p.value)}</a>` : escapeHtml(p.value);
+    return `<li>📞 ${num}${prMsgLinks(p)}<span class="pr-src">${escapeHtml(p.source || '')}</span></li>`;
+  }).join('');
   return `<ul class="pr-contacts">${em}${ph}</ul>`;
 }
 function renderPerson(run) {
