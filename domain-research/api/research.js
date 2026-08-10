@@ -134,24 +134,33 @@ export default async function handler(req, res) {
       res.status(404).json({ error: 'Run not found' });
       return;
     }
-    const { name, linkedin_url, company } = body.enhance_contact || {};
+    const { name, linkedin_url, company, source } = body.enhance_contact || {};
     if (!name && !linkedin_url) {
       res.status(400).json({ error: 'Provide a contact name or linkedin_url to enhance.' });
       return;
     }
-    const result = await withCategory('domain_owner', () => runTool('fullenrich_lookup', {
-      name, linkedin_url, company, domain: run.domain, include_phone: true,
-    }, process.env));
+    // Two tiers, cheapest-first: a plain RocketReach lookup (emails + any phones RR
+    // has, ~1 cheap credit) vs the FullEnrich phone waterfall (~$1.50, mobiles). The
+    // UI offers RocketReach first when a person hasn't been looked up yet, and only
+    // escalates to FullEnrich for a mobile RocketReach couldn't provide.
+    const useRR = String(source || '').toLowerCase() === 'rocketreach';
+    const result = await withCategory('domain_owner', () => runTool(
+      useRR ? 'rocketreach_lookup' : 'fullenrich_lookup',
+      useRR
+        ? { name, linkedin_url, company }
+        : { name, linkedin_url, company, domain: run.domain, include_phone: true },
+      process.env,
+    ));
     const data = (result && result.data) || {};
     const phones = Array.isArray(data.phones) ? data.phones : [];
     const emails = Array.isArray(data.emails) ? data.emails : [];
     // Persist onto the report so a reload shows it without paying again.
     const report = (run.report && typeof run.report === 'object') ? run.report : {};
     const enhancements = Array.isArray(report.enhancements) ? report.enhancements : [];
-    enhancements.push({ name: name || data.name || null, linkedin_url: linkedin_url || null, phones, emails, at: new Date().toISOString() });
+    enhancements.push({ name: name || data.name || null, linkedin_url: linkedin_url || null, phones, emails, source: useRR ? 'rocketreach' : 'fullenrich', at: new Date().toISOString() });
     report.enhancements = enhancements;
     try { await updateRunReport(run.id, report); } catch { /* non-fatal: still return the result */ }
-    res.status(result && result.ok ? 200 : 200).json({ ok: Boolean(result && result.ok), phones, emails, found: phones.length > 0 || emails.length > 0 });
+    res.status(result && result.ok ? 200 : 200).json({ ok: Boolean(result && result.ok), phones, emails, source: useRR ? 'rocketreach' : 'fullenrich', found: phones.length > 0 || emails.length > 0 });
     return;
   }
 

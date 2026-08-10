@@ -245,6 +245,33 @@ already carried a 2017 WHOIS **office landline**, so neither path let us hunt fo
   `contact-card` + `leadCard`) updated. Gated by `canEnhance` (= deep-pass perm) as before. Cache-bust
   `?v=20260808phone`.
 
+## Two-tier contact reveal — cheap RocketReach lookup before the $1.50 FullEnrich phone (2026-08-10)
+
+The report enumerates corporate execs via the FREE `rocketreach_search` (LinkedIn only, no
+email/phone), but on a big roster it often doesn't spend the paid `rocketreach_lookup` on each one —
+so a person shows LinkedIn only, and the ONLY on-demand button was **"☎ Get phone number"**, which
+fires the **FullEnrich phone waterfall (~$1.50)**. That's the wrong first step when we haven't even
+done the cheap RocketReach lookup (emails + any phones RR has, ~1 credit) — e.g. Chen Fang (BitGo):
+her `chen.b.fang@gmail.com` is right there in RocketReach but never appeared because no RR lookup was
+spent on her. Fix = a **cheapest-first two-tier reveal**:
+- **API** `api/research.js` `enhance_contact` now takes `source`: `'rocketreach'` → runs
+  `rocketreach_lookup {name,linkedin_url,company}` (cheap, returns emails+phones); default/omitted →
+  the existing `fullenrich_lookup {…, include_phone:true}` (~$1.50). Persists `source` on the
+  enhancement + returns it.
+- **UI** (`public/app.js`): `enhanceFor(name, rows, seed)` picks the affordance per person — **no
+  email/phone on the card → cheap `rrBtn` "🔍 Look up contact (RocketReach)" (1 credit)**; has contact
+  but **no MOBILE → `enhanceBtn` "☎ Get phone/mobile number" (FullEnrich · ~$1.50)** as the escalation.
+  Both `card()` + `leadCard()` route through it. New `.enhance-rr` click handler (source:'rocketreach',
+  ~10s) re-renders on a hit; the FullEnrich note relabeled "FullEnrich · ~$1.50" (was "premium · spends
+  a credit"). `mergeEnhancements` is **source-aware**: a RR phone is NOT tagged "mobile" (RR carries no
+  line-type after the source flattens `phones`), so it won't wrongly suppress the FullEnrich mobile
+  escalation; FullEnrich phones stay tagged mobile. `.enhance-rr` = subtle teal fill (reads as the
+  primary/first action). Cache-bust `app.js`/`styles.css` `?v=20260810rrlookup`.
+- **Progression:** LinkedIn-only person → click RocketReach (cheap) → emails (+RR phone) fill in → if
+  still no mobile, the FullEnrich "Get mobile number" button appears for the expensive escalation.
+  Gated by `canEnhance` (deep-pass perm) throughout. No new table/permission/env (reuses
+  `ROCKETREACH_API_KEY` + the run's `report.enhancements`).
+
 ## TLD Count + valuation calibration + cross-app valuate endpoint (2026-07-18)
 
 - **TLD Count tool** — a free DotDB-style "how many TLDs is this word registered in"

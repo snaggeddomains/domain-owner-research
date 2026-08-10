@@ -672,9 +672,11 @@ a.naming-card-domain:hover { color: var(--coral-deep); text-decoration: underlin
 .lead-card .contacts { margin-top: 9px; gap: 6px; }
 /* On-demand "Get phone number" — premium enrich for one person, on request. */
 .lc-enhance { margin-top: 9px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.enhance-phone { background: var(--cream); color: var(--teal-deep); border: 1.5px solid var(--line); box-shadow: none; padding: 5px 12px; font-size: 12px; font-weight: 700; border-radius: 999px; cursor: pointer; }
-.enhance-phone:hover:not(:disabled) { border-color: var(--teal-deep); }
-.enhance-phone:disabled { opacity: .65; cursor: default; }
+.enhance-phone, .enhance-rr { background: var(--cream); color: var(--teal-deep); border: 1.5px solid var(--line); box-shadow: none; padding: 5px 12px; font-size: 12px; font-weight: 700; border-radius: 999px; cursor: pointer; }
+.enhance-phone:hover:not(:disabled), .enhance-rr:hover:not(:disabled) { border-color: var(--teal-deep); }
+.enhance-phone:disabled, .enhance-rr:disabled { opacity: .65; cursor: default; }
+/* The cheap RocketReach lookup reads as the primary/first action (subtle teal fill). */
+.enhance-rr { background: color-mix(in srgb, var(--teal-deep) 10%, var(--cream)); border-color: color-mix(in srgb, var(--teal-deep) 30%, var(--line)); }
 .lc-enhance-note { font-size: 11px; color: var(--navy-3); }
 /* Persistent outcome status for the on-demand phone lookup. */
 .lc-enhance-note-miss { color: #946200; font-weight: 600; }

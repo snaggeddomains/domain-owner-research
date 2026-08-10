@@ -1967,11 +1967,27 @@ function renderSummary(d) {
         digits.length >= 10 && digits.length <= 15;
     };
     const hasMobile = (rows) => rows.some(isMobileRow);
+    // Any email/phone already on the card ≈ a RocketReach lookup was already done.
+    // When there's NONE, we offer the CHEAP RocketReach lookup first (below), and
+    // only escalate to the expensive FullEnrich phone waterfall once RR has run.
+    const hasContact = (rows) => rows.some((c) => { const t = String(c.type || '').toLowerCase(); return (t === 'email' || t === 'phone') && c.value; });
     const liUrlOf = (rows, seed) => rows.map((c) => liCanon(c.value)).find(Boolean) || (seed && seed[0]) || '';
     // Label the button "Get mobile number" when only a landline is on file (so it's
-    // clear we're hunting for the missing mobile), else "Get phone number".
+    // clear we're hunting for the missing mobile), else "Get phone number". This is
+    // the EXPENSIVE FullEnrich waterfall (~$1.50) — only offered once RocketReach ran.
     const enhanceBtn = (name, liUrl, hasLandline) =>
-      `<div class="lc-enhance"><button type="button" class="enhance-phone" data-name="${e(String(name || ''))}" data-linkedin="${e(String(liUrl || ''))}">☎ Get ${hasLandline ? 'mobile' : 'phone'} number</button><span class="lc-enhance-note">premium · spends a credit</span></div>`;
+      `<div class="lc-enhance"><button type="button" class="enhance-phone" data-name="${e(String(name || ''))}" data-linkedin="${e(String(liUrl || ''))}">☎ Get ${hasLandline ? 'mobile' : 'phone'} number</button><span class="lc-enhance-note">FullEnrich · ~$1.50</span></div>`;
+    // The CHEAP first step: a plain RocketReach lookup (emails + any phones RR has)
+    // for a person we only know by name/LinkedIn. Shown when no contact is on file.
+    const rrBtn = (name, liUrl) =>
+      `<div class="lc-enhance"><button type="button" class="enhance-rr" data-name="${e(String(name || ''))}" data-linkedin="${e(String(liUrl || ''))}">🔍 Look up contact (RocketReach)</button><span class="lc-enhance-note">RocketReach · 1 credit</span></div>`;
+    // Pick the right affordance for a person: no contact yet → cheap RocketReach
+    // lookup; has contact but no mobile → escalate to the FullEnrich phone waterfall.
+    const enhanceFor = (name, rows, seed) => {
+      if (!hasContact(rows)) return rrBtn(name, liUrlOf(rows, seed));
+      if (!hasMobile(rows)) return enhanceBtn(name, liUrlOf(rows, seed), hasPhone(rows));
+      return '';
+    };
     // Promote LinkedIn profiles out of row notes into their own social rows (full
     // URL, de-duped against any social row already present), and strip them from
     // those notes. seedUrls carries profiles pulled from a card/header note.
@@ -2013,7 +2029,7 @@ function renderSummary(d) {
       if (orgC) h += `<div class="cc-org">${linkify(orgC)}${orgNote ? ` <span class="muted">— ${linkifyNote(orgNote)}</span>` : ''}</div>`;
       if (emails.length) h += `<div class="cc-actions"><button type="button" class="copy-emails" data-emails="${e(emails.join(', '))}">Copy ${emails.length === 1 ? 'email' : `all ${emails.length} emails`}</button></div>`;
       if (rest.length) h += list(rest);
-      if (nameC && canEnhance && !hasMobile(rest)) h += enhanceBtn(nameC.value, liUrlOf(rest, seed), hasPhone(rest));
+      if (nameC && canEnhance) h += enhanceFor(nameC.value, rest, seed);
       return h + '</div>';
     };
     // Group a contact array into per-entity blocks: a new block starts at each
@@ -2049,7 +2065,7 @@ function renderSummary(d) {
       }
       const rows = promoteLinkedIn(g.rows, seed);
       const isPerson = g.header && String(g.header.type || '').toLowerCase() === 'name';
-      const enh = (canEnhance && isPerson && !hasMobile(rows)) ? enhanceBtn(g.header.value, liUrlOf(rows, seed), hasPhone(rows)) : '';
+      const enh = (canEnhance && isPerson) ? enhanceFor(g.header.value, rows, seed) : '';
       return `<div class="lead-card">${head}${rows.length ? list(rows) : ''}${enh}</div>`;
     };
     const leadCards = (arr) => `<div class="lead-cards">${groupLeads(arr).map(leadCard).join('')}</div>`;
@@ -2116,17 +2132,22 @@ function mergeEnhancements(data, enhancements) {
     const nm = String(enh.name || '').trim().toLowerCase();
     const idx = nm ? data.contacts.findIndex((c) => typeOf(c) === 'name' && String(c.value || '').trim().toLowerCase() === nm) : -1;
     const tier = idx >= 0 ? data.contacts[idx].tier : 'primary';
+    // Source-aware notes: a FullEnrich phone is a confirmed mobile (waterfall); a
+    // RocketReach phone has no line-type here, so don't claim "mobile" (that would
+    // wrongly suppress the FullEnrich mobile escalation for a landline).
+    const isRR = String(enh.source || 'fullenrich').toLowerCase() === 'rocketreach';
+    const prov = isRR ? 'RocketReach (on-demand)' : 'FullEnrich (on-demand)';
     const rows = [];
     for (const p of (enh.phones || [])) {
       const pv = typeof p === 'string' ? p : (p && p.number);
       if (pv && !data.contacts.some((c) => typeOf(c) === 'phone' && digits(c.value) === digits(pv))) {
-        rows.push({ type: 'phone', value: pv, note: 'mobile — FullEnrich (on-demand)', tier });
+        rows.push({ type: 'phone', value: pv, note: isRR ? prov : `mobile — ${prov}`, tier });
       }
     }
     for (const em of (enh.emails || [])) {
       const ev = typeof em === 'string' ? em : (em && em.email);
       if (ev && !data.contacts.some((c) => typeOf(c) === 'email' && String(c.value || '').toLowerCase() === ev.toLowerCase())) {
-        rows.push({ type: 'email', value: ev, note: 'FullEnrich (on-demand)', tier });
+        rows.push({ type: 'email', value: ev, note: prov, tier });
       }
     }
     if (!rows.length) continue;
@@ -7534,6 +7555,51 @@ els.report?.addEventListener('click', async (ev) => {
   } catch (err) {
     // The lookup didn't complete (network/timeout) — re-enable so a retry is
     // possible (this path didn't return a result to spend a credit on).
+    btn.textContent = orig;
+    btn.disabled = false;
+    setNote(`⚠️ Lookup failed: ${err.message || 'error'}. Click to try again.`, 'err');
+  }
+});
+
+// On-demand RocketReach lookup (delegated) — the CHEAP first step for a person we
+// only know by name/LinkedIn: spends one RocketReach credit for their emails + any
+// phones RR has. On success we re-render; if RR then has no mobile, the person's
+// card shows the FullEnrich "Get phone number" escalation next.
+els.report?.addEventListener('click', async (ev) => {
+  const btn = ev.target.closest('.enhance-rr');
+  if (!btn || !currentRunId || btn.disabled) return;
+  const name = btn.dataset.name || '';
+  const linkedin_url = btn.dataset.linkedin || '';
+  const note = (btn.closest('.lc-enhance') || btn.parentElement)?.querySelector('.lc-enhance-note');
+  const setNote = (txt, cls) => { if (note) { note.textContent = txt; note.className = `lc-enhance-note${cls ? ` lc-enhance-note-${cls}` : ''}`; } };
+  const orig = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = 'Looking up… (~10s)';
+  setNote('Checking RocketReach…', '');
+  try {
+    const res = await fetch('/research/api/research', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ id: currentRunId, enhance_contact: { name, linkedin_url, source: 'rocketreach' } }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || `Failed (${res.status})`);
+    const emails = Array.isArray(data.emails) ? data.emails : [];
+    const phones = Array.isArray(data.phones) ? data.phones : [];
+    if (emails.length || phones.length) {
+      // Contact came back — re-render so the emails/phones show in the card (and the
+      // FullEnrich mobile escalation appears if RR had no mobile). Persisted, so a
+      // reload won't re-spend the credit.
+      const r = await pollRun(currentRunId);
+      renderReport(r.report);
+    } else {
+      // RocketReach had no record for this person. Leave disabled so a re-click
+      // doesn't burn another credit for the same empty result.
+      btn.textContent = 'No RocketReach record';
+      btn.disabled = true;
+      setNote('RocketReach has no record for this person.', 'miss');
+    }
+  } catch (err) {
     btn.textContent = orig;
     btn.disabled = false;
     setNote(`⚠️ Lookup failed: ${err.message || 'error'}. Click to try again.`, 'err');
