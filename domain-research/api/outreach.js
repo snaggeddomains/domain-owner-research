@@ -45,7 +45,7 @@ async function withForSaleTrace(run, env) {
 // an indicator-based ranking, then adapts a template, proposes a new one, or
 // writes a fully bespoke email. It returns the chosen approach + the situation
 // read + the personalization hooks so the UI can show its reasoning.
-export const config = { maxDuration: 30 };
+export const config = { maxDuration: 60 };
 
 const BESPOKE = '__bespoke__';
 
@@ -106,7 +106,13 @@ export default async function handler(req, res) {
     res.status(404).json({ error: 'Run not found' });
     return;
   }
-  const runFS = await withForSaleTrace(run, process.env);
+  // The live for-sale check is a nice-to-have signal, but domainscout + the marketplace
+  // page-scraper can be slow — time-box it so it can never starve the LLM draft (was a
+  // cause of 504s on big reports). If it doesn't finish in ~9s, draft without it.
+  const runFS = await Promise.race([
+    withForSaleTrace(run, process.env),
+    new Promise((resolve) => setTimeout(() => resolve(run), 9000)),
+  ]);
   const signals = extractSignals(runFS.report || {}, run.domain || '');
 
   // ── Save a custom template ────────────────────────────────────────────────
