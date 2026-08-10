@@ -91,10 +91,13 @@ function combineFriction(...notes) {
 // 'suffix'|'tld', affix, friction }], .com prefix/suffix first, then the exact-word
 // TLD set, de-duped. `excludeTlds` drops extensions (e.g. 'ai'). Readability-flagged
 // names are INCLUDED with a `friction` note rather than dropped.
-export function enumerateVariations(seed, { excludeTlds = [], prefixes = PREFIXES, suffixes = SUFFIXES, tlds = TLDS } = {}) {
+export function enumerateVariations(seed, { excludeTlds = [], prefixes = PREFIXES, suffixes = SUFFIXES, tlds = TLDS, affixTlds = ['com'] } = {}) {
   const sld = cleanSld(seed);
   if (!sld) return [];
   const drop = new Set((excludeTlds || []).map((t) => String(t).replace(/^\./, '').toLowerCase()));
+  // Prefix/suffix combos run on .com by default; ADDITIONAL affix TLDs are opt-in
+  // (e.g. a .ai seed → findtechno.ai / techno-labs.ai). De-duped + honors excludeTlds.
+  const aTlds = [...new Set((affixTlds && affixTlds.length ? affixTlds : ['com']).map((t) => String(t).replace(/^\./, '').toLowerCase()))].filter((t) => !drop.has(t));
   const seen = new Set();
   const out = [];
   const add = (domain, kind, affix, friction = null) => {
@@ -102,13 +105,15 @@ export function enumerateVariations(seed, { excludeTlds = [], prefixes = PREFIXE
     seen.add(domain);
     out.push({ domain, kind, affix, friction });
   };
-  for (const p of prefixes) {
-    const full = `${p}${sld}`;
-    add(`${full}.com`, 'prefix', p, junctionFriction(p, sld));
-  }
-  for (const s of suffixes) {
-    const full = `${sld}${s}`;
-    add(`${full}.com`, 'suffix', s, junctionFriction(sld, s));
+  for (const at of aTlds) {
+    for (const p of prefixes) {
+      const full = `${p}${sld}`;
+      add(`${full}.${at}`, 'prefix', p, junctionFriction(p, sld));
+    }
+    for (const s of suffixes) {
+      const full = `${sld}${s}`;
+      add(`${full}.${at}`, 'suffix', s, junctionFriction(sld, s));
+    }
   }
   for (const t of tlds) {
     const tld = t.toLowerCase();

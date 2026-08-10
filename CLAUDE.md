@@ -909,6 +909,17 @@ can NEVER hold a specific word fixed — so it returned public-safety-*themed* n
   (internal `data-mode="variations"` unchanged). Added a **Type** filter facet
   (Prefix/Suffix/Extension toggle chips) — `variationsFilter.kind`, OR within, AND
   across the affix/tld facets.
+- **Prefix/suffix combos on EXTRA TLDs — opt-in TLD picker (2026-08-10).** The affix
+  (prefix/suffix) combos ran ONLY on `.com`, so a `.ai`-relevant seed missed `findtechno.ai` /
+  `technolabs.ai` (the real upgrades for a `.ai` name). `enumerateVariations` gained an **`affixTlds`**
+  option (default `['com']`) that runs the prefix/suffix combos on EACH listed TLD (de-duped, honors
+  `excludeTlds`); `sweepVariations` accepts `affixTlds` and always unions `com` + the picks, exposing
+  them as `criteria.affix_tlds`. `api/naming.js` `handleVariations` reads `body.affix_tlds` (≤8) →
+  `sweepVariations`, persists them in `filters.affix_tlds` (restored on reopen). UI: a Beast-Mode-only
+  **`#naming-affix-tlds`** input ("Also run prefix/suffix combos on these TLDs — e.g. ai, io; .com always
+  included"); `runVariations` splits it on comma/space → `affix_tlds`. Off by default (adds ~one crawl
+  round per extra TLD). Shared engine, so the Sales-Hub Beast Mode surface can adopt the same param
+  later. Cache-bust `?v=20260810affixtld`.
 - **Cross-references OUR corpora (2026-07-09).** The sweep now ALSO batch-looks-up the
   enumerated set against `name_universe` + the `Master Domain List` (`lib/variations/
   corpus.js` `lookupInternal`, one exact-domain `.in()` per corpus, parallel to the live

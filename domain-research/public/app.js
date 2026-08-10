@@ -182,6 +182,7 @@ const els = {
   namingTitle: $('naming-title'),
   namingIndustry: $('naming-industry'),
   namingWebsite: $('naming-website'),
+  namingAffixTlds: $('naming-affix-tlds'),
   namingMode: $('naming-mode'),
   namingVariations: $('naming-variations'),
   nmvTable: $('nmv-table'),
@@ -5739,6 +5740,7 @@ function setNamingMode(mode) {
   if (els.namingDraft) els.namingDraft.hidden = variations; // theme-only (Beast Mode takes a single word)
   if (els.namingIndustry) els.namingIndustry.hidden = !variations; // Beast-Mode-only
   if (els.namingWebsite) els.namingWebsite.hidden = !variations; // Beast-Mode-only
+  if (els.namingAffixTlds) els.namingAffixTlds.hidden = !variations; // Beast-Mode-only
   // Only one results section shows at a time; the theme filters (panel + parsed-
   // filter chips) are theme-only and must be hidden in variations mode.
   if (variations) {
@@ -5813,6 +5815,8 @@ async function runVariations() {
       method: 'POST', headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
         action: 'variations', seed, exclude_tlds: [],
+        // Extra TLDs to also run prefix/suffix combos on (beyond .com). "ai, .io" → ['ai','io'].
+        affix_tlds: ((els.namingAffixTlds && els.namingAffixTlds.value) || '').split(/[,\s]+/).map((t) => t.replace(/^\./, '').toLowerCase()).filter(Boolean),
         industry: (els.namingIndustry && els.namingIndustry.value.trim()) || null,
         website: (els.namingWebsite && els.namingWebsite.value.trim()) || null,
         run_id: currentNamingRunId || null,
@@ -6531,6 +6535,7 @@ async function openNamingRun(id) {
       setNamingMode('variations');
       if (els.namingIndustry) els.namingIndustry.value = String((r.filters && r.filters.industry) || '');
       if (els.namingWebsite) els.namingWebsite.value = String((r.filters && r.filters.website) || '');
+      if (els.namingAffixTlds) els.namingAffixTlds.value = (Array.isArray(r.filters && r.filters.affix_tlds) ? r.filters.affix_tlds : []).join(', ');
       const vdata = { seed: (r.filters.seed || r.brief || ''), industry: (r.filters && r.filters.industry) || null, website: (r.filters && r.filters.website) || null, criteria: r.filters.criteria || null, results: Array.isArray(r.buy_ready) ? r.buy_ready : [], domainscout: true };
       variationsLast = vdata;
       resetVariationsFilter();

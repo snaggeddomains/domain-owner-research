@@ -288,10 +288,13 @@ function rankKey(r) {
 // Returns { seed, domainscout, count, results:[{domain, kind, affix, category,
 // for_sale, for_sale_source, price, currency, marketplace, link, site, title,
 // evidence}] }.
-export async function sweepVariations(seed, { env = process.env, excludeTlds = [], prefixes, suffixes, extraTlds = [] } = {}) {
+export async function sweepVariations(seed, { env = process.env, excludeTlds = [], prefixes, suffixes, extraTlds = [], affixTlds = [] } = {}) {
   // Merge any industry-picked TLDs (.health/.care/…) into the base tier-1/2 set.
   const tlds = [...new Set([...TLDS, ...(Array.isArray(extraTlds) ? extraTlds : []).map((t) => String(t).replace(/^\./, '').toLowerCase())])];
-  const cands = enumerateVariations(seed, { excludeTlds, tlds, ...(prefixes ? { prefixes } : {}), ...(suffixes ? { suffixes } : {}) });
+  // Prefix/suffix combos run on .com ALWAYS, plus any user-picked extra affix TLDs
+  // (e.g. .ai → findtechno.ai). enumerate de-dups + honors excludeTlds.
+  const affixOn = [...new Set(['com', ...((Array.isArray(affixTlds) ? affixTlds : []).map((t) => String(t).replace(/^\./, '').toLowerCase()).filter(Boolean))])];
+  const cands = enumerateVariations(seed, { excludeTlds, tlds, affixTlds: affixOn, ...(prefixes ? { prefixes } : {}), ...(suffixes ? { suffixes } : {}) });
   const dsOn = isConfigured(env);
   // Cross-reference OUR corpora (name_universe + Master) in parallel with the live
   // sweep — one batched exact-domain lookup, fail-open. Merged in after the sweep.
@@ -482,6 +485,7 @@ export async function sweepVariations(seed, { env = process.env, excludeTlds = [
     prefixes: (prefixes && prefixes.length ? prefixes : PREFIXES),
     suffixes: (suffixes && suffixes.length ? suffixes : SUFFIXES),
     tlds: tlds.filter((t) => !drop.has(t)),
+    affix_tlds: affixOn.filter((t) => !drop.has(t)),
     exclude_tlds: [...drop],
     word_aware: !!(prefixes || suffixes),
   };

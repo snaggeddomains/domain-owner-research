@@ -114,6 +114,8 @@ async function handleVariations(body, res, user) {
     res.status(400).json({ error: 'That doesn’t look like a usable brand word.' }); return;
   }
   const excludeTlds = Array.isArray(body.exclude_tlds) ? body.exclude_tlds.map((t) => String(t)) : [];
+  // Extra TLDs to also run the prefix/suffix combos on (beyond .com) — e.g. ['ai'].
+  const affixTlds = Array.isArray(body.affix_tlds) ? body.affix_tlds.map((t) => String(t).replace(/^\./, '').toLowerCase()).filter(Boolean).slice(0, 8) : [];
   const industry = String(body.industry || '').trim().slice(0, 80);
   const website = String(body.website || '').trim().slice(0, 200);
   const runId = typeof body.run_id === 'string' && body.run_id ? body.run_id : null;
@@ -124,7 +126,7 @@ async function handleVariations(body, res, user) {
       // fail-open to defaults. Either also adds fitting niche TLDs (dart + healthcare
       // → dart.health).
       const { prefixes, suffixes, tlds } = await pickAffixes(seed, process.env, { industry, website }).catch(() => ({}));
-      const r = await sweepVariations(seed, { env: process.env, excludeTlds, prefixes, suffixes, extraTlds: tlds });
+      const r = await sweepVariations(seed, { env: process.env, excludeTlds, prefixes, suffixes, extraTlds: tlds, affixTlds });
       r.industry = industry || null;
       r.website = website || null;
       return r;
@@ -132,7 +134,7 @@ async function handleVariations(body, res, user) {
     // Persist so it lands in Recent + is reopenable (best-effort — never block the
     // result on a DB hiccup). Results ride in buy_ready; filters carries the mode.
     try {
-      const filters = { mode: 'variations', seed, industry: industry || null, website: website || null, criteria: out.criteria || null };
+      const filters = { mode: 'variations', seed, industry: industry || null, website: website || null, affix_tlds: affixTlds, criteria: out.criteria || null };
       const payload = { user_id: user && user.id, brief: seed, filters, buyReady: out.results, stretch: [], title: title || seed };
       const saved = runId ? await updateNamingRun(runId, payload) : await saveNamingRun(payload);
       if (saved && saved.id) { out.run_id = saved.id; out.created_at = saved.created_at; }
