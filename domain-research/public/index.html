@@ -35,7 +35,7 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="apple-mobile-web-app-title" content="Snagged Research" />
     <meta name="theme-color" content="#254254" />
-    <link rel="stylesheet" href="styles.css?v=20260810tldpicker" />
+    <link rel="stylesheet" href="styles.css?v=20260810salesbeast" />
     <!-- Layout: horizontal tab nav (Admin-style), no sidebar. -->
   </head>
   <body>
@@ -818,6 +818,10 @@
               <div class="sr-summary" id="sr-ext-summary"></div>
               <div class="sr-actions">
                 <button id="sr-ext-add" type="button" class="sr-btn sr-btn-primary" disabled title="Add the checked active-site extensions (real companies on the exact name) to this name's target list.">＋ Add to target list</button>
+                <span id="sr-ext-affix" class="sr-ext-affix">
+                  <button type="button" id="sr-ext-affix-toggle" class="sr-btn sr-btn-ghost" aria-expanded="false" title="Also run the prefix/suffix combos on these TLDs (beyond .com) — e.g. .ai → findcarrot.ai. Re-sweeps on change.">＋ Affix TLDs <span id="sr-ext-affix-count" class="naming-affixtld-count"></span> ▾</button>
+                  <div id="sr-ext-affix-menu" class="naming-affixtld-menu" hidden></div>
+                </span>
                 <button id="sr-ext-refresh" type="button" class="sr-btn sr-btn-ghost">↻ Refresh</button>
                 <button id="sr-ext-csv" type="button" class="sr-btn sr-btn-ghost">Download CSV</button>
               </div>
@@ -1431,6 +1435,6 @@ The model parses it into structured filters (TLDs, length, budget, tone, etc.) a
     </div>
 
     <!-- Bump ?v= on any public/app.js or styles.css change to bust caches. -->
-    <script src="app.js?v=20260810tldpicker"></script>
+    <script src="app.js?v=20260810salesbeast"></script>
   </body>
 </html>

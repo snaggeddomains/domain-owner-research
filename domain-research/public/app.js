@@ -9510,6 +9510,22 @@ function extPrice(r) {
   if (r.make_offer) return 'Make offer';
   return '—';
 }
+// Sales-Hub Beast Mode affix-TLD picker (same options as the naming exercise). Changing
+// it re-sweeps (force) since the extra TLDs need a fresh crawl.
+function salesExtAffixSelected() {
+  const menu = sEl('sr-ext-affix-menu');
+  return menu ? [...menu.querySelectorAll('input:checked')].map((c) => c.value) : [];
+}
+(function wireSalesExtAffix() {
+  const menu = sEl('sr-ext-affix-menu'); const toggle = sEl('sr-ext-affix-toggle'); const box = sEl('sr-ext-affix');
+  if (!menu || !toggle || !box) return;
+  menu.innerHTML = AFFIX_TLD_OPTIONS.map((t) => `<label class="naming-affixtld-opt"><input type="checkbox" value="${t}"> .${t}</label>`).join('');
+  const setCount = () => { const c = sEl('sr-ext-affix-count'); if (c) { const n = salesExtAffixSelected().length; c.textContent = n ? `(${n})` : ''; } };
+  toggle.addEventListener('click', (e) => { e.preventDefault(); menu.hidden = !menu.hidden; toggle.setAttribute('aria-expanded', menu.hidden ? 'false' : 'true'); });
+  menu.addEventListener('change', () => { setCount(); loadExtensions(true); });
+  document.addEventListener('click', (e) => { if (!box.contains(e.target) && !menu.hidden) { menu.hidden = true; toggle.setAttribute('aria-expanded', 'false'); } });
+})();
+
 async function loadExtensions(force) {
   if (salesExtBusy || !salesSeed) return;
   if (salesExtRows && !force) { renderExtensions(); return; }
@@ -9520,7 +9536,7 @@ async function loadExtensions(force) {
     : `Loading Beast Mode for ${escapeHtml(salesSeed)}…`);
   try {
     // Results are SAVED per name — this loads them instantly; force=Refresh re-sweeps.
-    const data = await salesPost({ action: 'extensions', domain: salesSeed, project_id: salesProjectId, refresh: !!force });
+    const data = await salesPost({ action: 'extensions', domain: salesSeed, project_id: salesProjectId, refresh: !!force, affix_tlds: salesExtAffixSelected() });
     salesExtRows = data.results || [];
     salesExtSweptAt = data.swept_at || null;
     renderExtensions();

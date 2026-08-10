@@ -439,6 +439,8 @@ button:disabled { opacity: .55; cursor: progress; }
 .naming-affixtld-opt { display: flex; align-items: center; gap: 6px; padding: 5px 8px; border-radius: 8px; font-size: 0.95rem; font-weight: 600; color: var(--navy-2); cursor: pointer; }
 .naming-affixtld-opt:hover { background: var(--cream-2); }
 .naming-affixtld-opt input { cursor: pointer; }
+.sr-ext-affix { position: relative; display: inline-block; }
+.sr-ext-affix .naming-affixtld-menu { min-width: 280px; right: auto; }
 .naming-title-input:focus { outline: none; border-color: var(--coral, #e08a6f); }
 .naming-input { width: 100%; min-height: 220px; resize: vertical; padding: 16px 18px; font-family: var(--system); font-size: 1rem; line-height: 1.5; color: var(--navy); background: var(--cream-2); border: 2px solid var(--line); border-radius: var(--radius-sm); box-shadow: var(--shadow-sm); }
 .naming-new { background: none; border: 1.5px solid #d9d2c2; border-radius: 999px; padding: 8px 18px; font-size: 14px; font-weight: 600; color: var(--navy-2); cursor: pointer; }

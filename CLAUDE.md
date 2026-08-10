@@ -1780,6 +1780,13 @@ design in `domain-research/SALES_HUB_SPEC.md`. Additive to the existing module �
     firmographics (capped 16) + get the add-to-target checkbox. `api/sales.js` `maxDuration` bumped
     60→120 for the bigger sweep. Cache-bust `?v=20260805beastmode`. (Explore also now floats on-list
     rows to the TOP of each category via `byScore`.)
+  - **Extra-TLD affix picker (2026-08-10).** Beast Mode ran the prefix/suffix combos only on `.com`;
+    now it has the same collapsible TLD checkbox picker as the naming exercise (`#sr-ext-affix` toggle →
+    `#sr-ext-affix-menu`, options `AFFIX_TLD_OPTIONS`), so a `.ai` name also checks `findcarrot.ai` /
+    `carrotlabs.ai`. `salesExtAffixSelected()` → `loadExtensions` sends `affix_tlds`; `handleExtensions`
+    reads `body.affix_tlds` → `sweepVariations(domain,{affixTlds})` (engine already supports it). Changing
+    the picker **re-sweeps** (`loadExtensions(true)`, since the extra TLDs need a fresh crawl; `.com`
+    always included). Shared engine with the naming exercise. Cache-bust `?v=20260810salesbeast`.
   - **Beast Mode filters + defaults (2026-08-05).** Kind filter chips (All / Extension / Prefix /
     Suffix — `salesExtKindFilter`, counts over the visible set) + a per-row kind chip (`sx-kind`;
     prefix/suffix also show the affix). Disposition hide-toggles (`#sr-ext-hide-forsale/-avail/-taken`,

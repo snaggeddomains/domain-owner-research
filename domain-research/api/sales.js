@@ -264,6 +264,8 @@ async function handleExtensions(body, res) {
   const raw = String(body.domain || '').trim().toLowerCase();
   const projectId = String(body.project_id || '').trim();
   const refresh = !!body.refresh;
+  // Extra TLDs to also run the prefix/suffix combos on (beyond .com) — the Beast Mode TLD picker.
+  const affixTlds = Array.isArray(body.affix_tlds) ? body.affix_tlds.map((t) => String(t).replace(/^\./, '').toLowerCase()).filter(Boolean).slice(0, 8) : [];
   const { sld, domain } = seedParts(raw);
   if (!sld) { res.status(400).json({ error: 'Provide a domain, e.g. carrot.ai' }); return; }
   try {
@@ -276,7 +278,7 @@ async function handleExtensions(body, res) {
         return;
       }
     }
-    const swept = await sweepVariations(domain, { env: process.env });   // full Beast Mode: affixes + TLDs
+    const swept = await sweepVariations(domain, { env: process.env, affixTlds });   // full Beast Mode: affixes + TLDs (+ picker's extra affix TLDs)
     const results = (swept && Array.isArray(swept.results)) ? swept.results : [];
     // An ACTIVE-site variation IS a real company on the name (an exact TLD sibling OR
     // an affix brand like getcarrot.com) — a prime buyer. Resolve its firmographics so
