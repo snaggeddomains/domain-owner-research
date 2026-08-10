@@ -1770,6 +1770,8 @@ body.drawer-open { overflow: hidden; }
 .sr-form input { flex: 1; }
 .sr-status { margin: 14px 0; color: var(--navy-3); font-size: 14px; }
 .sr-status-err { color: #c0392b; }
+.sr-cancel { margin-left: 10px; background: var(--cream); color: #c0392b; border: 1.5px solid var(--line); border-radius: 999px; padding: 3px 12px; font-size: 12px; font-weight: 700; cursor: pointer; vertical-align: middle; }
+.sr-cancel:hover { border-color: #c0392b; }
 .sr-results { margin-top: 18px; }
 .sr-toolbar { margin-bottom: 18px; }
 .sr-summary { font-size: 15px; color: var(--navy-2); margin-bottom: 12px; }

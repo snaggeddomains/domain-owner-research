@@ -695,6 +695,8 @@ const CMDK_CROSS_APP = [
   { section: 'reports', label: 'Reports · Client Overlap', href: '/reports/client-overlap' },
   { section: 'reports', label: 'Reports · Social Sweep', href: '/reports/social-sweep' },
   { section: 'reports', label: 'Reports · Content', href: '/reports/content' },
+  { section: 'reports', label: 'Reports · Email Health', href: '/reports/email-health' },
+  { section: 'reports', label: 'Reports · SEO', href: '/reports/seo' },
   { section: 'reports', label: 'Reports · Corporate Portfolios', href: '/research/portfolio' },
   { section: 'deals', label: 'Deals · Board', href: '/deals' },
   { section: 'deals', label: 'Deals · List', href: '/deals/list' },
@@ -8595,13 +8597,28 @@ function apiErrText(data, res) {
   return `Failed (${res ? res.status : '?'})`;
 }
 
-function setSalesStatus(msg, isErr = false) {
+function setSalesStatus(msg, isErr = false, cancellable = false) {
   if (!els.srStatus) return;
   els.srStatus.hidden = !msg;
-  els.srStatus.innerHTML = msg ? spinHtml(msg, isErr) : '';
+  const cancel = (cancellable && !isErr && msg) ? ' <button type="button" class="sr-cancel">✕ Cancel</button>' : '';
+  els.srStatus.innerHTML = msg ? spinHtml(msg, isErr) + cancel : '';
   els.srStatus.classList.toggle('sr-status-err', !!isErr);
 }
 function clearSalesPoll() { if (salesPollTimer) { clearInterval(salesPollTimer); salesPollTimer = null; } }
+
+// Stop a running discovery: halt the poll immediately (so the UI unblocks instantly),
+// re-enable the form, and best-effort tell the server to mark the project cancelled.
+async function cancelSalesRun() {
+  const id = salesProjectId;
+  clearSalesPoll();
+  if (els.srGo) els.srGo.disabled = false;
+  setSalesStatus('Cancelling…');
+  try {
+    if (id) await fetch('/research/api/sales', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ action: 'cancel', project_id: id }) });
+  } catch { /* the poll is already stopped; the message stands regardless */ }
+  setSalesStatus('Run cancelled — start a new report above.');
+}
+els.srStatus?.addEventListener('click', (ev) => { if (ev.target.closest('.sr-cancel')) { ev.preventDefault(); cancelSalesRun(); } });
 
 // Toggle the entry (hero + form + recent) vs. the compact results header. Once a
 // run is open we collapse the hero/form into a one-line "<seed> buyers" header
@@ -8800,7 +8817,7 @@ function openSalesProject(id, surface = 'explore') {
   salesExtSweptAt = null; salesExtShowDismissed = false; salesExtDismissed.clear();
   els.srGo.disabled = true;
   setSalesMode('results', '');   // collapse entry; seed filled in once the poll returns it
-  setSalesStatus('Discovering candidates and qualifying ability-to-pay…');
+  setSalesStatus('Discovering candidates and qualifying ability-to-pay…', false, true);
   let pollErrors = 0;
   const poll = async () => {
     try {
@@ -8824,8 +8841,12 @@ function openSalesProject(id, surface = 'explore') {
         clearSalesPoll();
         els.srGo.disabled = false;
         setSalesStatus(data.project.error || 'Run failed', true);
+      } else if (st === 'cancelled') {
+        clearSalesPoll();
+        els.srGo.disabled = false;
+        setSalesStatus('Run cancelled.');
       } else {
-        setSalesStatus(`Working… (${data.project.stage || st})`);
+        setSalesStatus(`Working… (${data.project.stage || st})`, false, true);
       }
     } catch (err) {
       // Network blip → keep trying a few rounds before giving up.

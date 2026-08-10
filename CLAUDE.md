@@ -1030,6 +1030,11 @@ one box: type a **domain** (has a dot) → the domain tools, to run that name in
   `CMDK_CROSS_APP` in sync with admin `REPORTS_TABS`/`SNAP_TABS` (lib/permissions.ts). SNAP Eval/Bulk
   Eval + SNAP Opportunities/Names stay DOM-sourced (their nav-btns aren't individually hidden).
   Cache-bust `?v=20260724cmdkreports`.
+  - **SEO + Email Health added to `CMDK_CROSS_APP` (2026-08-10).** The new admin **Reports · SEO**
+    (`/reports/seo`) + **Reports · Email Health** (`/reports/email-health`) are admin-app pages (not in
+    the research DOM), so the research ⌘K couldn't find them (SEO showed under the admin/Reports palette
+    but not from Research). Added both rows so the hotkey is universal from any section. Keep this list
+    synced with admin `REPORTS_TABS`.
 - **Focus the lookup after a ⌘K jump that RELOADS onto research (2026-07-24).** The in-SPA
   `focusActiveLookup` can't survive a full page reload, so a ⌘K selection that full-navigates onto
   the research app (a `/research/*` cross-app href, OR a jump from the ADMIN app's palette) landed
@@ -1569,6 +1574,14 @@ investors. Reuses Beeper's RDAP + adaptive cadence; **no new vendor/env key**.
 
 Find companies that would BUY a domain we're selling. UI at **research.snagged.com/research/sales**
 (gated by the `research.sales` module permission). Full design in `domain-research/SALES_RESEARCH_SPEC.md`.
+
+- **Cancel a running discovery (2026-08-10).** A stuck/mis-typed discovery run had no way to stop it.
+  Added a **✕ Cancel** button in the run status (`setSalesStatus(msg, isErr, cancellable)` appends
+  `.sr-cancel` while `Working…`); `cancelSalesRun()` halts the poll immediately + re-enables the form +
+  best-effort POSTs `action:'cancel'` → `api/sales.js` `handleCancel` sets the project status
+  `cancelled` (so a reopened run shows "Run cancelled.", not a stuck "Working…"). The poll handles the
+  new `cancelled` terminal status. (The Inngest job may finish its current step server-side; the
+  terminal status just keeps it out of the way.) Cache-bust `?v=20260810salescancel`.
 
 - **Spine:** seed domain → DISCOVER (free: enumerate TLD/affix variations × Clearbit
   autocomplete, `lib/sales/discovery/upgrade.js`) → RESOLVE+CLASSIFY+RANK

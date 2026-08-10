@@ -76,6 +76,16 @@ async function handleCreate(body, res, user) {
   res.status(202).json({ project_id: projectId, seed_domain: clean });
 }
 
+// Cancel a running discovery: mark the project cancelled so the UI stops polling and
+// a reopened run shows "cancelled", not a stuck "running". The Inngest job may finish
+// its current step in the background; the terminal status keeps the run out of the way.
+async function handleCancel(body, res) {
+  const projectId = body.project_id;
+  if (!projectId) { res.status(400).json({ error: 'project_id required' }); return; }
+  try { await setSalesProjectStatus(projectId, 'cancelled', 'cancelled'); } catch { /* best-effort */ }
+  res.status(200).json({ ok: true });
+}
+
 async function handleSelect(body, res) {
   const projectId = String(body.project_id || '').trim();
   const ids = Array.isArray(body.ids) ? body.ids.map(String) : [];
@@ -366,6 +376,7 @@ async function route(req, res) {
     const user = req._salesUser;
     const action = String(body.action || 'create');
     if (action === 'create') return handleCreate(body, res, user);
+    if (action === 'cancel') return handleCancel(body, res);
     if (action === 'angles') return handleAngles(body, res);
     if (action === 'research_angles') return handleResearchAngles(body, res);
     if (action === 'qualify') return handleQualify(body, res);
