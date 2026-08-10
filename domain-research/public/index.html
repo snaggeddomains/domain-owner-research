@@ -1380,6 +1380,10 @@ The model parses it into structured filters (TLDs, length, budget, tone, etc.) a
             </select>
           </div>
           <div class="od-field">
+            <label class="od-label" for="pd-heard">How did you hear about us? <span class="od-optional">(optional)</span></label>
+            <input id="pd-heard" class="od-input" type="text" autocomplete="off" placeholder="e.g. X / Twitter, referral" />
+          </div>
+          <div class="od-field">
             <label class="od-label" for="pd-comment">Comment <span class="od-optional">(optional — posted to the deal)</span></label>
             <textarea id="pd-comment" class="od-input pd-comment" rows="3" placeholder="Add context for whoever picks this up…"></textarea>
           </div>
@@ -1423,6 +1427,6 @@ The model parses it into structured filters (TLDs, length, budget, tone, etc.) a
     </div>
 
     <!-- Bump ?v= on any public/app.js or styles.css change to bust caches. -->
-    <script src="app.js?v=20260810rrlookup"></script>
+    <script src="app.js?v=20260810pdheard"></script>
   </body>
 </html>

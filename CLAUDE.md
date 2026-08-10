@@ -125,10 +125,17 @@ deal. The deal record + board live in snagged-admin; this app is a thin, gated p
   `domain_research_notifications`).
 - **"How did you hear about us?" auto-carried (2026-08-02).** `pipedriveCtxFromLead` reads the lead's
   `form.heard_about` (fallback `form.source`) and `submitPipedrive` passes it as `heardAbout` in the
-  POST; `api/pipedrive.js` forwards it to the admin internal endpoint → `deals.heard_about`. Silent —
-  NO visible drawer field (report-surface converts send `''`→null). `lead-enrich.js` `readForm` now
-  captures `heard_about` into the lead `form` jsonb so future inquiries have it. Cache-bust
-  `?v=20260802hdyhau`. (Admin side + backfill: snagged-admin CLAUDE.md "How did you hear about us?".)
+  POST; `api/pipedrive.js` forwards it to the admin internal endpoint → `deals.heard_about`.
+  `lead-enrich.js` `readForm` now captures `heard_about` into the lead `form` jsonb so future inquiries
+  have it. Cache-bust `?v=20260802hdyhau`. (Admin side + backfill: snagged-admin CLAUDE.md "How did you
+  hear about us?".)
+  - **Now a VISIBLE, editable drawer field (2026-08-10).** The Add-to-Deal drawer gained a **"How did
+    you hear about us? (optional)"** input (`#pd-heard`, between Budget and Comment) — `openPipedrive`
+    prefills it from `ctx.heardAbout` (the lead's `form.heard_about`), and `submitPipedrive` reads the
+    FIELD (falling back to `pipedriveCtx.heardAbout`) instead of only the silent ctx value. So a
+    dossier-convert shows the carried attribution and you can edit/add it; a report-surface convert (no
+    lead) starts blank + fillable. Same downstream path (`heardAbout` → `deals.heard_about`). Cache-bust
+    `?v=20260810pdheard`.
 - **Buyer's inquiry message → deal Notes (2026-08-04).** `pipedriveCtxFromLead` carries the lead's
   `message` + `location`; `submitPipedrive` assembles them into `📩 Buyer's inquiry:\n<message>` and sends
   it as `notes`; `api/pipedrive.js` forwards `notes` to the admin internal endpoint → `deals.notes`. So a

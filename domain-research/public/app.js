@@ -95,6 +95,7 @@ const els = {
   pdBuyerEmail: $('pd-buyer-email'),
   pdBudget: $('pd-budget'),
   pdComment: $('pd-comment'),
+  pdHeard: $('pd-heard'),
   pdContext: $('pd-context'),
   pdStatus: $('pd-status'),
   pdCancel: $('pd-cancel'),
@@ -7142,6 +7143,7 @@ async function openPipedrive(ctx) {
   if (els.pdBuyerEmail) els.pdBuyerEmail.value = ctx.buyerEmail || '';
   if (els.pdBudget) els.pdBudget.value = pdBudgetBand(ctx.budgetRange);
   if (els.pdPriority) els.pdPriority.value = ctx.priority || '';
+  if (els.pdHeard) els.pdHeard.value = ctx.heardAbout || ''; // prefilled from the lead form; editable
   if (els.pdComment) els.pdComment.value = ''; // free-text pretext, blank per open
   if (els.pdSubmit) els.pdSubmit.disabled = false;
   pipedriveStatus('');
@@ -7203,7 +7205,7 @@ async function submitPipedrive() {
     buyerName: els.pdBuyerName ? els.pdBuyerName.value.trim() : '',
     buyerEmail: els.pdBuyerEmail ? els.pdBuyerEmail.value.trim() : '',
     budgetRange: els.pdBudget ? els.pdBudget.value.trim() : '',
-    heardAbout: pipedriveCtx.heardAbout || '',   // auto-carried from the lead form; '' for non-lead surfaces
+    heardAbout: els.pdHeard ? els.pdHeard.value.trim() : (pipedriveCtx.heardAbout || ''),   // visible field, prefilled from the lead form
     // Buyer's inquiry message + location → the deal Notes (lead surfaces only; empty for a report convert).
     notes: [
       pipedriveCtx.message ? `📩 Buyer's inquiry:\n${pipedriveCtx.message}` : '',
