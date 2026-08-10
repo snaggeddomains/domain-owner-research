@@ -35,7 +35,7 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="apple-mobile-web-app-title" content="Snagged Research" />
     <meta name="theme-color" content="#254254" />
-    <link rel="stylesheet" href="styles.css?v=20260810salescancel" />
+    <link rel="stylesheet" href="styles.css?v=20260810tldpicker" />
     <!-- Layout: horizontal tab nav (Admin-style), no sidebar. -->
   </head>
   <body>
@@ -1093,7 +1093,10 @@ The model parses it into structured filters (TLDs, length, budget, tone, etc.) a
             <!-- Beast Mode only: optional industry + current website to sharpen affixes + niche TLDs -->
             <input id="naming-industry" class="naming-title-input" type="text" autocomplete="off" hidden placeholder="Company industry (optional) — e.g. healthcare → DartHealth, Dart.health" />
             <input id="naming-website" class="naming-title-input" type="text" autocomplete="off" hidden placeholder="Current website (optional) — I read it to infer sharper prefix/suffix combos" />
-            <input id="naming-affix-tlds" class="naming-title-input" type="text" autocomplete="off" hidden placeholder="Also run prefix/suffix combos on these TLDs (optional) — e.g. ai, io (.com always included)" />
+            <div id="naming-affix-tlds" class="naming-affixtld" hidden>
+              <button type="button" id="naming-affixtld-toggle" class="naming-affixtld-toggle" aria-expanded="false">＋ Also run prefix/suffix combos on other TLDs <span class="naming-affixtld-count"></span><span class="naming-affixtld-caret">▾</span></button>
+              <div id="naming-affixtld-menu" class="naming-affixtld-menu" hidden></div>
+            </div>
             <div class="naming-actions">
               <button id="naming-go" type="button" class="naming-go">Find Names</button>
               <button id="naming-draft" type="button" class="naming-draft" title="Turn rough notes, a pasted brief, or a few reference names into a polished theme brief">✨ Draft brief</button>
@@ -1428,6 +1431,6 @@ The model parses it into structured filters (TLDs, length, budget, tone, etc.) a
     </div>
 
     <!-- Bump ?v= on any public/app.js or styles.css change to bust caches. -->
-    <script src="app.js?v=20260810affixtld"></script>
+    <script src="app.js?v=20260810tldpicker"></script>
   </body>
 </html>

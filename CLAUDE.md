@@ -12,6 +12,7 @@ Source of truth for any Claude Code session picking up work on this repo. **Read
 4. **Push often.** A frozen session loses chat memory but not pushed work. Commit + push at every reviewable checkpoint.
 5. **Decisions live in the repo, not chat — update memory EVERY checkpoint.** When you ship a feature/fix, add or update its `CLAUDE.md` section **in the same commit as the code** (code + memory ship together). Don't let more than one shippable change go by without a memory note. The chat transcript is NOT a backup — if a session dies (or an account is suspended), only what's committed here survives. Keep sections concise: what it does, the key files, the gotchas, any one-time setup.
 6. **Don't reinvent existing sources.** ~26 sources are already wired in `domain-research/lib/sources/index.js`. Check there before adding a new one.
+7. **Data tables are SORTABLE by default (Rob, 2026-08-10).** Every data table gets click-to-sort column headers — don't ship a static table and wait to be asked. Pattern: numeric columns default to descending (high-first), string columns ascending, blanks last, active header shows ▲/▼; client-side over the loaded rows, and any CSV export respects the active sort. (Same rule in the admin repo.)
 
 ---
 
@@ -920,6 +921,15 @@ can NEVER hold a specific word fixed — so it returned public-safety-*themed* n
   included"); `runVariations` splits it on comma/space → `affix_tlds`. Off by default (adds ~one crawl
   round per extra TLD). Shared engine, so the Sales-Hub Beast Mode surface can adopt the same param
   later. Cache-bust `?v=20260810affixtld`.
+  - **Collapsible checkbox dropdown, not a text field (2026-08-10).** The affix-TLD input is a
+    **collapsible multi-select dropdown** (`#naming-affixtld-toggle` → `#naming-affixtld-menu` of
+    `.naming-affixtld-opt` checkboxes, options `AFFIX_TLD_OPTIONS` = ai/io/co/net/org/app/dev/tech/
+    xyz/me/so/us/gg/inc; `.com` always included so it's not offered). `affixTldsSelected()` reads the
+    checked boxes → `affix_tlds`; `setAffixTlds()` restores on reopen; the toggle shows a `(N)` count +
+    closes on outside click. **Display bug fixed same commit:** `prettyVarDomain` used the RAW seed, so
+    a full-domain seed ("monkey.ai") rendered combos as "UseMonkey.ai.com" / "Monkey.aiLab.ai" — now it
+    strips the seed to its SLD first (the enumerated domains were always correct; only the label was
+    garbled). Cache-bust `?v=20260810tldpicker`.
 - **Cross-references OUR corpora (2026-07-09).** The sweep now ALSO batch-looks-up the
   enumerated set against `name_universe` + the `Master Domain List` (`lib/variations/
   corpus.js` `lookupInternal`, one exact-domain `.in()` per corpus, parallel to the live

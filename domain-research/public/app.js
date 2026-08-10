@@ -183,6 +183,8 @@ const els = {
   namingIndustry: $('naming-industry'),
   namingWebsite: $('naming-website'),
   namingAffixTlds: $('naming-affix-tlds'),
+  namingAffixTldToggle: $('naming-affixtld-toggle'),
+  namingAffixTldMenu: $('naming-affixtld-menu'),
   namingMode: $('naming-mode'),
   namingVariations: $('naming-variations'),
   nmvTable: $('nmv-table'),
@@ -5804,6 +5806,40 @@ async function runNaming() {
   }
 }
 
+// Collapsible multi-select TLD picker for Beast Mode's EXTRA affix TLDs (the prefix/
+// suffix combos beyond .com). .com is always included by the engine, so it's not offered.
+const AFFIX_TLD_OPTIONS = ['ai', 'io', 'co', 'net', 'org', 'app', 'dev', 'tech', 'xyz', 'me', 'so', 'us', 'gg', 'inc'];
+function buildAffixTldMenu() {
+  if (!els.namingAffixTldMenu || els.namingAffixTldMenu.dataset.built) return;
+  els.namingAffixTldMenu.innerHTML = AFFIX_TLD_OPTIONS.map((t) => `<label class="naming-affixtld-opt"><input type="checkbox" value="${t}"> .${t}</label>`).join('');
+  els.namingAffixTldMenu.dataset.built = '1';
+  els.namingAffixTldMenu.addEventListener('change', updateAffixTldCount);
+}
+function affixTldsSelected() {
+  return els.namingAffixTldMenu ? [...els.namingAffixTldMenu.querySelectorAll('input:checked')].map((c) => c.value) : [];
+}
+function updateAffixTldCount() {
+  const span = els.namingAffixTlds && els.namingAffixTlds.querySelector('.naming-affixtld-count');
+  if (span) { const n = affixTldsSelected().length; span.textContent = n ? ` (${n})` : ''; }
+}
+function setAffixTlds(arr) {
+  buildAffixTldMenu();
+  const want = new Set((Array.isArray(arr) ? arr : []).map((t) => String(t).replace(/^\./, '').toLowerCase()));
+  if (els.namingAffixTldMenu) els.namingAffixTldMenu.querySelectorAll('input').forEach((c) => { c.checked = want.has(c.value); });
+  updateAffixTldCount();
+}
+function toggleAffixTldMenu(open) {
+  if (!els.namingAffixTldMenu || !els.namingAffixTldToggle) return;
+  buildAffixTldMenu();
+  const show = open === undefined ? els.namingAffixTldMenu.hidden : open;
+  els.namingAffixTldMenu.hidden = !show;
+  els.namingAffixTldToggle.setAttribute('aria-expanded', show ? 'true' : 'false');
+}
+els.namingAffixTldToggle?.addEventListener('click', (e) => { e.preventDefault(); toggleAffixTldMenu(); });
+document.addEventListener('click', (e) => {
+  if (els.namingAffixTlds && !els.namingAffixTlds.contains(e.target) && els.namingAffixTldMenu && !els.namingAffixTldMenu.hidden) toggleAffixTldMenu(false);
+});
+
 async function runVariations() {
   const seed = (els.namingInput?.value || '').trim();
   if (!seed) return;
@@ -5815,8 +5851,9 @@ async function runVariations() {
       method: 'POST', headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
         action: 'variations', seed, exclude_tlds: [],
-        // Extra TLDs to also run prefix/suffix combos on (beyond .com). "ai, .io" → ['ai','io'].
-        affix_tlds: ((els.namingAffixTlds && els.namingAffixTlds.value) || '').split(/[,\s]+/).map((t) => t.replace(/^\./, '').toLowerCase()).filter(Boolean),
+        // Extra TLDs to also run prefix/suffix combos on (beyond .com) — the checked
+        // boxes in the collapsible TLD dropdown.
+        affix_tlds: affixTldsSelected(),
         industry: (els.namingIndustry && els.namingIndustry.value.trim()) || null,
         website: (els.namingWebsite && els.namingWebsite.value.trim()) || null,
         run_id: currentNamingRunId || null,
@@ -5854,7 +5891,9 @@ function prettyVarDomain(r, seed) {
   const affixCase = (a) => (VAR_ACRO.has(a) ? String(a).toUpperCase() : capw(a));
   const dot = r.domain.lastIndexOf('.');
   const tld = dot >= 0 ? r.domain.slice(dot) : '';
-  const s = capw(String(seed || ''));
+  // Use the SLD only — if the user typed a full domain ("monkey.ai") the raw seed would
+  // wrongly render as "UseMonkey.ai.com" / "Monkey.aiLab.ai". Strip the TLD + junk.
+  const s = capw(String(seed || '').toLowerCase().replace(/^https?:\/\//, '').replace(/\..*$/, '').replace(/[^a-z0-9]/g, ''));
   if (r.kind === 'prefix') return `${affixCase(r.affix)}${s}${tld}`;
   if (r.kind === 'suffix') return `${s}${affixCase(r.affix)}${tld}`;
   return `${s}${tld}`;
@@ -6535,7 +6574,7 @@ async function openNamingRun(id) {
       setNamingMode('variations');
       if (els.namingIndustry) els.namingIndustry.value = String((r.filters && r.filters.industry) || '');
       if (els.namingWebsite) els.namingWebsite.value = String((r.filters && r.filters.website) || '');
-      if (els.namingAffixTlds) els.namingAffixTlds.value = (Array.isArray(r.filters && r.filters.affix_tlds) ? r.filters.affix_tlds : []).join(', ');
+      setAffixTlds(Array.isArray(r.filters && r.filters.affix_tlds) ? r.filters.affix_tlds : []);
       const vdata = { seed: (r.filters.seed || r.brief || ''), industry: (r.filters && r.filters.industry) || null, website: (r.filters && r.filters.website) || null, criteria: r.filters.criteria || null, results: Array.isArray(r.buy_ready) ? r.buy_ready : [], domainscout: true };
       variationsLast = vdata;
       resetVariationsFilter();

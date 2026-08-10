@@ -429,6 +429,16 @@ button:disabled { opacity: .55; cursor: progress; }
 .naming-form { max-width: none; margin: 0; }
 .naming-title-input { width: 100%; box-sizing: border-box; margin-bottom: 12px; padding: 12px 16px; font-family: var(--system); font-size: 1.15rem; font-weight: 700; color: var(--navy); background: var(--cream-2); border: 2px solid var(--line); border-radius: var(--radius-sm); box-shadow: var(--shadow-sm); }
 .naming-title-input::placeholder { color: var(--navy-3); font-weight: 400; }
+/* Beast-Mode extra-TLD picker — a collapsible checkbox dropdown. */
+.naming-affixtld { position: relative; margin-bottom: 12px; }
+.naming-affixtld-toggle { width: 100%; box-sizing: border-box; text-align: left; padding: 12px 16px; font-family: var(--system); font-size: 0.95rem; font-weight: 600; color: var(--navy-2); background: var(--cream-2); border: 2px solid var(--line); border-radius: var(--radius-sm); box-shadow: var(--shadow-sm); cursor: pointer; }
+.naming-affixtld-toggle:hover { border-color: var(--navy-3); }
+.naming-affixtld-caret { float: right; color: var(--navy-3); }
+.naming-affixtld-count { color: var(--coral); font-weight: 800; }
+.naming-affixtld-menu { position: absolute; z-index: 30; left: 0; right: 0; margin-top: 4px; padding: 8px; background: var(--cream); border: 2px solid var(--line); border-radius: var(--radius-sm); box-shadow: var(--shadow); display: grid; grid-template-columns: repeat(auto-fill, minmax(90px, 1fr)); gap: 4px 10px; max-height: 220px; overflow-y: auto; }
+.naming-affixtld-opt { display: flex; align-items: center; gap: 6px; padding: 5px 8px; border-radius: 8px; font-size: 0.95rem; font-weight: 600; color: var(--navy-2); cursor: pointer; }
+.naming-affixtld-opt:hover { background: var(--cream-2); }
+.naming-affixtld-opt input { cursor: pointer; }
 .naming-title-input:focus { outline: none; border-color: var(--coral, #e08a6f); }
 .naming-input { width: 100%; min-height: 220px; resize: vertical; padding: 16px 18px; font-family: var(--system); font-size: 1rem; line-height: 1.5; color: var(--navy); background: var(--cream-2); border: 2px solid var(--line); border-radius: var(--radius-sm); box-shadow: var(--shadow-sm); }
 .naming-new { background: none; border: 1.5px solid #d9d2c2; border-radius: 999px; padding: 8px 18px; font-size: 14px; font-weight: 600; color: var(--navy-2); cursor: pointer; }
