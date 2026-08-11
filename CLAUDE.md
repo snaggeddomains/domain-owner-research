@@ -1077,6 +1077,20 @@ admin deal-client scrolls to `#comments`). Also widened the dropdown (`.notif-me
 `width:min(440px,…)`) and forced `.notif-item-title/-body` to wrap (`white-space:normal;
 overflow-wrap:anywhere`) — long titles were getting cut off. Cache-bust `?v=20260723notif`.
 
+## Expired-session → clear message on tool lookups (2026-08-11)
+
+When the login session lapses, a gated `/api/lookup` (etc.) call returns the **login page HTML**
+(or a 401), so the client's bare `await res.json()` threw the browser's cryptic **"The string did
+not match the expected pattern."** — which surfaced verbatim in the tool status (reported on the
+Appraisal tool for teleport.org; logging back in fixed it). Fix (`public/app.js`): a shared
+**`apiJson(res)`** helper — on a 401/403 or a body that isn't JSON it calls `checkAuth()` (which
+flips `els.login` on → shows the login panel) and throws a friendly **"Your session expired — log
+in again."** (tagged `err.sessionExpired`). Wired into the main tool lookups: `runAppraisal` +
+`pollAppraisal` (the poll now STOPS on `sessionExpired` instead of spinning to timeout), `runWhois`,
+`runTrademark`, and `runEvaluate` (its `res.text()`→`JSON.parse` path now maps a 200-non-JSON /
+401 to the same message). Other fetches that already `.catch(()=>({}))` are unaffected. Cache-bust
+`app.js?v=20260811sessionexpired`.
+
 ## Domain data model — canonical (do not let this drift)
 
 Two domain corpora in **separate Supabase projects**; the search reads both.
