@@ -392,6 +392,29 @@ function cleanDomainInput(raw, { requireValid = true } = {}) {
       !/^(?=.{1,253}$)(?!-)[a-z0-9-]{1,63}(?<!-)(\.(?!-)[a-z0-9-]{1,63}(?<!-))+$/i.test(host)) throw bad();
   return host;
 }
+
+// Read a tool API response as JSON, but translate an EXPIRED-SESSION response
+// into a clear, actionable error instead of the browser's cryptic
+// "The string did not match the expected pattern." When the session lapses, a
+// gated /api/lookup call returns the login page (HTML) or a 401 — so res.json()
+// throws a raw DOMException that surfaced to the user as gibberish. Here we
+// detect that, re-surface the login panel (checkAuth flips els.login on), and
+// throw a friendly message the tool status can show verbatim.
+function sessionExpiredError() {
+  try { checkAuth(); } catch { /* best-effort — still show the message */ }
+  const err = new Error('Your session expired — log in again.');
+  err.sessionExpired = true;
+  return err;
+}
+async function apiJson(res) {
+  if (res.status === 401 || res.status === 403) throw sessionExpiredError();
+  try {
+    return await res.json();
+  } catch {
+    // Non-JSON body (almost always the login HTML after a lapsed session).
+    throw sessionExpiredError();
+  }
+}
 const TOOL_PATH = { tm: 'trademark', ap: 'appraisal', ev: 'evaluate' };
 const TOOL_LABEL = { tm: 'trademark searches', ap: 'appraisals', ev: 'SNAP evaluations' };
 // Per-tool history view state (collapsed recent-5 vs expanded searchable list).
@@ -4680,7 +4703,7 @@ async function runWhois(domain) {
   els.whoisResult.hidden = true;
   try {
     const res = await fetch(`/research/api/whois?domain=${encodeURIComponent(d)}`);
-    const data = await res.json().catch(() => ({}));
+    const data = await apiJson(res);
     if (!res.ok) throw new Error(data.error || `Lookup failed (${res.status})`);
     setToolStatus(els.whoisStatus, '');
     renderWhois(data);
@@ -5019,7 +5042,7 @@ async function runTrademark(input) {
   setToolStatus(els.tmStatus, `Searching trademarks for "${q}"…`);
   try {
     const res = await fetch(`/research/api/lookup?source=trademark_search&query=${encodeURIComponent(q)}`);
-    const data = await res.json();
+    const data = await apiJson(res);
     if (!data.ok) throw new Error(data.error || `Failed (${res.status})`);
     const items = (data.data && data.data.trademarks) || [];
     showTrademarks(q, items, isAi);
@@ -5269,7 +5292,7 @@ async function pollAppraisal(domain, jobId) {
     await new Promise((r) => setTimeout(r, 3000));
     try {
       const res = await fetch(`/research/api/lookup?source=appraise_lookup&job_id=${encodeURIComponent(jobId)}&domain=${encodeURIComponent(domain)}`);
-      const data = await res.json();
+      const data = await apiJson(res);
       if (data && data.ok === false) { setToolStatus(els.apStatus, data.error || 'Appraisal service error.', true); return; }
       const st = (data && data.data) || {};
       const statusStr = String(st.status || st.state || '');
@@ -5280,7 +5303,10 @@ async function pollAppraisal(domain, jobId) {
         return;
       }
       if (/fail|error|cancel/i.test(statusStr)) { setToolStatus(els.apStatus, `Appraisal ${statusStr}.`, true); return; }
-    } catch (e) { /* keep polling */ }
+    } catch (e) {
+      if (e && e.sessionExpired) { setToolStatus(els.apStatus, e.message, true); return; } // stop polling on a lapsed session
+      /* else transient — keep polling */
+    }
   }
   setToolStatus(els.apStatus, 'Still processing — try again shortly.', true);
 }
@@ -5298,7 +5324,7 @@ async function runAppraisal(domainInput, opts) {
   try {
     const qs = `source=appraise_lookup&domain=${encodeURIComponent(domain)}${force ? '&force=1' : ''}`;
     const res = await fetch(`/research/api/lookup?${qs}`);
-    const data = await res.json();
+    const data = await apiJson(res);
     if (!data.ok) throw new Error(data.error || `Failed (${res.status})`);
     const d = data.data || {};
     // A real valuation is always an OBJECT. Appraise.net occasionally returns an
@@ -11156,9 +11182,12 @@ async function runEvaluate(domain, { price = null, refresh = false } = {}) {
       await new Promise((r) => setTimeout(r, 2500));
       res = await doFetch(false);
     }
+    if (res.status === 401 || res.status === 403) throw sessionExpiredError();
     const text = await res.text();
     let data;
-    try { data = JSON.parse(text); } catch { throw new Error(res.ok ? 'Unexpected response from the server.' : `Server error (HTTP ${res.status}). ${text.slice(0, 140)}`); }
+    // A 200 whose body isn't JSON is almost always the login page after a lapsed
+    // session — surface the clear "log in again" message, not "Unexpected response".
+    try { data = JSON.parse(text); } catch { throw (res.ok ? sessionExpiredError() : new Error(`Server error (HTTP ${res.status}). ${text.slice(0, 140)}`)); }
     if (!res.ok) throw new Error(data.error || `Evaluation failed (HTTP ${res.status})`);
     renderEvaluate(data);
     refreshToolRecent(els.evRecent, 'ev');
