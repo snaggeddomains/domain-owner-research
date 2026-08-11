@@ -5185,6 +5185,64 @@ function renderAtomAppraisal(el, data) {
   el.hidden = false;
 }
 
+// ── Pricing strategies (client-side, off the appraisal value range) ──────────
+// Appraise.net's dashboard shows a pricing-strategy ladder, but its API only
+// returns the value RANGE (estimatedValue {low,high}) + recommendation/confidence
+// — the tiers are computed in their UI. We reproduce the same ladder off the
+// `high` (retail) value we already get. My Price (75%) + Moonshot (2×) are the
+// exact rules; the middle tiers use Appraise.net's LABELED ~percentages (their
+// exact $ come from a sell-through-rate model we don't receive, so ours are close
+// but not identical). Tune the multipliers here / recalibrate to Rob's retail-ask.
+const AP_STRATEGIES = [
+  { key: 'aggressive', label: 'Aggressive', icon: '⚡', mult: 0.27, sub: '~27% of retail · faster sale, higher sell-through' },
+  { key: 'balanced',   label: 'Balanced',   icon: '⚖️', mult: 0.38, sub: '~38% of retail · strong middle ground' },
+  { key: 'patient',    label: 'Patient',    icon: '⏳', mult: 0.50, sub: '~50% of retail · max $/sale, lower sell-through' },
+  { key: 'myprice',    label: 'My Price',   icon: '🏷️', mult: 0.75, sub: '75% of retail · your fixed rate', primary: true },
+  { key: 'conviction', label: 'Conviction', icon: '💎', conviction: true, sub: '50%→150% of retail by value · premium on premium names' },
+  { key: 'moonshot',   label: 'Moonshot',   icon: '🚀', mult: 2.0,  sub: '2× high · optimistic ceiling for premium buyers', moon: true },
+];
+function apNum(v) {
+  if (v == null) return null;
+  if (typeof v === 'number') return Number.isFinite(v) && v > 0 ? v : null;
+  const n = Number(String(v).replace(/[^0-9.]/g, ''));
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+// The "retail" anchor = the HIGH of the estimated range (matches Appraise.net's
+// "75% of $225,000" = high). Falls back through adjusted range → any scalar value.
+function apRetailHigh(a) {
+  if (!a || typeof a !== 'object') return null;
+  const ev = a.estimatedValue || a.adjustedEstimatedValue || a.value_range || a.valueRange || a.range;
+  if (ev && typeof ev === 'object') {
+    const high = apNum(ev.high ?? ev.max ?? ev.to ?? ev.high_value);
+    if (high) return high;
+  }
+  return apNum(pickr(a, ['estimatedValue', 'estimated_value', 'value', 'appraisedValue', 'appraised_value', 'estimate', 'midValue', 'mid_value']));
+}
+// Conviction premium ramps 0.5×→1.5× with value (premium on premium names),
+// log-anchored so a ~$225k name lands ~1.0× (matches Appraise.net's example).
+function apConvictionMult(high) {
+  const LO = 3.6, HI = 7.1; // log10 anchors: ~$4k → 0.5× ; ~$12M → 1.5×
+  const t = Math.min(1, Math.max(0, (Math.log10(high) - LO) / (HI - LO)));
+  return 0.5 + t;
+}
+function apStrategiesHtml(a) {
+  const high = apRetailHigh(a);
+  if (!high) return '';
+  const cells = AP_STRATEGIES.map((s) => {
+    const mult = s.conviction ? apConvictionMult(high) : s.mult;
+    const price = Math.round(high * mult);
+    const cls = `ap-strat${s.primary ? ' ap-strat-primary' : ''}${s.moon ? ' ap-strat-moon' : ''}`;
+    return `<div class="${cls}">`
+      + `<div class="ap-strat-h">${s.icon} ${escapeHtml(s.label)}</div>`
+      + `<div class="ap-strat-price">${fmtMoney(price)}</div>`
+      + `<div class="ap-strat-sub">${escapeHtml(s.sub)}</div>`
+      + `</div>`;
+  }).join('');
+  return `<div class="ap-block ap-strats">`
+    + `<h3>Pricing strategies <span class="ap-strats-note">· off the ${fmtMoney(high)} high</span></h3>`
+    + `<div class="ap-strat-grid">${cells}</div></div>`;
+}
+
 function renderAppraisal(domain, a, meta) {
   const range = appraisalRange(a);
   const conf = pickr(a, ['confidence', 'confidence_level', 'confidenceLabel', 'confidenceScore', 'confidence_score']);
@@ -5248,6 +5306,7 @@ function renderAppraisal(domain, a, meta) {
     `<div class="tool-title">${escapeHtml(domain)}</div>` +
     metaRow +
     (rows || '<div class="muted">No value fields recognized — see the raw appraisal below.</div>') +
+    apStrategiesHtml(a) +
     defBlock +
     (analysis ? `<div class="ap-block"><h3>Market analysis</h3><p>${escapeHtml(analysis)}</p></div>` : '') +
     block(a.strengths || a.pros, 'Why it scored well') +
