@@ -1091,6 +1091,23 @@ in again."** (tagged `err.sessionExpired`). Wired into the main tool lookups: `r
 401 to the same message). Other fetches that already `.catch(()=>({}))` are unaffected. Cache-bust
 `app.js?v=20260811sessionexpired`.
 
+## Appraisal tool — Pricing strategies ladder (2026-08-11)
+
+The Appraisal report now shows a **Pricing strategies** strip (Aggressive / Balanced / Patient /
+My Price / Conviction / Moonshot) mirroring Appraise.net's own dashboard — but computed CLIENT-SIDE.
+**Why client-side:** the Appraise.net API (`appraise.net/api/v1`) only returns `estimatedValue {low,
+high}` + `adjustedEstimatedValue` + `recommendation` + `confidence` + `factors`/`strengths`/`weaknesses`/
+etc. (verified against a cached `ap` payload) — it does NOT return the pricing-strategy tiers; their
+dashboard derives them from the range (their middle tiers come from a sell-through-rate model we don't
+receive). We reproduce the ladder off the **`high`** value (the "retail" anchor — matches their "75% of
+$225,000"). `public/app.js` `AP_STRATEGIES` (tunable multipliers) + `apRetailHigh(a)` + `apConvictionMult`
++ `apStrategiesHtml(a)`, rendered in `renderAppraisal` after the value row; `.ap-strat*` styles.
+Multipliers: My Price 0.75× · Moonshot 2× (both EXACT vs their dashboard); Aggressive 0.27× / Balanced
+0.38× / Patient 0.50× (their LABELED ~%, so within ~5–10% of their exact STR-model $, not identical);
+Conviction ramps 0.5×→1.5× by value (log-anchored, ~1.0× at ~$225k — matches their example). Recalibrate
+the multipliers to Rob's retail-ask basis in `AP_STRATEGIES` if desired. Cache-bust
+`app.js`/`styles.css` `?v=20260811pricingstrats`.
+
 ## Domain data model — canonical (do not let this drift)
 
 Two domain corpora in **separate Supabase projects**; the search reads both.
