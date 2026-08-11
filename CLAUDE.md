@@ -176,6 +176,33 @@ source=snagged, for final.com) is a first-class ownership signal Rob didn't want
   report-reset paths. Cache-bust `app.js`/`styles.css` `?v=20260805intowner`.
 - **No new table / permission / env** — reuses the Master + naming DB creds already set.
 
+## Registrar registrant-contact relay in the report contact path (2026-08-11)
+
+When a domain is privacy-walled and we have no solid DIRECT owner lead, the report's
+**Recommended Contact Path** now routes to the registrar's **precise ICANN registrant-contact
+relay** (e.g. IONOS → `https://registrar.ionos.de/domains_raa/privacy?market=us_EN`, GoDaddy →
+its `contactDomainOwner` form, MarkMonitor → `whois-webform.markmonitor.com/whois/<domain>`)
+instead of a generic registrar homepage. Every registrar on Rob's "Whois privacy" sheet
+is covered, with the real domain substituted into the form's `domain.com` placeholder.
+- **Map** `lib/registrarContact.js` — `CONTACTS` (67 registrars → contact-form URL and/or
+  privacy-proxy email, transcribed from the sheet
+  `docs.google.com/spreadsheets/d/15-pbi-xnB9YDGlxwgxJZtGzo5Njct9aMamcxoghpxAI`, tab "Whois
+  privacy") + `registrarContactFor(registrar, domain)` which resolves an RDAP/WHOIS registrar
+  (`{name, ianaId}`) to its row via a `PATTERNS` regex table ("GoDaddy.com, LLC"→Godaddy,
+  "IONOS SE"→IONOS…), an `IANA` id backstop for the big ones, and a normalized-name fallback,
+  then fills the real domain into the `domain.com`/`<domain.com>`/`domain.ru` placeholder.
+  Returns `{registrar, url?, email?}` or null (registrar not on the sheet → no relay, e.g.
+  Namecheap isn't listed). **To update: re-read the sheet + edit `CONTACTS`/`PATTERNS`.**
+- **Wiring** `lib/agent.js` `gather()`: after the pre-run seeds, a deterministic
+  `whoisLookup(domain)` resolves the registrar → `registrarContactFor` → a **seed fact** ("REGISTRANT-
+  CONTACT CHANNEL …") instructing the agent to put this EXACT relay in `contact_path` whenever the
+  owner isn't solidly identified (privacy-shielded / marketplace_only / Medium-Low confidence), and
+  a matching line was added to the SYSTEM_PROMPT's REGISTRAR ≠ OWNER rule. Fail-open (any error just
+  omits the seed). Flows downstream into the outreach draft too (it reads `contact_path`).
+- **No new table / permission / env** — the sheet content is baked into the module (static list);
+  it uses the free RDAP/WHOIS path already in the app. Verified live: zcashlabs.com→IONOS relay,
+  google.com→MarkMonitor form with the domain filled in.
+
 ## Internal kick-research endpoint (2026-07-22)
 
 `api/internal/kick-research.js` — server-to-server, `x-internal-secret == RESEARCH_INTERNAL_SECRET`
