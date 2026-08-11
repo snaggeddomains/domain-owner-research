@@ -1398,6 +1398,26 @@ investors. Reuses Beeper's RDAP + adaptive cadence; **no new vendor/env key**.
       full counts are inflated by obscure/cheap TLDs. So niche words (paleocene/oligocene/biomolecule/…)
       correctly fail the ≥6 gate. **0 NEW surfaced in a given window is supply + gate, not a fault:** most
       names lapsing into redemption are low-demand words; good ones surface as they cross and pass ≥6.
+  - **⚠️ Redemption stall — registered-only scan budget + 24h fail-safe (2026-08-11).** No new
+    redemptions for ~2 days. Diagnosed via read-only SQL: the scan itself was healthy (2,232 checks/24h,
+    `last_checked` ~1 min old), but **45 of 54 drops in 7d (83%) NEVER got flagged in redemption**
+    (`redemption_since` null) — we were SKIPPING the ~30d redemption window because the ~43k registered
+    pool re-scanned on a ~31-day cycle (>30d), and ~37% of the per-tick budget (836/day) was wasted
+    re-checking the ~52k `available` dictionary names that never change. Auto-renewed lapsing `.ai`
+    names carry a FUTURE expiry in the registered pool until they flip to redemption ~50d after expiry,
+    so they hid there and dropped before the slow cycle reached them. **Fix (2 parts):**
+    (1) **Registered-only scan budget** — `staleCandidates(limit,{registeredOnly})` adds
+    `.not('available','is',true)`; `scan.js` general slice passes `registeredOnly: REG_ONLY`
+    (`REG_ONLY = EXPIRING_AI_SCAN_AVAILABLE !== '1'`, default ON) AND takes the STALEST registered names
+    regardless of per-expiry cadence (`REG_ONLY || dueForCandidate`), so the registered pool churns fast
+    enough to catch the redemption window; the `available` pool is skipped (set `EXPIRING_AI_SCAN_AVAILABLE=1`
+    to restore the old mixed behavior). (2) **24h fail-safe** (`lib/expiring/diagnose.js`
+    `diagnoseRedemptionStall` + `runStallFailsafe` in the cron) — after each scan, if the newest
+    `redemption_since` is >24h old it auto-runs the same triage (scan writing? throttled? unflagged drops?
+    registered backlog clogged?), picks the likely cause, and alerts (bell to admin/expiring users +
+    email to rob/sam) with a plain-language summary + fix. Deduped to ~once/12h via meta key
+    `redemption_stall_alerted_at` (`getCursor`/`setCursor`). `?nofailsafe=1` skips it on a backfill tick.
+    So the next silent stall surfaces in hours, not days.
 - **TLD lookup runs ONLY on names in the redemption period** (Rob: "cut way down"). On a name's FIRST
   redemption sighting the scan runs the demand check ONCE: the **bounded ~26-TLD probe** (`popularTldCount`,
   `lib/evaluate/tldcount.js`, cache `xt`) decides QUALITY — surface only if **≥ `EXPIRING_AI_MIN_TLDS`

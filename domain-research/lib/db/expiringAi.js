@@ -137,15 +137,18 @@ export async function dueSurfacedCandidates(limit = 400) {
 // The stalest candidates first (never-checked → nulls first), so the scan's
 // adaptive cadence gets to learn each name's expiration and then taper. The
 // caller isDue-filters the returned slice.
-export async function staleCandidates(limit = 300) {
+export async function staleCandidates(limit = 300, { registeredOnly = false } = {}) {
   if (!isDbConfigured()) return [];
   const base = 'domain,sld,nameservers,parked,expiration,last_status,in_redemption,redemption_since,available,last_http,last_checked';
   const extra = ',in_pending_delete,pending_delete_since,dropped_at,demand_ok,tld_count';
   // Never-scanned first (nulls), and within those the higher-priority (tech-relevant)
   // names first, so they get RDAP-checked ahead of plain dictionary words.
+  // registeredOnly = skip the huge `available` pool so the whole budget lands on the
+  // REGISTERED names (where redemptions come from) — needed to catch the ~30d window.
   function build(cols, withPriority) {
     let q = getDb().from(T).select(cols + (withPriority ? ',priority' : ''))
       .order('last_checked', { ascending: true, nullsFirst: true });
+    if (registeredOnly) q = q.not('available', 'is', true);
     if (withPriority) q = q.order('priority', { ascending: false });
     return q.limit(Math.min(limit, 1000));
   }

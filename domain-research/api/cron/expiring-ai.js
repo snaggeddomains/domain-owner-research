@@ -8,11 +8,69 @@
 // ?scan=N (candidates to consider), ?nocurate=1 / ?noscan=1.
 import { curateSlice, seedTechLexicon, curateTechUniverse } from '../../lib/expiring/candidates.js';
 import { scanDue } from '../../lib/expiring/scan.js';
+import { diagnoseRedemptionStall } from '../../lib/expiring/diagnose.js';
+import { getCursor, setCursor } from '../../lib/db/expiringAi.js';
 import { listUsers } from '../../lib/db/users.js';
 import { userCan } from '../../lib/auth.js';
 import { createNotification } from '../../lib/db/notifications.js';
+import { sendEmail, isEmailConfigured } from '../../lib/email.js';
 
 export const config = { maxDuration: 60 };
+
+const STALL_META_KEY = 'redemption_stall_alerted_at';
+// Don't re-fire the stall alert every 5-min tick — re-alert at most every 12h.
+const STALL_REALERT_MS = 12 * 60 * 60 * 1000;
+
+// Fail-safe: if no name has been flagged entering redemption in 24h, auto-diagnose
+// WHY and alert the team (bell + email) with the likely cause + fix, deduped to
+// ~once per 12h so a persistent stall nudges but doesn't spam. Best-effort.
+async function runStallFailsafe() {
+  let diag;
+  try { diag = await diagnoseRedemptionStall(); } catch (e) { return { error: String((e && e.message) || e) }; }
+  if (!diag || !diag.ok) return { skipped: 'not-configured' };
+  if (!diag.stalled) return { stalled: false, hoursSinceRedemption: diag.hoursSinceRedemption };
+
+  // Dedupe: skip if we already alerted within the re-alert window.
+  let last = 0;
+  try { last = Date.parse(await getCursor(STALL_META_KEY)) || 0; } catch { last = 0; }
+  if (last && Date.now() - last < STALL_REALERT_MS) {
+    return { stalled: true, alerted: false, reason: 'recently-alerted', hoursSinceRedemption: diag.hoursSinceRedemption };
+  }
+
+  const title = `⚠️ Expiring .ai stalled — no new redemption in ${diag.hoursSinceRedemption}h`;
+  const body = diag.summary;
+
+  // Bell to admin/expiring users.
+  try {
+    const users = await listUsers();
+    const recipients = (users || []).filter((u) => u && (userCan(u, 'admin') || userCan(u, 'expiring')));
+    await Promise.allSettled(
+      recipients.map((u) => createNotification({ user_id: u.id, kind: 'expiring', title, body, link: '/research/expiring' })),
+    );
+  } catch { /* non-fatal */ }
+
+  // Email rob/sam (same recipients as the digest) so it reaches them off-screen.
+  try {
+    if (isEmailConfigured()) {
+      const to = (process.env.EXPIRING_AI_EMAILS || 'rob@snagged.com,sam@snagged.com')
+        .split(',').map((e) => e.trim().toLowerCase()).filter(Boolean);
+      const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+      const sig = diag.signals || {};
+      const rows = Object.entries(sig).map(([k, v]) => `<tr><td style="padding:3px 12px;color:#4a5b66">${esc(k)}</td><td style="padding:3px 12px;font-weight:600">${esc(v == null ? '—' : v)}</td></tr>`).join('');
+      const html =
+        `<div style="font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#26343d">
+          <p style="font-size:15px;font-weight:700;margin:0 0 4px">${esc(title)}</p>
+          <p style="color:#8a1c1c;font-weight:600;margin:0 0 12px">Likely cause: ${esc(diag.cause)}</p>
+          <table style="border-collapse:collapse;font-size:13px;border:1px solid #e5e9ec">${rows}</table>
+          <p style="margin:14px 0 0"><a href="https://research.snagged.com/research/expiring" style="display:inline-block;padding:9px 15px;background:#1f6b52;color:#fff;text-decoration:none;border-radius:8px;font-weight:700">Open Expiring .ai</a></p>
+        </div>`;
+      if (to.length) await sendEmail({ to, subject: title, html });
+    }
+  } catch { /* non-fatal */ }
+
+  try { await setCursor(new Date().toISOString(), STALL_META_KEY); } catch { /* non-fatal */ }
+  return { stalled: true, alerted: true, hoursSinceRedemption: diag.hoursSinceRedemption, cause: diag.cause };
+}
 
 // In-app bell when good .ai names newly enter redemption, for users who can see
 // the report (expiring perm, or admins). The EMAIL is handled separately by the
@@ -70,6 +128,12 @@ export default async function handler(req, res) {
       out.entered = scan.entered.slice(0, 25);
       out.dropped = scan.dropped.slice(0, 25);
     } catch (e) { out.scan = { error: String((e && e.message) || e) }; }
+  }
+
+  // Fail-safe: auto-diagnose + alert if no name has entered redemption in 24h
+  // (unless explicitly skipped for a backfill/tuning tick with ?nofailsafe=1).
+  if (!q.nofailsafe) {
+    try { out.failsafe = await runStallFailsafe(); } catch (e) { out.failsafe = { error: String((e && e.message) || e) }; }
   }
   res.status(200).json(out);
 }

@@ -45,6 +45,13 @@ const SCAN_DELAY_MS = Math.max(0, Number(process.env.EXPIRING_AI_SCAN_DELAY_MS |
 // NB concurrency 3 / 130 was tried 2026-07-28 and nic.ai throttled to 100% failure
 // after ~10 min — 2 / 90 (~1,080/hr) is the rate that holds. Don't push past it.
 const SCAN_LIMIT = Math.max(1, Number(process.env.EXPIRING_AI_SCAN_LIMIT || 90));
+// Default: spend the general-slice budget ONLY on REGISTERED names (skip the ~52k
+// `available` pool). Auto-renewed lapsing .ai names hide in the registered pool with a
+// future expiry until they flip to redemption ~50d later — we were re-scanning them too
+// slowly (~31d cycle) and missing the ~30d redemption window (83% of drops never got
+// flagged in redemption). Registered-only + stalest-first churns the pool fast enough to
+// catch it. Set EXPIRING_AI_SCAN_AVAILABLE=1 to restore the old mixed behavior.
+const REG_ONLY = process.env.EXPIRING_AI_SCAN_AVAILABLE !== '1';
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // (Deprecated 2026-08-03: surfaced names are now ALWAYS re-scanned — see scanDue. The old
@@ -107,8 +114,11 @@ export async function scanDue({ limit = SCAN_LIMIT, concurrency = SCAN_CONCURREN
   nearExpiry.forEach((c) => seen.add(c.domain));
   need = Math.max(0, need - nearExpiry.length);
 
-  const batch = need ? await staleCandidates(Math.max(need * 6, 300)) : [];
-  const rest = batch.filter((c) => !seen.has(c.domain) && dueForCandidate(c, now)).slice(0, need);
+  const batch = need ? await staleCandidates(Math.max(need * 6, 300), { registeredOnly: REG_ONLY }) : [];
+  // In registered-only backfill mode take the STALEST registered names regardless of their
+  // per-expiry cadence (they've been under-scanned), so the pool rotates fast enough to hit
+  // the redemption window; otherwise keep the normal due-gate.
+  const rest = batch.filter((c) => !seen.has(c.domain) && (REG_ONLY || dueForCandidate(c, now))).slice(0, need);
   const queue = [...surfacedDue, ...nearExpiry, ...rest].slice(0, limit);
   const entered = [];   // names that JUST entered redemption/pending-delete this pass
   const dropped = [];   // names that JUST went available
