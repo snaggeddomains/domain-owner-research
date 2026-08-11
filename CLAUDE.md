@@ -1100,13 +1100,21 @@ high}` + `adjustedEstimatedValue` + `recommendation` + `confidence` + `factors`/
 etc. (verified against a cached `ap` payload) — it does NOT return the pricing-strategy tiers; their
 dashboard derives them from the range (their middle tiers come from a sell-through-rate model we don't
 receive). We reproduce the ladder off the **`high`** value (the "retail" anchor — matches their "75% of
-$225,000"). `public/app.js` `AP_STRATEGIES` (tunable multipliers) + `apRetailHigh(a)` + `apConvictionMult`
-+ `apStrategiesHtml(a)`, rendered in `renderAppraisal` after the value row; `.ap-strat*` styles.
-Multipliers: My Price 0.75× · Moonshot 2× (both EXACT vs their dashboard); Aggressive 0.27× / Balanced
-0.38× / Patient 0.50× (their LABELED ~%, so within ~5–10% of their exact STR-model $, not identical);
-Conviction ramps 0.5×→1.5× by value (log-anchored, ~1.0× at ~$225k — matches their example). Recalibrate
-the multipliers to Rob's retail-ask basis in `AP_STRATEGIES` if desired. Cache-bust
-`app.js`/`styles.css` `?v=20260811pricingstrats`.
+$225,000"). `public/app.js` `AP_STRATEGIES` (per-tier anchors) + `apRetailHigh(a)` + `apTierMult(s,high)`
++ `apNice(n)` + `apStrategiesHtml(a)`, rendered in `renderAppraisal` after the value row; `.ap-strat*`
+styles.
+- **CALIBRATED against their dashboard on THREE live examples (2026-08-11)** — SolInvictus.com (high
+  $73k), EndZone.com (high $220k), Splitter.com (high $225k). Their tier prices **scale UP with value**
+  (a premium name commands a higher fraction of retail: Aggressive ~27%→29%, Balanced ~34%→39%, Patient
+  ~48%→54%, Conviction ~82%→101%), so each middle tier's multiplier is a **LOG-LINEAR ramp** in
+  `apTierMult` anchored at $73k (`AP_LOG_LO`) and the ~$222k cluster (`AP_LOG_HI`) with `{lo,hi,min,max}`
+  per tier, then clamped. Prices round to the **nearest $5k** (`apNice`, matching their UI). **My Price
+  (0.75× high) and Moonshot (2× high) are shown EXACT** (`exact:true`, never rounded) — they match their
+  dashboard to the dollar (e.g. SolInvictus Moonshot $146,000, not a rounded $150k). Verified 17/18 middle
+  tiers match across the three examples (the one miss is a single $5k step — Splitter Conviction $230k vs
+  their $225k — since their exact tier $ come from a sell-through model we don't receive).
+- **Recalibrate:** edit the per-tier `lo`/`hi` (fraction of high at $73k / at ~$222k) in `AP_STRATEGIES`,
+  or the anchors `AP_LOG_LO`/`AP_LOG_HI`. Cache-bust `app.js`/`styles.css` `?v=20260811pricingcalib`.
 
 ## Domain data model — canonical (do not let this drift)
 

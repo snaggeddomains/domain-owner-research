@@ -5188,18 +5188,26 @@ function renderAtomAppraisal(el, data) {
 // ── Pricing strategies (client-side, off the appraisal value range) ──────────
 // Appraise.net's dashboard shows a pricing-strategy ladder, but its API only
 // returns the value RANGE (estimatedValue {low,high}) + recommendation/confidence
-// — the tiers are computed in their UI. We reproduce the same ladder off the
-// `high` (retail) value we already get. My Price (75%) + Moonshot (2×) are the
-// exact rules; the middle tiers use Appraise.net's LABELED ~percentages (their
-// exact $ come from a sell-through-rate model we don't receive, so ours are close
-// but not identical). Tune the multipliers here / recalibrate to Rob's retail-ask.
+// — the tiers are computed in their UI (a sell-through-rate model). We reproduce
+// the ladder off the `high` (retail) value we already get. CALIBRATED against
+// their dashboard on three live examples — SolInvictus.com (high $73k),
+// EndZone.com (high $220k) and Splitter.com (high $225k): their tier prices scale
+// UP with value (a premium name commands a higher fraction of retail), so each
+// middle tier's multiplier is a LOG-LINEAR ramp anchored at $73k and the ~$222k
+// cluster (then clamped), and prices are rounded to the nearest $5k like their UI.
+// My Price (0.75× high) and Moonshot (2× high) are shown EXACT (never rounded) —
+// they match their dashboard to the dollar. The middle tiers match 17/18 across the
+// three examples (the one miss is a single $5k step, since Appraise.net's exact
+// tier $ come from a sell-through model we don't receive). Recalibrate via anchors.
+const AP_LOG_LO = Math.log10(73000);   // 4.863 — SolInvictus anchor (low column)
+const AP_LOG_HI = Math.log10(222000);  // 5.346 — Splitter/EndZone cluster (high column)
 const AP_STRATEGIES = [
-  { key: 'aggressive', label: 'Aggressive', icon: '⚡', mult: 0.27, sub: '~27% of retail · faster sale, higher sell-through' },
-  { key: 'balanced',   label: 'Balanced',   icon: '⚖️', mult: 0.38, sub: '~38% of retail · strong middle ground' },
-  { key: 'patient',    label: 'Patient',    icon: '⏳', mult: 0.50, sub: '~50% of retail · max $/sale, lower sell-through' },
-  { key: 'myprice',    label: 'My Price',   icon: '🏷️', mult: 0.75, sub: '75% of retail · your fixed rate', primary: true },
-  { key: 'conviction', label: 'Conviction', icon: '💎', conviction: true, sub: '50%→150% of retail by value · premium on premium names' },
-  { key: 'moonshot',   label: 'Moonshot',   icon: '🚀', mult: 2.0,  sub: '2× high · optimistic ceiling for premium buyers', moon: true },
+  { key: 'aggressive', label: 'Aggressive', icon: '⚡', lo: 0.274, hi: 0.292, min: 0.20, max: 0.42, sub: '~27% of retail · faster sale, higher sell-through' },
+  { key: 'balanced',   label: 'Balanced',   icon: '⚖️', lo: 0.342, hi: 0.393, min: 0.28, max: 0.55, sub: '~38% of retail · strong middle ground' },
+  { key: 'patient',    label: 'Patient',    icon: '⏳', lo: 0.479, hi: 0.539, min: 0.40, max: 0.70, sub: '~50% of retail · max $/sale, lower sell-through' },
+  { key: 'myprice',    label: 'My Price',   icon: '🏷️', fixed: 0.75, exact: true, sub: '75% of retail · your fixed rate', primary: true },
+  { key: 'conviction', label: 'Conviction', icon: '💎', lo: 0.822, hi: 1.011, min: 0.50, max: 1.50, sub: '50%→150% of retail by value · premium on premium names' },
+  { key: 'moonshot',   label: 'Moonshot',   icon: '🚀', fixed: 2.0, exact: true, sub: '2× high · optimistic ceiling for premium buyers', moon: true },
 ];
 function apNum(v) {
   if (v == null) return null;
@@ -5218,19 +5226,26 @@ function apRetailHigh(a) {
   }
   return apNum(pickr(a, ['estimatedValue', 'estimated_value', 'value', 'appraisedValue', 'appraised_value', 'estimate', 'midValue', 'mid_value']));
 }
-// Conviction premium ramps 0.5×→1.5× with value (premium on premium names),
-// log-anchored so a ~$225k name lands ~1.0× (matches Appraise.net's example).
-function apConvictionMult(high) {
-  const LO = 3.6, HI = 7.1; // log10 anchors: ~$4k → 0.5× ; ~$12M → 1.5×
-  const t = Math.min(1, Math.max(0, (Math.log10(high) - LO) / (HI - LO)));
-  return 0.5 + t;
+// Tier multiplier: fixed for My Price/Moonshot; a value-scaled (log-linear) ramp
+// for the middle tiers, extrapolated beyond the two anchors and clamped sane.
+function apTierMult(s, high) {
+  if (s.fixed != null) return s.fixed;
+  const t = (Math.log10(high) - AP_LOG_LO) / (AP_LOG_HI - AP_LOG_LO);
+  return Math.min(s.max, Math.max(s.min, s.lo + (s.hi - s.lo) * t));
+}
+// Round to clean numbers the way Appraise.net's dashboard does (My Price stays exact).
+function apNice(n) {
+  if (!(n > 0)) return 0;
+  if (n < 10000) return Math.round(n / 500) * 500;         // < $10k → nearest $500
+  if (n < 1000000) return Math.round(n / 5000) * 5000;     // $10k–$1M → nearest $5k (matches Appraise.net)
+  return Math.round(n / 25000) * 25000;                    // ≥ $1M → nearest $25k
 }
 function apStrategiesHtml(a) {
   const high = apRetailHigh(a);
   if (!high) return '';
   const cells = AP_STRATEGIES.map((s) => {
-    const mult = s.conviction ? apConvictionMult(high) : s.mult;
-    const price = Math.round(high * mult);
+    const raw = high * apTierMult(s, high);
+    const price = s.exact ? Math.round(raw) : apNice(raw);
     const cls = `ap-strat${s.primary ? ' ap-strat-primary' : ''}${s.moon ? ' ap-strat-moon' : ''}`;
     return `<div class="${cls}">`
       + `<div class="ap-strat-h">${s.icon} ${escapeHtml(s.label)}</div>`
