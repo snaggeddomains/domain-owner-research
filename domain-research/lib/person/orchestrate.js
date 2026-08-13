@@ -4,10 +4,11 @@
 //   2. TRIANGULATE / VIP — find the same person across X/LinkedIn/Quora/Facebook/
 //      Instagram/YouTube/GitHub/Crunchbase/Wikipedia, read follower/subscriber
 //      counts where public, and roll up a prominence (VIP) band + the signals.
-//   3. FREE CONTEXT — rocketreach_search (FREE, no emails) for professional context.
+//   3. CONTEXT + CONTACTS — rocketreach_search (FREE) for professional context, then
+//      an AUTO rocketreach_lookup (paid, ~1 credit) so emails/phones surface on submit.
 //   4. SYNTHESIZE — one LLM pass writes the dossier narrative.
-// The PAID contact reveal (rocketreach_lookup + fullenrich) is a separate step
-// (revealContacts) triggered by an explicit user click, not this pipeline.
+// The Reveal button is now the FullEnrich (pricier) escalation only (revealContacts),
+// triggered by an explicit user click — RocketReach already ran in this pipeline.
 //
 // Everything is best-effort + fail-open — a blocked profile or a dead search never
 // aborts the run; the dossier just carries whatever resolved.
@@ -432,6 +433,18 @@ export async function runPersonDeepDive({ url, email, name, company, env = proce
   const maxFollowers = social.reduce((m, s) => Math.max(m, s.followers || 0), 0);
   const vip = computeVip({ social, maxFollowers, presenceCount: social.length, hasWiki, hasKG: !!kg });
 
+  // Auto-run the RocketReach lookup (paid, ~1 credit) so emails/phones surface on
+  // submit — the pricier FullEnrich stays behind the Reveal button. Skip when an
+  // email-seed reverse-lookup already surfaced contacts.
+  let autoContacts = (ident.contacts && (ident.contacts.phones.length || ident.contacts.emails.length)) ? ident.contacts : null;
+  if (!autoContacts) {
+    autoContacts = await rrLookupContacts({
+      linkedin_url: subject.linkedin_url || (rrProfile && rrProfile.linkedin_url) || null,
+      name: subject.name || null,
+      company: subject.company || (rrProfile && rrProfile.current_employer) || null,
+    }, env);
+  }
+
   return {
     subject,
     social,
@@ -451,10 +464,28 @@ export async function runPersonDeepDive({ url, email, name, company, env = proce
       linkedin_url: subject.linkedin_url || null, location: subject.location || null,
       source: 'rocketreach_lookup',
     } : null),
-    // Contacts already surfaced by an EMAIL seed's reverse-lookup (phone / LinkedIn) —
-    // so the user sees them without a separate reveal. Null for a URL seed.
-    contacts: (ident.contacts && (ident.contacts.phones.length || ident.contacts.emails.length)) ? ident.contacts : null,
+    // Contacts from the auto RocketReach lookup (or an email-seed reverse-lookup) —
+    // shown without a paid reveal. FullEnrich (pricier) is the Reveal button.
+    contacts: autoContacts,
   };
+}
+
+// RocketReach lookup (paid, ~1 credit) — run AUTOMATICALLY during the deep dive so
+// emails/phones appear on submit. Returns {emails, phones, sources} or null.
+async function rrLookupContacts(subject, env) {
+  const s = subject || {};
+  let args = null;
+  if (s.linkedin_url) args = { linkedin_url: s.linkedin_url };
+  else if (s.name) args = { name: s.name, ...(s.company ? { company: s.company } : {}) };
+  if (!args) return null;
+  const rr = await runTool('rocketreach_lookup', args, env).catch(() => null);
+  if (!rr || !rr.ok || !rr.data || !rr.data.found) return null;
+  const emails = []; const phones = [];
+  for (const e of rr.data.emails || []) emails.push({ value: typeof e === 'string' ? e : (e.email || e.value), source: 'rocketreach' });
+  for (const p of rr.data.phones || []) phones.push({ value: typeof p === 'string' ? p : (p.number || p.value), source: 'rocketreach' });
+  if (!emails.length && !phones.length) return null;
+  await enrichLineTypes(phones, env).catch(() => {});
+  return { emails, phones, sources: ['rocketreach_lookup'], found: true };
 }
 
 // ---- public: the PAID contact reveal --------------------------------------
@@ -462,26 +493,21 @@ export async function runPersonDeepDive({ url, email, name, company, env = proce
 // Resolve emails/phones for an already-identified subject. RocketReach lookup
 // first (by LinkedIn URL / id / name+company), FullEnrich as the fallback when
 // RocketReach yields nothing. Bounded — fits the 60s sync API cap.
-export async function revealContacts({ subject, includePhone = false, env = process.env }) {
+export async function revealContacts({ subject, existing = null, includePhone = false, env = process.env }) {
   const out = { emails: [], phones: [], sources: [] };
   const s = subject || {};
 
-  // (1) RocketReach lookup (paid, 1 credit). Prefer LinkedIn URL.
-  let rrArgs = null;
-  if (s.linkedin_url) rrArgs = { linkedin_url: s.linkedin_url };
-  else if (s.name) rrArgs = { name: s.name, ...(s.company ? { company: s.company } : {}) };
-  if (rrArgs) {
-    const rr = await runTool('rocketreach_lookup', rrArgs, env).catch(() => null);
-    if (rr && rr.ok && rr.data && rr.data.found) {
-      for (const e of rr.data.emails || []) out.emails.push({ value: typeof e === 'string' ? e : (e.email || e.value), source: 'rocketreach' });
-      for (const p of rr.data.phones || []) out.phones.push({ value: typeof p === 'string' ? p : (p.number || p.value), source: 'rocketreach' });
-      out.sources.push('rocketreach_lookup');
-      if (rr.data.current_title && !s.title) s.title = rr.data.current_title;
-    }
+  // Seed with whatever the AUTO RocketReach lookup already surfaced, so a reveal
+  // never drops those. RocketReach now runs on submit; Reveal = FullEnrich only
+  // (much pricier), so it always escalates rather than re-running RocketReach.
+  if (existing) {
+    for (const e of existing.emails || []) out.emails.push(e);
+    for (const p of existing.phones || []) out.phones.push(p);
+    for (const src of existing.sources || []) out.sources.push(src);
   }
 
-  // (2) FullEnrich fallback (paid) — only when RocketReach found no email.
-  if (!out.emails.length && (s.name || (s.first_name && s.last_name))) {
+  // FullEnrich (paid, pricier) — the universal Reveal action.
+  if (s.name || (s.first_name && s.last_name)) {
     const feArgs = {
       name: s.name || undefined, first_name: s.first_name || undefined, last_name: s.last_name || undefined,
       linkedin_url: s.linkedin_url || undefined, company: s.company || undefined, domain: s.company_domain || undefined,
