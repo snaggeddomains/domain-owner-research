@@ -5409,8 +5409,12 @@ async function runAppraisal(domainInput, opts) {
       const v = digAppraisal(d.appraisal);
       if (okVal(v)) finishAppraisal(domain, v, d.definition);
       else throw new Error('The appraisal service is temporarily unavailable — please try again shortly.');
-    } else if (d.job_id) {
-      await pollAppraisal(domain, d.job_id);
+    } else if (d.job_id || /\bjob_[a-z0-9]+/i.test(JSON.stringify(d || ''))) {
+      // Appraise.net's async job — extract the job id even when it only came back
+      // inside the "Poll …/status/job_… for updates" message, then poll (which
+      // shows a friendly "Appraising…" spinner, never the raw job-ack text).
+      const jobId = d.job_id || (JSON.stringify(d).match(/job_[a-z0-9]+/i) || [])[0];
+      await pollAppraisal(domain, jobId);
     } else {
       const v = digAppraisal(d);
       if (okVal(v)) finishAppraisal(domain, v, d.definition);
@@ -10620,7 +10624,8 @@ function prMsgLinks(p) {
 }
 function prContactsHtml(contacts) {
   if (!contacts) return '';
-  if (!contacts.found) return '<p class="muted">No emails or phone numbers found for this person.</p>';
+  const _hasAny = (contacts.emails || []).length || (contacts.phones || []).length;
+  if (!contacts.found && !_hasAny) return '<p class="muted">No emails or phone numbers found for this person.</p>';
   const em = (contacts.emails || []).map((e) => `<li>✉ <a href="mailto:${escapeHtml(e.value)}">${escapeHtml(e.value)}</a>${e.label ? ` <span class="pr-tag">${escapeHtml(e.label)}</span>` : ''}<span class="pr-src">${escapeHtml(e.source || '')}</span></li>`).join('');
   const ph = (contacts.phones || []).map((p) => {
     const digits = String(p.value || '').replace(/\D/g, '');
@@ -10665,8 +10670,9 @@ function renderPerson(run) {
         <section class="pr-sec">
           <h3>Contact info</h3>
           ${revealed ? prContactsHtml(run.contacts)
-    : `<p class="muted">Email lookup — RocketReach (1 credit), FullEnrich fallback. No extra phone-number credits.</p>
-               <button type="button" id="pr-reveal-btn" class="pr-reveal-btn">🔓 Reveal email</button>`}
+    : `${d.contacts ? prContactsHtml(d.contacts) : '<p class="muted">No email found via RocketReach.</p>'}
+               <p class="muted pr-fe-note">Deeper lookup via FullEnrich — additional emails + mobile (premium, higher cost).</p>
+               <button type="button" id="pr-reveal-btn" class="pr-reveal-btn">🔓 Reveal via FullEnrich</button>`}
           ${nar.reach_recommendation ? `<p class="pr-reach"><strong>Best way to reach:</strong> ${escapeHtml(nar.reach_recommendation)}</p>` : ''}
         </section>
       </div>
@@ -10688,7 +10694,7 @@ async function revealPersonContacts(id, btn) {
     if (!res.ok) throw new Error(data.error || `Failed (${res.status})`);
     if (prLastRun) { prLastRun.revealed = true; prLastRun.contacts = data.contacts; renderPerson(prLastRun); }
   } catch (err) {
-    if (btn) { btn.disabled = false; btn.textContent = '🔓 Reveal email'; }
+    if (btn) { btn.disabled = false; btn.textContent = '🔓 Reveal via FullEnrich'; }
     setPrStatus(String(err.message || err), true);
   }
 }

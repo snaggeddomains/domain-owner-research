@@ -2032,6 +2032,26 @@ Deterministic pipeline (not the agent).
   stays the contact fallback in `revealContacts` (needs a name, so it runs after we have one). **Free-first + reveal:** the auto pass is free-ish (search/read_url/
 rocketreach_search + one LLM synth); the **paid** contact lookup is a separate
 button.
+- **Auto-run RocketReach; Reveal = FullEnrich ONLY (2026-08-13, Rob).** RocketReach `lookup` (~1
+  credit, emails/phones) now runs AUTOMATICALLY inside the deep-dive so contacts surface on submit —
+  it was previously behind the Reveal button. `runPersonDeepDive` calls new `rrLookupContacts(subject,env)`
+  (by linkedin_url ‖ name+company) after synth and stores the result in `dossier.contacts` (with
+  `found:true` + Twilio line-types). The **Reveal button is now the FullEnrich escalation ONLY** (much
+  pricier): `revealContacts` dropped its RocketReach step, ALWAYS runs FullEnrich, and takes an
+  `existing` param (the auto-RR contacts from `run.result.contacts`) so a reveal MERGES onto them
+  rather than dropping them (`api/person.js` handleReveal passes `existing: run.result.contacts`). UI
+  (`public/app.js`): the dossier shows `d.contacts` (auto-RR) automatically; the button relabeled
+  **"🔓 Reveal via FullEnrich"** with a "deeper email + mobile (premium, higher cost)" note;
+  `prContactsHtml` now treats "has emails/phones" as found (auto-RR objects lack an explicit `.found`
+  otherwise). **Cost note:** every person research now spends ~1 RR credit (Rob's call — worth it to
+  see emails immediately). Cache-bust `?v=20260813personrr`.
+- **Appraisal async job-ack never shows raw (2026-08-13).** The Appraisal tool sometimes surfaced the
+  raw Appraise.net message *"Appraisal job created. Poll /api/v1/appraisal/status/job_… for updates."*
+  when the initial `appraise_lookup` returned the job-ack but the client didn't find `d.job_id` in the
+  expected field (so it never routed to `pollAppraisal`, which shows the friendly "Appraising… (Ns)"
+  spinner). Fix in `runAppraisal` (`public/app.js`): route to `pollAppraisal` when a `job_[a-z0-9]+`
+  id appears ANYWHERE in the response (extracted from the poll-URL message text itself), so the raw
+  job-ack is never shown. Same cache-bust.
 
 - **Engine** `lib/person/orchestrate.js`:
   - `runPersonDeepDive({url,name?,company?,env})` — the FREE pass. (1) IDENTIFY:
