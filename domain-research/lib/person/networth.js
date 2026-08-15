@@ -262,7 +262,9 @@ RULES:
 - NAMESAKE GUARD: only attribute a disclosed figure or signals to THIS person if the name AND role/company are consistent. A same-name actor/athlete/other does NOT count.
 - NOT A PERSON: if the subject is actually a company / brand / org (not a named human), set is_individual=false and leave the estimate fields null.
 
-Return STRICT JSON only: {"is_individual": true|false, "rationale":"2-3 sentences naming the driver, framed as a rough estimate", "driver":"founder_equity|vc_carry|exec_comp|public_exec|creator|mixed|unknown", "estimate_low": <usd number|null>, "estimate_mid": <usd number|null>, "estimate_high": <usd number|null>, "disclosed_value": <number|null>, "disclosed_source":"<url or name|null>", "confidence":"high|medium|low", "caveat":"one short caveat line"}`;
+LIQUIDITY SPLIT: also estimate what fraction of the MID is LIQUID (cash, public stock, realized proceeds — money they could actually put toward a purchase) vs ILLIQUID (private-company equity, unvested/paper stake, VC carry not yet realized). Rules of thumb: a founder pre-exit is mostly ILLIQUID (~5–20% liquid); after a major exit/IPO, much more liquid; a salaried exec's accumulated savings are mostly LIQUID (~60–80%); VC carry is illiquid until realized; a disclosed Forbes figure is usually mostly paper/illiquid. Return "liquid_pct" (0–100, the % of the mid that is liquid) + a one-line "liquidity_note".
+
+Return STRICT JSON only: {"is_individual": true|false, "rationale":"2-3 sentences naming the driver, framed as a rough estimate", "driver":"founder_equity|vc_carry|exec_comp|public_exec|creator|mixed|unknown", "estimate_low": <usd number|null>, "estimate_mid": <usd number|null>, "estimate_high": <usd number|null>, "liquid_pct": <0-100|null>, "liquidity_note":"<one short line|null>", "disclosed_value": <number|null>, "disclosed_source":"<url or name|null>", "confidence":"high|medium|low", "caveat":"one short caveat line"}`;
 
 async function narrate({ subject, firmo, core, web, env }) {
   if (!env.ANTHROPIC_API_KEY) return null;
@@ -350,12 +352,22 @@ export async function estimateForSubject({ subject, maxFollowers = 0, env = proc
     confidence = ['high', 'medium', 'low'].includes(llm.confidence) ? llm.confidence : core.confidence;
   }
 
+  // Liquid (cash / accessible) vs illiquid (private equity / carry) split of the mid.
+  const driver = (llm && llm.driver) || core.coreLabel || 'unknown';
+  const LIQ_DEFAULT = { founder_equity: 12, founder_nofirmo: 15, vc_carry: 20, exec_comp: 70, public_exec: 35, creator: 45, mixed: 25, unknown: 40 };
+  let liqPct = (llm && Number.isFinite(Number(llm.liquid_pct))) ? Number(llm.liquid_pct) : (LIQ_DEFAULT[driver] != null ? LIQ_DEFAULT[driver] : 30);
+  if (disclosed) liqPct = (llm && Number.isFinite(Number(llm.liquid_pct))) ? liqPct : 30;  // disclosed = unknown composition
+  liqPct = Math.max(0, Math.min(100, Math.round(liqPct)));
+  const liquid = Math.round(mid * liqPct / 100);
+  const liquidity = { liquid, illiquid: Math.max(0, mid - liquid), pct: liqPct, note: (llm && llm.liquidity_note) || null };
+
   return {
     band, low, mid, high, confidence,
     display: `${money(low)} – ${money(high)}`,
     role: (llm && llm.driver) ? String(llm.driver).replace(/_/g, ' ') : core.role,
     components: core.components,
     valuation: core.valuation,
+    liquidity,
     disclosed,
     rationale: (llm && llm.rationale) || defaultRationale(core, company),
     caveat: (llm && llm.caveat) || 'Rough estimate from public and inferred signals — not a verified figure.',

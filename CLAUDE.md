@@ -2148,8 +2148,14 @@ low/mid/high range, band, confidence, and the weighted components behind it. Use
     the deterministic floor (sub-$100K) because the LLM was clamped to a [0.5,2] nudge.
     `estimateForSubject` uses the LLM low/mid/high floored by a solid founder-equity figure;
     `is_individual:false` → a "Not a person" card (no number). Fail-open to the prior when no ANTHROPIC key.
+  - **Liquid-vs-illiquid split (2026-08-15).** The LLM also returns `liquid_pct` + `liquidity_note`
+    (what share of the mid is cash/accessible vs private-company equity/carry — founder pre-exit ~5–20%
+    liquid, salaried exec savings ~60–80%, VC carry illiquid, disclosed Forbes figure mostly paper).
+    `estimateForSubject` computes `liquidity{liquid, illiquid, pct, note}` (LLM pct, else a driver-based
+    `LIQ_DEFAULT`), rendered as a split bar in the card — the number that actually matters for
+    ability-to-pay in a negotiation.
   - `runNetWorth({url,email,name})` / `estimateForSubject({subject})` — the whole flow; returns
-    `{ok, subject, band, low, mid, high, confidence, display, components[], firmographics, disclosed, rationale, caveat, not_individual?}`.
+    `{ok, subject, band, low, mid, high, confidence, display, components[], liquidity, firmographics, disclosed, rationale, caveat, not_individual?}`.
 - **API** `api/networth.js` — **inline/sync** (maxDuration 60, no Inngest, no DB), gated by the existing
   **`research.person`** permission (reused — no admin-repo change; a dedicated `research.networth` perm
   is a possible follow-up). `POST {url|email, name?}` → the estimate. `withCategory('networth')`.
@@ -2158,7 +2164,7 @@ low/mid/high range, band, confidence, and the weighted components behind it. Use
   name → an estimate card (band pill, big range + mid, confidence, disclosed callout, rationale,
   "How it was built" components, free company-signals line, caveat). Route `networth` added to
   `currentToolRoute` regex + `TOOL_PERMISSION` (→ `person`) + `VIEWS`. Gated with `can('person')`.
-  Cache-bust `app.js`/`styles.css` `?v=20260815networth2`. Auto-appears in ⌘K (DOM-sourced nav-btn).
+  Cache-bust `app.js`/`styles.css` `?v=20260815networth3`. Auto-appears in ⌘K (DOM-sourced nav-btn).
 - **Calibration:** the LLM headline is the main lever now (edit `NW_SYSTEM`'s "what net worth means"
   rules); the deterministic prior/floor knobs (`STAGE` stakes/valMults, the 0.35 illiquidity discount,
   `execComp` bands, creator rate) still bound the low end. If estimates read too high/low for a role

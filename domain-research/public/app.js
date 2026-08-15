@@ -10791,6 +10791,15 @@ function renderNetWorth(d) {
     f.employees && `Employees: ${Number(f.employees).toLocaleString()}`,
   ].filter(Boolean) : [];
   const disclosed = d.disclosed ? `<div class="nw-disclosed">📣 Disclosed figure: <strong>${nwMoney(d.disclosed.value)}</strong>${d.disclosed.source ? ` <span class="nw-src">(${nwEsc(d.disclosed.source)})</span>` : ''}</div>` : '';
+  const lq = d.liquidity;
+  const liquidity = (lq && (lq.liquid > 0 || lq.illiquid > 0)) ? `
+      <div class="nw-sec-h">Liquid vs illiquid <span class="nw-liq-mid">(of ~${nwMoney(d.mid)} mid)</span></div>
+      <div class="nw-liq-bar"><span class="nw-liq-fill" style="width:${Math.max(2, Math.min(100, lq.pct))}%"></span></div>
+      <div class="nw-liq-legend">
+        <span class="nw-liq-l"><span class="nw-dot nw-dot-liq"></span>Liquid (cash / accessible): <strong>${nwMoney(lq.liquid)}</strong> · ${lq.pct}%</span>
+        <span class="nw-liq-l"><span class="nw-dot nw-dot-ill"></span>Illiquid (equity / carry): <strong>${nwMoney(lq.illiquid)}</strong></span>
+      </div>
+      ${lq.note ? `<div class="nw-liq-note">${nwEsc(lq.note)}</div>` : ''}` : '';
   els.nwResults.innerHTML = `
     <div class="nw-card">
       <div class="nw-head">
@@ -10801,6 +10810,7 @@ function renderNetWorth(d) {
       <div class="nw-conf">Confidence: <strong>${conf}</strong>${d.role ? ` · ${nwEsc(String(d.role).replace(/_/g, ' '))}` : ''}</div>
       ${disclosed}
       <p class="nw-rationale">${nwEsc(d.rationale || '')}</p>
+      ${liquidity}
       ${comps ? `<div class="nw-sec-h">How it was built</div><ul class="nw-comps">${comps}</ul>` : ''}
       ${firmoBits.length ? `<div class="nw-sec-h">Company signals (free web)</div><div class="nw-firmo">${firmoBits.join(' · ')}${f && f.note ? ` <span class="nw-note">— ${nwEsc(f.note)}</span>` : ''}</div>` : ''}
       <div class="nw-caveat">⚠️ ${nwEsc(d.caveat || 'Rough estimate from public/inferred signals — not verified. No paid data spent.')}</div>
