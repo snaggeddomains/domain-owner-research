@@ -10800,12 +10800,16 @@ function renderNetWorth(d) {
         <span class="nw-liq-l"><span class="nw-dot nw-dot-ill"></span>Illiquid (equity / carry): <strong>${nwMoney(lq.illiquid)}</strong></span>
       </div>
       ${lq.note ? `<div class="nw-liq-note">${nwEsc(lq.note)}</div>` : ''}` : '';
+  const warn = (d.subject && d.subject.low_confidence)
+    ? '<div class="nw-warn">⚠️ <strong>Low-confidence identity</strong> — verify this is the right person. A personal email (e.g. @gmail) or a common name can match a <strong>namesake</strong>. Add a full name or a LinkedIn URL to disambiguate.</div>'
+    : '';
   els.nwResults.innerHTML = `
-    <div class="nw-card">
+    <div class="nw-card${(d.subject && d.subject.low_confidence) ? ' nw-card-warn' : ''}">
       <div class="nw-head">
         <div class="nw-who">${nwEsc(who)}</div>
         <div class="nw-band nw-band-${bandCls}">${nwEsc(d.band)}</div>
       </div>
+      ${warn}
       <div class="nw-range">${nwEsc(d.display || `${nwMoney(d.low)} – ${nwMoney(d.high)}`)}<span class="nw-mid">mid ~${nwMoney(d.mid)}</span></div>
       <div class="nw-conf">Confidence: <strong>${conf}</strong>${d.role ? ` · ${nwEsc(String(d.role).replace(/_/g, ' '))}` : ''}</div>
       ${disclosed}

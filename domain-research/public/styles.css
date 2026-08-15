@@ -2465,6 +2465,8 @@ a.sr-ag-co-link:hover { border-color: var(--coral); color: var(--coral-deep); ba
 .nw-comp-lab { font-weight: 700; color: var(--navy-2, #1e3a52); }
 .nw-comp-mid { text-align: right; font-weight: 700; color: #0e9f6e; }
 .nw-comp-det { grid-column: 1 / -1; font-size: .82rem; color: var(--navy-3); }
+.nw-card-warn { border-color: #f0c060; }
+.nw-warn { margin: 8px 0 4px; padding: 9px 12px; background: #fdf3d8; border: 1px solid #f0d890; border-radius: 9px; font-size: .85rem; color: #6b5310; line-height: 1.45; }
 .nw-liq-mid { font-weight: 400; text-transform: none; letter-spacing: 0; color: var(--navy-3); }
 .nw-liq-bar { height: 12px; border-radius: 999px; background: #e07b2c; overflow: hidden; margin: 2px 0 8px; }
 .nw-liq-fill { display: block; height: 100%; background: #0e9f6e; border-radius: 999px 0 0 999px; }
