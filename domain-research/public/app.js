@@ -302,6 +302,9 @@ const els = {
   prStatus: $('pr-status'), prResults: $('pr-results'), prReveal: $('pr-reveal'),
   prRecent: $('pr-recent'), prRecentList: $('pr-recent-list'), prRecentAll: $('pr-recent-all'),
   prRunsSearch: $('pr-runs-search'), prRunsList: $('pr-runs-list'),
+  navNetworth: $('nav-networth'),
+  nwForm: $('nw-form'), nwInput: $('nw-input'), nwName: $('nw-name'),
+  nwStatus: $('nw-status'), nwResults: $('nw-results'),
   navResearchGroup: $('nav-research-group'), navSnapGroup: $('nav-snap-group'), navReportsGroup: $('nav-reports-group'),
   navSnapEval: $('nav-snap-eval'), navBulkEval: $('nav-bulk-eval'), navSnapOpps: $('nav-snap-opps'), navSnapNames: $('nav-snap-names'),
   navRepAnalytics: $('nav-rep-analytics'), navRepMarketplace: $('nav-rep-marketplace'), navRepChat: $('nav-rep-chat'), navRepCost: $('nav-rep-cost'),
@@ -575,7 +578,7 @@ function clearHash() {
 // the SPA): Domain DB Screen at /dbscreen, DB Search at /dbsearch.
 const VANITY_TOOLS = ['dbscreen', 'dbsearch'];
 function currentToolRoute() {
-  let m = location.pathname.match(/^\/research\/(trademark|appraisal|naming|dbscreen|dbsearch|nameserver|sales|portfolio|ahrefs|person|evaluate|bulk-eval|tld-count|renewal|expiring|beeper|whois|auction-owners|diq|admin)(?:\/(.+?))?\/?$/);
+  let m = location.pathname.match(/^\/research\/(trademark|appraisal|naming|dbscreen|dbsearch|nameserver|sales|portfolio|ahrefs|person|networth|evaluate|bulk-eval|tld-count|renewal|expiring|beeper|whois|auction-owners|diq|admin)(?:\/(.+?))?\/?$/);
   if (!m) m = location.pathname.match(/^\/(dbscreen|dbsearch)(?:\/(.+?))?\/?$/);
   if (!m) return null;
   return { tool: m[1], slug: m[2] ? decodeURIComponent(m[2]) : '' };
@@ -604,6 +607,7 @@ const TOOL_PERMISSION = {
   portfolio: 'portfolio',
   ahrefs: 'ahrefs',
   person: 'person',
+  networth: 'person',
   evaluate: 'evaluate',
   'bulk-eval': 'bulk_eval',
   'tld-count': 'domain_owner',
@@ -996,6 +1000,11 @@ function route() {
     showView('person');
     if (tr.slug) openPersonRun(tr.slug);
     else resetPersonView();
+    return;
+  }
+  if (tr && tr.tool === 'networth') {
+    showView('networth');
+    resetNetWorthView();
     return;
   }
   if (tr && tr.tool === 'evaluate') {
@@ -2965,6 +2974,7 @@ function gateNavByPermissions(user) {
   if (els.navPortfolio) els.navPortfolio.hidden = !can('portfolio');
   if (els.navAhrefs) els.navAhrefs.hidden = !can('ahrefs');
   if (els.navPerson) els.navPerson.hidden = !can('person');
+  if (els.navNetworth) els.navNetworth.hidden = !can('person');
   const repAccess = canEnterReports(user);
   for (const el of [els.navRepAnalytics, els.navRepMarketplace, els.navRepChat, els.navRepCost]) {
     if (el) el.hidden = !repAccess;
@@ -4276,6 +4286,7 @@ const VIEWS = {
   ahrefs: { view: 'view-ahrefs', nav: 'nav-ahrefs' },
   person: { view: 'view-person', nav: 'nav-person' },
   'person-runs': { view: 'view-person-runs', nav: 'nav-person' },
+  networth: { view: 'view-networth', nav: 'nav-networth' },
   evaluate: { view: 'view-evaluate', nav: 'nav-snap-eval' },
   'bulk-eval': { view: 'view-bulk-eval', nav: 'nav-bulk-eval' },
   'tld-count': { view: 'view-tldcount', nav: 'nav-tldcount' },
@@ -10731,6 +10742,87 @@ els.prRunsSearch?.addEventListener('input', () => {
   prRunsTimer = setTimeout(() => loadPersonRuns(els.prRunsSearch.value.trim()), 200);
 });
 els.navPerson?.addEventListener('click', (e) => { if (newTabClick(e)) return; e.preventDefault(); setToolUrl('person', ''); showView('person'); resetPersonView(); });
+
+// ── Net Worth — standalone FREE ability-to-pay estimate ──────────────────────
+function setNwStatus(text, isErr = false) {
+  if (!els.nwStatus) return;
+  els.nwStatus.textContent = text || '';
+  els.nwStatus.hidden = !text;
+  els.nwStatus.classList.toggle('error', !!isErr);
+}
+function resetNetWorthView() {
+  if (els.nwInput) els.nwInput.value = '';
+  if (els.nwName) els.nwName.value = '';
+  if (els.nwResults) { els.nwResults.hidden = true; els.nwResults.innerHTML = ''; }
+  setNwStatus('');
+}
+const NW_BAND_CLASS = { '<$1M': 'lo', '$1M–$10M': 'mid', '$10M–$50M': 'hi', '$50M–$250M': 'vhi', '$250M+': 'vvhi', unknown: 'lo' };
+function nwEsc(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+function nwMoney(n) {
+  if (!(n > 0)) return '$0';
+  if (n >= 1e9) return `$${(n / 1e9).toFixed(n >= 1e10 ? 0 : 1)}B`;
+  if (n >= 1e6) return `$${(n / 1e6).toFixed(n >= 1e7 ? 0 : 1)}M`;
+  if (n >= 1e3) return `$${(n / 1e3).toFixed(0)}K`;
+  return `$${Math.round(n)}`;
+}
+function renderNetWorth(d) {
+  if (!els.nwResults) return;
+  const s = d.subject || {};
+  const who = [s.name, s.title && `— ${s.title}`, s.company && `at ${s.company}`].filter(Boolean).join(' ') || 'Unidentified';
+  const conf = { high: 'High', medium: 'Medium', low: 'Low' }[d.confidence] || d.confidence || 'Low';
+  const bandCls = NW_BAND_CLASS[d.band] || 'lo';
+  const comps = (d.components || []).map((c) => `<li class="nw-comp"><span class="nw-comp-lab">${nwEsc(c.label)}</span><span class="nw-comp-mid">~${nwMoney(c.mid)}</span><span class="nw-comp-det">${nwEsc(c.detail || '')}</span></li>`).join('');
+  const f = d.firmographics;
+  const firmoBits = f ? [
+    f.company && `Company: <strong>${nwEsc(f.company)}</strong>`,
+    f.funding && `Funding: ${nwEsc(f.funding)}${f.fundingStage ? ` (${nwEsc(f.fundingStage)})` : ''}`,
+    f.valuation && `Est. valuation: ${nwMoney(f.valuation)}`,
+    f.revenue && `Revenue: ${nwEsc(f.revenue)}`,
+    f.employees && `Employees: ${Number(f.employees).toLocaleString()}`,
+  ].filter(Boolean) : [];
+  const disclosed = d.disclosed ? `<div class="nw-disclosed">📣 Disclosed figure: <strong>${nwMoney(d.disclosed.value)}</strong>${d.disclosed.source ? ` <span class="nw-src">(${nwEsc(d.disclosed.source)})</span>` : ''}</div>` : '';
+  els.nwResults.innerHTML = `
+    <div class="nw-card">
+      <div class="nw-head">
+        <div class="nw-who">${nwEsc(who)}</div>
+        <div class="nw-band nw-band-${bandCls}">${nwEsc(d.band)}</div>
+      </div>
+      <div class="nw-range">${nwEsc(d.display || `${nwMoney(d.low)} – ${nwMoney(d.high)}`)}<span class="nw-mid">mid ~${nwMoney(d.mid)}</span></div>
+      <div class="nw-conf">Confidence: <strong>${conf}</strong>${d.role ? ` · ${nwEsc(String(d.role).replace(/_/g, ' '))}` : ''}</div>
+      ${disclosed}
+      <p class="nw-rationale">${nwEsc(d.rationale || '')}</p>
+      ${comps ? `<div class="nw-sec-h">How it was built</div><ul class="nw-comps">${comps}</ul>` : ''}
+      ${firmoBits.length ? `<div class="nw-sec-h">Company signals (free web)</div><div class="nw-firmo">${firmoBits.join(' · ')}${f && f.note ? ` <span class="nw-note">— ${nwEsc(f.note)}</span>` : ''}</div>` : ''}
+      <div class="nw-caveat">⚠️ ${nwEsc(d.caveat || 'Rough estimate from public/inferred signals — not verified. No paid data spent.')}</div>
+    </div>`;
+  els.nwResults.hidden = false;
+}
+async function runNetWorth() {
+  const input = String(els.nwInput?.value || '').trim();
+  if (!input) return;
+  const name = String(els.nwName?.value || '').trim();
+  if (els.nwResults) els.nwResults.hidden = true;
+  setNwStatus('Estimating… (identifying + pulling public company signals — free, no credits)');
+  if (els.nwGo) els.nwGo.disabled = true;
+  try {
+    const isEmail = /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(input);
+    const res = await fetch('/research/api/networth', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(isEmail ? { email: input, name } : { url: input, name }),
+    });
+    const data = await apiJson(res);
+    if (!res.ok || !data.ok) throw new Error(data.error || `Failed (${res.status})`);
+    setNwStatus('');
+    renderNetWorth(data);
+  } catch (err) {
+    if (err.sessionExpired) return;
+    setNwStatus(String(err.message || err), true);
+  } finally {
+    const btn = document.getElementById('nw-go'); if (btn) btn.disabled = false;
+  }
+}
+els.nwForm?.addEventListener('submit', (e) => { e.preventDefault(); runNetWorth(); });
+els.navNetworth?.addEventListener('click', (e) => { if (newTabClick(e)) return; e.preventDefault(); setToolUrl('networth', ''); showView('networth'); resetNetWorthView(); });
 
 els.nsRecent?.addEventListener('click', (e) => {
   if (e.target.dataset && e.target.dataset.recentClear) { try { localStorage.removeItem(NS_RECENT_KEY); } catch {} nsRenderRecent(); return; }
