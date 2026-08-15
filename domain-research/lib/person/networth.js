@@ -159,6 +159,15 @@ function nameFromWeb(web) {
   }
   return null;
 }
+// Do two names plausibly refer to the same person? Require ≥2 shared tokens
+// (first + last), so "Ralph Schutz" does NOT match "Rob Schutz" / "R Schutz" —
+// blocks a name-only search from substituting a same-surname namesake.
+function nameTokens(s) { return String(s || '').toLowerCase().replace(/[^a-z\s]/g, ' ').split(/\s+/).filter((t) => t.length > 1); }
+function nameMatches(a, b) {
+  const A = nameTokens(a); const B = new Set(nameTokens(b));
+  if (A.length < 2 || B.size < 2) return false;
+  return A.filter((t) => B.has(t)).length >= 2;
+}
 
 const FREEMAIL = /^(gmail|googlemail|yahoo|ymail|hotmail|outlook|live|icloud|me|aol|proton|protonmail|pm|gmx|mail|hey|fastmail|zoho)\./i;
 function applyRr(subject, d) {
@@ -175,35 +184,51 @@ function applyRr(subject, d) {
 // came back role-less). Falls back to read_url + web_search + free rocketreach_search.
 // (Still no Apollo/FullEnrich — the expensive enrichment stays off.)
 export async function identifyPerson({ url, email, name, env }) {
-  const subject = { name: name || null, title: null, company: null, company_domain: null, linkedin_url: null, input: url || email };
+  const provided = name ? String(name).trim() : null;
+  const subject = { name: provided || null, title: null, company: null, company_domain: null, linkedin_url: null, input: url || email, identity_source: null, low_confidence: false };
   const seedEmail = email && EMAIL_RE.test(String(email).trim()) ? String(email).trim().toLowerCase()
     : (url && !/^https?:\/\//i.test(url) && EMAIL_RE.test(String(url).trim()) ? String(url).trim().toLowerCase() : null);
 
   if (seedEmail) {
     const dom = seedEmail.split('@')[1] || null;
-    subject.company_domain = dom && !FREEMAIL.test(dom) ? dom : null;   // never treat gmail as the company
-    // RocketReach reverse-lookup by email (~1 credit) — the reliable person resolve.
+    const freemail = dom && FREEMAIL.test(dom);                          // personal inbox — ambiguous
+    subject.company_domain = dom && !freemail ? dom : null;              // never treat gmail as the company
+    // RocketReach reverse-lookup by email (~1 credit). Distrust it when the user gave
+    // a name it doesn't match (a personal email can be attached to the wrong record).
     const rr = await runTool('rocketreach_lookup', { email: seedEmail }, env).catch(() => null);
-    if (rr && rr.ok && rr.data && rr.data.found) applyRr(subject, rr.data);
-    if (!subject.name) subject.name = nameFromWeb(await webSearch(`"${seedEmail}"`, env));
-    if (!subject.name && dom) subject.name = nameFromWeb(await webSearch(`${seedEmail.split('@')[0].replace(/[._-]+/g, ' ')} ${dom}`, env));
+    const d = rr && rr.ok && rr.data && rr.data.found ? rr.data : null;
+    if (d && (!provided || !d.name || nameMatches(d.name, provided))) { applyRr(subject, d); subject.identity_source = 'rocketreach_email'; }
+    if (!subject.name) {
+      subject.name = nameFromWeb(await webSearch(`"${seedEmail}"`, env))
+        || (dom && nameFromWeb(await webSearch(`${seedEmail.split('@')[0].replace(/[._-]+/g, ' ')} ${dom}`, env))) || null;
+      if (subject.name) subject.identity_source = subject.identity_source || 'web';
+    }
+    // A freemail, OR no exact professional-email match, can resolve to a namesake → flag it.
+    if (freemail || subject.identity_source !== 'rocketreach_email') subject.low_confidence = true;
   } else if (url) {
     if (/linkedin\.com/i.test(url)) subject.linkedin_url = url.split('?')[0];  // strip utm/query
-    // RocketReach lookup by LinkedIn URL (~1 credit) → title/company reliably.
+    // RocketReach lookup by LinkedIn URL (~1 credit) → EXACT match (the URL is the key).
     if (subject.linkedin_url) {
       const rr = await runTool('rocketreach_lookup', { linkedin_url: subject.linkedin_url }, env).catch(() => null);
-      if (rr && rr.ok && rr.data && rr.data.found) applyRr(subject, rr.data);
+      const d = rr && rr.ok && rr.data && rr.data.found ? rr.data : null;
+      if (d) { applyRr(subject, d); subject.identity_source = 'rocketreach_linkedin'; }
     }
-    if (!subject.name) { const page = await runTool('read_url', { url }, env).catch(() => null); if (page && page.ok && page.data) subject.name = nameFromTitle(page.data.title); }
+    if (!subject.name) { const page = await runTool('read_url', { url }, env).catch(() => null); if (page && page.ok && page.data) { subject.name = nameFromTitle(page.data.title); subject.identity_source = subject.identity_source || 'page'; } }
+    if (!subject.identity_source) subject.low_confidence = true;
   }
 
-  // Fill any gaps with the FREE rocketreach_search (no credit).
+  // Fill gaps with the FREE rocketreach_search. A LinkedIn-URL search is exact; a
+  // NAME-ONLY search can return a same-surname namesake, so only apply a name hit that
+  // actually MATCHES the known name (this is what wrongly grabbed "Ralph Schutz, MD").
   if (!subject.title || !subject.company) {
-    const rrArgs = subject.linkedin_url ? { linkedin_url: subject.linkedin_url } : subject.name ? { name: subject.name } : null;
-    if (rrArgs) {
-      const r = await runTool('rocketreach_search', rrArgs, env).catch(() => null);
+    if (subject.linkedin_url) {
+      const r = await runTool('rocketreach_search', { linkedin_url: subject.linkedin_url }, env).catch(() => null);
+      applyRr(subject, (r && r.ok && ((r.data?.profiles || r.data?.results || r.data?.data || [])[0])) || null);
+    } else if (subject.name) {
+      const r = await runTool('rocketreach_search', { name: subject.name }, env).catch(() => null);
       const p = (r && r.ok && ((r.data?.profiles || r.data?.results || r.data?.data || [])[0])) || null;
-      applyRr(subject, p);
+      if (p && p.name && nameMatches(p.name, subject.name)) applyRr(subject, p);
+      else if (p) subject.low_confidence = true;   // a same-name-ish profile we can't be sure of
     }
   }
   return subject;

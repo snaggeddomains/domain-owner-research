@@ -2138,6 +2138,15 @@ low/mid/high range, band, confidence, and the weighted components behind it. Use
     rschutz@gmail.com to a *company* and returned role-less LinkedIn hits). Falls back to `read_url` +
     `web_search` + free `rocketreach_search`. Freemail domains are never treated as the company; a
     LinkedIn URL's `?utm…` is stripped. Still no Apollo/FullEnrich.
+    - **Namesake guard + low-confidence flag (2026-08-15).** `Rschutz@gmail.com` resolved to "Ralph
+      Schutz — MD at Quintiles" (a namesake). Root cause: a personal freemail isn't in RR's (work-email)
+      index, so it fell through to a **name-only** `rocketreach_search` that grabbed the top same-surname
+      professional. Fixes: (1) a name-only search hit is applied ONLY when `nameMatches` (≥2 shared
+      tokens — "Ralph Schutz" ≠ "Rob Schutz") — else it flags low-confidence, doesn't substitute; (2) an
+      RR-email record is distrusted when the user-provided name doesn't match it; (3) `subject.identity_source`
+      (`rocketreach_email|rocketreach_linkedin|web|page`) + `subject.low_confidence` (true for a freemail
+      seed OR any non-exact match) are returned and the UI shows a **⚠️ Low-confidence identity** banner
+      ("add a full name or LinkedIn to disambiguate"). A LinkedIn-URL seed stays exact/high-confidence.
   - `freeCompanyFinancials({company})` — web_search the company + ONE LLM extract → `{fundingAmount,
     fundingStage, valuation, employees, revenueAmount}` from the snippets (replaces Apollo). Fail-open null.
   - `narrate()` — **LLM is the PRIMARY estimator** (recalibration): reads role + company financials +
