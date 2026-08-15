@@ -2118,6 +2118,49 @@ button.
 
 ---
 
+# Net Worth — standalone FREE ability-to-pay estimate (2026-08-15)
+
+A SEPARATE Research tool (`/research/networth`, own nav tab **Net Worth**), NOT a toggle on the
+person deep-dive (Rob's call: person research auto-spends a RocketReach credit we don't want for a
+net-worth read). Same inputs as the deep-dive — a **LinkedIn/social URL or an email** — and produces
+a rough **net-worth estimate** (an ability-to-pay signal for a domain negotiation), with a visible
+low/mid/high range, band, confidence, and the weighted components behind it. **FREE — spends NO paid
+credits** (no Apollo, no RocketReach `lookup`, no FullEnrich); calibrate first, add paid depth later.
+- **Engine** `lib/person/networth.js`:
+  - `computeNetWorth({title, firmo, maxFollowers})` — PURE deterministic core. Weights: **founder
+    equity** (stake-by-stage × est. valuation × 0.35 illiquidity discount — `STAGE` table; valuation =
+    a direct `firmo.valuation` if known, else ~4–6× total raised, else ~3× revenue, else ~$200K×emp),
+    **executive comp** accumulation (seniority band × ~8yr × 0.25 save-rate), **creator/audience**
+    proxy (followers×$0.10/yr, only ≥25K), a seniority **baseline floor**, → low/mid/high + `bandFor`
+    (`<$1M / $1M–$10M / $10M–$50M / $50M–$250M / $250M+`) + confidence.
+  - `freeIdentify({url,email})` — FREE identify: `read_url` + free `web_search` + the FREE
+    `rocketreach_search` (NOT the paid `rocketreach_lookup`). Email seed → web-search the address for a
+    name; URL → read_url title; then free RR search for title/employer/linkedin.
+  - `freeCompanyFinancials({company})` — web_search the company + ONE LLM extract (`PERSON_MODEL`||
+    `OUTREACH_MODEL`) → `{fundingAmount, fundingStage, valuation, employees, revenueAmount}` from the
+    snippets (replaces Apollo — free). Fail-open null.
+  - `narrate()` — LLM rationale + **disclosed-figure adjudication** (anchors mid to a credible public
+    Forbes/filing figure for THIS person, namesake-guarded) OR a bounded [0.5,2] nudge; always a caveat.
+  - `runNetWorth({url,email,name})` / `estimateForSubject({subject})` — the whole flow; returns
+    `{ok, subject, band, low, mid, high, confidence, display, components[], firmographics, disclosed, rationale, caveat}`.
+- **API** `api/networth.js` — **inline/sync** (maxDuration 60, no Inngest, no DB), gated by the existing
+  **`research.person`** permission (reused — no admin-repo change; a dedicated `research.networth` perm
+  is a possible follow-up). `POST {url|email, name?}` → the estimate. `withCategory('networth')`.
+- **UI** (`public/app.js` `nw*` helpers — `runNetWorth`/`renderNetWorth`/`resetNetWorthView`;
+  `#view-networth` + `#nav-networth` in the Research group; `.nw-*` styles): URL/email box + optional
+  name → an estimate card (band pill, big range + mid, confidence, disclosed callout, rationale,
+  "How it was built" components, free company-signals line, caveat). Route `networth` added to
+  `currentToolRoute` regex + `TOOL_PERMISSION` (→ `person`) + `VIEWS`. Gated with `can('person')`.
+  Cache-bust `app.js`/`styles.css` `?v=20260815networth`. Auto-appears in ⌘K (DOM-sourced nav-btn).
+- **Calibration (starting values, eyeballed 2026-08-15):** seed founder $3M raised → ~$1.2M mid;
+  Series B founder $40M → ~$5.4M; CTO@500 → ~$800K; VP@80 → ~$360K. Tune `STAGE` stakes/valMults,
+  the 0.35 illiquidity discount, `execComp` bands, and the creator rate in `networth.js`.
+- **No new table / migration / env** — reuses the free web_search + free rocketreach_search + the
+  ANTHROPIC key already set. It is deliberately DECOUPLED from `runPersonDeepDive` (which stays
+  paid-on-submit) so this tool never spends a credit.
+
+---
+
 ## Session handoff — 2026-06-02 (lessons notifications + permissions)
 
 - **Lesson submitted → notify curators.** `api/lessons.js` `notifyAdminsOfLesson`

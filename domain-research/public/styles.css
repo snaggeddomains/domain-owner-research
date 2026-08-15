@@ -2443,6 +2443,32 @@ a.sr-ag-co-link:hover { border-color: var(--coral); color: var(--coral-deep); ba
 
 .ev-prem { display:inline-block; background:#e07b2c; color:#fff; font-size:.6rem; font-weight:700; text-transform:uppercase; letter-spacing:.03em; padding:1px 6px; border-radius:6px; vertical-align:middle; }
 
+/* ── Net Worth — free ability-to-pay estimate ─────────────────────────────── */
+.nw-card { background: var(--card, #fff); border: 1px solid var(--line); border-radius: 14px; padding: 20px 22px; margin-top: 12px; }
+.nw-head { display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap; }
+.nw-who { font-size: 1.05rem; font-weight: 800; color: var(--navy-2, #1e3a52); }
+.nw-band { padding: 5px 14px; border-radius: 999px; font-size: .82rem; font-weight: 800; white-space: nowrap; color: #fff; }
+.nw-band-lo { background: #64748b; }
+.nw-band-mid { background: #2563a6; }
+.nw-band-hi { background: #0e9f6e; }
+.nw-band-vhi { background: #e07b2c; }
+.nw-band-vvhi { background: #7c3aed; }
+.nw-range { font-size: 2rem; font-weight: 800; color: var(--navy-2, #1e3a52); margin: 10px 0 2px; letter-spacing: -.01em; }
+.nw-range .nw-mid { font-size: .9rem; font-weight: 600; color: var(--navy-3); margin-left: 10px; letter-spacing: 0; }
+.nw-conf { font-size: .85rem; color: var(--navy-3); }
+.nw-disclosed { margin: 10px 0; padding: 8px 12px; background: #fdf6e3; border: 1px solid #f0e0b0; border-radius: 9px; font-size: .9rem; }
+.nw-disclosed .nw-src { color: var(--navy-3); font-weight: 400; }
+.nw-rationale { margin: 12px 0; color: var(--navy-2, #1e3a52); line-height: 1.5; }
+.nw-sec-h { font-size: .72rem; text-transform: uppercase; letter-spacing: .05em; color: var(--navy-3); font-weight: 700; margin: 14px 0 6px; }
+.nw-comps { list-style: none; margin: 0; padding: 0; }
+.nw-comp { display: grid; grid-template-columns: auto auto; gap: 2px 12px; padding: 8px 0; border-top: 1px solid var(--line); }
+.nw-comp-lab { font-weight: 700; color: var(--navy-2, #1e3a52); }
+.nw-comp-mid { text-align: right; font-weight: 700; color: #0e9f6e; }
+.nw-comp-det { grid-column: 1 / -1; font-size: .82rem; color: var(--navy-3); }
+.nw-firmo { font-size: .88rem; color: var(--navy-2, #1e3a52); line-height: 1.6; }
+.nw-firmo .nw-note { color: var(--navy-3); }
+.nw-caveat { margin-top: 14px; padding-top: 10px; border-top: 1px dashed var(--line); font-size: .8rem; color: var(--navy-3); }
+
 /* ── Person deep-dive ─────────────────────────────────────────────────────── */
 .pr-form { flex-wrap: wrap; }
 .pr-name-input { flex: 1 1 240px; }
