@@ -10769,6 +10769,16 @@ function renderNetWorth(d) {
   if (!els.nwResults) return;
   const s = d.subject || {};
   const who = [s.name, s.title && `— ${s.title}`, s.company && `at ${s.company}`].filter(Boolean).join(' ') || 'Unidentified';
+  if (d.not_individual) {
+    els.nwResults.innerHTML = `
+      <div class="nw-card">
+        <div class="nw-head"><div class="nw-who">${nwEsc(who)}</div><div class="nw-band nw-band-lo">Not a person</div></div>
+        <p class="nw-rationale">${nwEsc(d.rationale || '')}</p>
+        <div class="nw-caveat">⚠️ ${nwEsc(d.caveat || 'Enter a specific individual (name, LinkedIn, or personal email).')}</div>
+      </div>`;
+    els.nwResults.hidden = false;
+    return;
+  }
   const conf = { high: 'High', medium: 'Medium', low: 'Low' }[d.confidence] || d.confidence || 'Low';
   const bandCls = NW_BAND_CLASS[d.band] || 'lo';
   const comps = (d.components || []).map((c) => `<li class="nw-comp"><span class="nw-comp-lab">${nwEsc(c.label)}</span><span class="nw-comp-mid">~${nwMoney(c.mid)}</span><span class="nw-comp-det">${nwEsc(c.detail || '')}</span></li>`).join('');
@@ -10802,7 +10812,7 @@ async function runNetWorth() {
   if (!input) return;
   const name = String(els.nwName?.value || '').trim();
   if (els.nwResults) els.nwResults.hidden = true;
-  setNwStatus('Estimating… (identifying + pulling public company signals — free, no credits)');
+  setNwStatus('Estimating… (identifying the person + pulling public company signals)');
   if (els.nwGo) els.nwGo.disabled = true;
   try {
     const isEmail = /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(input);

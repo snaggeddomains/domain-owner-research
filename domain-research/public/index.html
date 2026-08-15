@@ -35,7 +35,7 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="apple-mobile-web-app-title" content="Snagged Research" />
     <meta name="theme-color" content="#254254" />
-    <link rel="stylesheet" href="styles.css?v=20260815networth" />
+    <link rel="stylesheet" href="styles.css?v=20260815networth2" />
     <!-- Layout: horizontal tab nav (Admin-style), no sidebar. -->
   </head>
   <body>
@@ -952,7 +952,7 @@
         <section id="view-networth" hidden>
           <div class="hero tool-hero">
             <h1 class="hero-title">Net <span class="accent">Worth</span></h1>
-            <p class="hero-sub">Paste a <strong>LinkedIn / social profile URL</strong> or an <strong>email address</strong> and get a rough <strong>net-worth estimate</strong> — an ability-to-pay read for a domain negotiation. <strong>Free:</strong> no RocketReach or Apollo credits spent; the estimate is built from public signals (role, company funding/valuation, any disclosed figure) with a visible range and the components behind it.</p>
+            <p class="hero-sub">Paste a <strong>LinkedIn / social profile URL</strong> or an <strong>email address</strong> and get a rough <strong>net-worth estimate</strong> — an ability-to-pay read for a domain negotiation. Uses a light RocketReach lookup to identify the person (no Apollo/FullEnrich enrichment); the estimate is built from public signals (role, company funding/valuation/exits, VC AUM, any disclosed figure) with a visible range and the components behind it.</p>
           </div>
           <form id="nw-form" class="search pr-form" autocomplete="off">
             <input id="nw-input" type="text" placeholder="profile URL or email — linkedin.com/in/… · jane@company.com" />
@@ -1451,6 +1451,6 @@ The model parses it into structured filters (TLDs, length, budget, tone, etc.) a
     </div>
 
     <!-- Bump ?v= on any public/app.js or styles.css change to bust caches. -->
-    <script src="app.js?v=20260815networth"></script>
+    <script src="app.js?v=20260815networth2"></script>
   </body>
 </html>

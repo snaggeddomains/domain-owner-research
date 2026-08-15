@@ -160,35 +160,50 @@ function nameFromWeb(web) {
   return null;
 }
 
-// Free identify: name / title / company / linkedin. Uses read_url (free), free
-// web_search, and the FREE rocketreach_search (no lookup credit).
-export async function freeIdentify({ url, email, env }) {
-  const subject = { name: null, title: null, company: null, company_domain: null, linkedin_url: null, input: url || email };
+const FREEMAIL = /^(gmail|googlemail|yahoo|ymail|hotmail|outlook|live|icloud|me|aol|proton|protonmail|pm|gmx|mail|hey|fastmail|zoho)\./i;
+function applyRr(subject, d) {
+  if (!d) return;
+  subject.name = subject.name || d.name || null;
+  subject.title = subject.title || d.current_title || d.title || null;
+  subject.company = subject.company || d.current_employer || null;
+  subject.linkedin_url = subject.linkedin_url || d.linkedin_url || null;
+}
+
+// Identify name / title / company / linkedin. Uses the RocketReach LOOKUP (~1 credit)
+// to reliably reverse-resolve the person (by email or LinkedIn URL) — the free
+// rocketreach_search was unreliable (a bad email resolved to a company; a LinkedIn URL
+// came back role-less). Falls back to read_url + web_search + free rocketreach_search.
+// (Still no Apollo/FullEnrich — the expensive enrichment stays off.)
+export async function identifyPerson({ url, email, name, env }) {
+  const subject = { name: name || null, title: null, company: null, company_domain: null, linkedin_url: null, input: url || email };
   const seedEmail = email && EMAIL_RE.test(String(email).trim()) ? String(email).trim().toLowerCase()
     : (url && !/^https?:\/\//i.test(url) && EMAIL_RE.test(String(url).trim()) ? String(url).trim().toLowerCase() : null);
 
   if (seedEmail) {
-    subject.company_domain = seedEmail.split('@')[1] || null;
-    subject.name = nameFromWeb(await webSearch(`"${seedEmail}"`, env));
-    if (!subject.name) subject.name = nameFromWeb(await webSearch(`${seedEmail.split('@')[0].replace(/[._-]+/g, ' ')} ${subject.company_domain}`, env));
+    const dom = seedEmail.split('@')[1] || null;
+    subject.company_domain = dom && !FREEMAIL.test(dom) ? dom : null;   // never treat gmail as the company
+    // RocketReach reverse-lookup by email (~1 credit) — the reliable person resolve.
+    const rr = await runTool('rocketreach_lookup', { email: seedEmail }, env).catch(() => null);
+    if (rr && rr.ok && rr.data && rr.data.found) applyRr(subject, rr.data);
+    if (!subject.name) subject.name = nameFromWeb(await webSearch(`"${seedEmail}"`, env));
+    if (!subject.name && dom) subject.name = nameFromWeb(await webSearch(`${seedEmail.split('@')[0].replace(/[._-]+/g, ' ')} ${dom}`, env));
   } else if (url) {
-    const isLinkedin = /linkedin\.com/i.test(url);
-    if (isLinkedin) subject.linkedin_url = url;
-    const page = await runTool('read_url', { url }, env).catch(() => null);
-    if (page && page.ok && page.data) subject.name = nameFromTitle(page.data.title);
+    if (/linkedin\.com/i.test(url)) subject.linkedin_url = url.split('?')[0];  // strip utm/query
+    // RocketReach lookup by LinkedIn URL (~1 credit) → title/company reliably.
+    if (subject.linkedin_url) {
+      const rr = await runTool('rocketreach_lookup', { linkedin_url: subject.linkedin_url }, env).catch(() => null);
+      if (rr && rr.ok && rr.data && rr.data.found) applyRr(subject, rr.data);
+    }
+    if (!subject.name) { const page = await runTool('read_url', { url }, env).catch(() => null); if (page && page.ok && page.data) subject.name = nameFromTitle(page.data.title); }
   }
 
-  // Free rocketreach_search (no credit) → title / employer / linkedin.
-  const rrArgs = subject.linkedin_url ? { linkedin_url: subject.linkedin_url }
-    : subject.name ? { name: subject.name } : null;
-  if (rrArgs) {
-    const r = await runTool('rocketreach_search', rrArgs, env).catch(() => null);
-    const p = r && r.ok && ((r.data?.profiles || r.data?.results || r.data?.data || [])[0]) || null;
-    if (p) {
-      subject.name = subject.name || p.name || null;
-      subject.title = p.current_title || subject.title;
-      subject.company = p.current_employer || subject.company;
-      subject.linkedin_url = subject.linkedin_url || p.linkedin_url || null;
+  // Fill any gaps with the FREE rocketreach_search (no credit).
+  if (!subject.title || !subject.company) {
+    const rrArgs = subject.linkedin_url ? { linkedin_url: subject.linkedin_url } : subject.name ? { name: subject.name } : null;
+    if (rrArgs) {
+      const r = await runTool('rocketreach_search', rrArgs, env).catch(() => null);
+      const p = (r && r.ok && ((r.data?.profiles || r.data?.results || r.data?.data || [])[0])) || null;
+      applyRr(subject, p);
     }
   }
   return subject;
@@ -233,12 +248,21 @@ async function freeCompanyFinancials({ company, env }) {
 }
 
 // ── LLM narrative + disclosed-figure adjudication + bounded nudge ────────────────
-const NW_SYSTEM = `You are a wealth-estimation analyst. Given deterministic net-worth ESTIMATE components for ONE person + raw web-search results, you:
-- Write a 2-3 sentence plain-English rationale naming the main driver (founder equity / executive comp / audience). Frame it explicitly as a ROUGH ESTIMATE from public/inferred signals, never verified.
-- If — and ONLY if — the web results clearly state a net worth for THIS EXACT person (same name AND consistent role/company, e.g. Forbes/filings), return "disclosed_value" (plain USD number) + "disclosed_source". A namesake (an actor/athlete/author who shares the name) does NOT count — return null.
-- Otherwise you MAY nudge with "multiplier" (0.5–2.0) if the deterministic mid looks clearly off given the evidence; else null.
-- Never invent a company, funding, or figure.
-Return STRICT JSON only: {"rationale":"...","driver":"founder_equity|exec_comp|creator|mixed|unknown","disclosed_value": <number|null>, "disclosed_source": "<url or name|null>", "multiplier": <number|null>, "caveat":"<one short caveat line>"}`;
+const NW_SYSTEM = `You are a wealth-estimation analyst producing a ROUGH net-worth ESTIMATE for ONE person — an ability-to-pay signal for a domain negotiation. You get the identified person, their company's public financials (if found), a deterministic PRIOR estimate, and raw web-search results. YOU produce the headline estimate (low/mid/high in USD); the deterministic prior is just a floor to sanity-check against — it is often a severe UNDER-estimate when it lacks company financials, so do not anchor to it when the evidence says otherwise.
+
+WHAT NET WORTH MEANS — calibrate to this:
+- FOUNDER / co-founder of a venture-backed company: wealth is dominated by their EQUITY STAKE × the company's valuation (illiquid but real). A company that raised hundreds of millions and/or reached "unicorn" ($1B+) status implies a founder net worth in the TENS OF MILLIONS at minimum, even after dilution (a founder typically still holds 5–25%). A seed/early startup that raised a few million → low single-digit millions. A major exit/acquisition → tens to hundreds of millions.
+- VENTURE-CAPITAL / investment PARTNER (a fund with $X under management): wealth from carry + personal investing. A partner/principal at a fund managing $1B+ is typically worth millions to tens of millions. (Managing $1B is NOT owning $1B — do not equate AUM with personal wealth — but it is a strong high-net-worth signal.)
+- PUBLIC-COMPANY CEO / senior exec: equity + comp; often tens of millions at a large company.
+- SALARIED NON-founder exec at a private company: accumulated compensation — typically under a few million.
+- A publicly DISCLOSED figure (Forbes / filing) for THIS person overrides everything.
+
+RULES:
+- GROUND every figure in a concrete signal (funding amount, valuation, "unicorn", AUM, exit, disclosed number, seniority). If you truly have NO wealth signal, keep it modest. Never invent a company or figure. Ranges may be WIDE to reflect genuine uncertainty.
+- NAMESAKE GUARD: only attribute a disclosed figure or signals to THIS person if the name AND role/company are consistent. A same-name actor/athlete/other does NOT count.
+- NOT A PERSON: if the subject is actually a company / brand / org (not a named human), set is_individual=false and leave the estimate fields null.
+
+Return STRICT JSON only: {"is_individual": true|false, "rationale":"2-3 sentences naming the driver, framed as a rough estimate", "driver":"founder_equity|vc_carry|exec_comp|public_exec|creator|mixed|unknown", "estimate_low": <usd number|null>, "estimate_mid": <usd number|null>, "estimate_high": <usd number|null>, "disclosed_value": <number|null>, "disclosed_source":"<url or name|null>", "confidence":"high|medium|low", "caveat":"one short caveat line"}`;
 
 async function narrate({ subject, firmo, core, web, env }) {
   if (!env.ANTHROPIC_API_KEY) return null;
@@ -246,16 +270,16 @@ async function narrate({ subject, firmo, core, web, env }) {
   lines.push(`PERSON: ${subject.name || 'unknown'}`);
   lines.push(`ROLE: ${subject.title || 'unknown'}${subject.company ? ` @ ${subject.company}` : ''}`);
   if (firmo) lines.push(`COMPANY FINANCIALS (public web): employees=${firmo.employees || '?'}, funding=${firmo.funding || '?'}, stage=${firmo.fundingStage || '?'}, valuation=${firmo.valuation ? money(firmo.valuation) : '?'}, revenue=${firmo.revenue || '?'}`);
-  lines.push(`DETERMINISTIC ESTIMATE: ${money(core.low)}–${money(core.high)} (mid ${money(core.mid)}), band ${core.band}, confidence ${core.confidence}`);
-  lines.push(`COMPONENTS: ${core.components.map((c) => `${c.label} ~${money(c.mid)}`).join('; ') || 'none'}`);
+  lines.push(`DETERMINISTIC PRIOR (floor only): ${money(core.low)}–${money(core.high)} (mid ${money(core.mid)})`);
+  lines.push(`PRIOR COMPONENTS: ${core.components.map((c) => `${c.label} ~${money(c.mid)}`).join('; ') || 'none'}`);
   const results = (web && (web.results || web.organic)) || [];
   if (web && web.knowledge_graph) lines.push(`KNOWLEDGE PANEL: ${JSON.stringify(web.knowledge_graph).slice(0, 400)}`);
-  if (results.length) lines.push(`WEB RESULTS ("net worth"):\n${results.slice(0, 6).map((r) => `- ${r.title || ''} — ${(r.snippet || r.description || '').slice(0, 160)} [${r.link || r.url || ''}]`).join('\n')}`);
+  if (results.length) lines.push(`WEB RESULTS ("net worth" + context):\n${results.slice(0, 8).map((r) => `- ${r.title || ''} — ${(r.snippet || r.description || '').slice(0, 180)} [${r.link || r.url || ''}]`).join('\n')}`);
   try {
-    const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY, timeout: 16000, maxRetries: 1 });
+    const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY, timeout: 18000, maxRetries: 1 });
     const model = env.PERSON_MODEL || env.OUTREACH_MODEL || 'claude-sonnet-4-6';
     const resp = await client.messages.create({
-      model, max_tokens: 500,
+      model, max_tokens: 600,
       system: [{ type: 'text', text: NW_SYSTEM, cache_control: { type: 'ephemeral' } }],
       messages: [{ role: 'user', content: `${lines.join('\n')}\n\nReturn the JSON now.` }],
     });
@@ -274,7 +298,7 @@ function defaultRationale(core, company) {
 
 // ── public entry — the whole free flow ───────────────────────────────────────────
 export async function runNetWorth({ url, email, name, env = process.env }) {
-  const subject = await freeIdentify({ url, email, env });
+  const subject = await identifyPerson({ url, email, name, env });
   if (name && !subject.name) subject.name = name;
   if (!subject.title && !subject.company && !subject.name) {
     return { ok: false, error: 'Could not identify a person from that input.', subject };
@@ -283,7 +307,10 @@ export async function runNetWorth({ url, email, name, env = process.env }) {
   return { ok: true, subject, ...estimate };
 }
 
-// Estimate from an already-identified subject (free web financials + core + narrate).
+// Estimate from an already-identified subject. The LLM is the PRIMARY estimator
+// (grounded in company financials + web signals); the deterministic core is a prior
+// + a floor (it under-estimates without firmographics). Fail-open to deterministic
+// when there's no LLM key.
 export async function estimateForSubject({ subject, maxFollowers = 0, env = process.env }) {
   const company = subject.company || null;
   const firmo = await freeCompanyFinancials({ company, env });
@@ -292,26 +319,46 @@ export async function estimateForSubject({ subject, maxFollowers = 0, env = proc
   const web = await webSearch(`${subject.name || company} net worth`, env);
   const llm = await narrate({ subject, firmo, core, web, env });
 
+  // Not an individual (a company/brand slipped through identify) → say so, no number.
+  if (llm && llm.is_individual === false) {
+    return {
+      not_individual: true, band: null, low: null, mid: null, high: null, confidence: 'low',
+      display: null, role: 'organization', components: [], valuation: null, disclosed: null,
+      rationale: llm.rationale || 'This appears to be a company or brand, not an individual — no personal net worth applies.',
+      caveat: llm.caveat || 'Not an individual; enter a specific person (their name, LinkedIn, or personal email).',
+      firmographics: null, model: env.PERSON_MODEL || env.OUTREACH_MODEL || 'claude-sonnet-4-6',
+    };
+  }
+
   let { low, mid, high, band, confidence } = core;
   let disclosed = null;
   if (llm && Number.isFinite(Number(llm.disclosed_value)) && Number(llm.disclosed_value) > 0) {
     disclosed = { value: Math.round(Number(llm.disclosed_value)), source: llm.disclosed_source || null };
     mid = disclosed.value; low = Math.round(mid * 0.7); high = Math.round(mid * 1.3);
     band = bandFor(mid); confidence = 'high';
-  } else if (llm && Number.isFinite(Number(llm.multiplier))) {
-    const m = Math.max(0.5, Math.min(2, Number(llm.multiplier)));
-    if (m !== 1) { mid = Math.round(mid * m); low = Math.round(low * m); high = Math.round(high * m); band = bandFor(mid); }
+  } else if (llm && Number.isFinite(Number(llm.estimate_mid)) && Number(llm.estimate_mid) > 0) {
+    // LLM-primary: use its grounded low/mid/high, floored by a solid deterministic
+    // founder-equity computation so a real firmographic figure is never undercut.
+    let md = Number(llm.estimate_mid);
+    let lo = Number(llm.estimate_low) > 0 ? Number(llm.estimate_low) : md * 0.5;
+    let hi = Number(llm.estimate_high) > 0 ? Number(llm.estimate_high) : md * 1.6;
+    if (lo > md) lo = md * 0.5;
+    if (hi < md) hi = md * 1.6;
+    if (core.coreLabel === 'founder_equity') { lo = Math.max(lo, core.low); md = Math.max(md, core.mid); hi = Math.max(hi, core.high); }
+    low = Math.round(lo); mid = Math.round(md); high = Math.round(hi);
+    band = bandFor(mid);
+    confidence = ['high', 'medium', 'low'].includes(llm.confidence) ? llm.confidence : core.confidence;
   }
 
   return {
     band, low, mid, high, confidence,
     display: `${money(low)} – ${money(high)}`,
-    role: core.role,
+    role: (llm && llm.driver) ? String(llm.driver).replace(/_/g, ' ') : core.role,
     components: core.components,
     valuation: core.valuation,
     disclosed,
     rationale: (llm && llm.rationale) || defaultRationale(core, company),
-    caveat: (llm && llm.caveat) || 'Rough estimate from public and inferred signals — not a verified figure. No paid data spent.',
+    caveat: (llm && llm.caveat) || 'Rough estimate from public and inferred signals — not a verified figure.',
     firmographics: firmo ? {
       company: firmo.company || company || null,
       employees: firmo.employees || null, funding: firmo.funding || null,
