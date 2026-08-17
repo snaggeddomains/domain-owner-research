@@ -67,6 +67,14 @@ function parseJsonLoose(text) {
   return null;
 }
 
+// Personal-inbox domains — a reverse-lookup on these can map to the WRONG person.
+const FREEMAIL = /^(gmail|googlemail|yahoo|ymail|hotmail|outlook|live|icloud|me|aol|proton|protonmail|pm|gmx|mail|hey|fastmail|zoho)\./i;
+// Do two names plausibly refer to the same person? Require ≥2 shared tokens (first +
+// last) — so "Saif Abuhashish" does NOT match "Alan Rutledge" (blocks a personal-email
+// reverse-lookup or a name search from attaching a different person's data).
+function nameTokens(s) { return String(s || '').toLowerCase().replace(/[^a-z\s]/g, ' ').split(/\s+/).filter((t) => t.length > 1); }
+function nameMatches(a, b) { const A = nameTokens(a); const B = new Set(nameTokens(b)); if (A.length < 2 || B.size < 2) return false; return A.filter((t) => B.has(t)).length >= 2; }
+
 // ---- small tool wrappers (all fail-open) ----------------------------------
 
 async function readUrl(url, env) {
@@ -204,11 +212,17 @@ async function identifyByEmail({ email, name, env }) {
     input_url: null, input_platform: 'email',
   };
   const contacts = { emails: [], phones: [], sources: [] };
+  const provided = name ? String(name).trim() : null;
+  const freemail = domain && FREEMAIL.test(domain);
 
   // (1) RocketReach reverse-lookup by email (paid) — name + LinkedIn + phone at once.
+  // GUARD: a personal email can map to the WRONG person in RR. If the user gave a name
+  // and the record's name doesn't match it, DON'T apply the record (title/company/
+  // LinkedIn/contacts) — that's what showed Saif Abuhashish's data under "Alan Rutledge".
   const rr = await runTool('rocketreach_lookup', { email: clean }, env).catch(() => null);
-  if (rr && rr.ok && rr.data && rr.data.found) {
-    const d = rr.data;
+  const d = rr && rr.ok && rr.data && rr.data.found ? rr.data : null;
+  const rrMismatch = d && provided && d.name && !nameMatches(d.name, provided);
+  if (d && !rrMismatch) {
     subject.name = subject.name || d.name || null;
     subject.title = d.current_title || d.title || null;
     subject.company = d.current_employer || null;
@@ -217,6 +231,8 @@ async function identifyByEmail({ email, name, env }) {
     for (const p of d.phones || []) contacts.phones.push({ value: typeof p === 'string' ? p : (p.number || p.value), source: 'rocketreach' });
     for (const e of d.emails || []) contacts.emails.push({ value: typeof e === 'string' ? e : (e.email || e.value), source: 'rocketreach' });
     if (contacts.emails.length || contacts.phones.length) contacts.sources.push('rocketreach_lookup');
+  } else if (rrMismatch) {
+    subject.low_confidence = true;    // RR matched a different-named person for this email
   }
 
   // (2) Still no name → hunt them down with a web search on the email, then the local
@@ -230,16 +246,22 @@ async function identifyByEmail({ email, name, env }) {
   }
 
   // (3) Have a name but no LinkedIn → free rocketreach_search to place the profile.
+  // GUARD: a name-only search can return a same-name namesake — only apply a hit whose
+  // name matches (else flag low-confidence rather than attach the wrong person).
   if (subject.name && !subject.linkedin_url) {
     const rp = (await rocketSearch({ name: subject.name, ...(subject.company ? { company: subject.company } : {}) }, env))[0] || null;
-    if (rp) {
+    if (rp && (!rp.name || nameMatches(rp.name, subject.name))) {
       subject.title = subject.title || rp.current_title || null;
       subject.company = subject.company || rp.current_employer || null;
       subject.linkedin_url = rp.linkedin_url || null;
       subject.location = subject.location || rp.location || null;
+    } else if (rp) {
+      subject.low_confidence = true;
     }
   }
 
+  // A personal freemail seed with no trusted exact match is inherently ambiguous.
+  if (freemail && !subject.linkedin_url && !contacts.sources.length) subject.low_confidence = true;
   // Anchor the triangulation on the LinkedIn we found (if any).
   if (subject.linkedin_url) { subject.input_url = subject.linkedin_url; subject.input_platform = 'linkedin'; }
   // Tag phones mobile/landline/VoIP so the UI can gate WhatsApp/Telegram to mobiles.
@@ -480,6 +502,9 @@ async function rrLookupContacts(subject, env) {
   if (!args) return null;
   const rr = await runTool('rocketreach_lookup', args, env).catch(() => null);
   if (!rr || !rr.ok || !rr.data || !rr.data.found) return null;
+  // GUARD: a name-only lookup (no LinkedIn URL) can return a different person — reject a
+  // name mismatch so we never attach a namesake's emails/phones.
+  if (!s.linkedin_url && s.name && rr.data.name && !nameMatches(rr.data.name, s.name)) return null;
   const emails = []; const phones = [];
   for (const e of rr.data.emails || []) emails.push({ value: typeof e === 'string' ? e : (e.email || e.value), source: 'rocketreach' });
   for (const p of rr.data.phones || []) phones.push({ value: typeof p === 'string' ? p : (p.number || p.value), source: 'rocketreach' });
