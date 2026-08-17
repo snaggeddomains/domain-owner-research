@@ -10670,6 +10670,7 @@ function renderPerson(run) {
         </div>
         <span class="pr-vip ${vipMeta.cls}">${vipMeta.label}</span>
       </div>
+      ${subj.low_confidence ? '<div class="pr-warn">⚠️ <strong>Low-confidence identity</strong> — a personal email (e.g. @gmail) or a common name can match a <strong>different person</strong>. Verify this is the right individual; a LinkedIn URL or work email confirms it.</div>' : ''}
       ${nar.summary ? `<p class="pr-summary">${escapeHtml(nar.summary)}</p>` : ''}
       ${sig ? `<div class="pr-sigs">${sig}</div>` : ''}
       <div class="pr-grid">

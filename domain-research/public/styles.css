@@ -2482,6 +2482,7 @@ a.sr-ag-co-link:hover { border-color: var(--coral); color: var(--coral-deep); ba
 
 /* ── Person deep-dive ─────────────────────────────────────────────────────── */
 .pr-form { flex-wrap: wrap; }
+.pr-warn { margin: 10px 0 4px; padding: 9px 12px; background: #fdf3d8; border: 1px solid #f0d890; border-radius: 9px; font-size: .85rem; color: #6b5310; line-height: 1.45; }
 .pr-name-input { flex: 1 1 240px; }
 .pr-new-btn { margin: 8px 0; }
 .pr-card { background: var(--card, #fff); border: 1px solid var(--line); border-radius: 14px; padding: 20px 22px; margin-top: 12px; }

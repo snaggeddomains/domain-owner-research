@@ -2052,6 +2052,18 @@ button.
   spinner). Fix in `runAppraisal` (`public/app.js`): route to `pollAppraisal` when a `job_[a-z0-9]+`
   id appears ANYWHERE in the response (extracted from the poll-URL message text itself), so the raw
   job-ack is never shown. Same cache-bust.
+- **Wrong-person guard on the EMAIL path (2026-08-17).** `alan.rutledge@gmail.com` (name "Alan
+  Rutledge") returned **Saif Abuhashish's** title/company/LinkedIn/contacts under Alan's name — a
+  personal gmail reverse-lookup mapped to a different person in RocketReach, and the code kept the
+  user-typed name while applying the mismatched record. Same class as the Net Worth namesake bug.
+  Fix in `lib/person/orchestrate.js` (`FREEMAIL` + `nameMatches` helpers, ≥2 shared tokens): (1)
+  `identifyByEmail` DISTRUSTS the `rocketreach_lookup {email}` record when the user-provided name
+  doesn't match it (`rrMismatch` → don't apply title/company/LinkedIn/contacts, flag
+  `subject.low_confidence`); (2) the name-only `rocketreach_search` fallback only applies a name-matched
+  hit; (3) `rrLookupContacts` (the auto-contacts path) rejects a name-only lookup whose name mismatches;
+  (4) a freemail seed with no trusted match flags low-confidence. UI (`public/app.js` `renderPerson`):
+  a **⚠️ Low-confidence identity** banner (`.pr-warn`) when `subject.low_confidence`. A LinkedIn-URL /
+  work-email seed stays exact. Cache-bust `?v=20260817personid`.
 
 - **Engine** `lib/person/orchestrate.js`:
   - `runPersonDeepDive({url,name?,company?,env})` — the FREE pass. (1) IDENTIFY:
