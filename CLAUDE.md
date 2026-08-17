@@ -2063,7 +2063,7 @@ button.
   hit; (3) `rrLookupContacts` (the auto-contacts path) rejects a name-only lookup whose name mismatches;
   (4) a freemail seed with no trusted match flags low-confidence. UI (`public/app.js` `renderPerson`):
   a **⚠️ Low-confidence identity** banner (`.pr-warn`) when `subject.low_confidence`. A LinkedIn-URL /
-  work-email seed stays exact. Cache-bust `?v=20260817personid`.
+  work-email seed stays exact. Cache-bust `?v=20260817personid2`.
 
 - **Engine** `lib/person/orchestrate.js`:
   - `runPersonDeepDive({url,name?,company?,env})` — the FREE pass. (1) IDENTIFY:

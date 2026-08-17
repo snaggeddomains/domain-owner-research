@@ -260,8 +260,11 @@ async function identifyByEmail({ email, name, env }) {
     }
   }
 
-  // A personal freemail seed with no trusted exact match is inherently ambiguous.
-  if (freemail && !subject.linkedin_url && !contacts.sources.length) subject.low_confidence = true;
+  // A personal freemail reverse-lookup can map to the WRONG person in RocketReach —
+  // verified: alan.rutledge@gmail.com resolves to "Saif Abuhashish" in RR. So a freemail
+  // seed is NEVER high-confidence unless the user's provided name corroborates the record.
+  const corroborated = !!(d && !rrMismatch && provided && d.name && nameMatches(d.name, provided));
+  if (freemail && !corroborated) subject.low_confidence = true;
   // Anchor the triangulation on the LinkedIn we found (if any).
   if (subject.linkedin_url) { subject.input_url = subject.linkedin_url; subject.input_platform = 'linkedin'; }
   // Tag phones mobile/landline/VoIP so the UI can gate WhatsApp/Telegram to mobiles.
