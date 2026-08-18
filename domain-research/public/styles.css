@@ -724,6 +724,16 @@ a.naming-card-domain:hover { color: var(--coral-deep); text-decoration: underlin
 .confidence.medium { color: #8a5a12; }
 .confidence.low { color: var(--coral-deep); }
 
+/* Available-to-register report (unregistered domain — pipeline short-circuited) */
+.av-card { background: var(--card, #fff); border: 1px solid #bfe6cf; border-left: 4px solid #1f9d57; border-radius: 14px; padding: 22px 24px; margin-top: 8px; }
+.av-badge { display: inline-block; background: #1f9d57; color: #fff; font-weight: 800; font-size: .78rem; letter-spacing: .03em; padding: 4px 12px; border-radius: 999px; }
+.av-title { font-size: 1.5rem; font-weight: 800; color: var(--navy-2, #1e3a52); margin: 12px 0 6px; }
+.av-sub { color: var(--navy-2, #1e3a52); line-height: 1.5; margin: 0 0 16px; }
+.av-regs { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 14px; }
+.av-reg-link { display: inline-block; padding: 9px 16px; border: 1px solid var(--line); border-radius: 10px; font-weight: 700; color: var(--navy-2, #1e3a52); text-decoration: none; background: var(--cream, #faf6ef); }
+.av-reg-link:hover { border-color: #1f9d57; color: #1f7a4d; }
+.av-note { font-size: .82rem; color: var(--navy-3); margin: 0; }
+
 /* Report header row: title left, Export PDF tucked top-right (secondary) */
 .report-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 8px; }
 .report-header .report-domain { flex: 1; min-width: 0; margin: 4px 0 0; }

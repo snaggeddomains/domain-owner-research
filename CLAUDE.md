@@ -447,6 +447,32 @@ Password-gated (single `APP_PASSWORD`). Async pipeline runs in Inngest so jobs a
 
 ---
 
+## Available-domain short-circuit — skip the pipeline for an unregistered name (2026-08-18)
+
+An AVAILABLE (unregistered) domain has NO owner to research, but the report used to run the full
+~3-minute pipeline (gather → owner research → agent narrative → marketplace → reverse-WHOIS →
+critique) before concluding "not registered." Now it's an **immediate check that short-circuits**.
+- **Where** `lib/inngest/functions.js` `runResearch` — right after `mark-running`, before lessons/
+  gather. Gated to **fresh (non-regen)** runs. Calls `whoisLookup(domain)` (`lib/whois/lookup.js`) —
+  which RDAP-checks AND corroborates an RDAP-available result against a WHOIS port-43 leg before
+  declaring available (guards a registered-but-undelegated false positive). Only `reg.available ===
+  true` short-circuits; a lookup FAILURE or `available:false` falls through to the normal pipeline
+  (safe direction — worst case a rare name still runs the full report). On available: `saveRunReport`
+  with `available:true` + a minimal markdown + `registration:{available:true,…}`, then returns —
+  skipping gather/critique/owner-crack and all the paid work. Turns a 3-min "nobody owns this" into
+  ~seconds.
+- **Client** `public/app.js` — `renderReport` branches at the top on `report.available` →
+  `renderAvailableReport`: a green **"✓ Available — register now"** card (`.av-*` styles) with
+  GoDaddy/Porkbun/Dynadot/Namecheap/Spaceship register links, hides the confidence chip + the for-sale
+  strip (`stopDsPoll` + hide `#market-strip`) + every owner block (internal-owner / company-vitals /
+  registrar / auction), and skips the outreach button + chat (nothing to reach out about). Cache-bust
+  `?v=20260818available`.
+- **No new table / env** — reuses `whoisLookup` (RDAP + WHOIS, already used in `gather`) and the
+  existing `report` jsonb (new `available` flag). Verified: rdapStatus google.com→registered,
+  a random string→available, both from the sandbox.
+
+---
+
 ## Shareable report links + OG previews (2026-06-18)
 
 Report deep-links are SPA **hash** routes (`#/r/<slug>`), which link-preview

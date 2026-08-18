@@ -13,6 +13,7 @@ import { sendEmail, isEmailConfigured } from '../email.js';
 import { reportUrl, salesUrl } from '../reportUrl.js';
 import { summarizeReport } from '../reportSummary.js';
 import { maybeCrackOwner } from '../owner/fallback.js';
+import { whoisLookup } from '../whois/lookup.js';
 import { discoverUpgrade } from '../sales/discovery/upgrade.js';
 import { discoverOperators } from '../sales/discovery/operators.js';
 import { discoverAngles } from '../sales/discovery/keyword.js';
@@ -266,6 +267,33 @@ export const runResearch = inngest.createFunction(
     await step.run('mark-running', () =>
       setRunStatus(runId, 'running', isRegen ? 'regenerating' : (deep ? 'deepening' : 'gathering')),
     );
+
+    // Fast registration gate — an AVAILABLE (unregistered) domain has NO owner to
+    // research, so skip the entire multi-minute pipeline (gather / critique /
+    // owner-crack) and return an "available to register" report in seconds. Only for
+    // fresh (non-regen) runs; NEVER short-circuit on a lookup FAILURE — whoisLookup
+    // corroborates an RDAP-available result against a WHOIS leg (guards a
+    // registered-but-undelegated false positive), and only `available === true` here
+    // means genuinely unregistered (`false`/`undefined` both fall through to the
+    // normal pipeline).
+    if (!isRegen) {
+      const reg = await step.run('registration-check', () => whoisLookup(domain).catch(() => null));
+      if (reg && reg.available === true) {
+        await step.run('save-available-report', () =>
+          saveRunReport(runId, {
+            format: 'markdown',
+            markdown: `## ${domain} is available to register\n\n**This domain isn't registered** — there's no owner to research. It's available to register now.\n\nUse the **Open:** links above (GoDaddy · Dynadot · Spaceship) or your registrar of choice to grab it.`,
+            available: true,
+            registration: { available: true, source: reg.sources || reg.source || 'whois', checked_at: new Date().toISOString() },
+            trace: [{ tool: 'whois', ok: true, note: 'domain available (unregistered) — pipeline skipped' }],
+            toolsAvailable: [],
+            categories: {},
+            phase,
+          }),
+        );
+        return { runId, ok: true, phase, available: true };
+      }
+    }
 
     // Approved playbook lessons get prepended to the SYSTEM_PROMPT. Loaded
     // once per run and reused across gather + critique so both phases see

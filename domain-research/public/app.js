@@ -2200,6 +2200,9 @@ function mergeEnhancements(data, enhancements) {
 }
 
 function renderReport(report) {
+  // An AVAILABLE (unregistered) domain has no owner — the server short-circuited the
+  // pipeline. Render a clean "available to register" card and skip every owner block.
+  if (report && report.available) { renderAvailableReport(report); return; }
   const md = report && report.markdown ? report.markdown : '';
   const data = parseReportData(md);
   if (data && report && Array.isArray(report.enhancements)) mergeEnhancements(data, report.enhancements);
@@ -2246,6 +2249,47 @@ function renderReport(report) {
   const goodOwner = ownerName && !CLUE_NOISE_RE.test(String(ownerName)) && (band === 'high' || band === 'medium');
   reportOwnerForAttach = goodOwner ? ownerName : null;
   if (currentReportDomain) loadAuctionOwner(currentReportDomain);
+}
+
+// Render the "available to register" report — no owner to research. Suppresses the
+// confidence chip, the for-sale strip, and every owner block, and offers register links.
+function renderAvailableReport(report) {
+  const domain = currentReportDomain || '';
+  if (els.reportConfidence) els.reportConfidence.hidden = true;
+  els.reportActions.hidden = false;
+  if (els.exportPdf) els.exportPdf.hidden = false;
+  if (els.outreachBtn) els.outreachBtn.hidden = true;               // no owner → no outreach
+  if (els.pipedriveBtn) els.pipedriveBtn.hidden = !(canPipedrive && domain);
+  if (canPipedrive && domain) updateDealButton(domain);
+  if (els.deepenTop) els.deepenTop.hidden = true;
+  if (els.deepenBar) els.deepenBar.hidden = true;
+  // An available name isn't for sale and has no owner — hide the for-sale strip + all blocks.
+  if (typeof stopDsPoll === 'function') stopDsPoll();
+  if (els.marketStrip) { els.marketStrip.hidden = true; els.marketStrip.dataset.domain = ''; }
+  for (const el of [els.internalOwner, els.companyVitals, els.registrarCard, els.auctionOwner]) {
+    if (el) { el.hidden = true; el.innerHTML = ''; delete el.dataset.domain; }
+  }
+  const enc = encodeURIComponent(domain);
+  const reg = (report && report.registration) || {};
+  const links = [
+    ['GoDaddy', `https://www.godaddy.com/domainsearch/find?domainToCheck=${enc}`],
+    ['Porkbun', `https://porkbun.com/checkout/search?q=${enc}`],
+    ['Dynadot', `https://www.dynadot.com/domain/search?domain=${enc}`],
+    ['Namecheap', `https://www.namecheap.com/domains/registration/results/?domain=${enc}`],
+    ['Spaceship', `https://www.spaceship.com/domain-search/?query=${enc}`],
+  ].map(([n, u]) => `<a class="av-reg-link" href="${escapeHtml(u)}" target="_blank" rel="noopener">${n} ↗</a>`).join('');
+  els.report.hidden = false;
+  els.report.innerHTML = `
+    <div class="av-card">
+      <div class="av-badge">✓ Available</div>
+      <h2 class="av-title">${escapeHtml(domain)} is available to register</h2>
+      <p class="av-sub">This domain <strong>isn't registered</strong> — there's no owner to research, so the full ownership pipeline was skipped. You can register it now.</p>
+      <div class="av-regs">${links}</div>
+      <p class="av-note">Checked via WHOIS/RDAP just now${reg.checked_at ? '' : ''}. If someone registers it, re-run the report for a full ownership dossier.</p>
+    </div>`;
+  renderTrace(report && report.trace, report && report.toolsAvailable, report && report.categories);
+  resetFeedback();
+  if (els.reportChat) els.reportChat.hidden = true;                 // nothing to chat about
 }
 // The report's identified owner (high/medium confidence) — auto-attached to this
 // domain's auction handle so the handle→owner map fills itself from the research.
