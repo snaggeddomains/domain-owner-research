@@ -67,6 +67,7 @@ const els = {
   runControls: $('run-controls'),
   cancelRun: $('cancel-run'),
   internalOwner: $('internal-owner'),
+  ownerLiveness: $('owner-liveness'),
   marketStrip: $('market-strip'),
   companyVitals: $('company-vitals'),
   registrarCard: $('registrar-card'),
@@ -2266,7 +2267,7 @@ function renderAvailableReport(report) {
   // An available name isn't for sale and has no owner — hide the for-sale strip + all blocks.
   if (typeof stopDsPoll === 'function') stopDsPoll();
   if (els.marketStrip) { els.marketStrip.hidden = true; els.marketStrip.dataset.domain = ''; }
-  for (const el of [els.internalOwner, els.companyVitals, els.registrarCard, els.auctionOwner]) {
+  for (const el of [els.ownerLiveness, els.internalOwner, els.companyVitals, els.registrarCard, els.auctionOwner]) {
     if (el) { el.hidden = true; el.innerHTML = ''; delete el.dataset.domain; }
   }
   const enc = encodeURIComponent(domain);
@@ -2667,7 +2668,7 @@ const ADDON_DEFS = [
   },
   {
     kind: 'alive', label: '🫀 Verify alive', title: 'Owner still alive?', needsOwner: true,
-    prompt: (o, d) => `Verify whether ${o || `the likely owner of ${d}`} is still alive. Search obituaries, death notices, memorials and "in memoriam" pages matching THIS specific person (use their location/company/age to disambiguate — do not match a same-name stranger). If you find a credible death record, report the date and source link. If you find NO evidence of death, state clearly there is no indication they are deceased. Never assume.`,
+    prompt: (o, d) => `Verify whether ${o || `the likely owner of ${d}`} is still alive. Search obituaries, death notices, memorials and "in memoriam" pages matching THIS specific person (use their location/company/age to disambiguate — do not match a same-name stranger). If you find a credible death record, report the date and source link, and name any surviving family (spouse, children) or executor mentioned. If you find NO evidence of death, state clearly there is no indication they are deceased. Never assume.\n\nBEGIN your reply with EXACTLY ONE tag on its own first line: "[LIVENESS:deceased]" only if you found a credible death record for THIS person, "[LIVENESS:alive]" if there's positive recent evidence they're living, or "[LIVENESS:unknown]" if you cannot tell. Then write the details below the tag.`,
   },
 ];
 
@@ -2700,6 +2701,37 @@ function autoVerifyAlive(report) {
     aliveAutoFired.add(currentRunId);
     setTimeout(() => { if (currentRunId && !addonBusy) runAddon('alive'); }, 500);
   } catch { /* best-effort — a failed auto-run never blocks the report */ }
+}
+
+// The alive dive prefixes "[LIVENESS:deceased|alive|unknown]" — pull it off the front.
+function detectLiveness(text) {
+  const m = String(text || '').match(/^\s*\[LIVENESS:(deceased|alive|unknown)\]\s*/i);
+  if (!m) return { status: null, cleaned: text };
+  return { status: m[1].toLowerCase(), cleaned: String(text).slice(m[0].length) };
+}
+
+// Lead the report with a prominent banner when the owner is found DECEASED — a
+// domain in an estate means you contact the heirs, not the deceased. Only the
+// deceased case gets a banner; alive/unknown clear it (the Deeper-dives card still
+// shows the detail either way).
+function renderOwnerLiveness(status, detailsMd, owner) {
+  const el = els.ownerLiveness;
+  if (!el) return;
+  if (status !== 'deceased') { el.hidden = true; el.innerHTML = ''; return; }
+  const who = owner ? escapeHtml(owner) : 'The likely owner';
+  // A short excerpt (first sentence or ~220 chars) — the full finding stays in the card below.
+  const plain = String(detailsMd || '').replace(/\s+/g, ' ').trim();
+  const excerpt = plain.length > 240 ? `${plain.slice(0, 237)}…` : plain;
+  el.innerHTML =
+    `<div class="ol-head">⚰️ ${who} appears to be <strong>deceased</strong></div>`
+    + `<div class="ol-body">This domain is most likely held by an <strong>estate / heirs</strong> now — direct outreach to the original owner won't reach anyone. Pivot to the surviving family (spouse, children) or executor.</div>`
+    + (excerpt ? `<div class="ol-detail">${escapeHtml(excerpt)}</div>` : '')
+    + `<div class="ol-more"><a href="#" data-ol-jump="1">See the full liveness finding ↓</a></div>`;
+  el.hidden = false;
+  el.querySelector('[data-ol-jump]')?.addEventListener('click', (e) => {
+    e.preventDefault();
+    document.getElementById('addon-cards')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  });
 }
 
 function renderAddons(data) {
@@ -2787,8 +2819,16 @@ async function runAddon(kind) {
       const r = await fetch(`/research/api/chat?turn_id=${encodeURIComponent(turnId)}`);
       const d = await r.json();
       if (d.status === 'done') {
-        const { cleaned } = detectRegenMarker(d.content || '');
-        setBody(cleaned || d.content || '(no response)', false);
+        let content = d.content || '';
+        // The alive dive prefixes a [LIVENESS:deceased|alive|unknown] tag — pull it out,
+        // strip it from the card body, and (if deceased) lead the report with a banner.
+        if (kind === 'alive') {
+          const lv = detectLiveness(content);
+          content = lv.cleaned;
+          renderOwnerLiveness(lv.status, content, owner);
+        }
+        const { cleaned } = detectRegenMarker(content);
+        setBody(cleaned || content || '(no response)', false);
         // The dive is also persisted as a chat turn — drop the cache so the chat
         // panel reloads it next time the report is opened.
         if (chatLoadedFor === currentRunId) chatLoadedFor = null;
@@ -4116,6 +4156,7 @@ function enterResultMode(domain) {
   // run must clear the previous company's block (else last report's vitals sit
   // stale through the whole "gathering" stage of the new run).
   if (els.internalOwner) { els.internalOwner.hidden = true; els.internalOwner.innerHTML = ''; delete els.internalOwner.dataset.domain; }
+  if (els.ownerLiveness) { els.ownerLiveness.hidden = true; els.ownerLiveness.innerHTML = ""; }
   if (els.companyVitals) { els.companyVitals.hidden = true; els.companyVitals.innerHTML = ''; delete els.companyVitals.dataset.domain; }
   if (els.registrarCard) { els.registrarCard.hidden = true; els.registrarCard.innerHTML = ''; delete els.registrarCard.dataset.domain; }
   if (els.auctionOwner) { els.auctionOwner.hidden = true; els.auctionOwner.innerHTML = ''; delete els.auctionOwner.dataset.domain; }
@@ -5553,6 +5594,7 @@ function showEntry() {
   // Company vitals + Deeper dives render per report — clear them too, or they'd
   // sit stale under the Recent list when you come back to the entry hero.
   if (els.internalOwner) { els.internalOwner.hidden = true; els.internalOwner.innerHTML = ''; delete els.internalOwner.dataset.domain; }
+  if (els.ownerLiveness) { els.ownerLiveness.hidden = true; els.ownerLiveness.innerHTML = ""; }
   if (els.companyVitals) { els.companyVitals.hidden = true; els.companyVitals.innerHTML = ''; delete els.companyVitals.dataset.domain; }
   if (els.registrarCard) { els.registrarCard.hidden = true; els.registrarCard.innerHTML = ''; delete els.registrarCard.dataset.domain; }
   if (els.auctionOwner) { els.auctionOwner.hidden = true; els.auctionOwner.innerHTML = ''; delete els.auctionOwner.dataset.domain; }

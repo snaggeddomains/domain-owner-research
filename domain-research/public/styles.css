@@ -585,6 +585,14 @@ a.naming-card-domain:hover { color: var(--coral-deep); text-decoration: underlin
 .namebio-callout .nb-date { color: var(--navy-3); min-width: 96px; }
 .namebio-callout .nb-venue { color: var(--navy-3); }
 /* Internal-owner call-out — OUR DB already attributes an owner. Loud on purpose. */
+/* Owner-liveness (deceased) banner — leads the report; contact the estate/heirs */
+.ol-banner { margin: 0 0 18px; padding: 16px 18px; border-radius: 12px; background: #fbeaea; border: 2px solid #c0392b; border-left-width: 6px; }
+.ol-head { font-size: 1.12rem; font-weight: 800; color: #8f2018; }
+.ol-body { margin-top: 6px; color: #5a2a24; line-height: 1.45; }
+.ol-detail { margin-top: 8px; font-size: .88rem; color: #6b4a45; font-style: italic; }
+.ol-more { margin-top: 8px; font-size: .85rem; }
+.ol-more a { color: #c0392b; font-weight: 700; }
+
 .io-callout { display: flex; align-items: center; gap: 14px; margin: 0 0 18px; padding: 14px 18px; border-radius: 12px;
   background: rgba(228,128,105,.12); border: 2px solid var(--coral); }
 .io-callout.io-owned { background: rgba(11,143,58,.12); border-color: #0b8f3a; }

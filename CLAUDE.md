@@ -488,7 +488,15 @@ this makes the *targeted* obituary search proactive rather than incidental.
   no re-spend), only for a **named individual** owner (`reportOwnerName`, skips `CLUE_NOISE_RE` privacy
   names + any `owner_type` matching compan/corp/organi/business/investor/marketplace/successor/holding).
   Reuses the existing `runAddon('alive')` path entirely — the result renders as the same Deeper-dives card
-  and persists as a chat turn. No backend/pipeline change. Cache-bust `?v=20260823autoalive`.
+  and persists as a chat turn. No backend/pipeline change.
+- **Prominent DECEASED banner (2026-08-23).** The alive prompt now prefixes its reply with a machine tag
+  **`[LIVENESS:deceased|alive|unknown]`** (same pattern as the `[REGENERATE:…]` marker). `runAddon`'s done
+  handler, for `kind==='alive'`, runs `detectLiveness(content)` → strips the tag from the card body, and on
+  **`deceased`** calls `renderOwnerLiveness` which leads the report with a red **`#owner-liveness`** banner
+  (`.ol-*` styles) — "⚰️ <owner> appears to be deceased → contact the estate/heirs" + an excerpt + a "see
+  full finding ↓" jump to the card. alive/unknown clear the banner (the card still shows the detail). The
+  banner is reset alongside the other owner blocks (both report-reset paths + the available-report branch).
+  Works for BOTH the auto-run (deep) and a manual click. Cache-bust `?v=20260823alivebanner`.
 
 ---
 
