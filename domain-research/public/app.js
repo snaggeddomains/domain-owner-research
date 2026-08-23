@@ -2682,6 +2682,25 @@ function reportOwnerName(data) {
 }
 
 let addonBusy = false;
+const aliveAutoFired = new Set(); // runIds we've auto-run "verify alive" for (per session)
+
+// Auto-run the "🫀 Verify alive" deeper dive when a DEEP (full-enrichment) report just
+// finished AND names an individual owner — proactively surfaces a DECEASED owner so the
+// contact path can pivot to the estate/heirs (spouse, children), without a manual click.
+// Fires once per run, only on a fresh deep completion (not on re-opens → no re-spend),
+// and skips a company/org owner (an obituary search there is pointless).
+function autoVerifyAlive(report) {
+  try {
+    if (!report || report.phase !== 'deep' || !currentRunId) return;
+    if (aliveAutoFired.has(currentRunId)) return;
+    const data = parseReportData(report.markdown || '');
+    const owner = reportOwnerName(data);
+    if (!owner || CLUE_NOISE_RE.test(String(owner))) return;               // no named owner → nothing to verify
+    if (data && data.owner_type && /compan|corp|organi|business|investor|marketplace|successor|holding/i.test(String(data.owner_type))) return;
+    aliveAutoFired.add(currentRunId);
+    setTimeout(() => { if (currentRunId && !addonBusy) runAddon('alive'); }, 500);
+  } catch { /* best-effort — a failed auto-run never blocks the report */ }
+}
 
 function renderAddons(data) {
   const el = els.reportAddons;
@@ -3584,6 +3603,9 @@ function startPolling(runId, label, opts = {}) {
         if (r.domain) setReportTitle(r.domain);
         renderReport(r.report);
         setReportMeta(r.created_at, r.report && r.report.phase, regenerated ? { regenerated: true } : undefined);
+        // Deep pass just finished → auto-run the "Verify alive" dive (once) so a
+        // deceased owner surfaces automatically and we pivot to the estate/heirs.
+        if (r.report) autoVerifyAlive(r.report);
         if (regenerated && els.report) els.report.scrollIntoView({ behavior: 'smooth', block: 'start' });
         els.go.disabled = false;
         // The report-done notification is created server-side at this exact
