@@ -473,6 +473,25 @@ critique) before concluding "not registered." Now it's an **immediate check that
 
 ---
 
+## Auto "Verify alive" on the deep pass (2026-08-23)
+
+The report's **"🫀 Verify alive"** deeper-dive (an `ADDON_DEFS` entry in `public/app.js` — a canned
+obituary/death-notice search fired through `/research/api/chat`, namesake-guarded, owner-focused) now
+**auto-runs when a DEEP/full-enrichment report finishes**, instead of only on a manual click — so a
+DECEASED owner surfaces automatically and the contact path can pivot to the estate/heirs (Rob had been
+chasing an owner who'd actually passed; the son + wife are the real contacts). The agent SYSTEM_PROMPT
+already treats a found death notice as MATERIAL (`lib/agent.js:47` — route to estate/family/successor);
+this makes the *targeted* obituary search proactive rather than incidental.
+- **Wiring** (`public/app.js`): `autoVerifyAlive(report)` + a session `aliveAutoFired` Set; called from
+  `startPolling`'s `status==='done'` handler right after `renderReport`, gated to `report.phase==='deep'`.
+  Fires **once per run**, **only on a fresh deep completion** (the poll path — NOT on cached re-opens, so
+  no re-spend), only for a **named individual** owner (`reportOwnerName`, skips `CLUE_NOISE_RE` privacy
+  names + any `owner_type` matching compan/corp/organi/business/investor/marketplace/successor/holding).
+  Reuses the existing `runAddon('alive')` path entirely — the result renders as the same Deeper-dives card
+  and persists as a chat turn. No backend/pipeline change. Cache-bust `?v=20260823autoalive`.
+
+---
+
 ## Shareable report links + OG previews (2026-06-18)
 
 Report deep-links are SPA **hash** routes (`#/r/<slug>`), which link-preview
