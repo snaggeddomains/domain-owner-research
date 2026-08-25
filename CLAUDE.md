@@ -361,6 +361,16 @@ a new owner, NOT what the current owner pays with promos.
 - **SNAP Eval**: `signals.js` gathers it → `signals.renewal_cost`; `verdict.js` feeds it to the
   buy/don't-buy LLM context (a premium renewal = a margin-eating hold cost). Cache-bust
   `?v=20260720renewal`.
+- **HTTP 504 fix — Porkbun pricing/get is slow + un-timed (2026-08-25).** sna.gg (and any cold
+  lookup) 504'd: Porkbun's PUBLIC `pricing/get` was observed taking **~23s**, and `tldPricing()`
+  fetched it with NO timeout, so it blew the API's `maxDuration` → gateway 504. The in-module cache
+  doesn't survive serverless cold starts, so every cold function re-hit the slow endpoint. Fix in
+  `renewalprice.js` `tldPricing()`: (1) **DB cache** (kind `pkp`, key `_all`, 12h TTL via
+  `getToolLookup`/`saveToolLookup`) so the ~900-TLD price map survives cold starts and loads
+  instantly; (2) a **12s AbortController** on the live fetch so a slow Porkbun degrades gracefully;
+  (3) fall back to a STALE DB cache rather than 504 if the live fetch times out. `api/renewal.js`
+  `maxDuration` 20→30 for headroom (12s pricing + 8s premium worst case). `.gg` is priced fine
+  ($51.80 std per Porkbun); the endpoint was just slow. Backend-only, no cache-bust.
 
 ## Plural detection — `is_plural` flag (2026-07-20)
 
