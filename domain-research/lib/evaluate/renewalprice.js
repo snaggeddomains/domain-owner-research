@@ -8,24 +8,49 @@
 // Fail-open throughout: no data → nulls, never throws.
 
 import { porkbunCheck } from '../variations/availability.js';
+import { getToolLookup, saveToolLookup } from '../db/tools.js';
 
 const num = (v) => { const n = Number(String(v == null ? '' : v).replace(/[^0-9.]/g, '')); return Number.isFinite(n) && n > 0 ? n : null; };
 
 // Public Porkbun pricing for EVERY TLD: { tld: {registration, renewal, transfer} }.
-// Cached in-module (stable day-to-day); one call covers all lookups.
+// Cached in-module AND in the DB (kind 'pkp') so it survives serverless cold starts —
+// Porkbun's pricing/get has been observed taking 20s+, which blew the API's maxDuration
+// and returned HTTP 504 on a cold function. Now: in-module cache → DB cache → a bounded
+// live fetch (12s abort) that refreshes both; a slow/failed fetch falls back to the DB
+// cache (or null) instead of hanging the request.
+const PRICING_TTL_MS = 12 * 3600 * 1000;
 let _pricing = null;
 let _pricingAt = 0;
 export async function tldPricing() {
-  if (_pricing && Date.now() - _pricingAt < 12 * 3600 * 1000) return _pricing;
+  if (_pricing && Date.now() - _pricingAt < PRICING_TTL_MS) return _pricing;
+  // DB cache — shared across cold starts.
   try {
-    const res = await fetch('https://api.porkbun.com/api/json/v3/pricing/get', {
-      method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}',
-    });
-    const raw = await res.json().catch(() => null);
+    const row = await getToolLookup('pkp', '_all');
+    if (row && row.data && row.data.pricing && Date.now() - (row.data._at || 0) < PRICING_TTL_MS) {
+      _pricing = row.data.pricing; _pricingAt = row.data._at || Date.now();
+      return _pricing;
+    }
+  } catch { /* miss */ }
+  // Bounded live fetch — never let a slow Porkbun eat the whole function budget.
+  try {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 12000);
+    let raw = null;
+    try {
+      const res = await fetch('https://api.porkbun.com/api/json/v3/pricing/get', {
+        method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}', signal: ctrl.signal,
+      });
+      raw = await res.json().catch(() => null);
+    } finally { clearTimeout(timer); }
     if (raw && String(raw.status || '').toUpperCase() === 'SUCCESS' && raw.pricing) {
       _pricing = raw.pricing; _pricingAt = Date.now();
+      try { await saveToolLookup('pkp', '_all', { _at: _pricingAt, pricing: _pricing }); } catch { /* best-effort */ }
     }
-  } catch { /* keep any prior cache */ }
+  } catch { /* timed out / network — fall back to any prior cache below */ }
+  // Last resort: a STALE DB cache is far better than a 504.
+  if (!_pricing) {
+    try { const row = await getToolLookup('pkp', '_all'); if (row && row.data && row.data.pricing) { _pricing = row.data.pricing; _pricingAt = row.data._at || 0; } } catch { /* none */ }
+  }
   return _pricing;
 }
 

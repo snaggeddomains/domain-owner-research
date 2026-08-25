@@ -11,7 +11,7 @@ import { withCategory } from '../lib/db/usage.js';
 import { renewalPrice } from '../lib/evaluate/renewalprice.js';
 import { cleanDomainInput } from '../lib/util.js';
 
-export const config = { maxDuration: 20 };
+export const config = { maxDuration: 30 };
 
 export default async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store');
