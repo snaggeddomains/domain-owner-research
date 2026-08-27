@@ -988,6 +988,18 @@ can NEVER hold a specific word fixed — so it returned public-safety-*themed* n
   actual prefixes/suffixes/extensions used + exclusions. **active vs parked** requires a real
   branded `<title>` (a GoDaddy/registrar lander renders no server title → `parked`, not active).
 - **No new permission / table / env** — reuses the naming gate + DomainScout key.
+- **"Export to Google Sheet" now works — via admin's SA (2026-08-27).** The button was dead: it
+  needed `GOOGLE_SERVICE_ACCOUNT_JSON` in THIS project (never set — research holds no Google creds),
+  so `handleExport` returned 501. Fixed by routing through admin (which owns the service account):
+  `lib/gsheet.js` `createSheet({title, values, shareWith})` POSTs the rows to admin's internal
+  `/api/internal/naming-sheet` (`x-internal-secret == RESEARCH_INTERNAL_SECRET`, `ADMIN_INTERNAL_BASE`),
+  which creates the sheet in the "Snagged Pipeline" shared drive + shares it to the user + returns the
+  URL (admin side: snagged-admin `lib/gsheets.ts` + that route). `api/naming.js` `handleExport` now
+  builds the same 7-col values (Domain/Price/Source/Status/Relevance/Bucket/Link) and calls it — dropped
+  the old `@googleapis/*` dynamic import + `NAMING_EXPORT_SHEET_ID` path. Client contract unchanged
+  (`{url, count, warning?}` → opens the sheet in a new tab), no cache-bust. **No new env** —
+  `RESEARCH_INTERNAL_SECRET` + `ADMIN_INTERNAL_BASE` already set. Same pattern reusable by any research
+  surface that needs a Sheet (Sales Hub, portfolio, etc.).
 - **Marketplace price extraction (2026-07-09).** The crawl now prices the two big
   JS-lander gaps directly (both free, no key), so DomainScout is rarely needed:
   (a) **Afternic BIN** (`afternicBin` — `"buyNow":<micros>`/1e6); (b) **Sedo**
