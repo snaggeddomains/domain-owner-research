@@ -7,8 +7,22 @@ import { normalizeDomain, isValidDomain } from '../util.js';
 // source follows the IANA → registry → registrar referral chain and parses the
 // public registrant contact so it surfaces on the FREE pre-flight (no credits).
 
+// WHOIS DNSSEC value → boolean|null. "yes"/"signedDelegation" → true; "no"/
+// "unsigned"/"signed: no" → false; anything unrecognized (or empty) → null.
+function dnssecBool(v) {
+  const s = String(v || '').trim().toLowerCase();
+  if (!s) return null;
+  if (/^(no|unsigned|signed:\s*no)\b/.test(s)) return false;
+  if (/^(yes|true|signed|signeddelegation)\b/.test(s) || /\bds\b/.test(s)) return true;
+  return null;
+}
+
 const PRIVACY_RE =
   /redact|privacy|priv(at|ate)|proxy|whois\s?guard|data\s?protected|gdpr|not\s?disclosed|withheld|statutory\s?masking|identity\s?protect|contact\s?privacy|domains?\s?by\s?proxy/i;
+// nic.it (.it) and a few ccTLDs print the literal token "hidden" for a
+// privacy-redacted contact field — treat an EXACTLY-"hidden" name/org as redacted
+// (bounded so a real registrant like "Hidden Valley LLC" isn't false-flagged).
+const REDACT_TOKEN_RE = /^(hidden|redacted|n\/a|not available)$/i;
 
 // Authoritative registry WHOIS servers for common TLDs, so the lookup works
 // without a (port-43) IANA round-trip and never falls back to a wrong guess.
@@ -49,20 +63,52 @@ async function ianaRefer(tld) {
   }
 }
 
+// A non-indented block header used by BLOCK-structured WHOIS (many ccTLDs, e.g.
+// nic.it): "Registrant" / "Registrar" / "Nameservers" on their own line, followed
+// by INDENTED sub-fields. The standard ICANN gTLD format instead prefixes the key
+// ("Registrar:", "Registrant Organization:") on one line — those carry a value, so
+// they never match this header pattern (anchored, empty value) and parse as before.
+const SECTION_HEAD = /^(registrant|admin(?:istrative)?(?:\s+contacts?)?|tech(?:nical)?(?:\s+contacts?)?|registrar|name\s?servers?)\s*:?\s*$/i;
+const NS_SECTION_RE = /name\s?servers?/;
+
 // Parse a WHOIS text into key→value (last wins, so registrar data overrides the
-// thin registry record), collecting nameservers and statuses as lists.
+// thin registry record), collecting nameservers and statuses as lists. Also
+// SECTION-AWARE: under a block header (nic.it-style) the indented sub-fields are
+// ALSO stored section-qualified ("registrar organization", "registrant organization")
+// so a generic "organization"/"name" in one block doesn't collide with another's,
+// and bare indented hostnames under a "Nameservers" block are captured as NS.
 function parseFields(text, into) {
   const f = into.fields;
+  let section = '';
   for (const raw of text.split('\n')) {
     const line = raw.replace(/\r$/, '');
+    if (!line.trim()) continue;
+    const indented = /^\s/.test(line);
     const idx = line.indexOf(':');
-    if (idx < 1) continue;
+
+    // A non-indented, value-less block header opens a section.
+    if (!indented && SECTION_HEAD.test(line.trim())) {
+      section = line.trim().replace(/:\s*$/, '').toLowerCase();
+      continue;
+    }
+    if (idx < 1) {
+      // Bare line, no "key:" — under a Nameservers block it's an NS hostname.
+      if (NS_SECTION_RE.test(section)) {
+        const host = line.trim().toLowerCase().split(/\s+/)[0].replace(/\.$/, '');
+        if (/^[a-z0-9-]+(\.[a-z0-9-]+)+$/.test(host)) into.nameservers.add(host);
+      }
+      continue;
+    }
     const key = line.slice(0, idx).trim().toLowerCase();
     const val = line.slice(idx + 1).trim();
+    if (!indented) section = ''; // a top-level key:value ends any open block
     if (!val || /^https?:\/\//i.test(key)) continue;
-    if (key === 'name server' || key === 'nserver') into.nameservers.add(val.toLowerCase().split(/\s+/)[0]);
+    if (key === 'name server' || key === 'nserver') into.nameservers.add(val.toLowerCase().split(/\s+/)[0].replace(/\.$/, ''));
     else if (key === 'domain status' || key === 'status') into.status.add(val);
-    else f[key] = val;
+    else {
+      f[key] = val; // bare key, last-wins (registry→registrar referral chain)
+      if (indented && section) f[`${section} ${key}`] = val; // disambiguated
+    }
   }
 }
 
@@ -110,45 +156,63 @@ export default {
       guard++;
     }
 
-    const f = acc.fields;
-    const g = (...keys) => {
-      for (const k of keys) if (f[k]) return f[k];
-      return '';
-    };
-    const registrant = {
-      name: g('registrant name'),
-      organization: g('registrant organization', 'registrant org'),
-      email: g('registrant email', 'registrant contact email'),
-      phone: g('registrant phone'),
-      country: g('registrant country'),
-      state: g('registrant state/province'),
-    };
-    const admin = {
-      name: g('admin name', 'administrative contact'),
-      email: g('admin email'),
-      phone: g('admin phone'),
-    };
-    const tech = { name: g('tech name'), email: g('tech email'), phone: g('tech phone') };
-
-    const identityText = [registrant.name, registrant.organization, registrant.email].filter(Boolean).join(' ');
-    const hasRegistrant = Boolean(registrant.name || registrant.organization || registrant.email || registrant.phone);
-    const privacy = !hasRegistrant || PRIVACY_RE.test(identityText);
-
     return {
       domain: d,
       whois_server: serversTried[serversTried.length - 1] || start,
       servers_chased: serversTried,
-      registrar: g('registrar', 'sponsoring registrar', 'registrar name'),
-      created: g('creation date', 'created', 'created on', 'registered on', 'registration date'),
-      updated: g('updated date', 'last updated', 'last modified'),
-      expires: g('registry expiry date', 'registrar registration expiration date', 'expiration date', 'expiry date'),
-      nameservers: [...acc.nameservers],
-      status: [...acc.status],
-      registrant,
-      admin,
-      tech,
-      privacy,
+      ...deriveRecord(acc),
       raw: raw.slice(0, 4000),
     };
   },
 };
+
+// Build the structured record from an accumulated WHOIS parse. Split out (and
+// exported) so the registry-format parsing can be unit-tested without the network.
+export function deriveRecord(acc) {
+  const f = acc.fields;
+  const g = (...keys) => {
+    for (const k of keys) if (f[k]) return f[k];
+    return '';
+  };
+  const registrant = {
+    name: g('registrant name', 'registrant'),
+    organization: g('registrant organization', 'registrant org'),
+    email: g('registrant email', 'registrant contact email'),
+    phone: g('registrant phone'),
+    country: g('registrant country'),
+    state: g('registrant state/province'),
+  };
+  const admin = {
+    name: g('admin name', 'administrative contact'),
+    email: g('admin email'),
+    phone: g('admin phone'),
+  };
+  const tech = { name: g('tech name'), email: g('tech email'), phone: g('tech phone') };
+
+  const identityText = [registrant.name, registrant.organization, registrant.email].filter(Boolean).join(' ');
+  // A field that is ONLY a redaction token ("hidden"/"redacted"/…) isn't a real
+  // identity — treat it as absent so the record reads as privacy-protected.
+  const realIdentity = [registrant.name, registrant.organization].some((v) => v && !REDACT_TOKEN_RE.test(v.trim())) || Boolean(registrant.email || registrant.phone);
+  const privacy = !realIdentity || PRIVACY_RE.test(identityText);
+
+  return {
+    registrar: g('registrar', 'sponsoring registrar', 'registrar organization', 'registrar name'),
+    created: g('creation date', 'created', 'created on', 'registered on', 'registration date', 'registration time'),
+    updated: g('updated date', 'last updated', 'last modified', 'last update', 'last modified on', 'changed'),
+    expires: g('registry expiry date', 'registrar registration expiration date', 'expiration date', 'expiry date', 'expire date', 'expiry', 'expire', 'expiration time', 'paid-till'),
+    dnssec: dnssecBool(g('dnssec', 'registrar dnssec', 'dnssec ds records')),
+    nameservers: [...acc.nameservers],
+    status: [...acc.status],
+    registrant,
+    admin,
+    tech,
+    privacy,
+  };
+}
+
+// Parse a single WHOIS text blob into the structured record (test/entry helper).
+export function parseWhoisText(text) {
+  const acc = { fields: {}, nameservers: new Set(), status: new Set() };
+  parseFields(String(text || ''), acc);
+  return deriveRecord(acc);
+}

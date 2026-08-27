@@ -203,6 +203,39 @@ is covered, with the real domain substituted into the form's `domain.com` placeh
   it uses the free RDAP/WHOIS path already in the app. Verified live: zcashlabs.com→IONOS relay,
   google.com→MarkMonitor form with the domain filled in.
 
+## Whois tool — block-format ccTLD parsing + live-DNS nameserver fallback (2026-08-27)
+
+The free Whois lookup returned a THIN card for `.it` (infin.it: registered date + status + MX
+only — no expiry / nameservers / registrar / DNSSEC), while raw `whois.nic.it` has all of it.
+Root cause: **`.it` isn't in IANA's RDAP bootstrap and rdap.org 404s it** → RDAP returns nothing
+(the 404 even briefly reads as "available"; the WHOIS `created` date rescues it), so the whole
+record must come from the port-43 WHOIS leg — but `lib/sources/whois.js` `parseFields` was written
+for the **standard ICANN gTLD format** (`Registry Expiry Date:`, `Name Server:`, `Registrar:`) and
+couldn't read nic.it's **block format** (`Expire Date:`, a `Nameservers` header + indented bare
+hostnames, a `Registrar` block whose name is a nested `Organization:`). Fixes:
+- **`parseFields` is now SECTION-AWARE** (`lib/sources/whois.js`): a non-indented value-less block
+  header (`Registrant`/`Registrar`/`Nameservers`/`Admin Contact`/`Technical Contacts` — `SECTION_HEAD`)
+  opens a section; indented sub-fields are stored BOTH bare (last-wins, unchanged) AND section-qualified
+  (`registrar organization`, `registrant organization`) so a block's generic `Organization:`/`Name:`
+  no longer collides across blocks; **bare indented hostnames under a Nameservers block are captured
+  as NS**. Standard gTLD lines carry a value on the same line, so they never match `SECTION_HEAD` and
+  parse exactly as before (regression-tested).
+- **Widened the date getters**: `expires` also reads `expire date`/`expiry`/`expire`/`expiration time`/
+  `paid-till`; `updated` reads `last update`/`changed`; registrar prefers `registrar organization` (the
+  display name) over `registrar name` (nic.it's internal `REGISTRAR-EU-REG` code). New `dnssec` field
+  (`dnssecBool`) reads the WHOIS `DNSSEC:` line. Literal redaction tokens (`hidden` — nic.it's convention,
+  `redacted`/`n/a`) in the name/org now read as **privacy-protected** (`REDACT_TOKEN_RE`, exact-match so
+  "Hidden Valley LLC" isn't false-flagged).
+- **Always-on live-DNS nameserver fallback** (`lib/whois/lookup.js`): when neither RDAP nor WHOIS
+  yields nameservers, a DoH `NS` lookup fills them in — so nameservers show for ANY registry format
+  (verified: infin.it → pns21/pns22.cloudns.net). Also merges the WHOIS-derived DNSSEC when RDAP has none.
+- Extracted `parseWhoisText`/`deriveRecord` (exported) so the registry-format parsing is unit-tested
+  without the network. Verified: nic.it now yields registrar "Hosting Concepts B.V." / expiry 2026-08-24 /
+  DNSSEC true / both NS / privacy; standard `.com` unchanged. Backend-only (UI `renderWhois` already
+  renders every row when present) — no cache-bust. **NB port-43 WHOIS can't be run from the sandbox
+  (443-only egress); the `.it` end-to-end only exercises live on Vercel** — the parser is unit-verified
+  against the real nic.it format and the DoH fallback is live-verified.
+
 ## Internal kick-research endpoint (2026-07-22)
 
 `api/internal/kick-research.js` — server-to-server, `x-internal-secret == RESEARCH_INTERNAL_SECRET`

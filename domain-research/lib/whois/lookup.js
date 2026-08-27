@@ -278,9 +278,14 @@ export async function whoisLookup(domainRaw) {
   }
 
   // Prefer RDAP for the structured core; fall back to WHOIS field-by-field.
-  const nsList = (rdap.nameservers && rdap.nameservers.length) ? rdap.nameservers
+  let nsList = (rdap.nameservers && rdap.nameservers.length) ? rdap.nameservers
     : (whois && whois.nameservers && whois.nameservers.length) ? whois.nameservers
     : dnsNs;
+  // Universal last resort: a registered domain with live NS delegation ALWAYS has
+  // nameservers, even when RDAP is dead for the ccTLD (.it isn't in IANA's bootstrap)
+  // and the port-43 WHOIS uses a block format our parser can't fully read. A DoH NS
+  // lookup fills them in regardless of registry format.
+  if (!nsList.length) nsList = await dnsNameservers(domain);
   // Last resort: when neither RDAP nor WHOIS named a registrar (dead-RDAP ccTLDs
   // like .co, or a timed-out WHOIS leg), infer it from the nameservers so the
   // lookup ALWAYS shows who the domain is with. Marked `inferred` for the UI.
@@ -320,7 +325,7 @@ export async function whoisLookup(domainRaw) {
     statuses,
     nameservers,
     mx,
-    dnssec: rdap.dnssec ?? null,
+    dnssec: (rdap.dnssec ?? null) !== null ? rdap.dnssec : (whois && whois.dnssec != null ? whois.dnssec : null),
     contacts: {
       registrant: hasRegistrant ? registrant : null,
       admin: (rdap.contacts && rdap.contacts.admin) || (whois && whois.admin && (whois.admin.name || whois.admin.email) ? whois.admin : null) || null,
