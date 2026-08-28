@@ -1851,8 +1851,16 @@ Mirrors **Expiring .ai** (dictionary-fed candidate table + a paced background cr
   water.com(valuable but ACTIVE)→skip; zydeco.com(abandoned but rare)→skip.
 - **Cost-smart enrichment** (`lib/snapResearch/enrich.js`): the cheap abandonment clues (live-site fetch
   via `fetchText`/`extractClues`, Wayback CDX first/last/count, DoH NS) run first; the **paid TLD-count
-  probe (`popularTldCount`, 26 DNS) runs ONLY when the name already looks abandoned** (`abandon ≥38`), so
-  we don't probe 98k words. All fail-open.
+  probe (`popularTldCount`, 26 DNS) runs ONLY when the name already looks abandoned** (`abandon ≥38`) AND
+  isn't for-sale, so we don't probe 98k words. All fail-open.
+- **⚠️ Actively-for-sale = HARD DISQUALIFY (Rob 2026-08-28).** These are dig-up-the-owner BARGAIN buys, so a
+  name being **marketed at retail** (Afternic/Sedo/Dan/Atom/HugeDomains/DomainMarket/BrandBucket/Squadhelp
+  lander, a custom "for sale"/"make an offer"/"for inquiries" page, a GoDaddy/FD for-sale page) is out of
+  range → **never a candidate**. `enrich.js` detects `for_sale` two ways — marketplace **nameservers**
+  (`FOR_SALE_NS`, catches a JS-only lander we can't read) AND for-sale **landers/phrases** on the page
+  (`FOR_SALE_HOST_HINTS` + `FOR_SALE_PHRASES` + `extractClues` signals) — and `candidate = !forSale && …`.
+  `for_sale` contributes 0 to the abandonment score. Ad-only parking (bodis/parkingcrew) is NOT for-sale →
+  stays a `parked` candidate (a plain parked page with no sale listing can still be a cheap owner buy).
 - **Ordering = most-common-first.** Curation (`candidates.js`) alphabetically keyset-seeds `<word>.com`
   from `english_words` (is_root, letters-only, len 3–15), carrying each word's **`zipf`** (new column —
   see admin `english_words.zipf` backfill). The SCAN (`dueForScan`) prioritises `last_checked nulls-first,
@@ -1866,10 +1874,24 @@ Mirrors **Expiring .ai** (dictionary-fed candidate table + a paced background cr
   POST `{action:dismiss|undismiss, domain}`. DB `lib/db/snapResearch.js` + table
   `domain_research_snap_research` (+ `_meta` cursor) — migration **`0022_snap_research.sql`** (run on the
   research project; RLS enabled).
-- **Permission:** `research.snap_research` (admin `permissions.ts`, group SNAP, stored flat as
-  `snap_research`). **Phase 2 = the sortable report UI** (`#view-snap-research` in the SNAP nav +
-  SNAP_TABS entry); **Phase 3 = one-click "Add to SNAP Deals"** (needs an admin internal snap-deal
-  endpoint). Backend accumulates now; UI + one-click follow.
+- **Permission:** `research.snap_research` (admin `permissions.ts` MODULES + CATALOG + SNAP_TABS,
+  group SNAP, stored flat as `snap_research`).
+- **Phase 2 — report UI (2026-08-28, SHIPPED).** SNAP nav tab `#nav-snap-research` +
+  `#view-snap-research` (research SPA); `public/app.js` `snapResearch*` helpers (`loadSnapResearch`/
+  `snapResearchPaint`/`snrRowHtml`/`snrToggleSort`/`snrExportCsv`) render a **sortable** candidate
+  table (Domain · Value · Abandon · Score · Site · Stale © · TLDs · Unchanged-yr · Freq + CSV), default
+  sort score desc, `?all=1` toggle for raw progress, stats header (candidates/scanned/seeded). Route
+  `snap-research` added to `currentToolRoute` regex + `TOOL_PERMISSION` + `VIEWS` + `VIEW_SECTION` (snap)
+  + nav gate `can('snap_research')`. `.snr-*` styles. Cache-bust `?v=20260828snapresearch`. **Also
+  broadened the research SPA `topbar-snap` visibility** to any SNAP sub-tool (evaluate/bulk_eval/
+  expiring/snap_research or reports access), not just evaluate — so a snap_research-only user can reach it.
+- **Phase 3 — one-click → SNAP Deals (2026-08-28, SHIPPED).** A **＋ SNAP Deal** button per candidate:
+  `api/snap-research.js` POST `action:'add_deal'` → calls admin internal **`/api/internal/snap-deal`**
+  (`x-internal-secret == RESEARCH_INTERNAL_SECRET`, `ADMIN_INTERNAL_BASE`) which find-or-creates a native
+  `snap_deal` (dedupe by domain) in Qualifying with the clues in Notes + returns its URL; the row is
+  marked `added_deal` (button flips to "✓ In SNAP Deals ↗"). Admin side: `findSnapDealByDomain` +
+  `app/api/internal/snap-deal/route.ts` (snagged-admin). Reuses existing `RESEARCH_INTERNAL_SECRET` +
+  `ADMIN_INTERNAL_BASE` (no new env).
 - **Setup:** run `0022` on the research project; `english_words.zipf` must be backfilled first (admin
   `backfill-english-zipf.yml`, done 2026-08-28). Reuses existing keys (no new vendor). Grant
   `research.snap_research` per-user; admins auto-pass.

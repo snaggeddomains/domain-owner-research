@@ -23,7 +23,8 @@ export function abandonScore({ siteStatus, stale, staleYearsAgo, unchangedYears 
   // Disposition of the live .com.
   if (siteStatus === 'no_resolve') s += 55;        // a valuable word that doesn't even resolve — nobody's using it
   else if (siteStatus === 'parked') s += 45;       // parked page, held but undeveloped
-  else if (siteStatus === 'for_sale') s += 18;     // for sale = an ACTIVE seller, weaker "abandoned" signal
+  // for_sale contributes NOTHING — an actively-marketed name is not abandoned, and it's
+  // hard-excluded from candidacy upstream (out of our bargain-hunt range).
   // (active site → 0 here; staleness/unchanged below can still flag an abandoned-in-place site)
   // Stale footer/copyright year (0..30) — the older, the more abandoned-in-place.
   if (stale) s += Math.min(30, 12 + (Number(staleYearsAgo) || 0) * 2.5);

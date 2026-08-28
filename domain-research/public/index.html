@@ -35,7 +35,7 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="apple-mobile-web-app-title" content="Snagged Research" />
     <meta name="theme-color" content="#254254" />
-    <link rel="stylesheet" href="styles.css?v=20260828reserved" />
+    <link rel="stylesheet" href="styles.css?v=20260828snapresearch" />
     <!-- Layout: horizontal tab nav (Admin-style), no sidebar. -->
   </head>
   <body>
@@ -228,6 +228,7 @@
           <a id="nav-expiring" class="nav-btn" href="/research/expiring" hidden>Expiring .ai</a>
           <a id="nav-snap-opps" class="nav-btn" href="/reports/opportunities">SNAP Opportunities</a>
           <a id="nav-snap-names" class="nav-btn" href="/reports/snap-names">SNAP Names</a>
+          <a id="nav-snap-research" class="nav-btn" href="/research/snap-research" hidden>SNAP Research</a>
         </span>
         <!-- Reports sub-nav (shown in the Reports section). Corporate Portfolios is
              a research-app page that belongs to Reports; the analytics tabs are the
@@ -1067,6 +1068,21 @@
           <div id="expiring-metrics" hidden></div>
         </section>
 
+        <section id="view-snap-research" hidden>
+          <div class="hero tool-hero">
+            <h1 class="hero-title">SNAP <span class="accent">Research</span></h1>
+            <p class="hero-sub">Valuable one-word <strong>.com</strong> dictionary names whose owner has likely <strong>let them go</strong> — built up over time by walking the dictionary and scoring each on two axes: <strong>value</strong> (TLD demand · commonness · brevity) and <strong>abandonment</strong> (parked/dead · stale footer year · unchanged for years). A candidate scores high on <em>both</em>. Acquisition candidates for SNAP Deals.</p>
+          </div>
+          <div id="snr-head" class="snr-head"></div>
+          <div class="snr-controls">
+            <label class="snr-toggle"><input id="snr-all" type="checkbox" /> Show all scanned (not just candidates)</label>
+            <button id="snr-refresh" type="button" class="be-ghost">↻ Refresh</button>
+            <button id="snr-csv" type="button" class="be-ghost" hidden>⬇ CSV</button>
+          </div>
+          <div id="snr-status" class="sr-status" hidden></div>
+          <div id="snr-result"></div>
+        </section>
+
         <section id="view-bulk-eval" hidden>
           <div class="hero tool-hero">
             <h1 class="hero-title">Bulk <span class="accent">Eval</span></h1>
@@ -1452,6 +1468,6 @@ The model parses it into structured filters (TLDs, length, budget, tone, etc.) a
     </div>
 
     <!-- Bump ?v= on any public/app.js or styles.css change to bust caches. -->
-    <script src="app.js?v=20260828reserved"></script>
+    <script src="app.js?v=20260828snapresearch"></script>
   </body>
 </html>

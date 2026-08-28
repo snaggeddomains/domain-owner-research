@@ -317,6 +317,7 @@ const els = {
   navRenewal: $('nav-renewal'),
   renewalForm: $('renewal-form'), renewalQ: $('renewal-q'), renewalGo: $('renewal-go'), renewalStatus: $('renewal-status'), renewalResult: $('renewal-result'),
   navExpiring: $('nav-expiring'),
+  navSnapResearch: $('nav-snap-research'),
   expiringHead: $('expiring-head'), expiringResult: $('expiring-result'), expiringStatus: $('expiring-status'),
   expiringMetrics: $('expiring-metrics'), xpControls: $('xp-controls'), xpSeed: $('xp-seed'),
   xpParked: $('xp-parked'), xpRefresh: $('xp-refresh'), xpCsv: $('xp-csv'),
@@ -579,7 +580,7 @@ function clearHash() {
 // the SPA): Domain DB Screen at /dbscreen, DB Search at /dbsearch.
 const VANITY_TOOLS = ['dbscreen', 'dbsearch'];
 function currentToolRoute() {
-  let m = location.pathname.match(/^\/research\/(trademark|appraisal|naming|dbscreen|dbsearch|nameserver|sales|portfolio|ahrefs|person|networth|evaluate|bulk-eval|tld-count|renewal|expiring|beeper|whois|auction-owners|diq|admin)(?:\/(.+?))?\/?$/);
+  let m = location.pathname.match(/^\/research\/(trademark|appraisal|naming|dbscreen|dbsearch|nameserver|sales|portfolio|ahrefs|person|networth|evaluate|bulk-eval|tld-count|renewal|expiring|snap-research|beeper|whois|auction-owners|diq|admin)(?:\/(.+?))?\/?$/);
   if (!m) m = location.pathname.match(/^\/(dbscreen|dbsearch)(?:\/(.+?))?\/?$/);
   if (!m) return null;
   return { tool: m[1], slug: m[2] ? decodeURIComponent(m[2]) : '' };
@@ -613,6 +614,7 @@ const TOOL_PERMISSION = {
   'bulk-eval': 'bulk_eval',
   'tld-count': 'domain_owner',
   renewal: 'domain_owner',
+  'snap-research': 'snap_research',
 };
 
 // ── Cross-module domain context (action bar + ⌘K palette; workspace-ready) ──
@@ -1038,6 +1040,11 @@ function route() {
   if (tr && tr.tool === 'expiring') {
     showView('expiring');
     expiringEnter();
+    return;
+  }
+  if (tr && tr.tool === 'snap-research') {
+    showView('snap-research');
+    snapResearchEnter();
     return;
   }
   if (tr && tr.tool === 'admin') {
@@ -2933,9 +2940,10 @@ async function checkAuth() {
       // (admin.imports, admin.sources, …). Mirrors permissions.ts#canEnterAdmin —
       // checking only is_admin||admin hid the chrome from granular admins (e.g. a
       // user with just admin.imports couldn't reach the dashboard from here).
-      // SNAP — top-level workspace; the header link lands on SNAP Eval, so show it
-      // to anyone who can use SNAP Eval (or, as owner/admin, everything).
-      if (els.topbarSnap) els.topbarSnap.hidden = !(u.is_admin || (u.permissions && u.permissions.evaluate));
+      // SNAP — top-level workspace; show it to anyone who can use ANY SNAP sub-tool
+      // (SNAP Eval / Bulk Eval / Expiring .ai / SNAP Research are research-app pages;
+      // Opportunities / SNAP Names are reports pages) — not just SNAP Eval.
+      if (els.topbarSnap) els.topbarSnap.hidden = !(u.is_admin || (u.permissions && (u.permissions.evaluate || u.permissions.bulk_eval || u.permissions.expiring || u.permissions.snap_research)) || canEnterReports(u));
       if (els.topbarAdmin) els.topbarAdmin.hidden = !canEnterAdmin(u);
       // Reports section now also hosts Corporate Portfolios (a research-app page),
       // so a portfolio-only user should see Reports in the header too.
@@ -3107,6 +3115,7 @@ function gateNavByPermissions(user) {
   if (els.navSnapEval) els.navSnapEval.hidden = !can('evaluate');
   if (els.navBulkEval) els.navBulkEval.hidden = !can('bulk_eval');
   if (els.navExpiring) els.navExpiring.hidden = !can('expiring');
+  if (els.navSnapResearch) els.navSnapResearch.hidden = !can('snap_research');
   if (els.navSnapOpps) els.navSnapOpps.hidden = !(Boolean(user && user.is_admin) || canEnterReports(user));
   if (els.navSnapNames) els.navSnapNames.hidden = !(Boolean(user && user.is_admin) || canEnterReports(user) || Boolean(perms.snap_names) || perms['reports.snap_names'] === true);
   // Reports sub-nav: Corporate Portfolios (a research-app page) needs `portfolio`;
@@ -4436,6 +4445,7 @@ const VIEWS = {
   'tld-count': { view: 'view-tldcount', nav: 'nav-tldcount' },
   renewal: { view: 'view-renewal', nav: 'nav-renewal' },
   expiring: { view: 'view-expiring', nav: 'nav-expiring' },
+  'snap-research': { view: 'view-snap-research', nav: 'nav-snap-research' },
   admin: { view: 'view-admin', nav: 'nav-admin' },
   lead: { view: 'view-lead', nav: 'nav-lead' }, // deep-link only (no nav tab)
 };
@@ -4451,7 +4461,139 @@ const SECTION_NAV = {
   snap: { group: 'nav-snap-group', topbar: 'topbar-snap' },
   reports: { group: 'nav-reports-group', topbar: 'topbar-reports' },
 };
-const VIEW_SECTION = { evaluate: 'snap', 'bulk-eval': 'snap', expiring: 'snap', portfolio: 'reports', 'portfolio-runs': 'reports', ahrefs: 'reports' };
+// ── SNAP Research (dictionary .com abandonment finder) ──────────────────────
+let snapResearchRows = [];
+let snapResearchStats = null;
+let snrShowAll = false;
+let snrSort = { col: 'score', dir: 'desc' };
+const SNR_COLS = [
+  { key: 'domain', label: 'Domain', num: false },
+  { key: 'value_score', label: 'Value', num: true },
+  { key: 'abandon_score', label: 'Abandon', num: true },
+  { key: 'score', label: 'Score', num: true },
+  { key: 'site_status', label: 'Site', num: false },
+  { key: 'stale_year', label: 'Stale ©', num: true },
+  { key: 'tld_count', label: 'TLDs', num: true },
+  { key: 'unchanged_years', label: 'Unchanged (yr)', num: true },
+  { key: 'zipf', label: 'Freq', num: true },
+];
+function snapResearchEnter() {
+  const all = document.getElementById('snr-all');
+  if (all) { all.checked = snrShowAll; all.onchange = () => { snrShowAll = all.checked; loadSnapResearch(); }; }
+  const rf = document.getElementById('snr-refresh'); if (rf) rf.onclick = () => loadSnapResearch();
+  const csv = document.getElementById('snr-csv'); if (csv) csv.onclick = snrExportCsv;
+  loadSnapResearch();
+}
+async function loadSnapResearch() {
+  const status = document.getElementById('snr-status');
+  const result = document.getElementById('snr-result');
+  if (status) { status.hidden = false; status.textContent = 'Loading…'; }
+  try {
+    const res = await fetch(`/research/api/snap-research${snrShowAll ? '?all=1' : ''}`, { cache: 'no-store' });
+    const d = await apiJson(res);
+    if (!d.configured) {
+      if (status) { status.hidden = false; status.textContent = 'SNAP Research isn’t set up yet — run migration 0022 on the research project.'; }
+      if (result) result.innerHTML = ''; return;
+    }
+    snapResearchRows = d.rows || [];
+    snapResearchStats = d.stats || null;
+    if (status) status.hidden = true;
+    snapResearchPaint();
+  } catch (e) {
+    if (status) { status.hidden = false; status.textContent = e && e.sessionExpired ? e.message : ('Couldn’t load: ' + ((e && e.message) || e)); }
+  }
+}
+function snrSortRows(rows) {
+  const { col, dir } = snrSort;
+  const meta = SNR_COLS.find((c) => c.key === col) || {};
+  return rows.slice().sort((a, b) => {
+    let av = a[col], bv = b[col];
+    const ae = av == null || av === '', be = bv == null || bv === '';
+    if (ae && be) return 0; if (ae) return 1; if (be) return -1; // blanks last
+    if (meta.num) { av = Number(av) || 0; bv = Number(bv) || 0; return dir === 'asc' ? av - bv : bv - av; }
+    av = String(av).toLowerCase(); bv = String(bv).toLowerCase();
+    return dir === 'asc' ? av.localeCompare(bv) : bv.localeCompare(av);
+  });
+}
+function snrToggleSort(col) {
+  const meta = SNR_COLS.find((c) => c.key === col) || {};
+  if (snrSort.col === col) snrSort.dir = snrSort.dir === 'asc' ? 'desc' : 'asc';
+  else { snrSort.col = col; snrSort.dir = meta.num ? 'desc' : 'asc'; }
+  snapResearchPaint();
+}
+function snapResearchPaint() {
+  const head = document.getElementById('snr-head');
+  const result = document.getElementById('snr-result');
+  const csv = document.getElementById('snr-csv');
+  if (head && snapResearchStats) {
+    const s = snapResearchStats;
+    head.innerHTML = `<div class="snr-stats">
+      <div class="snr-stat"><b>${(s.candidates || 0).toLocaleString()}</b><span>Candidates</span></div>
+      <div class="snr-stat"><b>${(s.scanned || 0).toLocaleString()}</b><span>Scanned</span></div>
+      <div class="snr-stat"><b>${(s.total || 0).toLocaleString()}</b><span>Seeded</span></div>
+    </div>`;
+  }
+  const rows = snrSortRows(snapResearchRows);
+  if (csv) csv.hidden = !rows.length;
+  if (!result) return;
+  if (!rows.length) {
+    result.innerHTML = `<p class="muted" style="margin-top:14px">No candidates yet — the dictionary walk is still accruing (most-common words are checked first, so strong candidates surface over the first day). ${snrShowAll ? '' : 'Tick “Show all scanned” to watch raw progress.'}</p>`;
+    return;
+  }
+  const arrow = (k) => snrSort.col === k ? (snrSort.dir === 'asc' ? ' ▲' : ' ▼') : '';
+  const th = SNR_COLS.map((c) => `<th class="${c.num ? 'num' : ''}${snrSort.col === c.key ? ' snr-active' : ''}" data-snr-sort="${c.key}">${c.label}${arrow(c.key)}</th>`).join('') + '<th></th>';
+  const body = rows.map((r) => snrRowHtml(r)).join('');
+  result.innerHTML = `<div class="snr-tablewrap"><table class="snr-table"><thead><tr>${th}</tr></thead><tbody>${body}</tbody></table></div>`;
+  result.querySelectorAll('[data-snr-sort]').forEach((el) => { el.onclick = () => snrToggleSort(el.getAttribute('data-snr-sort')); });
+  result.querySelectorAll('[data-snr-dismiss]').forEach((el) => { el.onclick = () => snrDismiss(el.getAttribute('data-snr-dismiss')); });
+  result.querySelectorAll('[data-snr-deal]').forEach((el) => { el.onclick = () => snrAddDeal(el.getAttribute('data-snr-deal'), el); });
+}
+function snrRowHtml(r) {
+  const siteClass = { active: 'snr-site-active', parked: 'snr-site-parked', for_sale: 'snr-site-forsale', no_resolve: 'snr-site-dead' }[r.site_status] || '';
+  const stale = r.stale_year ? String(r.stale_year) : (r.stale ? 'old' : '—');
+  return `<tr>
+    <td class="snr-domain"><a href="https://${escapeHtml(r.domain)}" target="_blank" rel="noopener">${escapeHtml(r.domain)}</a></td>
+    <td class="num">${r.value_score ?? '—'}</td>
+    <td class="num">${r.abandon_score ?? '—'}</td>
+    <td class="num"><b>${r.score ?? '—'}</b></td>
+    <td><span class="snr-pill ${siteClass}">${escapeHtml(r.site_status || '—')}</span></td>
+    <td class="num">${stale}</td>
+    <td class="num">${r.tld_count ?? '—'}</td>
+    <td class="num">${r.unchanged_years != null ? r.unchanged_years : '—'}</td>
+    <td class="num">${r.zipf != null ? r.zipf : '—'}</td>
+    <td class="snr-actions">
+      ${r.added_deal ? '<span class="snr-added">✓ In SNAP Deals</span>' : `<button type="button" class="snr-btn snr-adddeal" data-snr-deal="${escapeHtml(r.domain)}">＋ SNAP Deal</button>`}
+      <button type="button" class="snr-btn snr-x" data-snr-dismiss="${escapeHtml(r.domain)}" title="Dismiss (not a fit)">✕</button>
+    </td>
+  </tr>`;
+}
+async function snrDismiss(domain) {
+  snapResearchRows = snapResearchRows.filter((r) => r.domain !== domain);
+  snapResearchPaint();
+  try { await fetch('/research/api/snap-research', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'dismiss', domain }) }); } catch { /* optimistic */ }
+}
+async function snrAddDeal(domain, btn) {
+  if (btn) { btn.disabled = true; btn.textContent = '…'; }
+  try {
+    const res = await fetch('/research/api/snap-research', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'add_deal', domain }) });
+    const d = await res.json();
+    if (!res.ok || d.error) throw new Error(d.error || 'failed');
+    const row = snapResearchRows.find((r) => r.domain === domain); if (row) row.added_deal = true;
+    if (btn) { const cell = btn.closest('.snr-actions'); if (cell) cell.innerHTML = `<a class="snr-added" href="${d.url || '#'}" target="_blank" rel="noopener">✓ In SNAP Deals ↗</a>`; }
+  } catch (e) {
+    if (btn) { btn.disabled = false; btn.textContent = '＋ SNAP Deal'; }
+    alert('Could not add to SNAP Deals: ' + ((e && e.message) || e));
+  }
+}
+function snrExportCsv() {
+  const rows = snrSortRows(snapResearchRows);
+  const cols = ['domain', 'value_score', 'abandon_score', 'score', 'site_status', 'stale_year', 'tld_count', 'unchanged_years', 'wayback_first', 'wayback_last', 'nameservers', 'zipf'];
+  const cell = (v) => { if (Array.isArray(v)) v = v.join(' '); if (v == null) v = ''; v = String(v); return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };
+  const csv = cols.join(',') + '\n' + rows.map((r) => cols.map((c) => cell(r[c])).join(',')).join('\n');
+  const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' })); a.download = 'snap-research-candidates.csv'; a.click(); URL.revokeObjectURL(a.href);
+}
+
+const VIEW_SECTION = { evaluate: 'snap', 'bulk-eval': 'snap', expiring: 'snap', 'snap-research': 'snap', portfolio: 'reports', 'portfolio-runs': 'reports', ahrefs: 'reports' };
 const sectionForView = (name) => VIEW_SECTION[name] || 'research';
 
 function showView(name) {
@@ -7985,6 +8127,7 @@ els.navBulkEval?.addEventListener('click', (e) => { if (newTabClick(e)) return; 
 els.navTldcount?.addEventListener('click', (e) => { if (newTabClick(e)) return; e.preventDefault(); setToolUrl('tld-count', ''); route(); });
 els.navRenewal?.addEventListener('click', (e) => { if (newTabClick(e)) return; e.preventDefault(); setToolUrl('renewal', ''); route(); });
 els.navExpiring?.addEventListener('click', (e) => { if (newTabClick(e)) return; e.preventDefault(); setToolUrl('expiring', ''); route(); });
+els.navSnapResearch?.addEventListener('click', (e) => { if (newTabClick(e)) return; e.preventDefault(); setToolUrl('snap-research', ''); route(); });
 
 // ── Bulk Eval — rank a list/CSV of domains by investability ─────────────────
 let beLast = null; // last results (for CSV)

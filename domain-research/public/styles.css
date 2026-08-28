@@ -748,6 +748,35 @@ a.naming-card-domain:hover { color: var(--coral-deep); text-decoration: underlin
 .av-reserved { border-color: #e6cfbf; border-left-color: #c76b3a; }
 .av-badge-reserved { background: #c76b3a; }
 .av-reserved .av-reg-link:hover { border-color: #c76b3a; color: #a9481d; }
+
+/* SNAP Research */
+.snr-head { margin-top: 14px; }
+.snr-stats { display: flex; gap: 14px; flex-wrap: wrap; }
+.snr-stat { background: var(--card, #fff); border: 1px solid var(--line); border-radius: 10px; padding: 10px 16px; min-width: 96px; }
+.snr-stat b { display: block; font-size: 1.4rem; color: var(--navy-2, #1e3a52); }
+.snr-stat span { font-size: .74rem; color: var(--navy-3); text-transform: uppercase; letter-spacing: .03em; }
+.snr-controls { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin: 14px 0 8px; }
+.snr-toggle { font-size: .85rem; color: var(--navy-2, #1e3a52); display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
+.snr-tablewrap { overflow-x: auto; }
+.snr-table { width: 100%; border-collapse: collapse; font-size: .86rem; }
+.snr-table th { text-align: left; padding: 8px 12px; border-bottom: 2px solid var(--line); color: var(--navy-3); font-weight: 700; cursor: pointer; white-space: nowrap; user-select: none; }
+.snr-table th.num { text-align: right; }
+.snr-table th.snr-active { color: var(--coral); }
+.snr-table td { padding: 8px 12px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+.snr-table td.num { text-align: right; font-variant-numeric: tabular-nums; }
+.snr-table tbody tr:hover { background: var(--cream, #faf6ef); }
+.snr-domain a { font-weight: 700; color: var(--navy-2, #1e3a52); text-decoration: none; }
+.snr-domain a:hover { text-decoration: underline; }
+.snr-pill { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: .74rem; font-weight: 700; background: #eee; color: #555; }
+.snr-site-dead { background: #fbe4e4; color: #a5342f; }
+.snr-site-parked { background: #fff0d6; color: #a9761d; }
+.snr-site-forsale { background: #e5eefb; color: #2f5aa8; }
+.snr-site-active { background: #e3f3e8; color: #1f7a4d; }
+.snr-actions { white-space: nowrap; text-align: right; }
+.snr-btn { border: 1px solid var(--line); background: var(--cream, #faf6ef); border-radius: 7px; padding: 4px 9px; font-size: .78rem; font-weight: 600; cursor: pointer; color: var(--navy-2, #1e3a52); margin-left: 4px; }
+.snr-btn:hover { border-color: var(--coral); }
+.snr-adddeal { background: #e3f3e8; border-color: #bfe6cf; color: #1f7a4d; }
+.snr-added { font-size: .78rem; font-weight: 700; color: #1f7a4d; text-decoration: none; }
 .av-override { font-size: .82rem; color: var(--navy-3); margin: 8px 0 0; }
 .av-override-btn { background: none; border: none; padding: 0; font: inherit; color: var(--coral); font-weight: 600; cursor: pointer; text-decoration: underline; }
 .av-override-btn:hover { color: var(--coral-2, #c0543a); }

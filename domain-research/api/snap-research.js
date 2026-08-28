@@ -3,7 +3,7 @@
 // candidate rows; POST {action:'dismiss'|'undismiss', domain}.
 
 import { isAuthed, requireUser, userCan } from '../lib/auth.js';
-import { snapCandidateList, snapStats, setSnapDismissed, snapResearchConfigured } from '../lib/db/snapResearch.js';
+import { snapCandidateList, snapStats, setSnapDismissed, snapResearchConfigured, getSnapRow, markSnapAddedDeal } from '../lib/db/snapResearch.js';
 
 export const config = { maxDuration: 30 };
 
@@ -21,8 +21,34 @@ export default async function handler(req, res) {
   if (req.method === 'POST') {
     const b = req.body || {};
     const domain = String(b.domain || '').toLowerCase().trim();
+
+    // One-click → SNAP Deals (Sam's acquisition board, in the admin app). Creates a native
+    // snap_deal via the admin internal endpoint + marks the row so the button flips.
+    if (b.action === 'add_deal') {
+      if (!domain) { res.status(400).json({ error: 'domain required' }); return; }
+      const secret = process.env.RESEARCH_INTERNAL_SECRET;
+      const base = process.env.ADMIN_INTERNAL_BASE || 'https://app.snagged.com';
+      if (!secret) { res.status(503).json({ error: 'SNAP Deals bridge not configured' }); return; }
+      try {
+        const r = await getSnapRow(domain);
+        const notes = r
+          ? `From SNAP Research — value ${r.value_score}/100, abandonment ${r.abandon_score}/100. Site: ${r.site_status}${r.stale_year ? `, stale ©${r.stale_year}` : ''}${r.tld_count != null ? `, ${r.tld_count} TLDs` : ''}${r.unchanged_years ? `, unchanged ~${r.unchanged_years}yr` : ''}.`
+          : 'From SNAP Research.';
+        const resp = await fetch(`${base}/api/internal/snap-deal`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-internal-secret': secret },
+          body: JSON.stringify({ domain, notes, source: 'snap_research' }),
+        });
+        const data = await resp.json().catch(() => ({}));
+        if (!resp.ok || data.error) { res.status(502).json({ error: data.error || `admin create failed (${resp.status})` }); return; }
+        await markSnapAddedDeal(domain);
+        res.status(200).json({ ok: true, url: data.url || null, id: data.id || null });
+      } catch (e) { res.status(502).json({ error: String((e && e.message) || e) }); }
+      return;
+    }
+
     if (!domain || (b.action !== 'dismiss' && b.action !== 'undismiss')) {
-      res.status(400).json({ error: 'action (dismiss|undismiss) + domain required' });
+      res.status(400).json({ error: 'action (dismiss|undismiss|add_deal) + domain required' });
       return;
     }
     try { await setSnapDismissed(domain, b.action === 'dismiss'); res.status(200).json({ ok: true }); }

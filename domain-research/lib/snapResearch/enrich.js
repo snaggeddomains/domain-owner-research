@@ -11,6 +11,27 @@ import { valueScore, abandonScore, combinedScore, isCandidate, TLD_PROBE_ABANDON
 const UA = 'Mozilla/5.0 (compatible; SnaggedResearch/1.0)';
 const YEAR = new Date().getUTCFullYear();
 
+// A name that's ACTIVELY LISTED FOR SALE (retail marketplace / priced lander / "inquire")
+// is being marketed by the owner → out of our bargain-hunt range → DISQUALIFY (it's not an
+// abandoned dig-up-the-owner buy). Detected two ways: marketplace NAMESERVERS (catches a
+// JS-only Afternic/Dan/Atom lander we can't read) and for-sale LANDERS/phrases on the page.
+// NB ad-only parking (bodis/parkingcrew) is NOT here — a plain parked page with no sale
+// listing can still be a cheap owner buy, so it stays a `parked` candidate.
+const FOR_SALE_NS = ['dan.com', 'undeveloped.com', 'atom.com', 'afternic.com', 'above.com', 'sedo.com', 'sedoparking.com', 'hugedomains.com', 'sav.com', 'efty.com', 'domainmarket.com', 'fabulous.com', 'epik.com', 'brandbucket.com', 'squadhelp.com'];
+const FOR_SALE_HOST_HINTS = ['afternic.com', 'sedo.com', 'dan.com', 'atom.com', 'hugedomains.com', 'domainmarket.com', 'efty.com', 'sav.com', 'fabulous.com', 'buydomains.com', 'brandbucket.com', 'squadhelp.com', 'godaddy.com/domainsearch', 'domainagents.com'];
+const FOR_SALE_PHRASES = [
+  'domain is for sale', 'this domain is for sale', 'domain for sale', 'domain name is for sale', 'buy this domain',
+  'domain may be for sale', 'this domain may be for sale', 'make an offer', 'make offer', 'inquire about this domain',
+  'for inquiries', 'available for purchase', 'purchase this domain', 'interested in buying', 'this domain is available for',
+  'the domain you are looking for is for sale', 'domain is available for sale', 'get this domain', 'contact us to purchase',
+];
+function nsIsForSale(ns) {
+  return (ns || []).some((h) => {
+    const l = String(h || '').toLowerCase();
+    return FOR_SALE_NS.some((s) => l === s || l.endsWith('.' + s));
+  });
+}
+
 async function inspect(domain) {
   for (const url of [`https://${domain}`, `http://${domain}`]) {
     try {
@@ -21,17 +42,27 @@ async function inspect(domain) {
   return null;
 }
 
-function classify(res) {
-  if (!res) return { site_status: 'no_resolve', title: null, stale: false, staleYear: null };
+function classify(res, ns) {
+  const nsForSale = nsIsForSale(ns);
+  if (!res) {
+    // No readable page. Marketplace NS → it's a (JS-only) for-sale lander → disqualify;
+    // otherwise the valuable word simply doesn't resolve.
+    if (nsForSale) return { site_status: 'for_sale', title: null, stale: false, staleYear: null };
+    return { site_status: 'no_resolve', title: null, stale: false, staleYear: null };
+  }
   const clues = extractClues(res.body || '');
-  const forSale = (clues.parking?.for_sale_signals || []).length > 0;
+  const htmlLower = String(res.body || '').toLowerCase();
+  const textLower = htmlLower.replace(/<[^>]+>/g, ' ');
+  const landerHost = FOR_SALE_HOST_HINTS.some((h) => htmlLower.includes(h)) || (clues.parking?.platforms || []).length > 0;
+  const forSalePhrase = (clues.parking?.for_sale_signals || []).length > 0 || FOR_SALE_PHRASES.some((p) => textLower.includes(p));
+  const forSale = nsForSale || landerHost || forSalePhrase;
   const parked = !!clues.parking?.likely_parked;
   // Copyright/footer year → staleness.
   let staleYear = null, stale = false;
   const years = clues.copyright ? (clues.copyright.match(/20[0-2]\d/g) || []).map(Number) : [];
   if (years.length) { staleYear = Math.max(...years); if (YEAR - staleYear >= 3) stale = true; }
   let site_status = 'active';
-  if (forSale) site_status = 'for_sale';
+  if (forSale) site_status = 'for_sale';                 // actively marketed → disqualified downstream
   else if (parked) site_status = 'parked';
   else if (!res.body || res.body.replace(/\s+/g, '').length < 200) site_status = 'parked'; // empty/near-empty = a holding page
   return { site_status, title: clues.title || null, stale, staleYear };
@@ -62,23 +93,27 @@ async function nameservers(domain) {
 export async function enrichOne(row, { env = process.env } = {}) {
   const { domain, word } = row;
   const res = await inspect(domain);
-  const cls = classify(res);
-  const wb = await wayback(domain);
   const ns = await nameservers(domain);
+  const cls = classify(res, ns);
+  const wb = await wayback(domain);
 
+  const forSale = cls.site_status === 'for_sale'; // actively marketed at retail → disqualified
   const unchangedYears = (wb.first && wb.last)
     ? Math.max(0, (Date.parse(wb.last) - Date.parse(wb.first)) / (365.25 * 864e5)) : 0;
   const staleYearsAgo = cls.staleYear ? (YEAR - cls.staleYear) : 0;
   const abandon = abandonScore({ siteStatus: cls.site_status, stale: cls.stale, staleYearsAgo, unchangedYears });
 
-  // VALUE probe (paid-ish DNS) only when it already looks abandoned.
+  // VALUE probe (paid-ish DNS) only when it already looks abandoned AND isn't for-sale
+  // (no point valuing a name we've already ruled out for being actively marketed).
   let tldCount = row.tld_count ?? null;
-  const worthProbing = abandon >= TLD_PROBE_ABANDON_MIN;
+  const worthProbing = !forSale && abandon >= TLD_PROBE_ABANDON_MIN;
   if (worthProbing && tldCount == null) {
     try { const t = await popularTldCount(word, { env }); tldCount = t?.count ?? null; } catch { /* fail-open */ }
   }
   const value = valueScore({ tldCount, zipf: row.zipf, wlen: row.wlen });
-  const candidate = isCandidate(value, abandon);
+  // A for-sale name is NEVER a candidate — the owner is marketing it at retail, out of our
+  // bargain-hunt range. Everything else needs both axes high.
+  const candidate = !forSale && isCandidate(value, abandon);
 
   return {
     site_status: cls.site_status,
