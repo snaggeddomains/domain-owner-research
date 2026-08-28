@@ -85,6 +85,8 @@
     { "source": "/research/renewal/:slug*", "destination": "/index.html" },
     { "source": "/research/expiring", "destination": "/index.html" },
     { "source": "/research/expiring/:slug*", "destination": "/index.html" },
+    { "source": "/research/snap-research", "destination": "/index.html" },
+    { "source": "/research/snap-research/:slug*", "destination": "/index.html" },
     { "source": "/research/r/:slug*", "destination": "/api/r?slug=:slug*" },
     { "source": "/research/api/:fn*", "destination": "/api/:fn*" },
     { "source": "/research/:path*", "destination": "/:path*" }
