@@ -269,6 +269,11 @@ export default async function handler(req, res) {
   // is usually a re-search of a domain just looked at. The client surfaces a
   // "Researched X ago · Refresh" affordance to spend credits on demand.
   const force = body.force === true || body.force === 'true';
+  // Manual override from the "available to register" card: the auto-detect got it wrong
+  // (a reserved/premium name read as available) → skip the available short-circuit and
+  // run the full ownership pipeline. Implies a fresh run (don't reuse the cached
+  // "available" report).
+  const skipAvailable = body.skip_available === true || body.skip_available === 'true';
   // Most recent prior run for this domain — reused (no force) to save credits, or
   // carried-forward (force) so a fresh re-research inherits the prior run's chat.
   let prior = null;
@@ -276,7 +281,7 @@ export default async function handler(req, res) {
     const recents = await listRuns({ q: domain, limit: 10, statuses: ['done'], reportStatuses: ['error'] });
     prior = recents.find((r) => String(r.domain).toLowerCase() === domain.toLowerCase()) || null;
   } catch { /* best-effort */ }
-  if (!force && prior) {
+  if (!force && !skipAvailable && prior) {
     // Re-submitting a name reuses its cached report (no re-spend) but should still
     // float to the TOP of Recent — bump created_at so it sorts first. Best-effort.
     let created_at = prior.created_at;
@@ -292,7 +297,7 @@ export default async function handler(req, res) {
   // re-research instead of being orphaned on the old run.
   const carryChatFrom = (force && prior && prior.id !== runId) ? prior.id : null;
   try {
-    await inngest.send({ name: RUN_REQUESTED, data: { runId, domain, question, phase, ...(carryChatFrom ? { carryChatFrom } : {}) } });
+    await inngest.send({ name: RUN_REQUESTED, data: { runId, domain, question, phase, ...(carryChatFrom ? { carryChatFrom } : {}), ...(skipAvailable ? { skipAvailable: true } : {}) } });
   } catch (e) {
     await failRun(runId, `Failed to enqueue job: ${e?.message || e}`);
     res.status(502).json({ error: 'Could not enqueue the research job (check Inngest config).' });

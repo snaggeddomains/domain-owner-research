@@ -513,6 +513,24 @@ critique) before concluding "not registered." Now it's an **immediate check that
 - **No new table / env** — reuses `whoisLookup` (RDAP + WHOIS, already used in `gather`) and the
   existing `report` jsonb (new `available` flag). Verified: rdapStatus google.com→registered,
   a random string→available, both from the sandbox.
+- **⚠️ FALSE-available on RESERVED/PREMIUM names → Porkbun confirmation + manual override (2026-08-28).**
+  **koe.tv** (a reserved/premium `.tv`) was wrongly shown "✓ Available to register" — but it's NOT
+  registerable (renews $26.26). Root cause: a **registry-RESERVED/premium** name has the SAME
+  "not found" fingerprint as a genuinely unregistered one — `rdap.nic.tv` **404s** koe.tv (no
+  registration record), it has **no NS** (DoH NXDOMAIN), and WHOIS shows no-match. RDAP/WHOIS/DNS
+  "not found" ≠ registerable. Fixes:
+  - **Porkbun confirmation gate** (`lib/whois/lookup.js`): in the branch that would declare available
+    (RDAP-available + no WHOIS + no NS), now calls **`porkbunCheck(domain)`** (authoritative "can I buy
+    it this second", already used by the naming exercise). Only a clear **`avail:yes`** returns
+    `available:true`; a taken/reserved/premium result OR an inconclusive one (no key / error /
+    rate-limit) **falls through to the normal pipeline** — never a false "available". Fixes BOTH the
+    report short-circuit AND the Whois tool's available card. NB the sandbox can't run Porkbun (keys
+    are Vercel-only), so the confirmation only exercises live.
+  - **Manual override** (Rob's ask): the available card now has a **"Actually registered? Run the full
+    report anyway →"** button (`.av-override-btn`, `data-av-override`) → `run({domain, force:true,
+    skipAvailable:true})`. Wired through: `enqueue`/`run` send `skip_available`; `api/research.js`
+    reads `body.skip_available` (also skips the cached-run reuse) → `RUN_REQUESTED data.skipAvailable`;
+    `runResearch` gates the short-circuit `if (!isRegen && !skipAvailable)`. Cache-bust `?v=20260828koeavail`.
 
 ---
 

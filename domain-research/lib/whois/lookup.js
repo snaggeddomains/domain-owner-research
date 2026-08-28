@@ -10,6 +10,7 @@
 
 import { fetchJson, normalizeDomain, isValidDomain } from '../util.js';
 import whoisSource from '../sources/whois.js';
+import { porkbunCheck } from '../variations/availability.js';
 
 // ccTLDs that run RDAP but aren't in IANA's gTLD bootstrap (same list Beeper uses).
 const CCTLD_RDAP = {
@@ -272,7 +273,20 @@ export async function whoisLookup(domainRaw) {
     const whoisRegistered = !!(whois && (whois.created || whois.registrar || (whois.nameservers && whois.nameservers.length)));
     if (!whoisRegistered) dnsNs = await dnsNameservers(domain);
     if (!whoisRegistered && dnsNs.length === 0) {
-      return { domain, available: true, registrar: null, dates: {}, statuses: [], nameservers: [], mx: { active: false, records: [] }, contacts: {}, privacy: false, sources: { rdap: rdap.source, whois: null }, raw: {} };
+      // RDAP + WHOIS + DNS all say "not found" — but that does NOT prove the name is
+      // REGISTERABLE. A registry-RESERVED / PREMIUM name (e.g. koe.tv: rdap.nic.tv 404s
+      // it, no NS delegation) has the exact same "not found" fingerprint as a genuinely
+      // unregistered name, yet can't be registered. Confirm with Porkbun's authoritative
+      // checkDomain before declaring available — only a clear avail:yes is trusted; a
+      // taken/reserved/premium result OR an inconclusive one (no key / error / rate-limit)
+      // falls through to the normal pipeline (safe: never a false "available").
+      const pk = await porkbunCheck(domain).catch(() => null);
+      const registerable = !!(pk && pk._v === 2 && pk.available === true);
+      if (registerable) {
+        return { domain, available: true, registrar: null, dates: {}, statuses: [], nameservers: [], mx: { active: false, records: [] }, contacts: {}, privacy: false, sources: { rdap: rdap.source, whois: null }, raw: {}, registration_note: pk.premium ? 'premium' : undefined };
+      }
+      // Reserved / premium / taken / unconfirmed — fall through and build the (thin)
+      // registered record so we never render a false "available".
     }
     // Registered after all — fall through and build the result from WHOIS + DNS.
   }

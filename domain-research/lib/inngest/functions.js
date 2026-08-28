@@ -255,7 +255,7 @@ export const runResearch = inngest.createFunction(
   },
   { event: RUN_REQUESTED },
   async ({ event, step }) => {
-    const { runId, domain, question, phase = 'shallow', tier: tierOverride, carryChatFrom } = event.data;
+    const { runId, domain, question, phase = 'shallow', tier: tierOverride, carryChatFrom, skipAvailable } = event.data;
     const deep = phase === 'deep';
     const isRegenSynth = phase === 'regenerate-synth';
     const isRegenDeep = phase === 'regenerate-deep';
@@ -275,8 +275,11 @@ export const runResearch = inngest.createFunction(
     // corroborates an RDAP-available result against a WHOIS leg (guards a
     // registered-but-undelegated false positive), and only `available === true` here
     // means genuinely unregistered (`false`/`undefined` both fall through to the
-    // normal pipeline).
-    if (!isRegen) {
+    // normal pipeline). whoisLookup ALSO Porkbun-confirms an RDAP-available result so a
+    // registry-RESERVED/premium name (koe.tv) isn't falsely flagged available. The
+    // `skipAvailable` flag is the manual override ("it IS registered — run the full
+    // report anyway") from the available-report card.
+    if (!isRegen && !skipAvailable) {
       const reg = await step.run('registration-check', () => whoisLookup(domain).catch(() => null));
       if (reg && reg.available === true) {
         await step.run('save-available-report', () =>

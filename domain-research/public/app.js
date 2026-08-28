@@ -2286,8 +2286,14 @@ function renderAvailableReport(report) {
       <h2 class="av-title">${escapeHtml(domain)} is available to register</h2>
       <p class="av-sub">This domain <strong>isn't registered</strong> — there's no owner to research, so the full ownership pipeline was skipped. You can register it now.</p>
       <div class="av-regs">${links}</div>
-      <p class="av-note">Checked via WHOIS/RDAP just now${reg.checked_at ? '' : ''}. If someone registers it, re-run the report for a full ownership dossier.</p>
+      <p class="av-note">Checked via WHOIS/RDAP + Porkbun just now. If someone registers it, re-run the report for a full ownership dossier.</p>
+      <p class="av-override">Actually registered? <button type="button" class="av-override-btn" data-av-override="${escapeHtml(domain)}">Run the full report anyway →</button></p>
     </div>`;
+  const ovBtn = els.report.querySelector('[data-av-override]');
+  if (ovBtn) ovBtn.addEventListener('click', () => {
+    const d = ovBtn.getAttribute('data-av-override');
+    if (d) run({ domain: d, force: true, skipAvailable: true });
+  });
   renderTrace(report && report.trace, report && report.toolsAvailable, report && report.categories);
   resetFeedback();
   if (els.reportChat) els.reportChat.hidden = true;                 // nothing to chat about
@@ -3516,11 +3522,11 @@ els.resetForm?.addEventListener('submit', async (e) => {
 });
 
 // ── Research (async: enqueue → poll) ────────────────────────────────────────
-async function enqueue({ domain, deep, force }) {
+async function enqueue({ domain, deep, force, skipAvailable }) {
   const res = await fetch('/research/api/research', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ domain, deep: !!deep, force: !!force }),
+    body: JSON.stringify({ domain, deep: !!deep, force: !!force, ...(skipAvailable ? { skip_available: true } : {}) }),
   });
   const data = await res.json();
   if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`);
@@ -4165,7 +4171,7 @@ function enterResultMode(domain) {
   if (els.runControls) els.runControls.hidden = true;
 }
 
-async function run({ domain, deep, force }) {
+async function run({ domain, deep, force, skipAvailable }) {
   enterResultMode(domain);
   // First action: check the marketplaces in parallel with the free LLM pass.
   runMarketStrip(domain);
@@ -4181,7 +4187,7 @@ async function run({ domain, deep, force }) {
       ? `Researching ${domain} — free pre-flight first, then deep…`
       : `Researching ${domain}… this can take a few minutes.`);
   try {
-    const data = await enqueue({ domain, deep: effectiveDeep, force });
+    const data = await enqueue({ domain, deep: effectiveDeep, force, skipAvailable });
     // Server returned a cached completed run — open it directly instead of
     // re-running. Shows "Researched X ago · Refresh" so the user can re-run
     // on demand if the cached data is stale.
