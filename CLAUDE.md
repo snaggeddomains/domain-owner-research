@@ -1861,6 +1861,11 @@ Mirrors **Expiring .ai** (dictionary-fed candidate table + a paced background cr
   (`FOR_SALE_HOST_HINTS` + `FOR_SALE_PHRASES` + `extractClues` signals) — and `candidate = !forSale && …`.
   `for_sale` contributes 0 to the abandonment score. Ad-only parking (bodis/parkingcrew) is NOT for-sale →
   stays a `parked` candidate (a plain parked page with no sale listing can still be a cheap owner buy).
+- **TLDs column = full count for candidates (2026-08-28).** The value SCORE uses the cheap ~26-popular
+  `popularTldCount` (keeps the 98k walk fast), but a **candidate**'s displayed `tld_count` is replaced with
+  the FULL ~1,590-IANA `countRegistrations` so the "TLDs" column matches the standalone TLD Count tool
+  exactly (across → 151, not 20/26). Bounded to candidates (rare) to keep the scan cheap; `countRegistrations`
+  is cached (kind `tc`). Existing candidates pick up the full count on their next re-scan.
 - **Ordering = most-common-first.** Curation (`candidates.js`) alphabetically keyset-seeds `<word>.com`
   from `english_words` (is_root, letters-only, len 3–15), carrying each word's **`zipf`** (new column —
   see admin `english_words.zipf` backfill). The SCAN (`dueForScan`) prioritises `last_checked nulls-first,

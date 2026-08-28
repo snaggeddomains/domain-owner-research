@@ -5,7 +5,7 @@
 
 import dns from 'node:dns/promises';
 import { fetchText, extractClues } from '../util.js';
-import { popularTldCount } from '../evaluate/tldcount.js';
+import { popularTldCount, countRegistrations } from '../evaluate/tldcount.js';
 import { valueScore, abandonScore, combinedScore, isCandidate, TLD_PROBE_ABANDON_MIN } from './score.js';
 
 const UA = 'Mozilla/5.0 (compatible; SnaggedResearch/1.0)';
@@ -103,17 +103,24 @@ export async function enrichOne(row, { env = process.env } = {}) {
   const staleYearsAgo = cls.staleYear ? (YEAR - cls.staleYear) : 0;
   const abandon = abandonScore({ siteStatus: cls.site_status, stale: cls.stale, staleYearsAgo, unchangedYears });
 
-  // VALUE probe (paid-ish DNS) only when it already looks abandoned AND isn't for-sale
-  // (no point valuing a name we've already ruled out for being actively marketed).
-  let tldCount = row.tld_count ?? null;
+  // VALUE demand signal = the CHEAP popular-TLD probe (~26 DNS), which keeps the 98k-word walk
+  // fast. Only when it already looks abandoned AND isn't for-sale.
+  let popCount = row.tld_count ?? null;
   const worthProbing = !forSale && abandon >= TLD_PROBE_ABANDON_MIN;
-  if (worthProbing && tldCount == null) {
-    try { const t = await popularTldCount(word, { env }); tldCount = t?.count ?? null; } catch { /* fail-open */ }
+  if (worthProbing && popCount == null) {
+    try { const t = await popularTldCount(word, { env }); popCount = t?.count ?? null; } catch { /* fail-open */ }
   }
-  const value = valueScore({ tldCount, zipf: row.zipf, wlen: row.wlen });
+  const value = valueScore({ tldCount: popCount, zipf: row.zipf, wlen: row.wlen });
   // A for-sale name is NEVER a candidate — the owner is marketing it at retail, out of our
   // bargain-hunt range. Everything else needs both axes high.
   const candidate = !forSale && isCandidate(value, abandon);
+  // For a CANDIDATE (rare), replace the displayed count with the FULL ~1,590-IANA-TLD count so
+  // the "TLDs" column matches the standalone TLD Count tool exactly (across → 151, not 20/26).
+  // Bounded to candidates to keep the scan cheap; countRegistrations is cached (kind `tc`).
+  let tldCount = popCount;
+  if (candidate) {
+    try { const f = await countRegistrations(word, { env }); if (f && Number.isFinite(f.count)) tldCount = f.count; } catch { /* keep the popular count */ }
+  }
 
   return {
     site_status: cls.site_status,

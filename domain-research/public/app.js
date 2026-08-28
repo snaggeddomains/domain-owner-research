@@ -4539,7 +4539,7 @@ function snapResearchPaint() {
           <div class="snr-crit-col">
             <h4>💎 Value — is the <code>.com</code> worth having? (0–100)</h4>
             <ul>
-              <li><b>TLD demand</b> (up to 45) — how many popular extensions the word is already registered on (checked live via DNS across ~26 TLDs). More taken = more proven demand.</li>
+              <li><b>TLD demand</b> (up to 45) — how many extensions the word is already registered on. More taken = more proven demand. The score uses a fast ~26-popular-TLD probe; the <b>TLDs</b> column shows the <b>full ~1,590-extension count</b> for candidates (matching the standalone TLD Count tool).</li>
               <li><b>Commonness</b> (up to 35) — everyday-word frequency (wordfreq “zipf”: ~2 = rare → 6 = very common).</li>
               <li><b>Brevity</b> (up to 20) — shorter word scores higher (3 chars → 20, 12+ chars → 0).</li>
             </ul>
