@@ -4464,6 +4464,7 @@ const SECTION_NAV = {
 // ── SNAP Research (dictionary .com abandonment finder) ──────────────────────
 let snapResearchRows = [];
 let snapResearchStats = null;
+let snapResearchCriteria = { valueFloor: 42, abandonFloor: 42 };
 let snrShowAll = false;
 let snrSort = { col: 'score', dir: 'desc' };
 const SNR_COLS = [
@@ -4497,6 +4498,7 @@ async function loadSnapResearch() {
     }
     snapResearchRows = d.rows || [];
     snapResearchStats = d.stats || null;
+    if (d.criteria) snapResearchCriteria = d.criteria;
     if (status) status.hidden = true;
     snapResearchPaint();
   } catch (e) {
@@ -4525,9 +4527,38 @@ function snapResearchPaint() {
   const head = document.getElementById('snr-head');
   const result = document.getElementById('snr-result');
   const csv = document.getElementById('snr-csv');
-  if (head && snapResearchStats) {
-    const s = snapResearchStats;
-    head.innerHTML = `<div class="snr-stats">
+  if (head) {
+    const s = snapResearchStats || {};
+    const vf = snapResearchCriteria.valueFloor ?? 42;
+    const af = snapResearchCriteria.abandonFloor ?? 42;
+    head.innerHTML = `
+    <details class="snr-criteria">
+      <summary>📋 How names are scored — a candidate needs <b>Value ≥ ${vf}</b> AND <b>Abandonment ≥ ${af}</b> (both out of 100). Click for the full criteria ▾</summary>
+      <div class="snr-crit-body">
+        <div class="snr-crit-cols">
+          <div class="snr-crit-col">
+            <h4>💎 Value — is the <code>.com</code> worth having? (0–100)</h4>
+            <ul>
+              <li><b>TLD demand</b> (up to 45) — how many popular extensions the word is already registered on (checked live via DNS across ~26 TLDs). More taken = more proven demand.</li>
+              <li><b>Commonness</b> (up to 35) — everyday-word frequency (wordfreq “zipf”: ~2 = rare → 6 = very common).</li>
+              <li><b>Brevity</b> (up to 20) — shorter word scores higher (3 chars → 20, 12+ chars → 0).</li>
+            </ul>
+          </div>
+          <div class="snr-crit-col">
+            <h4>🏚 Abandonment — has the owner let it go? (0–100)</h4>
+            <ul>
+              <li><b>Disposition of the .com</b> (from a live page fetch): doesn’t resolve at all <b>+55</b> · parked / holding page <b>+45</b> · active site <b>+0</b>.</li>
+              <li><b>Stale</b> (up to +30) — an old copyright / footer year on the page (e.g. “© 2016”); the older, the more points.</li>
+              <li><b>Unchanged for years</b> (up to +25) — the Wayback Machine shows the site looking the same over a long span (held &amp; untouched).</li>
+            </ul>
+          </div>
+        </div>
+        <p class="snr-crit-excl"><b>⛔ Excluded — actively for sale:</b> a name marketed at retail (Afternic / Sedo / Dan / Atom / HugeDomains / DomainMarket / custom “for sale / make an offer / for inquiries” lander — detected via marketplace nameservers or the page itself) is <b>never a candidate</b> — it’s priced for sale, out of our bargain-hunt range. (Plain ad-parking with no sale listing still counts.)</p>
+        <p class="snr-crit-how"><b>How we look:</b> for each word’s <code>.com</code> we do a live homepage fetch (disposition + copyright year), an Internet-Archive / Wayback timeline read (how long unchanged), and a DNS nameserver check (for-sale marketplaces). The value TLD-count probe runs only once a name already looks abandoned.</p>
+        <p class="snr-crit-tune"><b>Candidate = Value ≥ ${vf} AND Abandonment ≥ ${af}</b> · surfacing <b>Score = Value × Abandonment ÷ 100</b> (so both must be high). To tighten / loosen, adjust these floors or the component weights in <code>lib/snapResearch/score.js</code>.</p>
+      </div>
+    </details>
+    <div class="snr-stats">
       <div class="snr-stat"><b>${(s.candidates || 0).toLocaleString()}</b><span>Candidates</span></div>
       <div class="snr-stat"><b>${(s.scanned || 0).toLocaleString()}</b><span>Scanned</span></div>
       <div class="snr-stat"><b>${(s.total || 0).toLocaleString()}</b><span>Seeded</span></div>

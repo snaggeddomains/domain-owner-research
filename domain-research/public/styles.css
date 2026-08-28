@@ -751,6 +751,20 @@ a.naming-card-domain:hover { color: var(--coral-deep); text-decoration: underlin
 
 /* SNAP Research */
 .snr-head { margin-top: 14px; }
+.snr-criteria { background: var(--card, #fff); border: 1px solid var(--line); border-radius: 12px; padding: 4px 16px; margin-bottom: 14px; }
+.snr-criteria > summary { cursor: pointer; font-size: .9rem; color: var(--navy-2, #1e3a52); padding: 8px 0; list-style: none; }
+.snr-criteria > summary::-webkit-details-marker { display: none; }
+.snr-criteria[open] > summary { border-bottom: 1px solid var(--line); margin-bottom: 10px; }
+.snr-crit-body { padding-bottom: 12px; }
+.snr-crit-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+@media (max-width: 760px) { .snr-crit-cols { grid-template-columns: 1fr; } }
+.snr-crit-col h4 { margin: 6px 0 6px; font-size: .92rem; color: var(--navy-2, #1e3a52); }
+.snr-crit-col ul { margin: 0; padding-left: 18px; }
+.snr-crit-col li { font-size: .84rem; color: var(--navy-2, #4a5b66); line-height: 1.5; margin-bottom: 5px; }
+.snr-crit-excl, .snr-crit-how, .snr-crit-tune { font-size: .84rem; color: var(--navy-2, #4a5b66); line-height: 1.5; margin: 12px 0 0; }
+.snr-crit-excl { background: #fbeeee; border-left: 3px solid #c76b3a; padding: 8px 12px; border-radius: 6px; }
+.snr-crit-tune { border-top: 1px dashed var(--line); padding-top: 10px; color: var(--navy-3); }
+.snr-criteria code { background: var(--cream, #faf6ef); padding: 1px 5px; border-radius: 4px; font-size: .82em; }
 .snr-stats { display: flex; gap: 14px; flex-wrap: wrap; }
 .snr-stat { background: var(--card, #fff); border: 1px solid var(--line); border-radius: 10px; padding: 10px 16px; min-width: 96px; }
 .snr-stat b { display: block; font-size: 1.4rem; color: var(--navy-2, #1e3a52); }

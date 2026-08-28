@@ -4,6 +4,7 @@
 
 import { isAuthed, requireUser, userCan } from '../lib/auth.js';
 import { snapCandidateList, snapStats, setSnapDismissed, snapResearchConfigured, getSnapRow, markSnapAddedDeal } from '../lib/db/snapResearch.js';
+import { VALUE_FLOOR, ABANDON_FLOOR, TLD_PROBE_ABANDON_MIN } from '../lib/snapResearch/score.js';
 
 export const config = { maxDuration: 30 };
 
@@ -66,7 +67,8 @@ export default async function handler(req, res) {
       snapStats(),
       snapCandidateList({ limit: q.limit ? Number(q.limit) : 300, all, includeDismissed }),
     ]);
-    res.status(200).json({ ok: true, configured: true, stats, rows });
+    const criteria = { valueFloor: VALUE_FLOOR, abandonFloor: ABANDON_FLOOR, tldProbeAbandonMin: TLD_PROBE_ABANDON_MIN };
+    res.status(200).json({ ok: true, configured: true, stats, rows, criteria });
   } catch (e) {
     res.status(500).json({ error: String((e && e.message) || e) });
   }
