@@ -745,6 +745,9 @@ a.naming-card-domain:hover { color: var(--coral-deep); text-decoration: underlin
 .av-badge-premium { background: #d69a2e; }
 .av-premium .av-reg-link:hover { border-color: #d69a2e; color: #a9761d; }
 .av-price { font-weight: 700; color: var(--navy-2, #1e3a52); margin: 0 0 14px; }
+.av-reserved { border-color: #e6cfbf; border-left-color: #c76b3a; }
+.av-badge-reserved { background: #c76b3a; }
+.av-reserved .av-reg-link:hover { border-color: #c76b3a; color: #a9481d; }
 .av-override { font-size: .82rem; color: var(--navy-3); margin: 8px 0 0; }
 .av-override-btn { background: none; border: none; padding: 0; font: inherit; color: var(--coral); font-weight: 600; cursor: pointer; text-decoration: underline; }
 .av-override-btn:hover { color: var(--coral-2, #c0543a); }

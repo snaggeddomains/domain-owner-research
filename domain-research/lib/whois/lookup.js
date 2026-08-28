@@ -290,10 +290,23 @@ export async function whoisLookup(domainRaw) {
         // Carry `premium` + its price/renewal so the report renders a distinct "premium /
         // reserved" card instead of a misleading plain "grab it for $X" one.
         const premium = pk.premium === true;
-        return { domain, available: true, premium,
+        // RESERVED-RISK hedge. Porkbun's checkDomain API returns avail:yes for names
+        // its OWN storefront shows "unavailable · Inquire only" — registry-RESERVED
+        // short ccTLD names (koe.tv: Porkbun API said available, but porkbun.com AND
+        // dynadot.com both show "Inquire/Transfer only" — not registerable at retail).
+        // So a Porkbun avail:yes is NOT trustworthy on its own for a short SLD on a
+        // reservation-prone TLD. Flag it so the report hedges ("may be reserved —
+        // verify at checkout") instead of a confident "grab it": short SLD (≤4) on any
+        // TLD outside the safe open set. Errs toward "verify", never a false confident
+        // available. A genuinely-open short ccTLD name just gets a verify prompt.
+        const parts = String(domain).toLowerCase().split('.');
+        const tld = parts[parts.length - 1] || '';
+        const SAFE_TLDS = new Set(['com', 'net', 'org', 'info', 'biz']);
+        const reservedRisk = !premium && parts.length >= 2 && (parts[0] || '').length <= 4 && !SAFE_TLDS.has(tld);
+        return { domain, available: true, premium, reserved_risk: reservedRisk,
           premium_price: premium ? (pk.price ?? null) : null,
           renewal: premium ? (pk.renewal ?? null) : null,
-          registrar: null, dates: {}, statuses: [], nameservers: [], mx: { active: false, records: [] }, contacts: {}, privacy: false, sources: { rdap: rdap.source, whois: null }, raw: {}, registration_note: premium ? 'premium' : undefined };
+          registrar: null, dates: {}, statuses: [], nameservers: [], mx: { active: false, records: [] }, contacts: {}, privacy: false, sources: { rdap: rdap.source, whois: null }, raw: {}, registration_note: premium ? 'premium' : (reservedRisk ? 'reserved_risk' : undefined) };
       }
       // Reserved / premium / taken / unconfirmed — fall through and build the (thin)
       // registered record so we never render a false "available".

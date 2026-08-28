@@ -2280,12 +2280,15 @@ function renderAvailableReport(report) {
     ['Spaceship', `https://www.spaceship.com/domain-search/?query=${enc}`],
   ].map(([n, u]) => `<a class="av-reg-link" href="${escapeHtml(u)}" target="_blank" rel="noopener">${n} ↗</a>`).join('');
   const premium = reg && reg.premium === true;
+  const reservedRisk = reg && reg.reserved_risk === true;
   const priceBits = [];
   if (premium && reg.premium_price) priceBits.push(`~$${Number(reg.premium_price).toLocaleString()}/yr`);
   if (premium && reg.renewal) priceBits.push(`renews ~$${Number(reg.renewal).toLocaleString()}/yr`);
   const priceLine = priceBits.length ? `<p class="av-price">Premium price: ${priceBits.join(' · ')}</p>` : '';
   els.report.hidden = false;
-  els.report.innerHTML = premium ? `
+  let cardHtml;
+  if (premium) {
+    cardHtml = `
     <div class="av-card av-premium">
       <div class="av-badge av-badge-premium">◆ Premium / reserved</div>
       <h2 class="av-title">${escapeHtml(domain)} is a premium / reserved name</h2>
@@ -2294,7 +2297,19 @@ function renderAvailableReport(report) {
       <div class="av-regs">${links}</div>
       <p class="av-note">Confirmed premium via Porkbun just now. If one registrar shows it "taken," try another — premium ${escapeHtml(domain.split('.').slice(1).join('.'))} names are offered by different registrars.</p>
       <p class="av-override">Think it's owned by someone? <button type="button" class="av-override-btn" data-av-override="${escapeHtml(domain)}">Run the full report anyway →</button></p>
-    </div>` : `
+    </div>`;
+  } else if (reservedRisk) {
+    cardHtml = `
+    <div class="av-card av-reserved">
+      <div class="av-badge av-badge-reserved">⚠ May be reserved</div>
+      <h2 class="av-title">${escapeHtml(domain)} — no owner on file, but likely reserved</h2>
+      <p class="av-sub"><strong>The registry has no owner record</strong> for this name, so there's no one to research — but a short name on <strong>.${escapeHtml(domain.split('.').slice(1).join('.'))}</strong> is often <strong>registry-reserved and not registerable at retail</strong> (registrars show it as "unavailable · Inquire only," even when it has no owner). <strong>Verify at checkout before assuming you can register it.</strong></p>
+      <div class="av-regs">${links}</div>
+      <p class="av-note">"Available" here means no registrant exists — it does <em>not</em> guarantee a registrar will sell it. Reserved names are released (if at all) via the registry or an inquiry, not standard registration.</p>
+      <p class="av-override">Think it's owned by someone? <button type="button" class="av-override-btn" data-av-override="${escapeHtml(domain)}">Run the full report anyway →</button></p>
+    </div>`;
+  } else {
+    cardHtml = `
     <div class="av-card">
       <div class="av-badge">✓ Available</div>
       <h2 class="av-title">${escapeHtml(domain)} is available to register</h2>
@@ -2303,6 +2318,8 @@ function renderAvailableReport(report) {
       <p class="av-note">Checked via WHOIS/RDAP + Porkbun just now. If someone registers it, re-run the report for a full ownership dossier.</p>
       <p class="av-override">Actually registered? <button type="button" class="av-override-btn" data-av-override="${escapeHtml(domain)}">Run the full report anyway →</button></p>
     </div>`;
+  }
+  els.report.innerHTML = cardHtml;
   const ovBtn = els.report.querySelector('[data-av-override]');
   if (ovBtn) ovBtn.addEventListener('click', () => {
     const d = ovBtn.getAttribute('data-av-override');

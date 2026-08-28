@@ -548,6 +548,22 @@ critique) before concluding "not registered." Now it's an **immediate check that
     premium name as non-premium standard-avail, it'd still show green (Porkbun genuinely thinks it's a
     $X reg — a legit registrar-specific disagreement with Dynadot; the override is the escape hatch).
     Cache-bust `?v=20260828premium`.
+  - **RESERVED-RISK hedge — Porkbun's API lies for reserved ccTLDs (2026-08-28).** Rob checked koe.tv at
+    **Porkbun's OWN storefront → "unavailable · Inquire / Transfer"** (same as Dynadot). So koe.tv is NOT
+    registerable at retail anywhere — yet our report still showed green, because **Porkbun's `checkDomain`
+    API returned `avail:yes` while porkbun.com itself says "unavailable."** The API/store disagree for
+    registry-RESERVED short ccTLD names, and koe.tv is RESERVED not premium (standard $26.26 price, not a
+    premium price), so the premium branch never fired. Since Porkbun's avail flag can't be trusted for this
+    class, `whoisLookup` now also computes **`reserved_risk`** = short SLD (≤4 chars) on a reservation-prone
+    TLD (any TLD outside `{com,net,org,info,biz}`), independent of the avail flag. `runResearch` carries it
+    into `report.registration.reserved_risk` + swaps the markdown; `renderAvailableReport` renders a THIRD
+    variant — a rust **"⚠ May be reserved"** card (`.av-reserved`/`.av-badge-reserved`): "no owner on file,
+    but a short name on this extension is often registry-reserved and not registerable at retail — verify at
+    checkout." Priority premium > reserved_risk > green. Errs toward "verify" (a genuinely-open short ccTLD
+    name just gets a verify prompt — a safe under-confident error, never a false confident green). The
+    override + full-report escape hatch stays. Cache-bust `?v=20260828reserved`. **A truly authoritative
+    "can I register it at retail" check would need a registrar storefront/EPP call (all bot-walled from the
+    sandbox / Vercel), so the heuristic hedge is the pragmatic fix.**
 
 ---
 
