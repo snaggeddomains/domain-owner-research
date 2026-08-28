@@ -1837,6 +1837,45 @@ investors. Reuses Beeper's RDAP + adaptive cadence; **no new vendor/env key**.
 
 ---
 
+# SNAP Research — dictionary .com abandonment finder (Phase 1 backend, 2026-08-28)
+
+A SNAP submodule that walks the English dictionary and builds, OVER TIME, a per-word report of
+**abandonment + value** clues for the `<word>.com`, to surface **valuable one-word .coms whose owner
+has likely let them go** — acquisition candidates for SNAP Deals. Rob's ask; scope locked with him
+(TLD-count = VALUE not abandonment; ignore registration date — the signal is long-held-and-let-go).
+Mirrors **Expiring .ai** (dictionary-fed candidate table + a paced background cron + a report).
+- **Two INDEPENDENT axes** (`lib/snapResearch/score.js`, pure): **VALUE** (0..100 = TLD-count demand +
+  word commonness (zipf) + brevity) and **ABANDONMENT** (0..100 = parked/no-resolve .com + live-but-stale
+  footer year + unchanged-for-years via Wayback). A **candidate = value ≥42 AND abandon ≥42**; surfacing
+  `score = value × abandon / 100` (both must be high). Validated: ledger.com(parked,18 TLDs,common)→cand;
+  water.com(valuable but ACTIVE)→skip; zydeco.com(abandoned but rare)→skip.
+- **Cost-smart enrichment** (`lib/snapResearch/enrich.js`): the cheap abandonment clues (live-site fetch
+  via `fetchText`/`extractClues`, Wayback CDX first/last/count, DoH NS) run first; the **paid TLD-count
+  probe (`popularTldCount`, 26 DNS) runs ONLY when the name already looks abandoned** (`abandon ≥38`), so
+  we don't probe 98k words. All fail-open.
+- **Ordering = most-common-first.** Curation (`candidates.js`) alphabetically keyset-seeds `<word>.com`
+  from `english_words` (is_root, letters-only, len 3–15), carrying each word's **`zipf`** (new column —
+  see admin `english_words.zipf` backfill). The SCAN (`dueForScan`) prioritises `last_checked nulls-first,
+  zipf desc` — so the most-common (highest-value) words get enriched first regardless of seed order.
+- **Cron** `api/cron/snap-research.js` (vercel.json `*/5 * * * *`, CRON_SECRET): curate a 1500 slice +
+  scan ~30 due (concurrency 3), all env-tunable (`SNAP_RESEARCH_SCAN_LIMIT`/`_CONCURRENCY`/`_CURATE`/
+  `_MIN_LEN`/`_MAX_LEN`). Knobs `?curate=N&scan=N&nocurate&noscan`. First seed ~5.5h; enrichment accrues
+  over ~weeks, best candidates surfacing first (zipf-ordered).
+- **API** `api/snap-research.js` (gated `snap_research`; admins auto-pass): GET → `{stats, rows}`
+  (candidates, score desc; `?all=1` includes non-candidates, `?dismissed=1` includes dismissed);
+  POST `{action:dismiss|undismiss, domain}`. DB `lib/db/snapResearch.js` + table
+  `domain_research_snap_research` (+ `_meta` cursor) — migration **`0022_snap_research.sql`** (run on the
+  research project; RLS enabled).
+- **Permission:** `research.snap_research` (admin `permissions.ts`, group SNAP, stored flat as
+  `snap_research`). **Phase 2 = the sortable report UI** (`#view-snap-research` in the SNAP nav +
+  SNAP_TABS entry); **Phase 3 = one-click "Add to SNAP Deals"** (needs an admin internal snap-deal
+  endpoint). Backend accumulates now; UI + one-click follow.
+- **Setup:** run `0022` on the research project; `english_words.zipf` must be backfilled first (admin
+  `backfill-english-zipf.yml`, done 2026-08-28). Reuses existing keys (no new vendor). Grant
+  `research.snap_research` per-user; admins auto-pass.
+
+---
+
 # Sales Research Agent (Phase 1A — Upgrade) — 2026-06-05
 
 Find companies that would BUY a domain we're selling. UI at **research.snagged.com/research/sales**
