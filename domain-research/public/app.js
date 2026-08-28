@@ -2279,8 +2279,22 @@ function renderAvailableReport(report) {
     ['Namecheap', `https://www.namecheap.com/domains/registration/results/?domain=${enc}`],
     ['Spaceship', `https://www.spaceship.com/domain-search/?query=${enc}`],
   ].map(([n, u]) => `<a class="av-reg-link" href="${escapeHtml(u)}" target="_blank" rel="noopener">${n} ↗</a>`).join('');
+  const premium = reg && reg.premium === true;
+  const priceBits = [];
+  if (premium && reg.premium_price) priceBits.push(`~$${Number(reg.premium_price).toLocaleString()}/yr`);
+  if (premium && reg.renewal) priceBits.push(`renews ~$${Number(reg.renewal).toLocaleString()}/yr`);
+  const priceLine = priceBits.length ? `<p class="av-price">Premium price: ${priceBits.join(' · ')}</p>` : '';
   els.report.hidden = false;
-  els.report.innerHTML = `
+  els.report.innerHTML = premium ? `
+    <div class="av-card av-premium">
+      <div class="av-badge av-badge-premium">◆ Premium / reserved</div>
+      <h2 class="av-title">${escapeHtml(domain)} is a premium / reserved name</h2>
+      <p class="av-sub">This name <strong>has no registrant</strong> — the registry holds it back as a <strong>premium/reserved</strong> name, so there's no owner to research. It's registerable at a <strong>premium price</strong>, but availability and price <strong>vary by registrar</strong> — some carry it, others show it as "unavailable / inquire only."</p>
+      ${priceLine}
+      <div class="av-regs">${links}</div>
+      <p class="av-note">Confirmed premium via Porkbun just now. If one registrar shows it "taken," try another — premium ${escapeHtml(domain.split('.').slice(1).join('.'))} names are offered by different registrars.</p>
+      <p class="av-override">Think it's owned by someone? <button type="button" class="av-override-btn" data-av-override="${escapeHtml(domain)}">Run the full report anyway →</button></p>
+    </div>` : `
     <div class="av-card">
       <div class="av-badge">✓ Available</div>
       <h2 class="av-title">${escapeHtml(domain)} is available to register</h2>

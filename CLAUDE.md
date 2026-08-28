@@ -531,6 +531,23 @@ critique) before concluding "not registered." Now it's an **immediate check that
     skipAvailable:true})`. Wired through: `enqueue`/`run` send `skip_available`; `api/research.js`
     reads `body.skip_available` (also skips the cached-run reuse) → `RUN_REQUESTED data.skipAvailable`;
     `runResearch` gates the short-circuit `if (!isRegen && !skipAvailable)`. Cache-bust `?v=20260828koeavail`.
+  - **PREMIUM-name variant (2026-08-28).** koe.tv is actually a **registry-PREMIUM/reserved** `.tv`
+    (verified live: rdap.nic.tv 404s it — but 200s twitch/plex/nic.tv — DoH NXDOMAIN, no live site; the
+    registry has NO registrant record, so there's genuinely no owner). Porkbun's `checkDomain` returns
+    `avail:yes` (Porkbun sells it as a premium), so the short-circuit correctly fired — but a **plain
+    "✓ Available to register" green card with cheap registrar buttons was misleading**, because at a
+    registrar that doesn't carry the premium (Dynadot showed koe.tv "unavailable · Inquire/Transfer
+    only") you can't just grab it. Availability of a premium name is **registrar-specific**. Fix: carry
+    Porkbun's `premium` flag through — `whoisLookup` returns `{available:true, premium, premium_price,
+    renewal}` (`lookup.js`); `runResearch` saves them into `report.registration` + swaps the markdown;
+    `renderAvailableReport` (`public/app.js`) renders a distinct **amber "◆ Premium / reserved"** card
+    (`.av-premium`/`.av-badge-premium`/`.av-price`) — "has no registrant, registerable at a premium,
+    availability/price vary by registrar" + the premium price/renewal when known — instead of the green
+    grab-it card. A genuinely-open name (`avail:yes && !premium`) still shows the green card. NB Porkbun
+    keys are Vercel-only so the premium flag can't be exercised from the sandbox; if Porkbun returns a
+    premium name as non-premium standard-avail, it'd still show green (Porkbun genuinely thinks it's a
+    $X reg — a legit registrar-specific disagreement with Dynadot; the override is the escape hatch).
+    Cache-bust `?v=20260828premium`.
 
 ---
 

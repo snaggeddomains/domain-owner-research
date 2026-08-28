@@ -283,7 +283,17 @@ export async function whoisLookup(domainRaw) {
       const pk = await porkbunCheck(domain).catch(() => null);
       const registerable = !!(pk && pk._v === 2 && pk.available === true);
       if (registerable) {
-        return { domain, available: true, registrar: null, dates: {}, statuses: [], nameservers: [], mx: { active: false, records: [] }, contacts: {}, privacy: false, sources: { rdap: rdap.source, whois: null }, raw: {}, registration_note: pk.premium ? 'premium' : undefined };
+        // A registry-PREMIUM/reserved name (e.g. koe.tv — a 3-char .tv GoDaddy Registry
+        // holds back) reports avail:yes to Porkbun but shows "unavailable / Inquire only"
+        // at registrars that don't carry that premium (Dynadot). It IS registerable, but
+        // at a premium and only at some registrars — NOT a clean, freely-available name.
+        // Carry `premium` + its price/renewal so the report renders a distinct "premium /
+        // reserved" card instead of a misleading plain "grab it for $X" one.
+        const premium = pk.premium === true;
+        return { domain, available: true, premium,
+          premium_price: premium ? (pk.price ?? null) : null,
+          renewal: premium ? (pk.renewal ?? null) : null,
+          registrar: null, dates: {}, statuses: [], nameservers: [], mx: { active: false, records: [] }, contacts: {}, privacy: false, sources: { rdap: rdap.source, whois: null }, raw: {}, registration_note: premium ? 'premium' : undefined };
       }
       // Reserved / premium / taken / unconfirmed — fall through and build the (thin)
       // registered record so we never render a false "available".

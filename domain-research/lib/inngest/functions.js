@@ -282,12 +282,16 @@ export const runResearch = inngest.createFunction(
     if (!isRegen && !skipAvailable) {
       const reg = await step.run('registration-check', () => whoisLookup(domain).catch(() => null));
       if (reg && reg.available === true) {
+        const premium = reg.premium === true;
+        const md = premium
+          ? `## ${domain} is a premium / reserved name\n\n**This domain has no registrant** (the registry holds it back as a premium/reserved name), so there's no owner to research. It's registerable at a **premium price**, and availability + price vary by registrar — some carry it, some show it as "unavailable / inquire only."`
+          : `## ${domain} is available to register\n\n**This domain isn't registered** — there's no owner to research. It's available to register now.\n\nUse the **Open:** links above (GoDaddy · Dynadot · Spaceship) or your registrar of choice to grab it.`;
         await step.run('save-available-report', () =>
           saveRunReport(runId, {
             format: 'markdown',
-            markdown: `## ${domain} is available to register\n\n**This domain isn't registered** — there's no owner to research. It's available to register now.\n\nUse the **Open:** links above (GoDaddy · Dynadot · Spaceship) or your registrar of choice to grab it.`,
+            markdown: md,
             available: true,
-            registration: { available: true, source: reg.sources || reg.source || 'whois', checked_at: new Date().toISOString() },
+            registration: { available: true, premium, premium_price: reg.premium_price ?? null, renewal: reg.renewal ?? null, source: reg.sources || reg.source || 'whois', checked_at: new Date().toISOString() },
             trace: [{ tool: 'whois', ok: true, note: 'domain available (unregistered) — pipeline skipped' }],
             toolsAvailable: [],
             categories: {},
