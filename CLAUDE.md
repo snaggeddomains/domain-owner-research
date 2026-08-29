@@ -1897,9 +1897,34 @@ Mirrors **Expiring .ai** (dictionary-fed candidate table + a paced background cr
   marked `added_deal` (button flips to "✓ In SNAP Deals ↗"). Admin side: `findSnapDealByDomain` +
   `app/api/internal/snap-deal/route.ts` (snagged-admin). Reuses existing `RESEARCH_INTERNAL_SECRET` +
   `ADMIN_INTERNAL_BASE` (no new env).
+- **⚠️ CORPUS DISQUALIFIER — the key discriminator (Rob, 2026-08-29).** Live run surfaced the
+  crown-jewel premiums (just.com/give.com/look.com/key.com — all abandon 55 because a pro holds them
+  DARK, i.e. `no_resolve`) as the top candidates. These are the *opposite* of let-go bargains. Rob's
+  fix: once a name is a would-be candidate, cross-check it against **our corpus** — `name_universe`
+  (written only from the marketplace/owned feeds: Afternic/Sedo/Atom/Namecheap/owned sheets) OR the
+  **Master Domain List** (curated owner attributions). **Present in either → DISQUALIFIED** (we already
+  list it for sale / track / own it, so it's not a hidden bargain; and the premiums are all in the
+  Afternic feed). `lib/snapResearch/corpus.js` `corpusListedSet(domains)` (wraps `lib/variations/
+  corpus.js` `lookupInternal`, fail-open). Applied in TWO places: (1) **`enrich.js`** — checked only for
+  a would-be candidate (rare → one point-lookup), flips `candidate=false` (gates future scans, before
+  the expensive full-TLD-count); (2) **`api/snap-research.js` GET** — live-filters the returned
+  candidate rows (+ adjusts the `candidates` stat) so the EXISTING ~117-candidate backlog cleans up
+  immediately without waiting for each row to re-scan (they sit at the bottom of the scan queue). No new
+  column/migration (reuses the existing `candidate` flag + a live filter).
+- **Free report on SNAP-Deal add (Rob, 2026-08-29).** `add_deal` now also kicks a FREE Domain Owner
+  pre-flight report for the name (`kickFreeReport` in `api/snap-research.js` — dedupes against an
+  existing run, `createRun` + `inngest.send(RUN_REQUESTED, phase:'shallow')`, mirrors
+  `api/internal/kick-research.js`), best-effort, so the acquisition target has owner intel to dig up.
 - **Setup:** run `0022` on the research project; `english_words.zipf` must be backfilled first (admin
   `backfill-english-zipf.yml`, done 2026-08-28). Reuses existing keys (no new vendor). Grant
   `research.snap_research` per-user; admins auto-pass.
+- **⚠️ STILL OPEN — dark-held premiums NOT in our corpus.** The corpus filter catches every premium
+  that's on a marketplace we feed (nearly all of them). A genuinely off-market, never-listed premium
+  held dark would still score high on both axes (value + `no_resolve` abandonment) and survive. If that
+  shows up, the next lever is scoring: `no_resolve`/`parked` shouldn't SOLO-qualify — gate the high
+  abandonment on a Wayback signal that the name once had a REAL site (built-then-walked-away), so a
+  name that was always dark/parked (investor inventory) doesn't read as "abandoned." Not built yet —
+  watch the live candidates after the corpus filter lands.
 
 ---
 

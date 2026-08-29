@@ -4554,6 +4554,7 @@ function snapResearchPaint() {
           </div>
         </div>
         <p class="snr-crit-excl"><b>⛔ Excluded — actively for sale:</b> a name marketed at retail (Afternic / Sedo / Dan / Atom / HugeDomains / DomainMarket / custom “for sale / make an offer / for inquiries” lander — detected via marketplace nameservers or the page itself) is <b>never a candidate</b> — it’s priced for sale, out of our bargain-hunt range. (Plain ad-parking with no sale listing still counts.)</p>
+        <p class="snr-crit-excl"><b>⛔ Excluded — already in our corpus:</b> a candidate that’s already listed for sale across a marketplace we track (Afternic / Sedo / Atom / … → the Name Universe) or attributed in our Master Domain List / owned inventory is <b>disqualified</b> — a name we already know about isn’t a hidden let-go bargain. (This is what filters out the crown-jewel premiums like just.com / give.com, which are held & listed by pros.)</p>
         <p class="snr-crit-how"><b>How we look:</b> for each word’s <code>.com</code> we do a live homepage fetch (disposition + copyright year), an Internet-Archive / Wayback timeline read (how long unchanged), and a DNS nameserver check (for-sale marketplaces). The value TLD-count probe runs only once a name already looks abandoned.</p>
         <p class="snr-crit-tune"><b>Candidate = Value ≥ ${vf} AND Abandonment ≥ ${af}</b> · surfacing <b>Score = Value × Abandonment ÷ 100</b> (so both must be high). To tighten / loosen, adjust these floors or the component weights in <code>lib/snapResearch/score.js</code>.</p>
       </div>

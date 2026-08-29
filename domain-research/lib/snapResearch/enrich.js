@@ -7,6 +7,7 @@ import dns from 'node:dns/promises';
 import { fetchText, extractClues } from '../util.js';
 import { popularTldCount, countRegistrations } from '../evaluate/tldcount.js';
 import { valueScore, abandonScore, combinedScore, isCandidate, TLD_PROBE_ABANDON_MIN } from './score.js';
+import { corpusListedSet } from './corpus.js';
 
 const UA = 'Mozilla/5.0 (compatible; SnaggedResearch/1.0)';
 const YEAR = new Date().getUTCFullYear();
@@ -113,7 +114,17 @@ export async function enrichOne(row, { env = process.env } = {}) {
   const value = valueScore({ tldCount: popCount, zipf: row.zipf, wlen: row.wlen });
   // A for-sale name is NEVER a candidate — the owner is marketing it at retail, out of our
   // bargain-hunt range. Everything else needs both axes high.
-  const candidate = !forSale && isCandidate(value, abandon);
+  let candidate = !forSale && isCandidate(value, abandon);
+  // CORPUS DISQUALIFIER — a name we already list for sale / track / own (present in
+  // name_universe's marketplace/owned feeds or the Master list) is not a hidden let-go
+  // bargain. This is what removes the premium crown-jewels (just.com/give.com/…) that score
+  // high on both axes only because a pro holds them dark. Checked only for a would-be
+  // candidate (rare) → one point-lookup, fail-open.
+  let corpusListed = false;
+  if (candidate) {
+    try { corpusListed = (await corpusListedSet([domain])).has(domain); } catch { /* fail-open */ }
+    if (corpusListed) candidate = false;
+  }
   // For a CANDIDATE (rare), replace the displayed count with the FULL ~1,590-IANA-TLD count so
   // the "TLDs" column matches the standalone TLD Count tool exactly (across → 151, not 20/26).
   // Bounded to candidates to keep the scan cheap; countRegistrations is cached (kind `tc`).
