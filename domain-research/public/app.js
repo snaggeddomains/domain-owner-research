@@ -194,6 +194,12 @@ const els = {
   nmvDownload: $('nmv-download'),
   namingGo: $('naming-go'),
   namingDraft: $('naming-draft'),
+  namingTranscript: $('naming-transcript'),
+  namingTranscriptModal: $('naming-transcript-modal'),
+  namingTranscriptInput: $('naming-transcript-input'),
+  namingTranscriptGo: $('naming-transcript-go'),
+  namingTranscriptCancel: $('naming-transcript-cancel'),
+  namingTranscriptError: $('naming-transcript-error'),
   namingNew: $('naming-new'),
   namingApply: $('naming-apply'),
   namingFiltersPanel: $('naming-filters-panel'),
@@ -6176,6 +6182,7 @@ function setNamingMode(mode) {
   }
   if (els.namingGo) els.namingGo.textContent = variations ? 'Build Variations' : 'Find Names';
   if (els.namingDraft) els.namingDraft.hidden = variations; // theme-only (Beast Mode takes a single word)
+  if (els.namingTranscript) els.namingTranscript.hidden = variations; // theme-only
   if (els.namingIndustry) els.namingIndustry.hidden = !variations; // Beast-Mode-only
   if (els.namingWebsite) els.namingWebsite.hidden = !variations; // Beast-Mode-only
   if (els.namingAffixTlds) els.namingAffixTlds.hidden = !variations; // Beast-Mode-only
@@ -11484,6 +11491,57 @@ els.namingDraft?.addEventListener('click', async () => {
     setNamingStatus('Brief drafted — review/tweak, then Find Names.');
   } catch (e) {
     setNamingStatus(String(e.message || e), true);
+  } finally {
+    btn.disabled = false; btn.textContent = prev;
+  }
+});
+// 📝 From meeting notes — paste a raw Granola/Zoom transcript into a big box; the
+// server mines the naming brief out of it and drops the result into the brief box.
+function openTranscriptModal() {
+  if (!els.namingTranscriptModal) return;
+  if (els.namingTranscriptError) els.namingTranscriptError.hidden = true;
+  els.namingTranscriptModal.hidden = false;
+  document.body.classList.add('modal-open');
+  els.namingTranscriptInput?.focus();
+}
+function closeTranscriptModal() {
+  if (!els.namingTranscriptModal) return;
+  els.namingTranscriptModal.hidden = true;
+  document.body.classList.remove('modal-open');
+}
+els.namingTranscript?.addEventListener('click', openTranscriptModal);
+els.namingTranscriptCancel?.addEventListener('click', closeTranscriptModal);
+// Backdrop click (outside the card) closes; Escape closes.
+els.namingTranscriptModal?.addEventListener('click', (e) => {
+  if (e.target === els.namingTranscriptModal) closeTranscriptModal();
+});
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && els.namingTranscriptModal && !els.namingTranscriptModal.hidden) closeTranscriptModal();
+});
+els.namingTranscriptGo?.addEventListener('click', async () => {
+  const context = (els.namingTranscriptInput?.value || '').trim();
+  if (els.namingTranscriptError) els.namingTranscriptError.hidden = true;
+  if (!context) {
+    if (els.namingTranscriptError) { els.namingTranscriptError.textContent = 'Paste your meeting notes / transcript first.'; els.namingTranscriptError.hidden = false; }
+    els.namingTranscriptInput?.focus();
+    return;
+  }
+  const btn = els.namingTranscriptGo;
+  const prev = btn.textContent;
+  btn.disabled = true; btn.textContent = '✨ Mining the brief…';
+  try {
+    const res = await fetch('/research/api/naming', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ action: 'draft_brief', context, source: 'transcript' }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data.brief) throw new Error(data.error || `Failed (${res.status})`);
+    if (els.namingInput) { els.namingInput.value = data.brief; }
+    closeTranscriptModal();
+    els.namingInput?.focus();
+    setNamingStatus('Brief drafted from your meeting notes — review/tweak, then Find Names.');
+  } catch (e) {
+    if (els.namingTranscriptError) { els.namingTranscriptError.textContent = String(e.message || e); els.namingTranscriptError.hidden = false; }
   } finally {
     btn.disabled = false; btn.textContent = prev;
   }

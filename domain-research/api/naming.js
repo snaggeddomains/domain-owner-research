@@ -385,10 +385,17 @@ async function handleChat(body, res, user) {
 // Turn rough notes / a pasted doc / reference names into a polished theme brief.
 async function handleDraftBrief(body, res, user) {
   const context = typeof body.context === 'string' ? body.context.trim() : '';
-  if (!context) { res.status(400).json({ error: 'Add a few notes (or paste a brief / names you like) first.' }); return; }
+  // source: 'transcript' → mine a raw meeting transcript (Granola); else 'notes'.
+  const source = body.source === 'transcript' ? 'transcript' : 'notes';
+  if (!context) {
+    res.status(400).json({ error: source === 'transcript'
+      ? 'Paste your meeting notes / transcript first.'
+      : 'Add a few notes (or paste a brief / names you like) first.' });
+    return;
+  }
   if (!process.env.ANTHROPIC_API_KEY) { res.status(500).json({ error: 'Server is missing ANTHROPIC_API_KEY' }); return; }
   try {
-    const brief = await withCategory('naming', () => draftBrief(context, process.env));
+    const brief = await withCategory('naming', () => draftBrief(context, process.env, { source }));
     res.status(200).json({ brief });
   } catch (e) {
     res.status(502).json({ error: `Couldn't draft a brief: ${e.message || e}` });

@@ -997,6 +997,29 @@ menu in the admin hub, alongside Research/Admin/Reports — see snagged-admin).
   optional + fail-open. **One-time setup: grant `research.evaluate`** per-user in the
   snagged-admin Users editor (admins auto-pass).
 
+## Naming brief from a meeting transcript — "📝 From meeting notes" (2026-08-31)
+
+A second brief-drafting affordance on the Naming Exercise theme mode, next to the existing
+**✨ Draft brief** button. **📝 From meeting notes** opens a modal with a big textarea to dump a
+raw client-call transcript (Granola/Zoom/anything) → the server mines the naming brief out of the
+noise → the result lands in the brief box for review, then Find Names.
+- **Backend** `lib/naming/brief.js`: `draftBrief(context, env, { source })` gained a `source`
+  param. `'transcript'` uses a transcript-tuned `DRAFT_TRANSCRIPT_SYSTEM` (read past small talk /
+  scheduling / engagement-pricing / tangents; extract what the company does, the theme/world/mood,
+  liked/disliked references, tone, and ONLY explicitly-stated hard constraints — TLD/length/word-
+  count/price) and a **60K-char** input cap (vs 8K for notes; real transcripts run long). Same prose
+  output contract as `DRAFT_SYSTEM` (the downstream `parseBrief` reads it unchanged). If the meeting
+  never covered naming, the model returns `NO_NAMING_BRIEF` → a clean 502 message ("these notes don't
+  seem to cover naming…"). Default `source:'notes'` = the original behavior, untouched.
+- **API** `api/naming.js` `handleDraftBrief` reads `body.source` (`'transcript'|'notes'`) and passes
+  it through. Same `draft_brief` action + `research.naming` gate.
+- **UI** (`public/index.html` + `public/app.js`): `#naming-transcript` button (theme-only, hidden in
+  Beast Mode like ✨ Draft brief) opens `#naming-transcript-modal` (reuses the `.lesson-modal` styles —
+  no new CSS) with `#naming-transcript-input` + a **✨ Generate brief** action; on success fills
+  `#naming-input` + closes; backdrop-click / Cancel / Escape close. `naming*Transcript*` els +
+  `openTranscriptModal`/`closeTranscriptModal`. Cache-bust `app.js?v=20260831transcript`.
+- **No new table / permission / env** — reuses `ANTHROPIC_API_KEY` + `NAMING_BRIEF_MODEL`||`OUTREACH_MODEL`.
+
 ## Naming Exercise — "Build around a word" variations mode (2026-07-09)
 
 Second mode of the Naming Exercise (`/research/naming`), for a client who's LOCKED

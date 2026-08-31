@@ -104,21 +104,63 @@ Write a single, well-structured brief in natural PROSE (roughly 120-220 words) t
 
 Keep it readable prose the parser can digest — not a bulleted spec sheet, not JSON. Output ONLY the brief text, no preamble, no quotes.`;
 
-export async function draftBrief(context, env) {
+// Transcript variant — the input is a RAW meeting transcript (e.g. Granola
+// auto-notes): multiple speakers, timestamps, filler, tangents, scheduling and
+// unrelated business mixed in. The output contract is identical to DRAFT_SYSTEM
+// (one clean prose brief the parser reads), but the reading job is different:
+// mine the naming signal out of the noise and ignore everything else.
+const DRAFT_TRANSCRIPT_SYSTEM = `You are a domain broker reading the RAW notes/transcript of a client meeting (e.g. from Granola) and turning it into a clean NAMING BRIEF for a theme-based domain search. The transcript is messy — multiple speakers, timestamps, small talk, scheduling, pricing of the engagement, action items, and tangents that have NOTHING to do with naming.
+
+Your job: read the whole thing, extract ONLY the naming signal, and IGNORE the rest (logistics, scheduling, budgets for the engagement itself, unrelated business, chit-chat). Pull out:
+- What the company/product actually does and who it's for.
+- The THEME/world/feeling they want a name to evoke — and any concepts, metaphors, or moods that came up.
+- Names or reference brands they said they LIKE or DISLIKE (and why), and any words they explicitly want to avoid.
+- The TONE/style they described (serious, technical, frontier, premium, playful, warm, minimal, etc.).
+- ONLY the hard constraints they explicitly stated — TLD (e.g. ".com only"), length ("short"), word count ("one word"), price/budget for the DOMAIN. Never invent a constraint that wasn't said.
+
+Then write a single, well-structured brief in natural PROSE (roughly 120-220 words) following these rules:
+1. Open with ONE clear sentence on what the company does / who it's for.
+2. Nail the THEME — enumerate the semantic space GENEROUSLY (synonyms, adjacent concepts, roots, moods): the downstream parser matches these words against each candidate name's enriched keyword tags, so breadth surfaces on-theme names even when the exact word isn't in the domain.
+3. State the desired TONE/style in plain words, and what to AVOID if they said so.
+4. If they named reference domains/brands they like, INFER the underlying theme and weave that vibe in — describe WHY those names work, don't just list them.
+5. Include ONLY the hard constraints they explicitly gave (TLD, length, word count, price). NEVER invent a price, length, or word-count.
+
+If the meeting genuinely never discussed naming a company/product, return exactly: NO_NAMING_BRIEF
+
+Otherwise output ONLY the brief text — readable prose the parser can digest, no preamble, no quotes, not JSON, not a bulleted spec sheet.`;
+
+// draftBrief(context, env, { source }) — 'notes' (default) shapes rough notes /
+// a pasted doc / reference names; 'transcript' mines a raw meeting transcript
+// (larger input budget, transcript-tuned prompt). Both return one prose brief.
+export async function draftBrief(context, env, opts = {}) {
   if (!env.ANTHROPIC_API_KEY) throw new Error('ANTHROPIC_API_KEY is not set');
   const raw = String(context || '').trim();
-  if (!raw) throw new Error('Add a few notes (or paste a brief / some names you like) first.');
+  const transcript = opts.source === 'transcript';
+  if (!raw) {
+    throw new Error(transcript
+      ? 'Paste your meeting notes / transcript first.'
+      : 'Add a few notes (or paste a brief / some names you like) first.');
+  }
   const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY, maxRetries: 0 });
   const model = env.NAMING_BRIEF_MODEL || env.OUTREACH_MODEL || 'claude-sonnet-4-6';
+  // A real meeting transcript can run tens of thousands of chars, so give it a
+  // much larger slice than the notes path (which is usually a short brief/deck).
+  const cap = transcript ? 60000 : 8000;
+  const prompt = transcript
+    ? `Here are my raw meeting notes / transcript. Mine the naming brief out of them:\n\n${raw.slice(0, cap)}`
+    : `Here is my raw input. Turn it into a naming brief:\n\n${raw.slice(0, cap)}`;
   const response = await callWithRetry(() => client.messages.create({
     model,
     max_tokens: 700,
-    system: DRAFT_SYSTEM,
-    messages: [{ role: 'user', content: `Here is my raw input. Turn it into a naming brief:\n\n${raw.slice(0, 8000)}` }],
+    system: transcript ? DRAFT_TRANSCRIPT_SYSTEM : DRAFT_SYSTEM,
+    messages: [{ role: 'user', content: prompt }],
   }));
   recordModelUsage('anthropic', model, response.usage);
   const text = response.content.filter((b) => b.type === 'text').map((b) => b.text).join('\n').trim();
   if (!text) throw new Error('The model returned an empty brief — try again.');
+  if (transcript && /^NO_NAMING_BRIEF\b/.test(text)) {
+    throw new Error("These notes don't seem to cover naming a company or product — paste a meeting where the naming was discussed, or draft from a brief instead.");
+  }
   return text;
 }
 

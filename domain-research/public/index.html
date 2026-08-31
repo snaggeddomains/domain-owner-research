@@ -1138,6 +1138,7 @@ The model parses it into structured filters (TLDs, length, budget, tone, etc.) a
             <div class="naming-actions">
               <button id="naming-go" type="button" class="naming-go">Find Names</button>
               <button id="naming-draft" type="button" class="naming-draft" title="Turn rough notes, a pasted brief, or a few reference names into a polished theme brief">✨ Draft brief</button>
+              <button id="naming-transcript" type="button" class="naming-draft" title="Paste raw meeting notes / a Granola transcript — I'll mine the naming brief out of it">📝 From meeting notes</button>
               <button id="naming-new" type="button" class="naming-new">+ New project</button>
               <span id="naming-status" class="naming-status" hidden></span>
             </div>
@@ -1311,6 +1312,23 @@ The model parses it into structured filters (TLDs, length, budget, tone, etc.) a
       </div>
     </div>
 
+    <!-- Naming: draft a brief from raw meeting notes / a Granola transcript -->
+    <div id="naming-transcript-modal" class="lesson-modal" hidden>
+      <div class="lesson-modal-card">
+        <h3 class="lesson-modal-title">📝 Draft a brief from meeting notes</h3>
+        <p class="lesson-modal-sub">Dump the raw notes or transcript from your client call (Granola, Zoom, anything) below. I'll read past the small talk and logistics, mine out what they said about the company, theme, tone, references, and any hard constraints, and shape it into a clean naming brief you can review before searching.</p>
+        <label class="lesson-field">
+          <span class="lesson-field-label">Meeting notes / transcript</span>
+          <textarea id="naming-transcript-input" rows="14" placeholder="Paste the whole thing — multiple speakers, timestamps, and tangents are fine. I'll pull out the naming signal."></textarea>
+        </label>
+        <p id="naming-transcript-error" class="login-error" hidden></p>
+        <div class="lesson-modal-actions">
+          <button id="naming-transcript-cancel" type="button" class="naming-export-btn">Cancel</button>
+          <button id="naming-transcript-go" type="button">✨ Generate brief</button>
+        </div>
+      </div>
+    </div>
+
     <!-- Owner-outreach slide-over drawer (opened from the report header). -->
     <aside id="outreach-drawer" class="outreach-drawer" hidden>
       <div class="od-backdrop" id="outreach-backdrop"></div>
@@ -1469,6 +1487,6 @@ The model parses it into structured filters (TLDs, length, budget, tone, etc.) a
     </div>
 
     <!-- Bump ?v= on any public/app.js or styles.css change to bust caches. -->
-    <script src="app.js?v=20260830snapdealnav"></script>
+    <script src="app.js?v=20260831transcript"></script>
   </body>
 </html>
