@@ -1354,6 +1354,25 @@ matches score 2× substring in relevance. Needs GIN indexes for speed:
 `create index if not exists idx_universe_keywords_gin on name_universe using gin (keywords);`
 (same for `industries`, `emotions`).
 
+**Our-inventory-first + price-cap EXEMPT for our own stock (Rob, 2026-08-31).** The theme
+search now leads with a dedicated **inventory pass**: our own owned/listed names — `name_universe`
+**`source_tier === 1`** (the owned/controlled feeds: SNAP + Marketplace + Rob/berserk sheets) — that
+match the brief's theme are pulled ahead of everything AND are **exempt from the brief's `max_price`/
+`min_price` cap** (we set our own asking, so an on-theme name we own always shows on a client prompt
+regardless of budget). Wiring in `lib/naming/query.js`: `buildQuery(..., {inventory:true})` adds
+`.eq('source_tier',1)` and applies NO price filter (tier-1 subset is tiny → uses the FULL keyword set,
+no `kwBroad`/timeout risk); two new passes (`inventoryKeywords`/`inventoryIndustries`) are prepended to
+`responses` (top priority); the bucketing loop + `splitAndShape` route `source_tier===1` rows into
+Buy-ready unconditionally (cap-/floor-exempt) and `byRelevance` pins them to the top of the bucket. This
+fixed **garnish.com** silently vanishing from a $100K-cap culinary brief: it's in `name_universe` tier-1
+at **$200K** (efty_partner + snagged_marketplace_sheet) — over the cap, so the old priced/general passes
+excluded it, and its Master twin only matched the weakest `industries` pass and got crowded off the
+500-cap bucket on a huge food theme. **Scope:** name_universe tier-1 only — our SNAP/Marketplace stock
+routes there; Master holds OTHER owners' curated attributions, so it gets no inventory pass. Backend-only
+(no cache-bust). Follow-up still open (see the Garnish diagnosis): the exact keyword/industry array-overlap
+match is strict (`plate`≠`plating`, `culinary`≠`culinary arts`) — a bounded lemmatized/substring match
+would widen coverage for enriched-vocabulary mismatches.
+
 **Heavy-brief timeout (2026-06):** the non-priced keyword/industry passes have no
 price filter, so a 50-term GIN overlap matches a huge set and the post-GIN
 `ORDER BY quality_score` sort can hit the statement timeout. Per-pass fault

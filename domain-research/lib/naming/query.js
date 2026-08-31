@@ -14,9 +14,17 @@ import { getMasterlistDb, isMasterlistDbConfigured } from '../db/masterlist.js';
 // A brief's semantic_keywords are matched against the enriched keywords[] /
 // industries[] arrays FIRST (true semantic match — surfaces names that are
 // *about* a theme even when the word isn't in the domain). Passes are merged by
-// priority tier (semantic keyword > semantic industry > general top), and within
-// each tier the two corpora are interleaved round-robin so Master is never
-// starved by the universe's larger row count, then deduped by domain.
+// priority tier (our inventory > semantic keyword > semantic industry > general
+// top), and within each tier the two corpora are interleaved round-robin so
+// Master is never starved by the universe's larger row count, then deduped by
+// domain.
+//
+// OUR-INVENTORY-FIRST (Rob, 2026-08-31): the top tier is our own owned/listed
+// stock — name_universe source_tier 1 (SNAP + Marketplace + Rob/berserk sheets)
+// — that matches the theme. It leads the results AND is exempt from the brief's
+// price cap (we set our own asking, so an on-theme name we own always shows on a
+// client prompt regardless of budget). This is why e.g. our $200K garnish.com
+// now surfaces on a $100K-cap culinary brief instead of being filtered out.
 // PASS_LIMIT caps each SQL pass; BUCKET_LIMIT caps the Buy-ready and Stretch
 // buckets independently. Both are high enough to "show them all" for a realistic
 // filtered brief — the user narrows with the on-screen filters rather than us
@@ -67,6 +75,7 @@ export async function searchUniverse(filters) {
   // Buy-ready bucket isn't crowded out by unpriced premium names that outrank
   // them on quality_score (the cause of the "only 2 buy-ready" starvation).
   const universeTasks = {
+    inventoryKeywords: null, inventoryIndustries: null,
     pricedKeywords: null, pricedIndustries: null,
     keywords: null, industries: null,
     general: buildQuery(db, filters, null, null),
@@ -79,6 +88,15 @@ export async function searchUniverse(filters) {
   // uses every keyword. See the idx_universe_quality recommendation in CLAUDE.md.
   const kwBroad = kw.slice(0, 24);
   if (kw.length) {
+    // OUR OWN INVENTORY FIRST (Rob, 2026-08-31). Names we own / list — name_universe
+    // source_tier 1 (the owned/controlled feeds: SNAP + Marketplace + Rob/berserk
+    // sheets) — that match the theme are surfaced ahead of everything AND are
+    // exempt from the brief's price cap. The whole point of running the exercise
+    // against our sheet is that our on-theme names always show on a client prompt,
+    // regardless of budget (we set our own asking). The tier-1 subset is tiny, so
+    // these use the FULL keyword set (no kwBroad narrowing / timeout risk).
+    universeTasks.inventoryKeywords = buildQuery(db, filters, kw, 'keywords', { inventory: true });
+    universeTasks.inventoryIndustries = buildQuery(db, filters, kw, 'industries', { inventory: true });
     universeTasks.pricedKeywords = buildQuery(db, filters, kw, 'keywords', { pricedOnly: true });
     universeTasks.pricedIndustries = buildQuery(db, filters, kw, 'industries', { pricedOnly: true });
     universeTasks.keywords = buildQuery(db, filters, kwBroad, 'keywords');
@@ -126,6 +144,11 @@ export async function searchUniverse(filters) {
   // universe shape on the way in. The merge loop below consumes {data} objects.
   const M = (rows) => (rows || []).map(normalizeMasterRow);
   const responses = [
+    // OUR inventory (name_universe tier-1), theme-matched + cap-exempt, leads.
+    // No Master inventory pass: our SNAP/Marketplace names route to name_universe
+    // (tier 1); Master holds OTHER owners' curated attributions, not our stock.
+    { data: interleave(U.inventoryKeywords, []) },
+    { data: interleave(U.inventoryIndustries, []) },
     { data: interleave(U.pricedKeywords, M(MM.pricedKeywords)) },
     { data: interleave(U.pricedIndustries, M(MM.pricedIndustries)) },
     { data: interleave(U.keywords, M(MM.keywords)) },
@@ -203,7 +226,10 @@ export async function searchUniverse(filters) {
       if (!posOk(row)) continue;
       if (!formOk(row)) continue;
       if (!sylOk(row)) continue;
-      const bucket = isPricedInRange(row) ? priced : other;
+      // Our own inventory (tier-1) is always routed to the Buy-ready budget and
+      // is NOT gated by the price range — surface it whatever it's priced at.
+      const inv = row.source_tier === 1;
+      const bucket = (inv || isPricedInRange(row)) ? priced : other;
       if (bucket.length >= BUCKET_LIMIT) continue;
       seen.add(row.domain);
       bucket.push(row);
@@ -259,7 +285,12 @@ function tldVariants(tlds) {
 
 function buildQuery(db, filters, keywords, matchMode, opts = {}) {
   const pricedOnly = !!opts.pricedOnly;
+  const inventory = !!opts.inventory;
   let q = db.from('name_universe').select(SELECT_COLS);
+  // Inventory pass: restrict to OUR owned/controlled stock (tier 1). The theme
+  // overlap + this eq ride the small tier-1 subset, so it's fast even with the
+  // full keyword set. No price filter is applied below → cap-exempt.
+  if (inventory) q = q.eq('source_tier', 1);
   // Empty TLD set = no TLD constraint (all TLDs) — brief stayed silent and the
   // UI dropdown is at "All". Otherwise restrict to the chosen TLDs (bare+dotted).
   const tv = Array.isArray(filters.tlds) && filters.tlds.length ? tldVariants(filters.tlds) : [];
@@ -273,7 +304,10 @@ function buildQuery(db, filters, keywords, matchMode, opts = {}) {
   if (filters.num_words_max != null) q = q.lte('num_words', filters.num_words_max);
   if (filters.dictionary_word_only) q = q.eq('is_dictionary_word', true);
   if (filters.min_quality_score != null) q = q.gte('quality_score', filters.min_quality_score);
-  if (pricedOnly) {
+  if (inventory) {
+    // Our own inventory: NO price filter — surface our on-theme stock at any
+    // asking (Rob, 2026-08-31). splitAndShape keeps these Buy-ready regardless.
+  } else if (pricedOnly) {
     // Buy-ready pass: ONLY genuinely-priced rows (best_price > 0). Without this,
     // the candidate window — ordered by quality_score — fills with unpriced
     // premium names, starving the Buy-ready bucket. Pairs with a GIN keyword/
@@ -489,16 +523,22 @@ function splitAndShape(rows, filters) {
   const buyReady = [];
   const stretch = [];
   for (const r of shaped) {
+    // Our own inventory (name_universe tier-1) is PRICE-CAP EXEMPT (Rob,
+    // 2026-08-31): never floor-dropped, never pushed to Stretch for being over
+    // the brief's cap — it's our stock, we set the asking, so it's always a
+    // Buy-ready option on a client prompt regardless of budget.
+    const inv = r.source_tier === 1;
     const priced = r.best_price != null;
     // Drop priced rows that fall below the brief's floor — the brief said
     // "between $50K and $150K" means sub-$50K names are out of scope, not
     // Stretch candidates. Unpriced rows still pass to Stretch as "TBD".
-    if (priced && floor != null && r.best_price < floor) continue;
+    if (!inv && priced && floor != null && r.best_price < floor) continue;
     // Buy-ready vs Stretch split per §3.4: priced AND under cap is Buy-ready;
     // unpriced OR over-cap is Stretch. With no cap, every priced row is
-    // buy-ready and unpriced rows are still Stretch ("TBD").
+    // buy-ready and unpriced rows are still Stretch ("TBD"). Our inventory is
+    // always Buy-ready.
     const underCap = cap == null ? true : priced && r.best_price <= cap;
-    if (priced && underCap) {
+    if (inv || (priced && underCap)) {
       r.bucket = 'Buy-ready';
       buyReady.push(r);
     } else {
@@ -513,6 +553,11 @@ function splitAndShape(rows, filters) {
   // a healthcare brief surfaces biomedical.com (1 match) ahead of
   // criminal.com (0 matches) within the buy-ready bucket.
   const byRelevance = (a, b) => {
+    // Our own inventory (tier-1) pins to the top of the bucket — a client prompt
+    // should lead with the on-theme names we already own/list.
+    const ai = a.source_tier === 1 ? 1 : 0;
+    const bi = b.source_tier === 1 ? 1 : 0;
+    if (ai !== bi) return bi - ai;
     const dr = (b.relevance || 0) - (a.relevance || 0);
     if (dr !== 0) return dr;
     return (b.quality_score || 0) - (a.quality_score || 0);
