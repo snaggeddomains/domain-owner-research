@@ -1192,6 +1192,22 @@ can NEVER hold a specific word fixed — so it returned public-safety-*themed* n
   NOT be a bare domain/SLD (`titleIsBareName = isName(title)`), so nav links ALONE no longer rescue a
   bare-name placeholder to active (a real minimal site still has a real h1/desc/branded title).
   Shared with the naming exercise (backend-only, no cache-bust).
+- **Server/gateway ERROR pages no longer read as "active" (2026-08-31).** PharosCare.com showed as
+  `active` in Beast Mode but the server serves only errors (406 Not Acceptable in a browser; 502/503
+  upstream errors to our fetcher). Root cause in `inspectSite` (`lib/variations/sweep.js`): a bare HTTP
+  error page (nginx/Apache/Envoy/Cloudflare) that carries an `<h1>` like "502 Bad Gateway" / "406 Not
+  Acceptable" was rescued to active via `hasRealH1` (the h1 isn't the domain, so it looked like real
+  content), and an Envoy "upstream connect error" body (short plain text) has no title/h1 to flag it.
+  Fix: two regexes — `HTTP_STATUS_LINE_RE` (a status line in the title/h1, e.g. "406 Not Acceptable",
+  "Bad Gateway", whole-string "404") + `GATEWAY_ERROR_RE` ("upstream connect error", "no healthy
+  upstream", "web server is down", CF "this site can't be reached") — checked BEFORE the active rescue
+  → return `site:'error'` (→ category `registered`). The body-phrase match is gated on a SHORT body
+  (<2000 chars) so a real long article mentioning "bad gateway" isn't nuked; a status LINE in the
+  title/h1 always counts. `HTTP_STATUS_LINE_RE` deliberately does NOT match a title merely STARTING
+  with a 4xx/5xx number ("500 Startups", "404 the band") — only a status+error-phrase, a whole-string
+  error phrase, or a whole-string bare status number. Also covers a proxy that serves the error body
+  with a 200 (the existing `r.status>=400`→error path only caught clean non-2xx). Shared engine (naming
+  + Sales-Hub Beast Mode), backend-only, no cache-bust. Saved runs re-classify on Refresh/re-sweep.
 
 ## Nav sections — research SPA (config-driven, 2026-06-28)
 

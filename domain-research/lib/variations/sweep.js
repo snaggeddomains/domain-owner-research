@@ -82,6 +82,16 @@ const HOLDING_RE = /future home of|website coming soon|coming soon|under constru
 // against body prose (a real site can say "at my company…"), but as an exact page
 // title they're an unmistakable never-launched placeholder.
 const HOLDING_TITLE_RE = /^\s*(my (company|site|blog|website|store|shop|page)|site title|home\s*\|\s*my site|untitled|website builder|create your website)\s*$/i;
+// Server / gateway / proxy ERROR page — nginx/Apache/Envoy/Cloudflare returning a
+// bare HTTP error (406 Not Acceptable, 502 Bad Gateway, 503 Service Unavailable,
+// 504 Gateway Time-out, Envoy "upstream connect error", CF "web server is down").
+// This is NOT a live site even if the proxy serves it with a 200 — and its <h1>
+// ("502 Bad Gateway", "406 Not Acceptable") was wrongly rescuing to "active" via
+// hasRealH1 (PharosCare.com, 2026-08-31). An HTTP status LINE in the title/h1
+// always counts; the softer body phrases only count on a SHORT body (an error
+// page is tiny) so a real article that merely mentions "bad gateway" isn't nuked.
+const HTTP_STATUS_LINE_RE = /\b[45]\d\d\s+(not acceptable|bad gateway|gateway time-?out|service (temporarily )?unavailable|internal server error|forbidden|not found|request timeout)\b|^\s*(not acceptable|bad gateway|gateway time-?out|service (temporarily )?unavailable|forbidden|internal server error)\s*$|^\s*(http\/?[\d.]*\s+)?[45]\d\d\s*$/i;
+const GATEWAY_ERROR_RE = /upstream connect error|upstream request timeout|disconnect\/reset before headers|no healthy upstream|web server is down|web server returned an error|origin is unreachable|error 5\d\d ray id|this site can[’']?t be reached/i;
 
 // Pull the asking price off a for-sale/marketplace page's HTML. Domain landers show
 // the ask directly ($6,195 on HugeDomains, $29,888 on a custom page). Take the
@@ -242,6 +252,14 @@ async function inspectSite(domain) {
   const linkCount = (body.match(/<a\s/gi) || []).length;
   const h1 = ((body.match(/<h1[^>]*>([\s\S]{0,160}?)<\/h1>/i) || [])[1] || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
   const desc = (body.match(/<meta[^>]+name=["']description["'][^>]+content=["']([^"']{12,})/i) || [])[1] || '';
+  // Server/gateway ERROR page → NOT a live site (even if served with 200). Catch it
+  // BEFORE the active rescue so an error-page <h1> ("502 Bad Gateway", "406 Not
+  // Acceptable") or an Envoy "upstream connect error" body can't read as active.
+  const shortBody = body.length < 2000;
+  if (HTTP_STATUS_LINE_RE.test((title || '').trim()) || HTTP_STATUS_LINE_RE.test(h1)
+      || (shortBody && (GATEWAY_ERROR_RE.test(text) || HTTP_STATUS_LINE_RE.test(text)))) {
+    return { site: 'error', title: title || null, for_sale_page: false, evidence: `server/gateway error page (${(h1 || title || 'HTTP error').slice(0, 40)}) — registered, no live site` };
+  }
   const isName = (s) => { const t = (s || '').toLowerCase().trim(); return !t || t === dl || t === sld; };
   const genericTitle = isName(title)
     || /^(index of|default|domain|welcome|coming soon|under construction|parked|home ?page|new site|untitled|website)/i.test((title || '').trim());
