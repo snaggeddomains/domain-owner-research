@@ -45,7 +45,9 @@ export default async function handler(req, res) {
       return;
     }
     const runId = await createRun({ domain });
-    await inngest.send({ name: RUN_REQUESTED, data: { runId, domain, phase: 'shallow' } });
+    // background:true → low-priority + concurrency-capped in runResearch (auto-kicked free
+    // report, must never starve a human's manual run — see runResearch concurrency/priority).
+    await inngest.send({ name: RUN_REQUESTED, data: { runId, domain, phase: 'shallow', background: true } });
     res.status(200).json({ ok: true, runId, existed: false });
   } catch (e) {
     res.status(500).json({ error: String((e && e.message) || e) });

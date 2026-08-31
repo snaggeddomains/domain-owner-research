@@ -1915,6 +1915,28 @@ Mirrors **Expiring .ai** (dictionary-fed candidate table + a paced background cr
   pre-flight report for the name (`kickFreeReport` in `api/snap-research.js` — dedupes against an
   existing run, `createRun` + `inngest.send(RUN_REQUESTED, phase:'shallow')`, mirrors
   `api/internal/kick-research.js`), best-effort, so the acquisition target has owner intel to dig up.
+  - **BACKGROUND priority + concurrency throttle (Rob, 2026-08-30).** A bulk of SNAP-Deal adds must NOT
+    overload the pipeline or starve a human's manually-requested report. Both auto-kick paths
+    (`api/snap-research.js` `kickFreeReport` + `api/internal/kick-research.js`) now send
+    `RUN_REQUESTED` with **`data.background:true`**. `runResearch` (`lib/inngest/functions.js`) is
+    configured to (1) **concurrency**: a global cap (`RESEARCH_CONCURRENCY`, default 6 — overload guard)
+    PLUS a lower cap on the shared `'snap-bg'` key (`RESEARCH_BG_CONCURRENCY`, default 2) so background
+    runs use at most a couple slots and always leave headroom for manual runs (which key on their unique
+    `runId`, so only the global cap binds); (2) **`priority.run`**: a manual run is factored **+600s**
+    ahead of background (0), so when both are queued the human's report jumps in front of the background
+    backlog. Net: manual reports run right away; SNAP-Deal free reports drain in the leftover capacity
+    until complete. Env-tunable, no migration. NB Inngest priority orders the QUEUE (it doesn't preempt
+    an already-running background job — fine, that's "just runs in the background until complete").
+- **"SNAP Deal Board" nav link in the research SPA + rename (Rob, 2026-08-30).** The admin SNAP sub-nav
+  showed the board (from `SNAP_TABS`) but the **research-SPA** SNAP nav group (`index.html`
+  `nav-snap-group`) had NO link, so on research SNAP pages (SNAP Research/Eval/Expiring/Names) the tab
+  was missing. Added `#nav-snap-deals` → cross-app `/snap-deals` (full-navs, no JS handler needed like
+  the other cross-app SNAP links), gated `can('snap.deals')` (`els.navSnapDeals` + gateNav), and
+  broadened `topbar-snap` visibility to include `permissions['snap.deals']` so a snap.deals-only user
+  can reach SNAP. **Renamed "SNAP Deals" → "SNAP Deal Board"** everywhere user-facing (admin
+  `SNAP_TABS` label + CATALOG + board H1/back-link/denied messages; research SPA nav link + the SNAP
+  Research "✓ On SNAP Deal Board" chip). The perm key `snap.deals`, route `/snap-deals`, and
+  `snap_deals.sql` are UNCHANGED. Cache-bust `?v=20260830snapdealnav`.
 - **Setup:** run `0022` on the research project; `english_words.zipf` must be backfilled first (admin
   `backfill-english-zipf.yml`, done 2026-08-28). Reuses existing keys (no new vendor). Grant
   `research.snap_research` per-user; admins auto-pass.

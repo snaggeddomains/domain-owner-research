@@ -17,7 +17,9 @@ async function kickFreeReport(domain) {
     const runs = await listRuns({ q: domain, limit: 10, statuses: ['queued', 'running', 'done'], reportStatuses: ['error'] });
     if (runs.find((r) => String(r.domain).toLowerCase() === domain)) return;
     const runId = await createRun({ domain });
-    await inngest.send({ name: RUN_REQUESTED, data: { runId, domain, phase: 'shallow' } });
+    // background:true → low-priority, concurrency-capped in runResearch so a bulk of SNAP-Deal
+    // adds queues + drains behind any manually-requested report instead of overloading it.
+    await inngest.send({ name: RUN_REQUESTED, data: { runId, domain, phase: 'shallow', background: true } });
   } catch { /* best-effort */ }
 }
 

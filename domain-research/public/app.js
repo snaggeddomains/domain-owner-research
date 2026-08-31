@@ -318,6 +318,7 @@ const els = {
   renewalForm: $('renewal-form'), renewalQ: $('renewal-q'), renewalGo: $('renewal-go'), renewalStatus: $('renewal-status'), renewalResult: $('renewal-result'),
   navExpiring: $('nav-expiring'),
   navSnapResearch: $('nav-snap-research'),
+  navSnapDeals: $('nav-snap-deals'),
   expiringHead: $('expiring-head'), expiringResult: $('expiring-result'), expiringStatus: $('expiring-status'),
   expiringMetrics: $('expiring-metrics'), xpControls: $('xp-controls'), xpSeed: $('xp-seed'),
   xpParked: $('xp-parked'), xpRefresh: $('xp-refresh'), xpCsv: $('xp-csv'),
@@ -2943,7 +2944,7 @@ async function checkAuth() {
       // SNAP — top-level workspace; show it to anyone who can use ANY SNAP sub-tool
       // (SNAP Eval / Bulk Eval / Expiring .ai / SNAP Research are research-app pages;
       // Opportunities / SNAP Names are reports pages) — not just SNAP Eval.
-      if (els.topbarSnap) els.topbarSnap.hidden = !(u.is_admin || (u.permissions && (u.permissions.evaluate || u.permissions.bulk_eval || u.permissions.expiring || u.permissions.snap_research)) || canEnterReports(u));
+      if (els.topbarSnap) els.topbarSnap.hidden = !(u.is_admin || (u.permissions && (u.permissions.evaluate || u.permissions.bulk_eval || u.permissions.expiring || u.permissions.snap_research || u.permissions['snap.deals'])) || canEnterReports(u));
       if (els.topbarAdmin) els.topbarAdmin.hidden = !canEnterAdmin(u);
       // Reports section now also hosts Corporate Portfolios (a research-app page),
       // so a portfolio-only user should see Reports in the header too.
@@ -3116,6 +3117,7 @@ function gateNavByPermissions(user) {
   if (els.navBulkEval) els.navBulkEval.hidden = !can('bulk_eval');
   if (els.navExpiring) els.navExpiring.hidden = !can('expiring');
   if (els.navSnapResearch) els.navSnapResearch.hidden = !can('snap_research');
+  if (els.navSnapDeals) els.navSnapDeals.hidden = !can('snap.deals');
   if (els.navSnapOpps) els.navSnapOpps.hidden = !(Boolean(user && user.is_admin) || canEnterReports(user));
   if (els.navSnapNames) els.navSnapNames.hidden = !(Boolean(user && user.is_admin) || canEnterReports(user) || Boolean(perms.snap_names) || perms['reports.snap_names'] === true);
   // Reports sub-nav: Corporate Portfolios (a research-app page) needs `portfolio`;
@@ -4594,7 +4596,7 @@ function snrRowHtml(r) {
     <td class="num">${r.unchanged_years != null ? r.unchanged_years : '—'}</td>
     <td class="num">${r.zipf != null ? r.zipf : '—'}</td>
     <td class="snr-actions">
-      ${r.added_deal ? '<span class="snr-added">✓ In SNAP Deals</span>' : `<button type="button" class="snr-btn snr-adddeal" data-snr-deal="${escapeHtml(r.domain)}">＋ SNAP Deal</button>`}
+      ${r.added_deal ? '<span class="snr-added">✓ On SNAP Deal Board</span>' : `<button type="button" class="snr-btn snr-adddeal" data-snr-deal="${escapeHtml(r.domain)}">＋ SNAP Deal</button>`}
       <button type="button" class="snr-btn snr-x" data-snr-dismiss="${escapeHtml(r.domain)}" title="Dismiss (not a fit)">✕</button>
     </td>
   </tr>`;
@@ -4611,10 +4613,10 @@ async function snrAddDeal(domain, btn) {
     const d = await res.json();
     if (!res.ok || d.error) throw new Error(d.error || 'failed');
     const row = snapResearchRows.find((r) => r.domain === domain); if (row) row.added_deal = true;
-    if (btn) { const cell = btn.closest('.snr-actions'); if (cell) cell.innerHTML = `<a class="snr-added" href="${d.url || '#'}" target="_blank" rel="noopener">✓ In SNAP Deals ↗</a>`; }
+    if (btn) { const cell = btn.closest('.snr-actions'); if (cell) cell.innerHTML = `<a class="snr-added" href="${d.url || '#'}" target="_blank" rel="noopener">✓ On SNAP Deal Board ↗</a>`; }
   } catch (e) {
     if (btn) { btn.disabled = false; btn.textContent = '＋ SNAP Deal'; }
-    alert('Could not add to SNAP Deals: ' + ((e && e.message) || e));
+    alert('Could not add to SNAP Deal Board: ' + ((e && e.message) || e));
   }
 }
 function snrExportCsv() {

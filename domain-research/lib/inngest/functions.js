@@ -235,6 +235,20 @@ export const runResearch = inngest.createFunction(
   {
     id: 'run-domain-research',
     retries: 1,
+    // THROTTLE + PRIORITIZE (2026-08-30). Auto-kicked FREE reports (a SNAP Deal add, admin
+    // deal auto-research) are marked `data.background:true`. Two guards keep a bulk of them from
+    // overloading the pipeline or starving a human's manually-requested report:
+    //  1. concurrency — a global cap (overload guard) PLUS a separate lower cap on the shared
+    //     'snap-bg' key so background runs use at most a couple slots at once, always leaving
+    //     headroom for manual runs (which key on their unique runId → only the global cap binds).
+    //  2. priority.run — a manual run is factored ahead in the queue, so when both are waiting a
+    //     human's report jumps in front of the queued background backlog. Background just drains
+    //     in the leftover capacity until complete. Env-tunable.
+    concurrency: [
+      { limit: Number(process.env.RESEARCH_CONCURRENCY) || 6 },
+      { key: "event.data.background ? 'snap-bg' : event.data.runId", limit: Number(process.env.RESEARCH_BG_CONCURRENCY) || 2 },
+    ],
+    priority: { run: 'event.data.background ? 0 : 600' },
     // User-initiated cancel (api/research.js POST {cancel:true}) sends
     // RUN_CANCELLED with the runId; Inngest stops this run at the next step
     // boundary so no further (paid) steps run — the whole point is saving spend.
