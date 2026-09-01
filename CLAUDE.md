@@ -1008,6 +1008,38 @@ menu in the admin hub, alongside Research/Admin/Reports — see snagged-admin).
   optional + fail-open. **One-time setup: grant `research.evaluate`** per-user in the
   snagged-admin Users editor (admins auto-pass).
 
+## Naming theme results — "✨ Cull off-brief" in-tool relevance pass (2026-09-01)
+
+Replaces Rob's manual loop (run → export CSV/Sheet → paste into an external LLM with a "mark an X
+if the name is wildly off-brief" prompt → read the flags back) with a one-click in-tool pass. A
+**✨ Cull off-brief** button on the theme results header reviews every loaded candidate against the
+brief and flags the ones that are wildly off-scope, then hides them (toggle-able) and marks them in
+the CSV/Sheet export. Why the existing `relevance` score didn't already do this: it's mechanical
+keyword-overlap (does the name's enriched tags overlap the brief's keywords) — it can't do the
+brief-level SEMANTIC judgment ("obviously wrong industry/meaning for THIS brand") a model reading the
+brief does.
+- **Engine** `lib/naming/cull.js` `cullOffBrief(brief, domains, env)` — one (batched, 300/call,
+  parallel) Haiku call (`NAMING_CULL_MODEL`||`ANTHROPIC_NAMING_MODEL`||haiku) reading the brief + the
+  candidate list; returns the domains that are wildly off-brief. **Conservative by design** (flag only
+  obvious misses, keep weaker fits, never flag a name the brief lists) so nothing good is culled.
+  Only accepts domains we actually sent; fail-open per chunk. Reuses `extractJsonObject` from brief.js.
+- **API** `api/naming.js` action **`cull`** (gated `research.naming`): `POST {run_id?, brief?, domains?}`
+  → `{off_brief:[...], reviewed}`. Reads brief/domains from the body (client has them) or falls back to
+  the saved run. **Persists the off-brief set onto the run's `filters.off_brief` jsonb (NO migration)**
+  so the flags survive reload. The Sheet export (`handleExport`) + client CSV both gained an **"Off-brief"**
+  column (an `X`, mirroring Rob's manual column).
+- **UI** (`public/app.js`): `cullNaming()` (button `#naming-cull`) → posts, sets `namingOffBrief` (a Set)
+  + `namingHideOffBrief=true`, re-renders. `renderNamingTable` **bakes** the flag in per card
+  (`is-offbrief` dim + `✕ off-brief` badge + `is-hidden` when the toggle is on) so a re-sort/reopen keeps
+  it. `updateOffBriefControl()` renders a slate "N off-brief (hidden)" bar with a Show/Hide toggle
+  (mirrors the amber in-use bar; distinct slate color so the two flags don't blur). Fresh search clears
+  the set; `openNamingRun` restores it from `filters.off_brief`; reset clears it + removes the bar.
+  `.naming-card.is-offbrief`/`.naming-card-offbrief`/`.naming-offbrief-bar` styles. Cache-bust
+  `app.js`/`styles.css` `?v=20260901cull`.
+- **No new table / permission / env** — reuses `research.naming` + the ANTHROPIC key + the run's
+  `filters` jsonb. On-demand (a button, not auto per-search) so there's no cost/latency on searches you
+  don't cull.
+
 ## Naming brief from a meeting transcript — "📝 From meeting notes" (2026-08-31)
 
 A second brief-drafting affordance on the Naming Exercise theme mode, next to the existing

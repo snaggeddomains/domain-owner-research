@@ -223,6 +223,7 @@ const els = {
   namingStretchTable: $('naming-stretch-table'),
   namingExportSheet: $('naming-export-sheet'),
   namingExportCsv: $('naming-export-csv'),
+  namingCull: $('naming-cull'),
   namingExportDownload: $('naming-export-download'),
   namingRecent: $('naming-recent'),
   namingRecentList: $('naming-recent-list'),
@@ -6234,6 +6235,8 @@ async function runNaming() {
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.error || `Search failed (${res.status})`);
     namingLastResults = data;
+    // Fresh result set — clear any prior off-brief cull (a re-run must be re-culled).
+    namingOffBrief = new Set(); namingHideOffBrief = true;
     renderNamingResults(data);
     // Reflect the brief's effective TLDs in the dropdown (empty = all checked).
     if (namingTldCtl && data.filters) {
@@ -6593,6 +6596,11 @@ function setNamingStatus(text, isError = false) {
 // the brief, then quality) — the default, so the strongest matches lead instead of
 // looking randomly ordered. The others re-sort client-side over the loaded rows.
 let namingSortMode = 'fit';
+// Off-brief cull state: the set of domains the model flagged as wildly off-brief
+// for the current run, and whether they're hidden. Baked into renderNamingTable so
+// every render (initial / re-sort / reopen) shows the flags; persisted on the run.
+let namingOffBrief = new Set();
+let namingHideOffBrief = true;
 function namingFitScore(r) {
   // Mirror the server's intent: on-theme relevance dominates, quality breaks ties,
   // a real (priced) listing edges out a TBD, and a shorter/cleaner SLD nudges up.
@@ -6637,6 +6645,7 @@ function renderNamingResults(data) {
     if (els.namingStretchTable) els.namingStretchTable.innerHTML = renderNamingTable(stretch, 'Stretch');
   }
   if (els.namingResults) els.namingResults.hidden = false;
+  updateOffBriefControl(); // show the "N off-brief (hidden)" bar + toggle when a cull has run
   verifyNamingResults(buy, stretch); // live "is it actually for sale?" pass (Sedo/Snagged)
 }
 
@@ -6713,6 +6722,67 @@ function updateInUseControl() {
     document.querySelectorAll('.naming-card.is-inuse').forEach((c) => c.classList.toggle('is-hidden', namingHideInUse));
     updateInUseControl();
   };
+}
+
+// Off-brief control bar — mirrors the in-use bar. Shows "N off-brief (hidden)" with
+// a Show/Hide toggle once a cull has run. Rendered above the results.
+function updateOffBriefControl() {
+  const n = namingOffBrief.size;
+  let bar = document.getElementById('naming-offbrief-bar');
+  if (!n) { if (bar) bar.remove(); return; }
+  if (!bar) {
+    bar = document.createElement('div');
+    bar.id = 'naming-offbrief-bar';
+    bar.className = 'naming-inuse-bar naming-offbrief-bar';
+    const results = document.getElementById('naming-results');
+    if (results) results.insertBefore(bar, results.firstChild);
+  }
+  bar.innerHTML = `<span>✕ ${n} name${n === 1 ? '' : 's'} flagged wildly off-brief${namingHideOffBrief ? ' (hidden)' : ''}.</span>`
+    + `<button type="button" id="naming-offbrief-toggle">${namingHideOffBrief ? 'Show them' : 'Hide them'}</button>`;
+  const btn = document.getElementById('naming-offbrief-toggle');
+  if (btn) btn.onclick = () => {
+    namingHideOffBrief = !namingHideOffBrief;
+    document.querySelectorAll('.naming-card.is-offbrief').forEach((c) => c.classList.toggle('is-hidden', namingHideOffBrief));
+    updateOffBriefControl();
+  };
+}
+
+// ✨ Cull off-brief — the in-tool replacement for the export→external-LLM→re-import
+// loop. Sends the brief + every loaded candidate to the server, which asks the model
+// to flag the wildly-off-brief names (conservatively), persists them on the run, and
+// returns the set. We then hide them (toggle-able) and mark them in the CSV.
+async function cullNaming() {
+  if (!namingLastResults) return;
+  const rows = [...(namingLastResults.buyReady || []), ...(namingLastResults.stretch || [])];
+  const domains = [...new Set(rows.map((r) => r && r.domain).filter(Boolean))];
+  if (!domains.length) { setNamingStatus('No results to review yet.', true); return; }
+  const brief = (els.namingInput && els.namingInput.value.trim())
+    || (namingLastResults.filters && namingLastResults.filters._brief) || '';
+  const btn = els.namingCull;
+  const prev = btn ? btn.textContent : '';
+  if (btn) { btn.disabled = true; btn.textContent = '✨ Reviewing…'; }
+  setNamingStatus(`Reviewing ${domains.length} names against the brief…`);
+  try {
+    const res = await fetch('/research/api/naming', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ action: 'cull', run_id: namingLastResults.run_id || currentNamingRunId || null, brief, domains }),
+    });
+    const data = await apiJson(res);
+    if (!res.ok) throw new Error(data.error || `Failed (${res.status})`);
+    const off = Array.isArray(data.off_brief) ? data.off_brief : [];
+    namingOffBrief = new Set(off.map((d) => String(d).toLowerCase()));
+    namingHideOffBrief = true;
+    // Keep it on the loaded results + the run's filters so re-sort / reopen persist it.
+    if (namingLastResults.filters) namingLastResults.filters.off_brief = off;
+    renderNamingResults(namingLastResults);
+    setNamingStatus(off.length
+      ? `Flagged ${off.length} off-brief name${off.length === 1 ? '' : 's'} (hidden — toggle to show).`
+      : 'Nothing looked wildly off-brief — all kept.');
+  } catch (e) {
+    setNamingStatus(String(e.message || e), true);
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = prev || '✨ Cull off-brief'; }
+  }
 }
 
 function renderNamingNoMatchHint(f) {
@@ -6795,13 +6865,19 @@ function renderNamingTable(rows /* , bucketLabel */) {
     // glance that both corpora feed the results.
     const origin = r.origin === 'M' ? 'M' : 'U';
     const originBadge = `<span class="naming-card-origin origin-${origin.toLowerCase()}" title="${origin === 'M' ? 'Master Domain List' : 'Name universe'}">${origin}</span>`;
+    // Off-brief flag (from the cull pass) — baked in at render so a re-sort/reopen
+    // keeps it. The card is dimmed + hidden (when the toggle is on); the badge marks it.
+    const isOff = namingOffBrief.has(String(r.domain).toLowerCase());
+    const offCls = isOff ? ` is-offbrief${namingHideOffBrief ? ' is-hidden' : ''}` : '';
+    const offBadge = isOff ? '<span class="naming-card-offbrief" title="Flagged as wildly off-brief — click ✨ Cull off-brief to re-run">✕ off-brief</span>' : '';
     return (
-      `<div class="naming-card" data-domain="${escapeHtml(r.domain)}">` +
+      `<div class="naming-card${offCls}" data-domain="${escapeHtml(r.domain)}">` +
         `<div class="naming-card-main">` +
           `<div class="naming-card-id">` +
             domain +
             `<div class="naming-card-meta">` +
               originBadge +
+              offBadge +
               (lease
                 ? leaseBadge
                 : `<span class="naming-card-forsale">For sale</span>`) +
@@ -6836,7 +6912,9 @@ function namingResultsToCsv(data) {
   // CSV matches the on-screen table: Domain, Price, Source, Status,
   // Relevance (matched keywords joined), Link. Bucket is included as an
   // extra column so a downstream sheet/script can still split if needed.
-  const header = ['Domain', 'Price', 'Source', 'Status', 'Relevance', 'Bucket', 'Link'];
+  // "Off-brief" mirrors Rob's manual X column — an X on names the cull flagged as
+  // wildly off-brief (blank otherwise / when no cull has run).
+  const header = ['Domain', 'Price', 'Source', 'Status', 'Off-brief', 'Relevance', 'Bucket', 'Link'];
   const csvCell = (v) => {
     const s = v == null ? '' : String(v);
     return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
@@ -6845,11 +6923,13 @@ function namingResultsToCsv(data) {
   for (const r of rows) {
     const bucket = r.bucket || (r.best_price != null ? 'Buy-ready' : 'Stretch');
     const relevance = Array.isArray(r.matched_keywords) ? r.matched_keywords.join(' / ') : '';
+    const offBrief = namingOffBrief.has(String(r.domain).toLowerCase()) ? 'X' : '';
     lines.push([
       r.domain,
       r.best_price == null ? 'TBD' : r.best_price,
       r.source_label || '',
       r.status || '',
+      offBrief,
       relevance,
       bucket,
       r.landing_url || '',
@@ -6948,6 +7028,9 @@ function resetNamingView() {
   setNamingMode('theme');
   namingLastResults = null;
   currentNamingRunId = null;
+  namingOffBrief = new Set(); namingHideOffBrief = true;
+  const offBar = document.getElementById('naming-offbrief-bar');
+  if (offBar) offBar.remove();
 }
 
 // Recent naming exercises — top 5 below the brief form. Mirrors the main
@@ -7048,6 +7131,10 @@ async function openNamingRun(id) {
     setNamingMode('theme');
     const buy = Array.isArray(r.buy_ready) ? r.buy_ready : [];
     const stretch = Array.isArray(r.stretch) ? r.stretch : [];
+    // Restore a prior off-brief cull persisted on the run's filters jsonb.
+    const savedOff = r.filters && Array.isArray(r.filters.off_brief) ? r.filters.off_brief : [];
+    namingOffBrief = new Set(savedOff.map((d) => String(d).toLowerCase()));
+    namingHideOffBrief = true;
     namingLastResults = { run_id: r.id, filters: r.filters, buyReady: buy, stretch };
     renderNamingResults({ filters: r.filters, buyReady: buy, stretch });
     if (els.namingFiltersPanel) els.namingFiltersPanel.hidden = false; // opened run → filters visible
@@ -11617,6 +11704,7 @@ els.namingInput?.addEventListener('keydown', (e) => {
 els.namingExportCsv?.addEventListener('click', copyNamingCsv);
 els.namingExportDownload?.addEventListener('click', downloadNamingCsv);
 els.namingExportSheet?.addEventListener('click', exportNamingSheet);
+els.namingCull?.addEventListener('click', cullNaming);
 // Re-sort the loaded results in place (no re-fetch, no re-running the live verify).
 els.namingSort?.addEventListener('change', () => {
   namingSortMode = els.namingSort.value || 'fit';

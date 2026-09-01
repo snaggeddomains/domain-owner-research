@@ -1,6 +1,7 @@
 import { isAuthed, currentUser, userCan } from '../lib/auth.js';
 import { isNamingDbConfigured } from '../lib/db/supabase-naming.js';
 import { parseBrief, draftBrief } from '../lib/naming/brief.js';
+import { cullOffBrief } from '../lib/naming/cull.js';
 import { searchUniverse } from '../lib/naming/query.js';
 import { sweepVariations } from '../lib/variations/sweep.js';
 import { pickAffixes } from '../lib/variations/affixes.js';
@@ -93,6 +94,7 @@ export default async function handler(req, res) {
   const action = String(body.action || 'search');
 
   if (action === 'draft_brief') return handleDraftBrief(body, res, user);
+  if (action === 'cull') return handleCull(body, res, user);
   if (action === 'search') return handleSearch(body, res, user);
   if (action === 'variations') return handleVariations(body, res, user);
   if (action === 'export') return handleExport(body, res, user);
@@ -402,6 +404,44 @@ async function handleDraftBrief(body, res, user) {
   }
 }
 
+// Off-brief cull — flag candidates that are wildly off-scope for the brief (the
+// in-tool version of the manual "paste the CSV into an LLM, mark an X" step).
+// Reads brief + domains from the body (client has them) or, as a fallback, from
+// the saved run. Persists the off-brief set onto the run's filters jsonb (no
+// migration) so it survives reload. Gated by research.naming (same as search).
+async function handleCull(body, res, user) {
+  const runId = typeof body.run_id === 'string' && body.run_id ? body.run_id : null;
+  let brief = typeof body.brief === 'string' ? body.brief.trim() : '';
+  let domains = Array.isArray(body.domains) ? body.domains.filter((d) => typeof d === 'string') : null;
+  if (!process.env.ANTHROPIC_API_KEY) { res.status(500).json({ error: 'Server is missing ANTHROPIC_API_KEY' }); return; }
+  // Fall back to the saved run for brief/domains if the client didn't send them.
+  if ((!brief || !domains || !domains.length) && runId) {
+    const run = await getNamingRun(runId).catch(() => null);
+    if (run) {
+      if (!brief) brief = String(run.brief || '');
+      if (!domains || !domains.length) {
+        const rows = [...(Array.isArray(run.buy_ready) ? run.buy_ready : []), ...(Array.isArray(run.stretch) ? run.stretch : [])];
+        domains = rows.map((r) => r && r.domain).filter(Boolean);
+      }
+    }
+  }
+  if (!brief) { res.status(400).json({ error: 'A brief is required to judge off-brief names.' }); return; }
+  if (!domains || !domains.length) { res.status(400).json({ error: 'No candidates to review.' }); return; }
+  try {
+    const off = await withCategory('naming', () => cullOffBrief(brief, domains, process.env));
+    // Best-effort persist onto the run so the flags survive a reload.
+    if (runId) {
+      try {
+        const run = await getNamingRun(runId);
+        if (run) await updateNamingRun(runId, { filters: { ...(run.filters || {}), off_brief: off } });
+      } catch { /* persist is best-effort — the client still gets the result */ }
+    }
+    res.status(200).json({ off_brief: off, reviewed: domains.length });
+  } catch (e) {
+    res.status(502).json({ error: `Couldn't review off-brief names: ${e.message || e}` });
+  }
+}
+
 async function handleSearch(body, res, user) {
   const brief = typeof body.brief === 'string' ? body.brief.trim() : '';
   if (!brief) {
@@ -482,7 +522,13 @@ async function handleExport(body, res, user) {
   const rows = [...(results.buyReady || []), ...(results.stretch || [])];
   if (!rows.length) { res.status(400).json({ error: 'No results to export.' }); return; }
 
-  const header = ['Domain', 'Price', 'Source', 'Status', 'Relevance', 'Bucket', 'Link'];
+  // "Off-brief" mirrors the in-tool cull's X column — from the off-brief set the
+  // client carries on results.filters.off_brief (set after a cull), blank otherwise.
+  const offSet = new Set(
+    (results.filters && Array.isArray(results.filters.off_brief) ? results.filters.off_brief : [])
+      .map((d) => String(d || '').toLowerCase()),
+  );
+  const header = ['Domain', 'Price', 'Source', 'Status', 'Off-brief', 'Relevance', 'Bucket', 'Link'];
   const values = [header];
   for (const r of rows) {
     const bucket = r.bucket || (r.best_price != null ? 'Buy-ready' : 'Stretch');
@@ -492,6 +538,7 @@ async function handleExport(body, res, user) {
       r.best_price == null ? 'TBD' : r.best_price,
       r.source_label || '',
       r.status || '',
+      offSet.has(String(r.domain || '').toLowerCase()) ? 'X' : '',
       relevance,
       bucket,
       r.landing_url || '',
