@@ -232,17 +232,73 @@ async function verifyDomain(domain) {
   return firstCall; // heuristic call stands (403 → in_use) when no render available
 }
 
+// Live marketplace asking price for a domain (best-effort → null). Source-guided:
+// an afternic row reads the lander's "buyNow" micros; a sedo row hits Sedo's JSON;
+// an unknown source tries afternic then sedo. Free direct HTTP (no scrape.do). Used
+// by the verify pass to flag a corpus-vs-live price mismatch before a client send.
+const VERIFY_UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Safari/537.36';
+async function afternicLivePrice(domain) {
+  try {
+    const r = await fetchText(`https://www.afternic.com/domain/${domain}`, { headers: { 'user-agent': VERIFY_UA } }, 8000);
+    if (!/"isForSale":\s*true/.test(r.body || '')) return null;
+    const m = (r.body || '').match(/"buyNow":\s*(\d{6,})/);
+    if (!m) return null;
+    const price = Math.round(Number(m[1]) / 1e6);
+    return (price >= 100 && price <= 5_000_000) ? { price, currency: 'usd' } : null;
+  } catch { return null; }
+}
+async function sedoLivePrice(domain) {
+  try {
+    const r = await fetchText(`https://sedo.com/api/domain-details/information/${domain}`,
+      { headers: { 'user-agent': VERIFY_UA, accept: 'application/json', 'accept-language': 'us' } }, 8000);
+    let data; try { data = JSON.parse(r.body || 'null'); } catch { return null; }
+    if (!data || data.status === 404) return null;
+    const raw = data.buynow && data.buynow.priceOptions && Number(data.buynow.priceOptions.price);
+    if (!raw || !Number.isFinite(raw) || raw <= 0) return null;
+    const price = Math.round(raw / 100);
+    if (price < 100 || price > 5_000_000) return null;
+    const currency = ((data.buynow.priceOptions.currency && data.buynow.priceOptions.currency.name) || 'usd').toLowerCase();
+    return { price, currency };
+  } catch { return null; }
+}
+async function livePrice(domain, source) {
+  const s = String(source || '').toLowerCase();
+  try {
+    if (/afternic|godaddy/.test(s)) return await afternicLivePrice(domain);
+    if (/sedo/.test(s)) return await sedoLivePrice(domain);
+    // Unknown source — try the two we can read cheaply, afternic first.
+    return (await afternicLivePrice(domain)) || (await sedoLivePrice(domain));
+  } catch { return null; }
+}
+
 async function handleVerify(body, res, user) {
-  const domains = Array.isArray(body.domains)
-    ? [...new Set(body.domains.map((d) => String(d || '').toLowerCase().trim()).filter(Boolean))].slice(0, 12)
-    : [];
-  if (!domains.length) { res.status(200).json({ statuses: {} }); return; }
-  // 24h cache first — only live-fetch the misses, then persist the new results.
-  const cached = await getFreshLiveChecks(domains);
+  // Accept items:[{domain, source}] (so we can read the right marketplace price) OR
+  // legacy domains:[string]. Cap per request (the client chunks the full set).
+  const rawItems = Array.isArray(body.items) ? body.items
+    : (Array.isArray(body.domains) ? body.domains.map((d) => ({ domain: d })) : []);
+  const srcOf = new Map();
+  for (const it of rawItems) {
+    const d = String(it && it.domain || '').toLowerCase().trim();
+    if (d && !srcOf.has(d)) srcOf.set(d, String((it && it.source) || ''));
+  }
+  const domains = [...srcOf.keys()].slice(0, 12);
+  if (!domains.length) { res.status(200).json({ statuses: {}, prices: {} }); return; }
+  // 72h cache first — only live-fetch the misses, then persist the new results.
+  const cached = await getFreshLiveChecks(domains); // { d: {status, live_price, live_currency} }
   const misses = domains.filter((d) => !(d in cached));
-  const fresh = await Promise.all(misses.map(async (d) => [d, await verifyDomain(d)]));
-  if (fresh.length) await saveLiveChecks(fresh.map(([domain, status]) => ({ domain, status })));
-  res.status(200).json({ statuses: { ...cached, ...Object.fromEntries(fresh) } });
+  const fresh = await Promise.all(misses.map(async (d) => {
+    const [status, lp] = await Promise.all([verifyDomain(d), livePrice(d, srcOf.get(d))]);
+    return [d, { status, live_price: lp ? lp.price : null, live_currency: lp ? lp.currency : null }];
+  }));
+  if (fresh.length) await saveLiveChecks(fresh.map(([domain, v]) => ({ domain, ...v })));
+  const all = { ...cached, ...Object.fromEntries(fresh) };
+  const statuses = {};
+  const prices = {};
+  for (const [d, v] of Object.entries(all)) {
+    statuses[d] = v.status;
+    if (v.live_price != null) prices[d] = { price: Number(v.live_price), currency: v.live_currency || 'usd' };
+  }
+  res.status(200).json({ statuses, prices });
 }
 
 // Set a custom project name on a run (owner or admin only). Empty title clears.
@@ -532,8 +588,21 @@ async function handleExport(body, res, user) {
   // Off-brief names sort to the BOTTOM (stable — each partition keeps its order), so the
   // culled block is contiguous at the end (and its gray+strike range coalesces to one).
   const ordered = [...rows.filter((r) => !isOff(r)), ...rows.filter((r) => isOff(r))];
-  const header = ['Domain', 'Price', 'Source', 'Status', 'Off-brief', 'Relevance', 'Bucket', 'Link'];
-  const PRICE_COL = 1; // 0-based index of the Price column → formatted as USD (no decimals)
+  // Verify-pass results (live price + active-company / price-gap note) the client
+  // carries on results.verify (keyed by domain), so the export mirrors the on-screen flags.
+  const verify = (results && results.verify && typeof results.verify === 'object') ? results.verify : {};
+  const money0 = (n) => '$' + Math.round(Number(n)).toLocaleString();
+  const noteFor = (v) => {
+    if (!v) return '';
+    const parts = [];
+    if (v.status === 'in_use') parts.push('Active company (may have sold)');
+    if (v.price_mismatch && v.price_mismatch.corpus > 0 && v.price_mismatch.live > 0) {
+      parts.push(`Price gap: corpus ${money0(v.price_mismatch.corpus)} vs live ${money0(v.price_mismatch.live)}`);
+    }
+    return parts.join(' · ');
+  };
+  const header = ['Domain', 'Price', 'Live price', 'Source', 'Status', 'Off-brief', 'Verify', 'Relevance', 'Bucket', 'Link'];
+  const CURRENCY_COLS = [1, 2]; // Price + Live price → USD, no decimals
   const values = [header];
   const dimRows = []; // 0-based DATA-row indices (header excluded) that are off-brief
   ordered.forEach((r, i) => {
@@ -541,12 +610,15 @@ async function handleExport(body, res, user) {
     const relevance = Array.isArray(r.matched_keywords) ? r.matched_keywords.join(' / ') : '';
     const off = offSet.has(String(r.domain || '').toLowerCase());
     if (off) dimRows.push(i);
+    const v = verify[String(r.domain || '').toLowerCase()] || {};
     values.push([
       r.domain || '',
       r.best_price == null ? 'TBD' : Number(r.best_price), // keep numeric so the currency format renders
+      v.live_price != null ? Number(v.live_price) : '',
       r.source_label || '',
       r.status || '',
       off ? 'X' : '',
+      noteFor(v),
       relevance,
       bucket,
       r.landing_url || '',
@@ -561,7 +633,7 @@ async function handleExport(body, res, user) {
       title,
       values,
       shareWith: user && user.email ? String(user.email) : undefined,
-      formats: { currencyColumns: [PRICE_COL], dimRows, filter: true },
+      formats: { currencyColumns: CURRENCY_COLS, dimRows, filter: true },
     });
     res.status(200).json({ url: data.url, count: rows.length, ...(data.warning ? { warning: data.warning } : {}) });
   } catch (e) {

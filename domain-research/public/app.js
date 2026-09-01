@@ -6235,6 +6235,9 @@ async function runNaming() {
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.error || `Search failed (${res.status})`);
     namingLastResults = data;
+    // Set the run id BEFORE render so the auto-verify pass (which captures it to bail
+    // on a new search) tags itself with the CURRENT run, not the previous one.
+    currentNamingRunId = data.run_id || null;
     // Fresh result set — clear any prior off-brief cull (a re-run must be re-culled).
     namingOffBrief = new Set(); namingHideOffBrief = true;
     renderNamingResults(data);
@@ -6628,7 +6631,9 @@ function renderNamingResults(data) {
   // Collapse the hero+brief into the compact header once names are showing.
   toolReport('view-naming', String((els.namingTitle && els.namingTitle.value) || 'project').slice(0, 60), true);
   renderNamingFilters(data.filters);
-  namingLiveStatuses = {}; // fresh result set — clear the accumulated verify verdicts
+  namingLiveStatuses = {}; namingLivePrices = {}; // fresh result set — clear accumulated verify verdicts
+  for (const k of Object.keys(namingCorpusPrice)) delete namingCorpusPrice[k];
+  { const gapBar = document.getElementById('naming-pricegap-bar'); if (gapBar) gapBar.remove(); }
   if (els.namingSort) els.namingSort.value = namingSortMode;
   const buy = sortNamingRows(Array.isArray(data.buyReady) ? data.buyReady : [], namingSortMode);
   const stretch = sortNamingRows(Array.isArray(data.stretch) ? data.stretch : [], namingSortMode);
@@ -6649,42 +6654,45 @@ function renderNamingResults(data) {
   verifyNamingResults(buy, stretch); // live "is it actually for sale?" pass (Sedo/Snagged)
 }
 
-// Sedo + direct-Snagged listings go stale — a domain listed months ago may now
-// resolve to an active company site (not really gettable). Live-classify those
-// rows and flag/hide the confident "in use" ones. Marketplace deep-links
-// (Afternic/Atom/BrandBucket) are trusted and skipped. Verified in batches of
-// 12 (server cap) so no single request is slow; results badge in progressively.
-function namingNeedsVerify(r) {
-  const lbl = String(r.source_label || '');
-  const srcs = Array.isArray(r.sources) ? r.sources : [];
-  return /sedo|snagged/i.test(lbl) || srcs.some((s) => /^(sedo|snagged)/i.test(String(s)));
-}
+// "Verify listings" — AUTO-runs after results render over every NON-off-brief row
+// (Rob, 2026-09-01: tighten the list to real, buyable options before a client send).
+// Per domain it live-classifies the site (active company → likely SOLD / not really
+// for sale) AND reads the live marketplace asking price to flag a corpus-vs-live
+// MISMATCH (e.g. our $500k vs a live $1.5M). Off-brief rows are skipped (they're
+// hidden). Bounded + chunked (12/req server cap) so it never blocks the UI; badges
+// fill in progressively; 72h server cache makes re-runs cheap. Cost: free direct
+// fetches + occasional scrape.do on bot-walled sites (see the cost note in chat).
+const NAMING_VERIFY_CAP = 200; // guardrail — verify buy-ready first, up to this many
+const namingCorpusPrice = {}; // domain → our stored best_price (for the mismatch check)
 async function verifyNamingResults(buy, stretch) {
   const seen = new Set();
-  const domains = [];
+  const items = [];
   for (const r of [...(buy || []), ...(stretch || [])]) {
     if (!r || !r.domain || seen.has(r.domain)) continue;
-    if (!namingNeedsVerify(r)) continue;
+    if (namingOffBrief.has(String(r.domain).toLowerCase())) continue; // skip off-brief (hidden)
     seen.add(r.domain);
-    domains.push(r.domain);
-    if (domains.length >= 48) break; // bound the live-fetch work
+    namingCorpusPrice[String(r.domain).toLowerCase()] = (r.best_price != null && r.best_price > 0) ? Number(r.best_price) : null;
+    items.push({ domain: r.domain, source: r.best_price_source || (Array.isArray(r.sources) && r.sources[0]) || '' });
+    if (items.length >= NAMING_VERIFY_CAP) break;
   }
-  if (!domains.length) return;
+  if (!items.length) return;
   const myRun = currentNamingRunId; // bail if the user starts a new search mid-verify
-  for (let i = 0; i < domains.length; i += 12) {
-    const chunk = domains.slice(i, i + 12);
+  for (let i = 0; i < items.length; i += 12) {
+    const chunk = items.slice(i, i + 12);
     try {
       const res = await fetch('/research/api/naming', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ action: 'verify', domains: chunk }),
+        body: JSON.stringify({ action: 'verify', items: chunk }),
       });
       const data = await res.json().catch(() => ({}));
       if (currentNamingRunId !== myRun) return;
       applyLiveStatuses(data.statuses || {});
+      applyLivePrices(data.prices || {});
     } catch { /* leave those rows unflagged */ }
   }
   updateInUseControl();
+  updatePriceMismatchControl();
 }
 // Accumulated live "in use" verdicts for the current result set, so a client-side
 // re-sort (which re-renders the cards) can re-apply them without another fetch.
@@ -6692,15 +6700,80 @@ let namingLiveStatuses = {};
 function applyLiveStatuses(statuses) {
   Object.assign(namingLiveStatuses, statuses);
   for (const [domain, status] of Object.entries(statuses)) {
+    verifyNote(domain).status = status; // persist for the export
     if (status !== 'in_use') continue;
     document.querySelectorAll(`.naming-card[data-domain="${(window.CSS && CSS.escape) ? CSS.escape(domain) : domain}"]`).forEach((card) => {
       if (card.querySelector('.naming-card-inuse')) return;
       card.classList.add('is-inuse');
       if (namingHideInUse) card.classList.add('is-hidden');
       const meta = card.querySelector('.naming-card-meta');
-      if (meta) meta.insertAdjacentHTML('afterbegin', '<span class="naming-card-inuse" title="The domain resolves to an active site — likely not actually for sale">In use</span>');
+      // These rows are listed for sale in our corpus but now resolve to an ACTIVE
+      // company site — so the name was likely bought/relisted and isn't really gettable.
+      if (meta) meta.insertAdjacentHTML('afterbegin', '<span class="naming-card-inuse" title="Listed for sale in our corpus, but the domain now resolves to an active company site — likely sold / not actually available">Active · may have sold</span>');
     });
   }
+}
+// Per-domain verify record accumulated for the export (status + live price + mismatch).
+let namingLivePrices = {}; // domain → { price, currency }
+function verifyNote(domain) {
+  const d = String(domain).toLowerCase();
+  if (!namingLastResults) return {};
+  if (!namingLastResults.verify) namingLastResults.verify = {};
+  if (!namingLastResults.verify[d]) namingLastResults.verify[d] = {};
+  return namingLastResults.verify[d];
+}
+// A "dramatic" gap between our corpus price and the live marketplace ask (either
+// direction) — the thing to clean up before a client send. Both must be real prices.
+function priceMismatch(corpus, live) {
+  if (!(corpus > 0) || !(live > 0)) return false;
+  const hi = Math.max(corpus, live);
+  const lo = Math.min(corpus, live);
+  return hi / lo >= 1.5 && hi - lo >= 1000;
+}
+function money0(n) { return '$' + Math.round(Number(n)).toLocaleString(); }
+// The export "Verify" cell: active-company + price-gap notes from a verify record.
+function verifyNoteText(v) {
+  if (!v) return '';
+  const parts = [];
+  if (v.status === 'in_use') parts.push('Active company (may have sold)');
+  if (v.price_mismatch) parts.push(`Price gap: corpus ${money0(v.price_mismatch.corpus)} vs live ${money0(v.price_mismatch.live)}`);
+  return parts.join(' · ');
+}
+function applyLivePrices(prices) {
+  Object.assign(namingLivePrices, prices);
+  for (const [domain, info] of Object.entries(prices)) {
+    const d = String(domain).toLowerCase();
+    const live = info && Number(info.price);
+    if (!(live > 0)) continue;
+    const corpus = namingCorpusPrice[d];
+    const rec = verifyNote(d);
+    rec.live_price = live; rec.live_currency = (info.currency || 'usd');
+    const mism = priceMismatch(corpus, live);
+    rec.price_mismatch = mism ? { corpus, live } : null;
+    if (!mism) continue;
+    document.querySelectorAll(`.naming-card[data-domain="${(window.CSS && CSS.escape) ? CSS.escape(domain) : domain}"]`).forEach((card) => {
+      if (card.querySelector('.naming-card-pricegap')) return;
+      card.classList.add('is-pricegap');
+      const meta = card.querySelector('.naming-card-meta');
+      const label = `⚠ price gap · corpus ${money0(corpus)} vs live ${money0(live)}`;
+      if (meta) meta.insertAdjacentHTML('beforeend', `<span class="naming-card-pricegap" title="Our corpus price and the live marketplace ask differ a lot — reconcile before sending to a client">${escapeHtml(label)}</span>`);
+    });
+  }
+}
+// A slate bar noting how many rows have a corpus-vs-live price gap (info only — these
+// aren't hidden; they need a human to reconcile the price before a client send).
+function updatePriceMismatchControl() {
+  const n = document.querySelectorAll('.naming-card.is-pricegap').length;
+  let bar = document.getElementById('naming-pricegap-bar');
+  if (!n) { if (bar) bar.remove(); return; }
+  if (!bar) {
+    bar = document.createElement('div');
+    bar.id = 'naming-pricegap-bar';
+    bar.className = 'naming-inuse-bar naming-pricegap-bar';
+    const results = document.getElementById('naming-results');
+    if (results) results.insertBefore(bar, results.firstChild);
+  }
+  bar.innerHTML = `<span>⚠ ${n} name${n === 1 ? '' : 's'} have a big corpus-vs-live price gap — reconcile before sending to a client.</span>`;
 }
 let namingHideInUse = true;
 function updateInUseControl() {
@@ -6912,9 +6985,10 @@ function namingResultsToCsv(data) {
   // CSV matches the on-screen table: Domain, Price, Source, Status,
   // Relevance (matched keywords joined), Link. Bucket is included as an
   // extra column so a downstream sheet/script can still split if needed.
-  // "Off-brief" mirrors Rob's manual X column — an X on names the cull flagged as
-  // wildly off-brief (blank otherwise / when no cull has run).
-  const header = ['Domain', 'Price', 'Source', 'Status', 'Off-brief', 'Relevance', 'Bucket', 'Link'];
+  // "Off-brief" mirrors Rob's manual X column. "Live price" + "Verify" come from the
+  // verify pass (live marketplace ask + active-company / price-gap note).
+  const verify = (data && data.verify) || {};
+  const header = ['Domain', 'Price', 'Live price', 'Source', 'Status', 'Off-brief', 'Verify', 'Relevance', 'Bucket', 'Link'];
   const csvCell = (v) => {
     const s = v == null ? '' : String(v);
     return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
@@ -6924,12 +6998,15 @@ function namingResultsToCsv(data) {
     const bucket = r.bucket || (r.best_price != null ? 'Buy-ready' : 'Stretch');
     const relevance = Array.isArray(r.matched_keywords) ? r.matched_keywords.join(' / ') : '';
     const offBrief = namingOffBrief.has(String(r.domain).toLowerCase()) ? 'X' : '';
+    const v = verify[String(r.domain).toLowerCase()] || {};
     lines.push([
       r.domain,
       r.best_price == null ? 'TBD' : r.best_price,
+      v.live_price != null ? v.live_price : '',
       r.source_label || '',
       r.status || '',
       offBrief,
+      verifyNoteText(v),
       relevance,
       bucket,
       r.landing_url || '',
@@ -7031,6 +7108,11 @@ function resetNamingView() {
   namingOffBrief = new Set(); namingHideOffBrief = true;
   const offBar = document.getElementById('naming-offbrief-bar');
   if (offBar) offBar.remove();
+  // Clear the verify pass (active-company + price-gap) state + its bar.
+  namingLiveStatuses = {}; namingLivePrices = {};
+  for (const k of Object.keys(namingCorpusPrice)) delete namingCorpusPrice[k];
+  const gapBar = document.getElementById('naming-pricegap-bar');
+  if (gapBar) gapBar.remove();
 }
 
 // Recent naming exercises — top 5 below the brief form. Mirrors the main
@@ -11713,8 +11795,9 @@ els.namingSort?.addEventListener('change', () => {
   const stretch = sortNamingRows(namingLastResults.stretch || [], namingSortMode);
   if (els.namingBuyReadyTable && buy.length) els.namingBuyReadyTable.innerHTML = renderNamingTable(buy, 'Buy-ready');
   if (els.namingStretchTable) els.namingStretchTable.innerHTML = renderNamingTable(stretch, 'Stretch');
-  // Re-apply any "in use" flags the verify pass already found to the re-rendered cards.
+  // Re-apply the verify pass's flags (active-company + price-gap) to the re-rendered cards.
   if (typeof namingLiveStatuses === 'object' && namingLiveStatuses) applyLiveStatuses(namingLiveStatuses);
+  if (typeof namingLivePrices === 'object' && namingLivePrices) applyLivePrices(namingLivePrices);
 });
 
 // Save-as-lesson click delegation on the refine-chat thread.

@@ -1056,6 +1056,41 @@ brief does.
   `filters` jsonb. On-demand (a button, not auto per-search) so there's no cost/latency on searches you
   don't cull.
 
+## Naming "verify listings" — auto active-company + corpus-vs-live price-gap pass (2026-09-01)
+
+Tightens a theme result set into "real, buyable options" before a client send. **Auto-runs after
+results render, over every NON-off-brief row** (Rob's call). Per domain it (1) live-classifies the
+site — an **active company** now on it means the name was likely bought/relisted (**"Active · may have
+sold"**, listed in our corpus but not really gettable) — and (2) reads the **live marketplace asking
+price** and flags a **corpus-vs-live MISMATCH** (e.g. our $500k vs a live $1.5M → reconcile before
+sending). Builds on the existing live-verify infra (was Sedo/Snagged-only + boolean; now all rows +
+price).
+- **Backend** `api/naming.js`: `verifyDomain` (unchanged classifier: in_use/for_sale/parked/unclear)
+  + new **`livePrice(domain, source)`** — source-guided live BIN read (afternic lander `"buyNow"`
+  micros / Sedo JSON `buynow.priceOptions.price` cents; unknown source tries afternic then sedo). Free
+  direct HTTP. `handleVerify` now takes **`items:[{domain,source}]`** (legacy `domains:[str]` still
+  works), caps 12/req, returns `{statuses:{d:status}, prices:{d:{price,currency}}}`. scrape.do only
+  fires on the classifier's blocked-site escalation (`scrapeRender`), never for price.
+- **Cache** `lib/db/livechecks.js` now stores `live_price`/`live_currency` alongside `status` (72h),
+  **strip-and-retry** on the missing columns so it degrades pre-migration. **Migration `0023_live_checks_price.sql`
+  on the research project** — https://github.com/snaggeddomains/domain-owner-research/blob/main/domain-research/supabase/migrations/0023_live_checks_price.sql
+  (the research/main project — the one with the other `domain_research_*` tables, NOT snagged-naming-universe).
+  Until it runs, verify works but the live price isn't cached (re-fetched each pass).
+- **Client** (`public/app.js`): `verifyNamingResults` now targets ALL non-off-brief rows (dropped the
+  Sedo/Snagged gate), cap **`NAMING_VERIFY_CAP` 200** (buy-ready first), sends `items` with each row's
+  `best_price_source`. `applyLiveStatuses` relabels the in-use badge to **"Active · may have sold"**;
+  new `applyLivePrices` + `priceMismatch(corpus,live)` (gap ≥1.5× AND ≥$1k) marks a red **price-gap**
+  badge + a `#naming-pricegap-bar`. The verify record is persisted on `namingLastResults.verify`
+  (`{status, live_price, live_currency, price_mismatch}`) so the EXPORT carries it; re-sort re-applies
+  both flags; reset/fresh-search clear them. **Fresh-search fix:** `currentNamingRunId` is now set
+  BEFORE `renderNamingResults` so the pass (which captures it to bail on a new search) doesn't bail on
+  its own run.
+- **Export** (CSV + Sheet): new **"Live price"** (USD, currency-formatted col in the Sheet — `currencyColumns:[1,2]`)
+  + **"Verify"** note columns ("Active company (may have sold)" · "Price gap: corpus $X vs live $Y").
+- **Cost:** free direct fetches + occasional scrape.do on bot-walled sites (classifier only); 72h cache
+  makes re-runs cheap. No LLM. Cache-bust `app.js`/`styles.css` `?v=20260901verify`. No new
+  permission/env; admin Sheet builder already supports multi-column currency (no admin change).
+
 ## Naming brief from a meeting transcript — "📝 From meeting notes" (2026-08-31)
 
 A second brief-drafting affordance on the Naming Exercise theme mode, next to the existing
