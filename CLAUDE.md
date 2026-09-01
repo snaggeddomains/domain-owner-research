@@ -1180,6 +1180,26 @@ can NEVER hold a specific word fixed — so it returned public-safety-*themed* n
   cached per domain (kind `pkd`), so coverage converges across runs. No keys → the
   heuristic stands (UI shows "Available*" + "verify"). UI: premium-risk pill gets a `*`
   + a Comments note (premium price when known).
+  - **Unconfirmable reservation-prone names show "Verify", NOT "Available" (2026-09-01).** koe.so
+    showed **"Available*"** in Beast Mode but GoDaddy says it's TAKEN. Root cause: `.so` is a
+    reservation-prone ccTLD with **no RDAP bootstrap coverage**, and koe.so is REGISTERED but
+    UNDELEGATED — so `dns.resolveNs` → NXDOMAIN reads as "available", the RDAP confirm pass can't
+    correct it (`.so` → unknown), and Porkbun doesn't cover `.so` (so `premium_risk` was never
+    cleared/confirmed). The `*` hedge still rendered a positive "Available" pill. Fix in
+    `lib/variations/sweep.js`: after the Porkbun pass, any row still `category==='available' &&
+    premium_risk && !(premium_price>0)` (i.e. flagged reservation-prone AND not authoritatively
+    confirmed registerable) is **downgraded to `category='unknown'`** ("no registration record but
+    may be registry-reserved / registered-undelegated — verify at registrar"). A Porkbun-CONFIRMED
+    premium (premium_price set, e.g. koe.tech) stays "Available"; a Porkbun-cleared name already
+    dropped the flag — so ONLY genuinely-unconfirmable names downgrade. UI (`public/app.js`):
+    `NMV_CAT.unknown` relabeled **"Verify"** (muted `nmv-unknown` pill — the previously-unused
+    `unknown` category), no asterisk on it, and its Listing/name link points to the **registrar
+    check** ("Verify ↗" → GoDaddy search) instead of a "Register" CTA / dead `https://` link. Sales-Hub
+    Beast Mode shares the engine → `EXT_LABEL.unknown='Verify'` added (it hides with parked/registered
+    by default). So koe.so now reads "Verify" (check at registrar), never a false "Available"; koe.tech
+    (confirmed premium) still shows Available. Errs toward caution — never asserts availability we
+    can't back up. Backend + render; **cache-bust `app.js?v=20260901koeverify`**. Saved runs
+    re-classify on Refresh/re-sweep.
 - **Clickable criteria chips = filters (2026-07-09).** The prefixes/suffixes/extensions
   chips in the criteria panel are now toggle buttons that narrow the table (extension
   → only that TLD, e.g. `.com`; prefix/suffix → only that affix). Within a facet = OR,

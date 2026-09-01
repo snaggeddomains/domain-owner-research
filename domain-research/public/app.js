@@ -6374,7 +6374,10 @@ const NMV_CAT = {
   active: { cls: 'nmv-active', label: 'Active site' },
   parked: { cls: 'nmv-parked', label: 'Parked' },
   registered: { cls: 'nmv-taken', label: 'Registered' },
-  unknown: { cls: 'nmv-unknown', label: 'Unknown' },
+  // "unknown" now means: no registration record, but we could NOT confirm it's
+  // registerable (a reservation-prone ccTLD with no RDAP — often registered-undelegated,
+  // e.g. koe.so). Presented as "Verify" (check at the registrar), never "Available".
+  unknown: { cls: 'nmv-unknown', label: 'Verify' },
 };
 const NMV_ORDER = { for_sale: 0, available: 1, parked: 2, active: 3, registered: 4, unknown: 5 };
 // Map a raw corpus feed id → a clean marketplace label (mirrors sweep.js cleanMktLabel).
@@ -6483,8 +6486,9 @@ function renderVariations(data) {
   // Status is a single clean label — the marketplace + price live in their own columns.
   const catPill = (r) => {
     const c = NMV_CAT[r.category] || NMV_CAT.registered;
-    // Premium/reserved-risk available names get an asterisk (the Comments column explains).
-    const star = r.premium_risk ? '<span class="nmv-star" title="May be premium or registry-reserved — verify at the registrar">*</span>' : '';
+    // Premium/reserved-risk AVAILABLE names get an asterisk (the Comments column explains).
+    // An unconfirmed name is already labeled "Verify", so no asterisk there (avoids "Verify*").
+    const star = (r.premium_risk && r.category !== 'unknown') ? '<span class="nmv-star" title="May be premium or registry-reserved — verify at the registrar">*</span>' : '';
     return `<span class="nmv-pill ${c.cls}">${c.label}${star}</span>`;
   };
   const cell = (r) => {
@@ -6504,10 +6508,13 @@ function renderVariations(data) {
     if (r.link) listing = `<a class="nmv-mkt" href="${escapeHtml(r.link)}" target="_blank" rel="noopener">${escapeHtml(r.marketplace || 'view')} ↗</a>`;
     else if (r.marketplace) listing = `<span class="nmv-mkt">${escapeHtml(r.marketplace)}</span>`;
     else if (r.category === 'available') listing = `<a class="nmv-mkt" href="${escapeHtml(registerUrl)}" target="_blank" rel="noopener">Register ↗</a>`;
-    // The name links to its own live page — EXCEPT an available name (which won't
+    // A "Verify" (unknown) name won't resolve and may be taken — link to the registrar
+    // check so it can be confirmed, rather than a Register CTA that implies it's grabbable.
+    else if (r.category === 'unknown') listing = `<a class="nmv-mkt" href="${escapeHtml(registerUrl)}" target="_blank" rel="noopener">Verify ↗</a>`;
+    // The name links to its own live page — EXCEPT an available/verify name (which won't
     // resolve), which points to the GoDaddy registration search. (href/CSV keep the
     // real lowercase domain.)
-    const nameHref = r.category === 'available' ? registerUrl : `https://${r.domain}`;
+    const nameHref = (r.category === 'available' || r.category === 'unknown') ? registerUrl : `https://${r.domain}`;
     const dom = `<a href="${escapeHtml(nameHref)}" target="_blank" rel="noopener">${escapeHtml(prettyDomain(r))}</a>`;
     // Internal-corpus badge — a name we already own / track / have owner intel on.
     const inf = r.internal;
@@ -9958,7 +9965,7 @@ const salesExtDismissed = new Set();  // dismissed Beast Mode domains (persisted
 let salesExtShowDismissed = false;    // Beast Mode: reveal dismissed rows
 let salesExtKindFilter = 'all';  // Beast Mode kind filter: all | tld | prefix | suffix
 const EXT_ORDER = { for_sale: 0, available: 1, active: 2, parked: 3, registered: 4 };
-const EXT_LABEL = { for_sale: 'For sale', available: 'Available', active: 'Active site', parked: 'Parked', registered: 'Registered' };
+const EXT_LABEL = { for_sale: 'For sale', available: 'Available', active: 'Active site', parked: 'Parked', registered: 'Registered', unknown: 'Verify' };
 const extSym = (c) => ({ USD: '$', EUR: '€', GBP: '£' }[c] || '$');
 function extPrice(r) {
   if (r.category !== 'for_sale') return '—';

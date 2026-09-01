@@ -493,6 +493,21 @@ export async function sweepVariations(seed, { env = process.env, excludeTlds = [
         }
       }
     }
+    // Any name still flagged reservation-prone that we could NOT positively confirm
+    // registerable — Porkbun didn't run / doesn't cover the TLD / errored — must NOT be
+    // presented as "available". The classic case is a short ccTLD with NO RDAP coverage
+    // (koe.so): it's REGISTERED but undelegated, so DNS NXDOMAIN reads as "available" and
+    // RDAP can't correct it — yet GoDaddy shows it taken. Downgrade to a cautious "unknown
+    // → verify at registrar" status so we never assert availability we can't back up. A
+    // Porkbun-CONFIRMED premium (premium_price set) stays available; a Porkbun-cleared name
+    // already dropped the flag above, so only genuinely-unconfirmable names are downgraded.
+    for (const r of results) {
+      if (r.category === 'available' && r.premium_risk && !(r.premium_price > 0)) {
+        r.category = 'unknown';
+        r.status = 'unknown';
+        r.evidence = 'no registration record, but may be registry-reserved or registered-undelegated — verify at registrar';
+      }
+    }
   }
   results.sort((a, b) => {
     const ka = rankKey(a); const kb = rankKey(b);
