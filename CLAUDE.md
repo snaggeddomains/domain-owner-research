@@ -1028,6 +1028,16 @@ brief does.
   the saved run. **Persists the off-brief set onto the run's `filters.off_brief` jsonb (NO migration)**
   so the flags survive reload. The Sheet export (`handleExport`) + client CSV both gained an **"Off-brief"**
   column (an `X`, mirroring Rob's manual column).
+- **Google-Sheet export formatting (2026-09-01).** The "Export to Google Sheet" path now sends optional
+  `formats` directives through `lib/gsheet.js createSheet` → the admin internal `naming-sheet` endpoint
+  → `createSheetInSharedDrive`: **`currencyColumns:[1]`** renders the Price column as **USD, no decimals**
+  (`"$"#,##0`; text like "TBD" is untouched — a number format only hits numeric cells, so `handleExport`
+  now writes the price as a real `Number`), and **`dimRows`** (0-based data-row indices of the off-brief
+  names) **grays + strikes through** those rows so the culled names read as "cut" at a glance (not just an
+  X to eyeball). Both are cosmetic/best-effort (a Sheets `batchUpdate`, coalesced into contiguous ranges);
+  the CSV export is unchanged (plain X + raw price). Cross-repo — needs BOTH apps deployed, but degrades
+  gracefully in either order (old admin ignores `formats`; the export still works). Admin side: snagged-admin
+  `lib/gsheets.ts` + `app/api/internal/naming-sheet/route.ts`.
 - **UI** (`public/app.js`): `cullNaming()` (button `#naming-cull`) → posts, sets `namingOffBrief` (a Set)
   + `namingHideOffBrief=true`, re-renders. `renderNamingTable` **bakes** the flag in per card
   (`is-offbrief` dim + `✕ off-brief` badge + `is-hidden` when the toggle is on) so a re-sort/reopen keeps

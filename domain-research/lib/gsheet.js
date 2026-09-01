@@ -12,8 +12,9 @@ export function gsheetExportConfigured() {
 }
 
 // Build a Google Sheet from row data (values[0] = header) and return { url, warning? }.
-// shareWith = an email to grant writer access (the requesting user).
-export async function createSheet({ title, values, shareWith }) {
+// shareWith = an email to grant writer access (the requesting user). formats =
+// optional { currencyColumns[], dimRows[] } cosmetic directives passed straight through.
+export async function createSheet({ title, values, shareWith, formats }) {
   if (!SECRET) throw new Error('Sheet export not configured (RESEARCH_INTERNAL_SECRET unset).');
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), 45000);
@@ -21,7 +22,7 @@ export async function createSheet({ title, values, shareWith }) {
     const res = await fetch(`${BASE}/api/internal/naming-sheet`, {
       method: 'POST',
       headers: { 'content-type': 'application/json', 'x-internal-secret': SECRET },
-      body: JSON.stringify({ title, values, shareWith }),
+      body: JSON.stringify({ title, values, shareWith, ...(formats ? { formats } : {}) }),
       signal: ctrl.signal,
     });
     const data = await res.json().catch(() => ({}));

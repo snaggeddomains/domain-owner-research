@@ -529,21 +529,25 @@ async function handleExport(body, res, user) {
       .map((d) => String(d || '').toLowerCase()),
   );
   const header = ['Domain', 'Price', 'Source', 'Status', 'Off-brief', 'Relevance', 'Bucket', 'Link'];
+  const PRICE_COL = 1; // 0-based index of the Price column → formatted as USD (no decimals)
   const values = [header];
-  for (const r of rows) {
+  const dimRows = []; // 0-based DATA-row indices (header excluded) that are off-brief
+  rows.forEach((r, i) => {
     const bucket = r.bucket || (r.best_price != null ? 'Buy-ready' : 'Stretch');
     const relevance = Array.isArray(r.matched_keywords) ? r.matched_keywords.join(' / ') : '';
+    const off = offSet.has(String(r.domain || '').toLowerCase());
+    if (off) dimRows.push(i);
     values.push([
       r.domain || '',
-      r.best_price == null ? 'TBD' : r.best_price,
+      r.best_price == null ? 'TBD' : Number(r.best_price), // keep numeric so the currency format renders
       r.source_label || '',
       r.status || '',
-      offSet.has(String(r.domain || '').toLowerCase()) ? 'X' : '',
+      off ? 'X' : '',
       relevance,
       bucket,
       r.landing_url || '',
     ]);
-  }
+  });
   const title = (typeof body.title === 'string' && body.title.trim())
     ? body.title.trim()
     : ('Naming — ' + (String(body.brief || '').replace(/\s+/g, ' ').slice(0, 60) || 'results'));
@@ -553,6 +557,7 @@ async function handleExport(body, res, user) {
       title,
       values,
       shareWith: user && user.email ? String(user.email) : undefined,
+      formats: { currencyColumns: [PRICE_COL], dimRows },
     });
     res.status(200).json({ url: data.url, count: rows.length, ...(data.warning ? { warning: data.warning } : {}) });
   } catch (e) {
