@@ -1926,9 +1926,18 @@ function renderSummary(d) {
     const m = String(value == null ? '' : value).match(/(?:linkedin\.com\/)?((?:in|pub|company|school)\/[A-Za-z0-9_%-]+)/i);
     return m ? `https://www.linkedin.com/${m[1].replace(/\/+$/, '')}/` : null;
   };
+  // A contact typed "email" whose VALUE is a URL is really a web contact form /
+  // registrant-contact relay (e.g. Name.com's contact-domain-whois link, a
+  // registrar layered-access form) that the model mis-typed as an email. It must
+  // render + copy as a URL, never a mailto: (which opens the mail client).
+  const isFormUrl = (c) => String(c && c.type || '').toLowerCase() === 'email'
+    && /^https?:\/\//i.test(String(c && c.value || ''));
   const linkify = (c) => {
     const v = String(c.value == null ? '' : c.value);
-    if (c.type === 'email') return `<a href="mailto:${e(v)}">${e(v)}</a>`;
+    if (c.type === 'email') {
+      if (/^https?:\/\//i.test(v)) return `<a href="${e(v)}" target="_blank" rel="noopener">${e(v)}</a>`;
+      return `<a href="mailto:${e(v)}">${e(v)}</a>`;
+    }
     if (c.type === 'social') {
       // Show LinkedIn as the full canonical profile URL (both link + visible text).
       const li = liCanon(v);
@@ -1997,8 +2006,10 @@ function renderSummary(d) {
       return ` <span class="msg-links"><a href="https://wa.me/${digits}" target="_blank" rel="noopener">WhatsApp</a><a href="https://t.me/${digits}" target="_blank" rel="noopener">Telegram</a></span>`;
     };
     const contactLi = (c) => {
-      // Label a LinkedIn social row "LinkedIn" rather than the generic "social".
-      const label = (String(c.type || '').toLowerCase() === 'social' && liCanon(c.value)) ? 'LinkedIn' : (c.type || '');
+      // Label a LinkedIn social row "LinkedIn" rather than the generic "social";
+      // a URL-valued "email" (registrar relay / contact form) is a "Form", not EMAIL.
+      const label = (String(c.type || '').toLowerCase() === 'social' && liCanon(c.value)) ? 'LinkedIn'
+        : isFormUrl(c) ? 'Form' : (c.type || '');
       const val = isUsefulClue(c) ? `<span class="clue">${linkify(c)}</span>` : linkify(c);
       return `<li><span class="ctype">${e(label)}</span> ${val}${c.note ? ` <span class="muted">— ${linkifyNote(c.note)}</span>` : ''}${msgLinks(c)}</li>`;
     };
@@ -2073,7 +2084,9 @@ function renderSummary(d) {
       let orgNote = orgC && orgC.note;
       if (orgC && orgC.note) { const r = extractLinkedIn(orgC.note); seed.push(...r.urls); orgNote = r.rest; }
       const rest = promoteLinkedIn(rest0, seed);
-      const emails = arr.filter((c) => c.type === 'email' && c.value).map((c) => String(c.value).trim());
+      // Only REAL mailto emails feed the copy button — a relay/form URL mis-typed
+      // as "email" would otherwise be copied as an "email" and mis-count the label.
+      const emails = arr.filter((c) => c.type === 'email' && c.value && !isFormUrl(c)).map((c) => String(c.value).trim());
       let h = '<div class="contact-card">';
       if (nameC) {
         h += `<div class="cc-name">${isUsefulClue(nameC) ? `<span class="clue">${e(nameC.value)}</span>` : e(nameC.value)}</div>`;

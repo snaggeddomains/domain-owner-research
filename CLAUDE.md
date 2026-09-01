@@ -203,6 +203,17 @@ is covered, with the real domain substituted into the form's `domain.com` placeh
 - **No new table / permission / env** — the sheet content is baked into the module (static list);
   it uses the free RDAP/WHOIS path already in the app. Verified live: zcashlabs.com→IONOS relay,
   google.com→MarkMonitor form with the domain filled in.
+- **Relay/form URL rendered as a mailto: — fixed (2026-09-01).** The report dossier surfaced the
+  registrar relay as a `contacts[]` row typed **`email`** (the `contacts` type enum is name/email/
+  phone/org/social — no `url`/`form` type, so the model types a form URL as the closest thing,
+  `email`) → `renderSummary`'s `linkify` wrapped it in `mailto:`, so clicking Name.com's
+  `https://www.name.com/contact-domain-whois/rosparks.com` opened the mail client instead of the
+  browser, the chip said "EMAIL", and it was counted in "Copy all N emails". Render-layer fix in
+  `public/app.js` `renderSummary`: a helper `isFormUrl(c)` (type `email` AND value is an
+  `https?://` URL) → `linkify` renders it as a normal `target=_blank` web link (not mailto),
+  `contactLi` labels the chip **"Form"** not EMAIL, and the primary card's copy-emails collection
+  EXCLUDES it (so the count/copy is real mailto emails only). Defensive at the render layer, so it
+  catches any future URL-typed-as-email row regardless of the model. Cache-bust `app.js?v=20260901relayurl`.
 
 ## Whois tool — block-format ccTLD parsing + live-DNS nameserver fallback (2026-08-27)
 
