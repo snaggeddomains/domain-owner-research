@@ -1038,6 +1038,12 @@ brief does.
   the CSV export is unchanged (plain X + raw price). Cross-repo — needs BOTH apps deployed, but degrades
   gracefully in either order (old admin ignores `formats`; the export still works). Admin side: snagged-admin
   `lib/gsheets.ts` + `app/api/internal/naming-sheet/route.ts`.
+  - **Header filter + off-brief sorted to bottom (2026-09-01).** `handleExport` now REORDERS the rows so
+    off-brief names sort to the BOTTOM (stable partition — non-off keep order, then off keep order), so the
+    culled block is contiguous at the end (its gray/strike range coalesces to one) and `dimRows` is
+    recomputed over that order. It also passes `formats.filter:true` → the admin builder adds a
+    **`setBasicFilter`** over the whole data range so the header row gets filter dropdowns by default. Both
+    default-on for the naming export.
 - **UI** (`public/app.js`): `cullNaming()` (button `#naming-cull`) → posts, sets `namingOffBrief` (a Set)
   + `namingHideOffBrief=true`, re-renders. `renderNamingTable` **bakes** the flag in per card
   (`is-offbrief` dim + `✕ off-brief` badge + `is-hidden` when the toggle is on) so a re-sort/reopen keeps

@@ -528,11 +528,15 @@ async function handleExport(body, res, user) {
     (results.filters && Array.isArray(results.filters.off_brief) ? results.filters.off_brief : [])
       .map((d) => String(d || '').toLowerCase()),
   );
+  const isOff = (r) => offSet.has(String(r && r.domain || '').toLowerCase());
+  // Off-brief names sort to the BOTTOM (stable — each partition keeps its order), so the
+  // culled block is contiguous at the end (and its gray+strike range coalesces to one).
+  const ordered = [...rows.filter((r) => !isOff(r)), ...rows.filter((r) => isOff(r))];
   const header = ['Domain', 'Price', 'Source', 'Status', 'Off-brief', 'Relevance', 'Bucket', 'Link'];
   const PRICE_COL = 1; // 0-based index of the Price column → formatted as USD (no decimals)
   const values = [header];
   const dimRows = []; // 0-based DATA-row indices (header excluded) that are off-brief
-  rows.forEach((r, i) => {
+  ordered.forEach((r, i) => {
     const bucket = r.bucket || (r.best_price != null ? 'Buy-ready' : 'Stretch');
     const relevance = Array.isArray(r.matched_keywords) ? r.matched_keywords.join(' / ') : '';
     const off = offSet.has(String(r.domain || '').toLowerCase());
@@ -557,7 +561,7 @@ async function handleExport(body, res, user) {
       title,
       values,
       shareWith: user && user.email ? String(user.email) : undefined,
-      formats: { currencyColumns: [PRICE_COL], dimRows },
+      formats: { currencyColumns: [PRICE_COL], dimRows, filter: true },
     });
     res.status(200).json({ url: data.url, count: rows.length, ...(data.warning ? { warning: data.warning } : {}) });
   } catch (e) {
