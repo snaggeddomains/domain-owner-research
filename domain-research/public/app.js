@@ -740,11 +740,18 @@ const CMDK_CROSS_APP = [
   { section: 'reports', label: 'Reports · Email Health', href: '/reports/email-health' },
   { section: 'reports', label: 'Reports · SEO', href: '/reports/seo' },
   { section: 'reports', label: 'Reports · Corporate Portfolios', href: '/research/portfolio' },
+  { section: 'reports', label: 'Reports · Ahrefs Report', href: '/research/ahrefs' },
+  { section: 'snap', label: 'SNAP · SNAP Opportunities', href: '/reports/opportunities' },
+  { section: 'snap', label: 'SNAP · SNAP Names', href: '/reports/snap-names' },
+  { section: 'deals', label: 'Deals · My Tasks', href: '/deals/tasks' },
   { section: 'deals', label: 'Deals · Board', href: '/deals' },
   { section: 'deals', label: 'Deals · List', href: '/deals/list' },
   { section: 'deals', label: 'Deals · Owners', href: '/deals/owners' },
+  { section: 'deals', label: 'Deals · Owner Review', href: '/deals/owner-review' },
   { section: 'deals', label: 'Deals · Buy-Side Inquiries', href: '/deals/inquiries' },
   { section: 'deals', label: 'Deals · Reporting', href: '/deals/reports' },
+  // Universal — every logged-in user; no section gate.
+  { section: 'always', label: 'Feedback & feature requests', href: '/feedback' },
 ];
 // Every accessible nav destination, read LIVE from the DOM (topbar sections + every sub-tab)
 // PLUS the cross-app Admin/Deals tabs above — so the palette mirrors what the user can reach.
@@ -764,8 +771,11 @@ function cmdkNavDests() {
   // Cross-app tabs (no DOM element) — full-nav on select; gated by section topbar visibility.
   const sectionOpen = { admin: els.topbarAdmin, snap: els.topbarSnap, reports: els.topbarReports, deals: els.topbarDeals };
   for (const d of CMDK_CROSS_APP) {
-    const topbar = sectionOpen[d.section];
-    if (!topbar || topbar.hidden || seen.has(d.href)) continue;
+    if (seen.has(d.href)) continue;
+    if (d.section !== 'always') {                 // 'always' = universal (Feedback); no section gate
+      const topbar = sectionOpen[d.section];
+      if (!topbar || topbar.hidden) continue;
+    }
     seen.add(d.href);
     out.push({ kind: 'nav', label: d.label, icon: '▸', href: d.href, el: null });
   }
