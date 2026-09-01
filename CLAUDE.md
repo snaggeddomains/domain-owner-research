@@ -177,6 +177,28 @@ source=snagged, for final.com) is a first-class ownership signal Rob didn't want
   report-reset paths. Cache-bust `app.js`/`styles.css` `?v=20260805intowner`.
 - **No new table / permission / env** — reuses the Master + naming DB creds already set.
 
+## Known-owner call-out — "we've worked with this owner before" (2026-09-01)
+
+Now that Deals tracks the owners we acquire from (admin `deal_owners` + Owner Review), the
+Domain Owner report LEADS with a teal **`#owner-known`** banner (above `#internal-owner`) when the
+domain / identified owner matches someone in our directory — "🤝 Worked with before · N names
+closed · Point of contact: Rob/Sam/Brian" + a Deals owner-record link. Fires on BOTH the free
+pre-flight and the full pass.
+- **Cross-app** (admin owns `deal_owners`): `lib/ownerKnown.js` `knownOwners({domain,name,email})`
+  calls admin's internal `/api/internal/owner-match` (`x-internal-secret == RESEARCH_INTERNAL_SECRET`,
+  `ADMIN_INTERNAL_BASE`, 8s timeout), fail-open → []. `api/owner-known.js` (gated `domain_owner`) is the
+  thin proxy: `GET ?domain=&name=&email=` → `{owners}`. Admin match precedence: exact **domain** (a deal
+  or a confirmed Owner Review card for this name) > **email** overlap on `deal_owners.emails` > exact
+  specific **name** (see admin CLAUDE.md "Known-owner match").
+- **UI** (`public/app.js`): `loadKnownOwner(domain, name, email)` kicked from `renderReport` (name via
+  `reportOwnerName`, email = primary-tier `contacts[]` email) → `renderKnownOwner` paints `#owner-known`
+  ONLY when a match returns; shows the owner + company + domains-closed + point(s) of contact + an
+  "Owner record ↗" link (opens the admin Deals owner page in a new tab). Reset alongside the other owner
+  blocks (both full-report resets + the available-report branch). `.ok-*` styles (teal). Cache-bust
+  `app.js`/`styles.css` `?v=20260901knownowner`.
+- **No new table / permission / env** — reuses `domain_owner` + `RESEARCH_INTERNAL_SECRET` +
+  `ADMIN_INTERNAL_BASE` (all set). Fail-open end to end (unset secret / admin down / no match → no banner).
+
 ## Registrar registrant-contact relay in the report contact path (2026-08-11)
 
 When a domain is privacy-walled and we have no solid DIRECT owner lead, the report's

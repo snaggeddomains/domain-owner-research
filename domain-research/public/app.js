@@ -67,6 +67,7 @@ const els = {
   runControls: $('run-controls'),
   cancelRun: $('cancel-run'),
   internalOwner: $('internal-owner'),
+  knownOwner: $('owner-known'),
   ownerLiveness: $('owner-liveness'),
   marketStrip: $('market-strip'),
   companyVitals: $('company-vitals'),
@@ -2266,6 +2267,13 @@ function renderReport(report) {
   els.deepenTop.hidden = !(low && canDeep);
   els.deepenBar.hidden = !(shallow && !low && canDeep);
 
+  // Known-owner call-out — "we've worked with this owner before" (the Deals owner directory).
+  // Runs on BOTH passes; keyed on the domain + the report's identified owner name/email.
+  if (currentReportDomain) {
+    const knownEmail = (Array.isArray(data.contacts) ? data.contacts : [])
+      .find((c) => c.type === 'email' && c.tier === 'primary' && c.value && /@/.test(String(c.value)));
+    loadKnownOwner(currentReportDomain, reportOwnerName(data), knownEmail ? String(knownEmail.value).trim() : '');
+  }
   // Internal-owner call-out — lead with it when OUR DB already attributes an owner.
   if (currentReportDomain) loadInternalOwner(currentReportDomain);
   // Company vitals — how alive is this company (aliveness free; firmographics on deep).
@@ -2295,7 +2303,7 @@ function renderAvailableReport(report) {
   // An available name isn't for sale and has no owner — hide the for-sale strip + all blocks.
   if (typeof stopDsPoll === 'function') stopDsPoll();
   if (els.marketStrip) { els.marketStrip.hidden = true; els.marketStrip.dataset.domain = ''; }
-  for (const el of [els.ownerLiveness, els.internalOwner, els.companyVitals, els.registrarCard, els.auctionOwner]) {
+  for (const el of [els.ownerLiveness, els.knownOwner, els.internalOwner, els.companyVitals, els.registrarCard, els.auctionOwner]) {
     if (el) { el.hidden = true; el.innerHTML = ''; delete el.dataset.domain; }
   }
   const enc = encodeURIComponent(domain);
@@ -2598,6 +2606,49 @@ function renderRegistrarCard(w) {
 // owned-feed name in the Universe → Snagged / Rob). A prominent banner so it's never
 // missed, since an internal record is a first-class ownership signal. Report-gated
 // (domain_owner), fail-open — hidden when there's no internal record.
+// "We've worked with this owner before" — pull any matching owner from the admin Deals
+// directory (by this exact domain, the identified owner email, or an exact owner name).
+async function loadKnownOwner(domain, name, email) {
+  const el = els.knownOwner;
+  if (!el || !domain) return;
+  el.hidden = true;
+  el.dataset.domain = domain;
+  try {
+    const qs = new URLSearchParams({ domain });
+    if (name) qs.set('name', name);
+    if (email) qs.set('email', email);
+    const res = await fetch(`/research/api/owner-known?${qs.toString()}`);
+    if (!res.ok) return;
+    const data = await res.json();
+    if (el.dataset.domain !== domain) return; // a newer report took over
+    renderKnownOwner(data && data.owners);
+  } catch { /* fail-open — no callout */ }
+}
+function renderKnownOwner(owners) {
+  const el = els.knownOwner;
+  if (!el || !Array.isArray(owners) || !owners.length) return;
+  const o = owners[0]; // best match (domain > email > name; then most domains)
+  const domains = Array.isArray(o.domains) ? o.domains.filter(Boolean) : [];
+  const others = domains.filter((d) => d !== (el.dataset.domain || ''));
+  const shown = (others.length ? others : domains).slice(0, 6);
+  const moreN = (others.length ? others.length : domains.length) - shown.length;
+  const contacts = (Array.isArray(o.contacts) ? o.contacts : []).filter(Boolean);
+  const dealsLine = o.deal_count
+    ? `${o.deal_count} name${o.deal_count === 1 ? '' : 's'} closed with them`
+    : 'in our owner directory';
+  el.innerHTML =
+    `<span class="ok-badge">🤝 Worked with before</span>` +
+    `<div class="ok-body">` +
+      `<div class="ok-owner"><strong>${escapeHtml(String(o.name || 'Known owner'))}</strong>` +
+        (o.company ? ` <span class="ok-co">· ${escapeHtml(String(o.company))}</span>` : '') +
+        ` <span class="ok-count">· ${escapeHtml(dealsLine)}</span></div>` +
+      (shown.length ? `<div class="ok-domains">${shown.map((d) => escapeHtml(d)).join(' · ')}${moreN > 0 ? ` +${moreN} more` : ''}</div>` : '') +
+      (contacts.length ? `<div class="ok-poc">Point of contact: <strong>${contacts.map((c) => escapeHtml(String(c))).join(', ')}</strong></div>` : '') +
+    `</div>` +
+    `<a class="ok-link" href="${escapeHtml(String(o.url || '#'))}" target="_blank" rel="noopener">Owner record ↗</a>`;
+  el.hidden = false;
+}
+
 async function loadInternalOwner(domain) {
   const el = els.internalOwner;
   if (!el || !domain) return;
@@ -4223,6 +4274,7 @@ function enterResultMode(domain) {
   // Same for the Company vitals card — it's loaded per report domain, so a fresh
   // run must clear the previous company's block (else last report's vitals sit
   // stale through the whole "gathering" stage of the new run).
+  if (els.knownOwner) { els.knownOwner.hidden = true; els.knownOwner.innerHTML = ''; delete els.knownOwner.dataset.domain; }
   if (els.internalOwner) { els.internalOwner.hidden = true; els.internalOwner.innerHTML = ''; delete els.internalOwner.dataset.domain; }
   if (els.ownerLiveness) { els.ownerLiveness.hidden = true; els.ownerLiveness.innerHTML = ""; }
   if (els.companyVitals) { els.companyVitals.hidden = true; els.companyVitals.innerHTML = ''; delete els.companyVitals.dataset.domain; }
@@ -5826,6 +5878,7 @@ function showEntry() {
   if (els.marketStrip) els.marketStrip.hidden = true;
   // Company vitals + Deeper dives render per report — clear them too, or they'd
   // sit stale under the Recent list when you come back to the entry hero.
+  if (els.knownOwner) { els.knownOwner.hidden = true; els.knownOwner.innerHTML = ''; delete els.knownOwner.dataset.domain; }
   if (els.internalOwner) { els.internalOwner.hidden = true; els.internalOwner.innerHTML = ''; delete els.internalOwner.dataset.domain; }
   if (els.ownerLiveness) { els.ownerLiveness.hidden = true; els.ownerLiveness.innerHTML = ""; }
   if (els.companyVitals) { els.companyVitals.hidden = true; els.companyVitals.innerHTML = ''; delete els.companyVitals.dataset.domain; }
