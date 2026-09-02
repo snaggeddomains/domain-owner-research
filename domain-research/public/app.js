@@ -750,6 +750,7 @@ const CMDK_CROSS_APP = [
   { section: 'deals', label: 'Deals · Owner Review', href: '/deals/owner-review' },
   { section: 'deals', label: 'Deals · Buy-Side Inquiries', href: '/deals/inquiries' },
   { section: 'deals', label: 'Deals · Reporting', href: '/deals/reports' },
+  { section: 'always', label: 'Email · Compose a reply (AI draft)', href: '/email' },
   // Universal — every logged-in user; no section gate.
   { section: 'always', label: 'Feedback & feature requests', href: '/feedback' },
 ];
