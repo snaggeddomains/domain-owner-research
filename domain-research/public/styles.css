@@ -1209,6 +1209,14 @@ body.modal-open { overflow: hidden; }
 .topbar__nav a { padding:6px 13px; border-radius:999px; font-size:14px; font-weight:600; color:var(--navy-2); text-decoration:none; }
 .topbar__nav a:hover { background:var(--cream-2); color:var(--navy); }
 .topbar__nav a.active { background:var(--navy); color:var(--cream-2); }
+/* Tools dropdown (groups Reports + Email) */
+.topbar__tools { position:relative; display:inline-flex; }
+.topbar__tools-btn { font:inherit; font-size:14px; font-weight:600; color:var(--navy-2); background:none; border:0; cursor:pointer; padding:6px 13px; border-radius:999px; }
+.topbar__tools-btn:hover, .topbar__tools.open .topbar__tools-btn { background:var(--cream-2); color:var(--navy); }
+.topbar__tools-menu { position:absolute; top:calc(100% + 8px); left:0; min-width:150px; background:#fff; border:1px solid var(--line,#e4e8ec); border-radius:10px; box-shadow:0 8px 24px rgba(0,0,0,.10); padding:6px; display:flex; flex-direction:column; gap:2px; z-index:60; }
+.topbar__tools-menu a { padding:8px 12px; border-radius:7px; font-size:14px; font-weight:600; color:var(--navy-2); text-decoration:none; white-space:nowrap; }
+.topbar__tools-menu a:hover { background:var(--cream-2); color:var(--navy); }
+.topbar__tools-menu a.active { background:var(--navy); color:var(--cream-2); }
 .topbar__account { margin-left:auto; display:flex; align-items:center; gap:14px; font-size:14px; position:relative; }
 .topbar__account a { color:var(--teal-deep); font-weight:700; text-decoration:none; }
 

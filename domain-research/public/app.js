@@ -12,6 +12,9 @@ const els = {
   topbarReports: $('topbar-reports'),
   topbarDeals: $('topbar-deals'),
   topbarEmail: $('topbar-email'),
+  topbarTools: $('topbar-tools'),
+  topbarToolsBtn: $('topbar-tools-btn'),
+  topbarToolsMenu: $('topbar-tools-menu'),
   topbarAccount: $('topbar-account'),
   navAccountEmail: $('nav-account-email'),
   // Profile menu (avatar dropdown) — name, email-on-done toggle, change password.
@@ -860,6 +863,17 @@ function cmdkBootFocus() {
 }
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', cmdkBootFocus);
 else cmdkBootFocus();
+// Tools dropdown (groups Reports + Email) — toggle open/close + outside-click / Escape close.
+(function wireToolsMenu() {
+  const btn = els.topbarToolsBtn, menu = els.topbarToolsMenu, wrap = els.topbarTools;
+  if (!btn || !menu || !wrap) return;
+  const close = () => { menu.hidden = true; wrap.classList.remove('open'); btn.setAttribute('aria-expanded', 'false'); };
+  const open = () => { menu.hidden = false; wrap.classList.add('open'); btn.setAttribute('aria-expanded', 'true'); };
+  btn.addEventListener('click', (e) => { e.stopPropagation(); menu.hidden ? open() : close(); });
+  document.addEventListener('click', (e) => { if (!wrap.contains(e.target)) close(); });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') close(); });
+  menu.addEventListener('click', () => close()); // picking a link closes the menu (link full-navs)
+})();
 function runCmdkItem(item) {
   if (!item) return;
   if (item.kind === 'domain') {
@@ -3036,6 +3050,8 @@ async function checkAuth() {
       if (els.topbarDeals) els.topbarDeals.hidden = !(u.is_admin || (u.permissions && (u.permissions.deals || u.permissions['deals.all'])));
       // Email — search the deal inbox + AI-draft a reply (admin app); shown to anyone with email access.
       if (els.topbarEmail) els.topbarEmail.hidden = !(u.is_admin || (u.permissions && u.permissions.email));
+      // Tools dropdown wraps Reports + Email — show it if either child is visible.
+      if (els.topbarTools) els.topbarTools.hidden = !((els.topbarReports && !els.topbarReports.hidden) || (els.topbarEmail && !els.topbarEmail.hidden));
       if (els.navAccount) els.navAccount.hidden = false;
       renderProfile(u);
       startNotifPolling();

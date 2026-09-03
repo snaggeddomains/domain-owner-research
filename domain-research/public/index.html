@@ -88,12 +88,16 @@
                lands on SNAP Eval; shown by JS to anyone who can use it. Third spot,
                between Admin and Reports. -->
           <a href="/reports/opportunities" id="topbar-snap" hidden>SNAP</a>
-          <!-- Top-level Reports module; shown by JS to anyone with reports access. -->
-          <a href="/reports" id="topbar-reports" hidden>Reports</a>
           <!-- Deals — the buy-side CRM (admin app). Shown by JS to anyone with deals access. -->
           <a href="/deals" id="topbar-deals" hidden>Deals</a>
-          <!-- Email — search the deal inbox + AI-draft a reply (admin app). Shown by JS to anyone with email access. -->
-          <a href="/email" id="topbar-email" hidden>Email</a>
+          <!-- Tools — a dropdown grouping Reports + Email (admin app). Shown by JS if either child is accessible. -->
+          <span class="topbar__tools" id="topbar-tools" hidden>
+            <button type="button" class="topbar__tools-btn" id="topbar-tools-btn" aria-haspopup="menu" aria-expanded="false">Tools ▾</button>
+            <span class="topbar__tools-menu" id="topbar-tools-menu" hidden role="menu">
+              <a href="/reports" id="topbar-reports" hidden>Reports</a>
+              <a href="/email" id="topbar-email" hidden>Email</a>
+            </span>
+          </span>
         </nav>
         <div class="topbar__account" id="topbar-account" hidden>
           <!-- Back — in-app history nav (handy in the installed PWA where there's
@@ -1493,6 +1497,6 @@ The model parses it into structured filters (TLDs, length, budget, tone, etc.) a
     </div>
 
     <!-- Bump ?v= on any public/app.js or styles.css change to bust caches. -->
-    <script src="app.js?v=20260903emailnav"></script>
+    <script src="app.js?v=20260903toolsmenu"></script>
   </body>
 </html>
