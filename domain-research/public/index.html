@@ -92,6 +92,8 @@
           <a href="/reports" id="topbar-reports" hidden>Reports</a>
           <!-- Deals — the buy-side CRM (admin app). Shown by JS to anyone with deals access. -->
           <a href="/deals" id="topbar-deals" hidden>Deals</a>
+          <!-- Email — search the deal inbox + AI-draft a reply (admin app). Shown by JS to anyone with email access. -->
+          <a href="/email" id="topbar-email" hidden>Email</a>
         </nav>
         <div class="topbar__account" id="topbar-account" hidden>
           <!-- Back — in-app history nav (handy in the installed PWA where there's
@@ -1491,6 +1493,6 @@ The model parses it into structured filters (TLDs, length, budget, tone, etc.) a
     </div>
 
     <!-- Bump ?v= on any public/app.js or styles.css change to bust caches. -->
-    <script src="app.js?v=20260902emailcmdk"></script>
+    <script src="app.js?v=20260903emailnav"></script>
   </body>
 </html>

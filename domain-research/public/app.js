@@ -11,6 +11,7 @@ const els = {
   topbarAdmin: $('topbar-admin'),
   topbarReports: $('topbar-reports'),
   topbarDeals: $('topbar-deals'),
+  topbarEmail: $('topbar-email'),
   topbarAccount: $('topbar-account'),
   navAccountEmail: $('nav-account-email'),
   // Profile menu (avatar dropdown) — name, email-on-done toggle, change password.
@@ -3033,6 +3034,8 @@ async function checkAuth() {
       if (els.topbarReports) els.topbarReports.hidden = !(canEnterReports(u) || u.is_admin || (u.permissions && (u.permissions.portfolio || u.permissions.ahrefs)));
       // Deals — the buy-side CRM (admin app); shown to anyone with deals access.
       if (els.topbarDeals) els.topbarDeals.hidden = !(u.is_admin || (u.permissions && (u.permissions.deals || u.permissions['deals.all'])));
+      // Email — search the deal inbox + AI-draft a reply (admin app); shown to anyone with email access.
+      if (els.topbarEmail) els.topbarEmail.hidden = !(u.is_admin || (u.permissions && u.permissions.email));
       if (els.navAccount) els.navAccount.hidden = false;
       renderProfile(u);
       startNotifPolling();
@@ -3044,6 +3047,7 @@ async function checkAuth() {
       if (els.topbarAdmin) els.topbarAdmin.hidden = true;
       if (els.topbarReports) els.topbarReports.hidden = true;
       if (els.topbarDeals) els.topbarDeals.hidden = true;
+      if (els.topbarEmail) els.topbarEmail.hidden = true;
       if (els.navAccount) els.navAccount.hidden = true;
     }
   } catch {
@@ -3053,6 +3057,7 @@ async function checkAuth() {
     if (els.topbarAdmin) els.topbarAdmin.hidden = true;
     if (els.topbarReports) els.topbarReports.hidden = true;
       if (els.topbarDeals) els.topbarDeals.hidden = true;
+    if (els.topbarEmail) els.topbarEmail.hidden = true;
     if (els.navAccount) els.navAccount.hidden = true;
   }
 }
