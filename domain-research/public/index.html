@@ -90,9 +90,9 @@
           <a href="/reports/opportunities" id="topbar-snap" hidden>SNAP</a>
           <!-- Deals — the buy-side CRM (admin app). Shown by JS to anyone with deals access. -->
           <a href="/deals" id="topbar-deals" hidden>Deals</a>
-          <!-- Reports + Email (admin app) — top-level links, each shown by JS per permission. -->
-          <a href="/reports" id="topbar-reports" hidden>Reports</a>
-          <a href="/email" id="topbar-email" hidden>Email</a>
+          <!-- Tools (admin app) — Reports + Email consolidated into one section; the header link
+               full-navs to the admin Tools section (which shows the Reports/Email sub-nav). -->
+          <a href="/reports" id="topbar-tools" hidden>Tools</a>
         </nav>
         <div class="topbar__account" id="topbar-account" hidden>
           <!-- Back — in-app history nav (handy in the installed PWA where there's
@@ -1492,6 +1492,6 @@ The model parses it into structured filters (TLDs, length, budget, tone, etc.) a
     </div>
 
     <!-- Bump ?v= on any public/app.js or styles.css change to bust caches. -->
-    <script src="app.js?v=20260903toolsflat"></script>
+    <script src="app.js?v=20260903toolssection"></script>
   </body>
 </html>

@@ -1372,14 +1372,16 @@ section / moving a tool is small + local. Mirrors snagged-admin's `lib/navigatio
   **Add a section:** add a `SECTION_NAV` entry + its `nav-*-group` span + a `topbar-*`
   header link (gated in `checkAuth`).
 
-**Header nav is FLAT — Reports + Email are top-level links (Rob, 2026-09-03).** A brief experiment
-grouped Reports + Email under a **Tools ▾** dropdown; Rob wanted them to mirror the other nav items,
-so it was reverted. `#topbar-reports` + `#topbar-email` are direct `.topbar__nav` `<a>` links again
-(like `#topbar-deals`), each gated per-permission in `checkAuth` (reports: `canEnterReports || portfolio
-|| ahrefs`; email: `is_admin || permissions.email`). The `#topbar-tools` wrapper, `wireToolsMenu`, its
-`els.topbarTools*`, and the `.topbar__tools*` CSS were all removed. Header order: Research · Admin ·
-SNAP · Deals · Reports · Email. Cache-bust `app.js?v=20260903toolsflat`. (Admin app mirrors this — flat,
-no dropdown; see admin CLAUDE.md.)
+**"Tools" is a single top-level header link = Reports + Email consolidated (Rob, 2026-09-03).** In the
+admin app, Reports + Email were merged into ONE **Tools** section (SNAP-style sub-nav — see admin CLAUDE.md).
+The research SPA mirrors the header: a single **`#topbar-tools`** `.topbar__nav` link → `/reports` (full-nav
+to the admin Tools section, which renders the Reports/Email sub-nav there — the research SPA doesn't render
+admin sub-navs). Gated in `checkAuth` = `canEnterReports || portfolio || ahrefs || email` (reports OR email
+access). The separate `#topbar-reports`/`#topbar-email` links + `els.topbarReports`/`topbarEmail` were
+removed; the ⌘K `sectionOpen.reports` map + `SECTION_NAV.reports.topbar` now point at `topbar-tools` (so
+reports-section research pages — Corporate Portfolios / Ahrefs — light up Tools + the reports ⌘K entries
+gate on Tools visibility). Header order: Research · Admin · SNAP · Deals · Tools. Cache-bust
+`app.js?v=20260903toolssection`.
 
 **Corporate Portfolios → Reports (2026-06-28):** moved `nav-portfolio` out of the
 research group into `nav-reports-group` (alongside cross-app analytics links to the

@@ -9,9 +9,8 @@ const els = {
   // signed-in email. Log out is a plain <a href="/api/logout"> — no JS handler.
   topbarSnap: $('topbar-snap'),
   topbarAdmin: $('topbar-admin'),
-  topbarReports: $('topbar-reports'),
+  topbarTools: $('topbar-tools'),
   topbarDeals: $('topbar-deals'),
-  topbarEmail: $('topbar-email'),
   topbarAccount: $('topbar-account'),
   navAccountEmail: $('nav-account-email'),
   // Profile menu (avatar dropdown) — name, email-on-done toggle, change password.
@@ -771,7 +770,7 @@ function cmdkNavDests() {
   document.querySelectorAll('.topbar__nav a').forEach((a) => push(a, '▸'));
   document.querySelectorAll('.nav-btn').forEach((a) => push(a, '·'));
   // Cross-app tabs (no DOM element) — full-nav on select; gated by section topbar visibility.
-  const sectionOpen = { admin: els.topbarAdmin, snap: els.topbarSnap, reports: els.topbarReports, deals: els.topbarDeals };
+  const sectionOpen = { admin: els.topbarAdmin, snap: els.topbarSnap, reports: els.topbarTools, deals: els.topbarDeals };
   for (const d of CMDK_CROSS_APP) {
     if (seen.has(d.href)) continue;
     if (d.section !== 'always') {                 // 'always' = universal (Feedback); no section gate
@@ -3030,13 +3029,11 @@ async function checkAuth() {
       // Opportunities / SNAP Names are reports pages) — not just SNAP Eval.
       if (els.topbarSnap) els.topbarSnap.hidden = !(u.is_admin || (u.permissions && (u.permissions.evaluate || u.permissions.bulk_eval || u.permissions.expiring || u.permissions.snap_research || u.permissions['snap.deals'])) || canEnterReports(u));
       if (els.topbarAdmin) els.topbarAdmin.hidden = !canEnterAdmin(u);
-      // Reports section now also hosts Corporate Portfolios (a research-app page),
-      // so a portfolio-only user should see Reports in the header too.
-      if (els.topbarReports) els.topbarReports.hidden = !(canEnterReports(u) || u.is_admin || (u.permissions && (u.permissions.portfolio || u.permissions.ahrefs)));
       // Deals — the buy-side CRM (admin app); shown to anyone with deals access.
       if (els.topbarDeals) els.topbarDeals.hidden = !(u.is_admin || (u.permissions && (u.permissions.deals || u.permissions['deals.all'])));
-      // Email — search the deal inbox + AI-draft a reply (admin app); shown to anyone with email access.
-      if (els.topbarEmail) els.topbarEmail.hidden = !(u.is_admin || (u.permissions && u.permissions.email));
+      // Tools (admin app) — Reports + Email consolidated; show if the user can reach EITHER
+      // Reports (incl. the research-app Corporate Portfolios / Ahrefs pages) OR the Email drafter.
+      if (els.topbarTools) els.topbarTools.hidden = !(canEnterReports(u) || u.is_admin || (u.permissions && (u.permissions.portfolio || u.permissions.ahrefs || u.permissions.email)));
       if (els.navAccount) els.navAccount.hidden = false;
       renderProfile(u);
       startNotifPolling();
@@ -3046,9 +3043,8 @@ async function checkAuth() {
     } else {
       if (els.topbarAccount) els.topbarAccount.hidden = true;
       if (els.topbarAdmin) els.topbarAdmin.hidden = true;
-      if (els.topbarReports) els.topbarReports.hidden = true;
+      if (els.topbarTools) els.topbarTools.hidden = true;
       if (els.topbarDeals) els.topbarDeals.hidden = true;
-      if (els.topbarEmail) els.topbarEmail.hidden = true;
       if (els.navAccount) els.navAccount.hidden = true;
     }
   } catch {
@@ -3056,9 +3052,8 @@ async function checkAuth() {
     els.app.hidden = false;
     if (els.topbarAccount) els.topbarAccount.hidden = true;
     if (els.topbarAdmin) els.topbarAdmin.hidden = true;
-    if (els.topbarReports) els.topbarReports.hidden = true;
-      if (els.topbarDeals) els.topbarDeals.hidden = true;
-    if (els.topbarEmail) els.topbarEmail.hidden = true;
+    if (els.topbarTools) els.topbarTools.hidden = true;
+    if (els.topbarDeals) els.topbarDeals.hidden = true;
     if (els.navAccount) els.navAccount.hidden = true;
   }
 }
@@ -4550,7 +4545,7 @@ const VIEWS = {
 const SECTION_NAV = {
   research: { group: 'nav-research-group', topbar: 'topbar-research' },
   snap: { group: 'nav-snap-group', topbar: 'topbar-snap' },
-  reports: { group: 'nav-reports-group', topbar: 'topbar-reports' },
+  reports: { group: 'nav-reports-group', topbar: 'topbar-tools' },
 };
 // ── SNAP Research (dictionary .com abandonment finder) ──────────────────────
 let snapResearchRows = [];
