@@ -726,6 +726,16 @@ real opening emails ("Domain Owner Initial Outreach" playbook).
     tag-overlap with the report. Triggered by cron `api/cron/mine-outreach.js` (`vercel.json` daily
     `0 7 * * *`, CRON_SECRET) + on-demand `POST /api/outreach {action:'mine'}`. Fail-open (no Gmail
     creds / no DB → mines nothing, drafter still works off templates).
+  - **⚠️ mine-outreach CRON PAUSED (Rob, 2026-09-04) — the only AUTOMATED research-side Gmail reader.**
+    Removed the `{ "path": "/api/cron/mine-outreach", "schedule": "0 7 * * *" }` line from `vercel.json`
+    so it no longer fires. Why: it pulls FULL "Domain Inquiry" threads across ALL deal mailboxes daily
+    (incl. brian@) to learn the outreach voice — byte-heavy whole-thread reads charged as `email-threads`
+    on the admin Gmail governor — and it was silently the main daily load on brian's mailbox (the admin
+    cron pause didn't cover it; research is a separate Vercel project/cron set). It's governed (background,
+    halts at the approach line) so no throttle risk, but Rob wants brian's box clear. The route + `mineOutreachExamples`
+    are UNTOUCHED — on-demand `POST /api/outreach {action:'mine'}` still works. **All 3 research→Gmail paths
+    (this + SNAP Eval `signals.js` sweep + Domain Owner chat `chat-email.js` attach) get REPOINTED to the
+    local Gmail mirror once seeded, then this cron is restored.** To restore: re-add the cron line.
   - **Draft context:** `generate.js` gets a "REAL PAST OUTREACH (learn the VOICE… don't copy facts)"
     block from the top-3 relevant examples, alongside the full narrative it already reads.
   - **"Try again"** (renamed from Regenerate): the drawer button now sends `retry:true` +

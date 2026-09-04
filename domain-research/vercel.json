@@ -2,7 +2,6 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "crons": [
     { "path": "/api/cron/beeper", "schedule": "* * * * *" },
-    { "path": "/api/cron/mine-outreach", "schedule": "0 7 * * *" },
     { "path": "/api/cron/expiring-ai", "schedule": "*/5 * * * *" },
     { "path": "/api/cron/expiring-ai-digest", "schedule": "0 6,10,13,16,19,22 * * *" },
     { "path": "/api/cron/expiring-namecheap", "schedule": "45 8 * * *" },
