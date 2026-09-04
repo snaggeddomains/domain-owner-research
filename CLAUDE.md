@@ -772,6 +772,19 @@ real opening emails ("Domain Owner Initial Outreach" playbook).
   agent `SYSTEM_PROMPT` (`lib/agent.js`): marketplace_check + domainscout_lookup are AUTHORITATIVE —
   if they ran and found no live listing, do NOT write "listed for sale" or name a marketplace, no
   matter how strongly the owner reads as an investor. (Pairs with the outreach-signal fix below.)
+- **⚠️ Marketplace NAMESERVERS override a "not-listed" scan (2026-09-04).** monty.ai's report said
+  "not actively listed for sale … being held rather than sold" — but it resolves to **ns3/ns4.afternic.com**
+  and its live site is a **GoDaddy for-sale lander** ("monty.ai is for sale!"). Root cause: the prompt made
+  marketplace_check/domainscout AUTHORITATIVE for "not listed," and those scans missed the lander-only
+  Afternic listing → the agent dutifully wrote "held." Fix in `lib/agent.js`: (1) `marketplaceFromNs(nameservers,
+  domain)` + a `MARKETPLACE_NS` suffix map (afternic/above/dan/undeveloped/sedo/sedoparking/hugedomains/sav/
+  atom/squadhelp) — `gather()` reuses the existing `whoisLookup(domain)` result's `nameservers` (RDAP→WHOIS→DoH)
+  and, when they're a marketplace's, seeds a **"FOR-SALE SIGNAL (nameservers)"** fact (deterministic, fail-open).
+  (2) A prompt EXCEPTION on the authoritative-not-listed rule: marketplace NAMESERVERS or a for-sale LANDER
+  (forsale.godaddy.com / an Afternic-Dan-Sedo lander / "is for sale"/"buy this domain"/"make an offer") are
+  AFFIRMATIVE for-sale evidence that OVERRIDES a not-listed scan — report it as for sale via that channel,
+  never "held." Identity stays privacy-shielded (Medium/Low confidence) + contact routes through the listing
+  + registrar relay. Backend + prompt only (no cache-bust); re-run the report to pick it up.
 - **For-sale signal now AUTHORITATIVE (2026-07-22).** The outreach draft was claiming a
   domain was "listed for sale across multiple marketplaces" when it wasn't (e.g. electron.ai:
   `domainscout_lookup.for_sale:false` + `marketplace_check.any_listed:false`, yet the agent
