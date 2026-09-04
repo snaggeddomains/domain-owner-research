@@ -1461,6 +1461,10 @@ one box: type a **domain** (has a dot) → the domain tools, to run that name in
     `/api/nav-destinations` 404s → `res.json()` throws → caught). So any new admin tab appears in the research
     ⌘K automatically, permission-correct, forever. `CMDK_CROSS_APP` stays as the offline fallback (keep its
     `always` rows current). Cache-bust `app.js?v=20260904navsync`.
+    - **Email → Follow-up tool added (2026-09-04).** New admin Tools tab `/email/followup` (post-call
+      follow-up drafter: Gmail thread + Granola meeting notes + a terms brief → draft; admin repo). The
+      research ⌘K gets it automatically via the auto-sync; a `CMDK_CROSS_APP` fallback row was added too.
+      Cache-bust `app.js?v=20260904followup`.
 - **Focus the lookup after a ⌘K jump that RELOADS onto research (2026-07-24).** The in-SPA
   `focusActiveLookup` can't survive a full page reload, so a ⌘K selection that full-navigates onto
   the research app (a `/research/*` cross-app href, OR a jump from the ADMIN app's palette) landed

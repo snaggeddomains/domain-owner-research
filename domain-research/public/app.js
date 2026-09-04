@@ -742,6 +742,7 @@ const CMDK_CROSS_APP = [
   { section: 'reports', label: 'Reports · Corporate Portfolios', href: '/research/portfolio' },
   { section: 'reports', label: 'Reports · Ahrefs Report', href: '/research/ahrefs' },
   { section: 'reports', label: 'Tools · Compose', href: '/email' },
+  { section: 'reports', label: 'Tools · Follow-up (post-call email)', href: '/email/followup' },
   { section: 'reports', label: 'Tools · Inbox load', href: '/email/load' },
   { section: 'snap', label: 'SNAP · SNAP Opportunities', href: '/reports/opportunities' },
   { section: 'snap', label: 'SNAP · SNAP Names', href: '/reports/snap-names' },
