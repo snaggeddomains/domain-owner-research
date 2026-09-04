@@ -756,6 +756,26 @@ const CMDK_CROSS_APP = [
   // Universal — every logged-in user; no section gate.
   { section: 'always', label: 'Feedback & feature requests', href: '/feedback' },
 ];
+// LIVE cross-app destinations, fetched once from the admin app's `/api/nav-destinations`
+// (visibleSections × sectionTabs, permission-filtered for THIS user). This is the durable fix for
+// the ⌘K drift problem: a new admin tab shows up in the research palette automatically, permission-
+// correct, without hand-editing CMDK_CROSS_APP. Same-origin (app.snagged.com) so the session cookie
+// authenticates it; on research.snagged.com (no admin app) it 404s and we fall back to CMDK_CROSS_APP.
+// Each remote row is already gated server-side, so cmdkNavDests skips the client section gate for it.
+let cmdkRemoteDests = null;
+async function loadCmdkRemoteDests() {
+  if (cmdkRemoteDests) return; // once per session
+  try {
+    const res = await fetch('/api/nav-destinations', { credentials: 'same-origin' });
+    if (!res.ok) return;
+    const data = await res.json();
+    const rows = Array.isArray(data && data.destinations) ? data.destinations : [];
+    if (!rows.length) return;
+    cmdkRemoteDests = rows
+      .filter((d) => d && d.href && d.label)
+      .map((d) => ({ section: d.section || 'always', label: d.label, href: d.href, remote: true }));
+  } catch { /* fall back to CMDK_CROSS_APP */ }
+}
 // Every accessible nav destination, read LIVE from the DOM (topbar sections + every sub-tab)
 // PLUS the cross-app Admin/Deals tabs above — so the palette mirrors what the user can reach.
 // Permission-hidden DOM items carry `hidden`; cross-app tabs are gated by their section's
@@ -771,11 +791,18 @@ function cmdkNavDests() {
   };
   document.querySelectorAll('.topbar__nav a').forEach((a) => push(a, '▸'));
   document.querySelectorAll('.nav-btn').forEach((a) => push(a, '·'));
-  // Cross-app tabs (no DOM element) — full-nav on select; gated by section topbar visibility.
-  const sectionOpen = { admin: els.topbarAdmin, snap: els.topbarSnap, reports: els.topbarTools, deals: els.topbarDeals };
-  for (const d of CMDK_CROSS_APP) {
+  // Cross-app tabs (no DOM element) — full-nav on select. Prefer the LIVE admin nav
+  // (`cmdkRemoteDests`, permission-correct + auto-syncing with the admin menus); fall back to the
+  // hardcoded CMDK_CROSS_APP when the fetch hasn't landed / isn't reachable. Always keep the
+  // universal `always` rows (Feedback, etc.). A remote row is already server-gated → no client gate;
+  // a hardcoded row is gated by its section's topbar visibility.
+  const sectionOpen = { admin: els.topbarAdmin, snap: els.topbarSnap, reports: els.topbarTools, deals: els.topbarDeals, tools: els.topbarTools };
+  const crossApp = Array.isArray(cmdkRemoteDests)
+    ? cmdkRemoteDests.concat(CMDK_CROSS_APP.filter((d) => d.section === 'always'))
+    : CMDK_CROSS_APP;
+  for (const d of crossApp) {
     if (seen.has(d.href)) continue;
-    if (d.section !== 'always') {                 // 'always' = universal (Feedback); no section gate
+    if (!d.remote && d.section !== 'always') {    // hardcoded rows keep the section-visibility gate
       const topbar = sectionOpen[d.section];
       if (!topbar || topbar.hidden) continue;
     }
@@ -3039,6 +3066,7 @@ async function checkAuth() {
       if (els.navAccount) els.navAccount.hidden = false;
       renderProfile(u);
       startNotifPolling();
+      loadCmdkRemoteDests(); // populate the ⌘K palette's cross-app dests from the live admin nav
       gateNavByPermissions(u);
       gateReportPhaseUI(u);
       maybeAutoRunFromUrl();

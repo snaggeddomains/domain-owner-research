@@ -1448,6 +1448,19 @@ one box: type a **domain** (has a dot) → the domain tools, to run that name in
     admin palette (`command-palette.tsx`) gained an `extraDests()` for non-tab destinations — Feedback (universal)
     + the research tools NOT in `RESEARCH_TABS` (TLD Count / Renewal / Net Worth, perm-gated). Cache-bust
     `app.js?v=20260901cmdkall`.
+  - **Cross-app dests AUTO-SYNC from the live admin nav — no more hand-editing (2026-09-04).** The hardcoded
+    `CMDK_CROSS_APP` list kept drifting from the admin menus (a new admin tab like Inbox Load showed in the
+    admin palette but not research). Durable fix: admin exposes its nav as DATA —
+    **`GET /api/nav-destinations`** (`snagged-admin app/api/nav-destinations/route.ts`) returns
+    `visibleSections(user) × sectionTabs(user)` (permission-filtered, research section excluded). The research
+    palette fetches it ONCE at boot (`loadCmdkRemoteDests()`, called from `checkAuth` when signed in;
+    same-origin so the session cookie authenticates) → `cmdkRemoteDests`. `cmdkNavDests()` prefers
+    `cmdkRemoteDests` (each row `remote:true`, already server-gated → NO client section gate) + always keeps
+    the `always` rows (Feedback / Email compose); FALLS BACK to the hardcoded `CMDK_CROSS_APP` (with its
+    section-visibility gate) when the fetch hasn't landed / isn't reachable (research.snagged.com direct →
+    `/api/nav-destinations` 404s → `res.json()` throws → caught). So any new admin tab appears in the research
+    ⌘K automatically, permission-correct, forever. `CMDK_CROSS_APP` stays as the offline fallback (keep its
+    `always` rows current). Cache-bust `app.js?v=20260904navsync`.
 - **Focus the lookup after a ⌘K jump that RELOADS onto research (2026-07-24).** The in-SPA
   `focusActiveLookup` can't survive a full page reload, so a ⌘K selection that full-navigates onto
   the research app (a `/research/*` cross-app href, OR a jump from the ADMIN app's palette) landed
